@@ -1,4 +1,4 @@
-[Add](https://github.dev/chuanqisun/tools) · [Repo](https://github.com/chuanqisun/tools/)
+[Add](https://github.dev/chuanqisun/code) · [Repo](https://github.com/chuanqisun/code/)
 
 ## Tools
 
