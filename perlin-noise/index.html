@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Perlin Noise Interactive Tutorial (Vintage Oscilloscope)</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        max-width: 900px;
+        margin: auto;
+        padding: 20px;
+        background: #282c34;
+        color: #abb2bf;
+      }
+      .cell {
+        border: 1px solid #3a3f4b;
+        padding: 15px;
+        margin-bottom: 30px;
+        border-radius: 4px;
+        background: #21252b;
+      }
+      .editor {
+        border: 1px solid #3a3f4b;
+        min-height: 120px;
+        margin-bottom: 8px;
+      }
+      button.run {
+        margin-bottom: 10px;
+        background: #61afef;
+        border: none;
+        color: #282c34;
+        padding: 6px 12px;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      button.run:hover {
+        background: #519aba;
+      }
+      label { display: block; margin: 6px 0; }
+      input[type=range] { width: 200px; vertical-align: middle; }
+      canvas { border: 1px solid #3a3f4b; display: block; margin-top: 8px; background: black; }
+      a { color: #61afef }
+    </style>
+  </head>
+  <body>
+    <h1>Perlin Noise Interactive Tutorial (Vintage Oscilloscope)</h1>
+    <p>Use each cell below: edit the code, press “Run Cell” and watch the output update instantly.</p>
+    <ul>
+      <li>Cell 1: White (random) noise</li>
+      <li>Cell 2: Smoothed noise via linear interpolation</li>
+      <li>Cell 3: 1D Perlin noise + fade curve</li>
+      <li>Cell 4: Fully interactive 2D fractal Perlin noise</li>
+    </ul>
+
+    <!-- CELL 1 -->
+    <div class="cell" id="cell1">
+      <h2>Cell 1: White Noise</h2>
+      <p>Generate 1D white noise (purely random) and plot it.</p>
+      <div class="editor">
+        // generate random height‐values and plot them const width = 500, height = 200; const data = Array.from({length: width}, () => Math.random() * height);
+        const canvas = document.getElementById("cnv1"); const ctx = canvas.getContext("2d"); ctx.clearRect(0,0,width,height); ctx.strokeStyle = "#00FF00"; // ←
+        vintage oscilloscope green ctx.beginPath(); ctx.moveTo(0, height - data[0]); data.forEach((d,i) => ctx.lineTo(i, height - d)); ctx.stroke();
+      </div>
+      <button class="run">Run Cell</button>
+      <canvas id="cnv1" width="500" height="200"></canvas>
+    </div>
+
+    <!-- CELL 2 -->
+    <div class="cell" id="cell2">
+      <h2>Cell 2: Smoothed Noise via Linear Interpolation</h2>
+      <p>Pick random values on a coarse grid and linearly interpolate between them.</p>
+      <div class="editor">
+        // random base values & linear interpolation const width = 500, height = 200, grid = 10; const base = Array.from({length:grid}, () => Math.random() *
+        height); const smooth = new Array(width); const cellSize = width / (grid - 1); for (let x = 0; x < width; x++) { const fx = x / cellSize, i0 =
+        Math.floor(fx), i1 = Math.min(i0 + 1, grid - 1), t = fx - i0; smooth[x] = base[i0] + (base[i1] - base[i0]) * t; } const canvas =
+        document.getElementById("cnv2"), ctx = canvas.getContext("2d"); ctx.clearRect(0,0,width,height); ctx.strokeStyle = "#00FF00"; // ← vintage oscilloscope
+        green ctx.beginPath(); ctx.moveTo(0, height - smooth[0]); for (let x = 1; x < width; x++) { ctx.lineTo(x, height - smooth[x]); } ctx.stroke();
+      </div>
+      <button class="run">Run Cell</button>
+      <canvas id="cnv2" width="500" height="200"></canvas>
+    </div>
+
+    <!-- CELL 3 -->
+    <div class="cell" id="cell3">
+      <h2>Cell 3: 1D Perlin Noise & Fade Curve</h2>
+      <p>
+        Perlin noise picks a random <em>gradient</em> (±1 here) at each integer, computes dot‐products with the distance, and then blends via the “fade” curve
+        <code>6t⁵−15t⁴+10t³</code>.
+      </p>
+      <div class="editor">
+        // fade, lerp, gradient, p‐array shuffle, 1D Perlin, plus plotting function fade(t) { return t*t*t*(t*(t*6 - 15) + 10); } function lerp(a,b,t) { return
+        a + (b - a)*t; } function grad1(hash,x) { return (hash & 1) === 0 ? x : -x; } // build permutation table const p = new Uint8Array(512); (() => { const
+        perm = Array.from({length:256},(_,i)=>i); for (let i = 255; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [perm[i], perm[j]] = [perm[j],
+        perm[i]]; } for (let i = 0; i < 256; i++) { p[i] = p[i+256] = perm[i]; } })(); function noise1D(x) { const xi = Math.floor(x) & 255, xf = x -
+        Math.floor(x), u = fade(xf), a = grad1(p[xi], xf), b = grad1(p[xi+1], xf-1); return lerp(a, b, u); } // draw fade curve const fadeC =
+        document.getElementById("fadeC"), fctx = fadeC.getContext("2d"), Wf = fadeC.width, Hf = fadeC.height; fctx.clearRect(0,0,Wf,Hf); fctx.strokeStyle =
+        "#00FF00"; // ← vintage oscilloscope green fctx.beginPath(); for (let i=0; i<=Wf; i++) { const t = i/Wf, y = (1 - fade(t)) * Hf; if (i===0)
+        fctx.moveTo(i,y); else fctx.lineTo(i,y); } fctx.stroke(); // draw noise const canvas = document.getElementById("cnv3"), ctx = canvas.getContext("2d"), W
+        = canvas.width, H = canvas.height; ctx.clearRect(0,0,W,H); ctx.strokeStyle = "#00FF00"; // ← vintage oscilloscope green ctx.beginPath(); for (let x=0;
+        x< W; x++) { const v = noise1D(x/50), y = (v*0.5 + 0.5)*H; if (x===0) ctx.moveTo(x, H-y); else ctx.lineTo(x, H-y); } ctx.stroke();
+      </div>
+      <button class="run">Run Cell</button>
+      <div class="output">
+        <canvas id="fadeC" width="300" height="100"></canvas>
+        <canvas id="cnv3" width="500" height="200"></canvas>
+      </div>
+    </div>
+
+    <!-- CELL 4 (unchanged interactive 2D Perlin, no strokes here) -->
+    <div class="cell" id="cell4">
+      <h2>Cell 4: Interactive 2D Fractal Perlin Noise</h2>
+      <p>Combine multiple octaves (fBm). Tweak sliders and watch the texture update.</p>
+      <label>Scale: <span id="scaleValue"></span> <input type="range" id="scaleSlider" min="10" max="200" value="50" /></label>
+      <label>Octaves: <span id="octavesValue"></span> <input type="range" id="octavesSlider" min="1" max="8" value="4" /></label>
+      <label>Persistence: <span id="persistenceValue"></span> <input type="range" id="persistenceSlider" min="0.1" max="1.0" step="0.05" value="0.5" /></label>
+      <label>Lacunarity: <span id="lacunarityValue"></span> <input type="range" id="lacunaritySlider" min="1.0" max="4.0" step="0.1" value="2.0" /></label>
+      <label>Seed: <span id="seedValue"></span> <input type="range" id="seedSlider" min="0" max="100" value="0" /></label>
+      <canvas id="cnv4" width="400" height="400"></canvas>
+    </div>
+
+    <script type="module">
+      //–– Import CodeMirror 6 essentials + One Dark theme
+      import { EditorState } from "https://esm.sh/@codemirror/state";
+      import { EditorView, keymap } from "https://esm.sh/@codemirror/view";
+      import { defaultKeymap } from "https://esm.sh/@codemirror/commands";
+      import { javascript } from "https://esm.sh/@codemirror/lang-javascript";
+      import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
+
+      //–– Turn each .editor into a CodeMirror instance with a “Run” button
+      document.querySelectorAll(".cell").forEach((cell) => {
+        const editorDiv = cell.querySelector(".editor");
+        if (!editorDiv) return; // skip Cell 4
+        const source = editorDiv.textContent.trim();
+        editorDiv.textContent = ""; // clear placeholder
+
+        const view = new EditorView({
+          state: EditorState.create({
+            doc: source,
+            extensions: [keymap.of(defaultKeymap), javascript(), oneDark, EditorView.lineWrapping],
+          }),
+          parent: editorDiv,
+        });
+
+        const btn = cell.querySelector("button.run");
+        btn.addEventListener("click", () => {
+          const code = view.state.doc.toString();
+          try {
+            new Function(code)();
+          } catch (e) {
+            console.error(e);
+            alert(e);
+          }
+        });
+
+        btn.click(); // run once on load
+      });
+
+      //–– Static code for Cell 4 (Interactive 2D Perlin) ––– (unchanged)
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+      function fade(t) {
+        return t * t * t * (t * (t * 6 - 15) + 10);
+      }
+      function mulberry32(a) {
+        return function () {
+          let t = (a += 0x6d2b79f5);
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      class Perlin {
+        constructor(seed) {
+          this.p = new Uint8Array(512);
+          const perm = Array.from({ length: 256 }, (_, i) => i);
+          const rnd = mulberry32(seed);
+          for (let i = 255; i > 0; i--) {
+            const r = Math.floor(rnd() * (i + 1));
+            [perm[i], perm[r]] = [perm[r], perm[i]];
+          }
+          for (let i = 0; i < 256; i++) {
+            this.p[i] = this.p[i + 256] = perm[i];
+          }
+        }
+        fade = fade;
+        lerp = lerp;
+        grad1(hash, x) {
+          return (hash & 1) == 0 ? x : -x;
+        }
+        noise2D(x, y) {
+          const X = Math.floor(x) & 255,
+            Y = Math.floor(y) & 255;
+          const xf = x - Math.floor(x),
+            yf = y - Math.floor(y);
+          const u = fade(xf),
+            v = fade(yf);
+          const g2 = [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+            [0.7071, 0.7071],
+            [-0.7071, 0.7071],
+            [0.7071, -0.7071],
+            [-0.7071, -0.7071],
+          ];
+          const ii = X,
+            jj = Y;
+          const gi00 = this.p[ii + this.p[jj]] % 8;
+          const gi01 = this.p[ii + this.p[jj + 1]] % 8;
+          const gi10 = this.p[ii + 1 + this.p[jj]] % 8;
+          const gi11 = this.p[ii + 1 + this.p[jj + 1]] % 8;
+          const dot00 = g2[gi00][0] * xf + g2[gi00][1] * yf;
+          const dot10 = g2[gi10][0] * (xf - 1) + g2[gi10][1] * yf;
+          const dot01 = g2[gi01][0] * xf + g2[gi01][1] * (yf - 1);
+          const dot11 = g2[gi11][0] * (xf - 1) + g2[gi11][1] * (yf - 1);
+          const x1 = this.lerp(dot00, dot10, u);
+          const x2 = this.lerp(dot01, dot11, u);
+          return this.lerp(x1, x2, v);
+        }
+        fbm2D(x, y, oct, pers, lac) {
+          let total = 0,
+            amp = 1,
+            freq = 1,
+            max = 0;
+          for (let i = 0; i < oct; i++) {
+            total += this.noise2D(x * freq, y * freq) * amp;
+            max += amp;
+            amp *= pers;
+            freq *= lac;
+          }
+          return total / max;
+        }
+      }
+
+      function drawInteractive2D(scale, oct, pers, lac, seed) {
+        const c = document.getElementById("cnv4");
+        const ctx = c.getContext("2d");
+        const W = c.width,
+          H = c.height;
+        const per = new Perlin(seed);
+        const img = ctx.createImageData(W, H),
+          d = img.data;
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const v = per.fbm2D(x / scale, y / scale, oct, pers, lac);
+            const c0 = Math.floor((v * 0.5 + 0.5) * 255);
+            const i = (y * W + x) * 4;
+            d[i] = d[i + 1] = d[i + 2] = c0;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function setupInteractive() {
+        const scaleS = document.getElementById("scaleSlider"),
+          octS = document.getElementById("octavesSlider"),
+          pS = document.getElementById("persistenceSlider"),
+          lS = document.getElementById("lacunaritySlider"),
+          sdS = document.getElementById("seedSlider");
+
+        function redraw() {
+          const scale = +scaleS.value,
+            oct = +octS.value,
+            pers = +pS.value,
+            lac = +lS.value,
+            seed = +sdS.value;
+          document.getElementById("scaleValue").textContent = scale;
+          document.getElementById("octavesValue").textContent = oct;
+          document.getElementById("persistenceValue").textContent = pers;
+          document.getElementById("lacunarityValue").textContent = lac;
+          document.getElementById("seedValue").textContent = seed;
+          drawInteractive2D(scale, oct, pers, lac, seed);
+        }
+
+        [scaleS, octS, pS, lS, sdS].forEach((el) => (el.oninput = redraw));
+        redraw();
+      }
+
+      window.addEventListener("load", setupInteractive);
+    </script>
+  </body>
+</html>
