@@ -23,4 +23,6 @@
 - [Electric sheep](./electric-sheep/)
 - [Media Lab Game of Life](./media-lab-game-of-life)
 - [Wiki search](./wiki-search/)
+- [Perlin noise](./perlin-noise/)
 - [Voxel intersection](./voxel-intersection/)
+
