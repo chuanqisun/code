@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Thank You</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%2210 0 100 100%22><text y=%22.90em%22 font-size=%2290%22>🙏</text></svg>"
+    />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown-light.min.css" />
+    <style>
+      .markdown-body {
+        box-sizing: border-box;
+        min-width: 200px;
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 45px;
+      }
+      @media (max-width: 767px) {
+        .markdown-body {
+          padding: 15px;
+        }
+      }
+      body {
+        background: #f6f8fa;
+      }
+      .markdown-body pre {
+        border-radius: 6px;
+        code {
+          white-space: pre-wrap;
+        }
+      }
+      mark {
+        background-color: #ffeb3b;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <article class="markdown-body">
+      <p>
+        My dearest friends, I'm leaving Microsoft on 7/18 for school (Media Lab at MIT, see forwarded message). You are receiving this special email because
+        you've left a lasting impact in my last 10 years at work. Please accept my heartfelt gratitude:
+      </p>
+      <p>
+        Irina, Sharath, Chris, Neil, Shay, Zhongwei, Jesse, Matt, Zach, Matt, John, Quirine- You are the best managers. Many of you took a leap of faith, making
+        space for someone who didn't fit elsewhere to thrive on your teams. Thank you for giving me the freedom to break rules and forge my own path.
+      </p>
+      <p>
+        Nick, Jon, Jonah, Joe, Cary, Asha - I'm incredibly fortunate to have had you as my leaders, elevating my work and creating opportunities for me to make
+        meaningful impact. You are literally the executive sponsor of my career!
+      </p>
+      <p>
+        Carter, Diego, Denesh, Jiaye, Yilei, Chris - Each of you shaped my career at pivotal moments in profound ways. You selflessly shared your time and
+        wisdom. You not only gave me the courage to blaze my own path but also embodied your values in the work you do. Your legacy is the principles I live by
+        today.
+      </p>
+      <p>
+        Lauren, Peter, Henry - We helped each other navigate challenges at work and in life. Thank you for always challenging me to think clearer, walk the
+        walk, and never give up on quality and craft.
+      </p>
+      <p>
+        Adam, Abdulfatai, Niduan, Ben, Lenny, Theresa, Waseem, Veronica, Ikuyo, Owen, Will - You stood out as my extraordinary coworkers. I learned so much from
+        watching you work. Each of you demonstrated the highest level of mastery in your disciplines and reminded me to never stop learning.
+      </p>
+      <p>
+        Casey, Xuechen - The best way to code into the wee hours is doing it with friends who share your passion for hacking. The two Hackathons I ran with you
+        were the most memorable and fun!
+      </p>
+      <p>
+        Jeff, Greg, Ross, Krishna, Sridhar, Gantaphon, Will, Brittany - From coffee club to lunches to hangouts outside of work, you made the workplace feel
+        like home. Thank you for sharing my best joys as well as putting up with my worst shenanigans. Work is fun because of you!
+      </p>
+      <p>
+        And many others who have journeyed with me - you will continue to inspire. Thank you and stay in touch! Please find me on
+        <a href="https://www.linkedin.com/in/chuanqi-sun/" target="_blank">LinkedIn</a> or follow my latest learning in my
+        <a href="https://blog.chuanqisun.com" target="_blank">technical blog</a>.
+      </p>
+      <p>FORWARDED MESSAGE</p>
+      <blockquote>
+        <p>Hi friends,</p>
+        <p>
+          AI engineering is moving fast. Working at Azure AI Foundry has given me a lot to think about, and I want to take what I’ve learned here and go
+          deeper—especially into the philosophical side of things. I’m interested in how humans and AI relate, how carbon-based and silicon-based life forms
+          interact, and how computation can express empathy through art.
+        </p>
+        <p>
+          With that in mind, I applied to the Media Arts and Sciences program at MIT last winter. I got in, and with the school year about to begin, it's time
+          for me to pack up for my move to Boston - my last day at work will be 7/18.
+        </p>
+        <p>
+          It’s not easy to leave. The computational design discipline here is finally coming into its own. I never thought I’d see the day when designers and
+          developers on the same team would work side by side on the same projects.
+        </p>
+        <p>
+          One of my happiest moments was seeing so many of you try out vibe coding and share your projects. I hope you felt that spark of joy when your code
+          first came live in the browser. That was the very reason why I'm still coding every day.
+        </p>
+        <p>
+          I’ve never seen the kind of growth and impact that our team has achieved, anywhere else in my career. I think this is one of the best places to be at
+          Microsoft. Knowing I’ll miss out on what comes next is not easy. Part of me is wanting to hang around just a bit longer so I can build more tools and
+          experiences to transform how we design and build with AI.
+        </p>
+        <p>
+          But change is part of life. Small changes happen all the time; big ones come only a few times. This is one of the big ones for me. I’m making this
+          move with a lot of gratitude towards everyone who’s helped me, from my first intern manager ten years ago to Everyone reading this now. You’re part of
+          my experience here, and I’m just thankful for sharing this experience with you.
+        </p>
+        <p>I wish you new adventures ahead and godspeed on transforming civilization with technology.</p>
+      </blockquote>
+    </article>
+    <script>
+      function highlightText() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchTerm = urlParams.get("to");
+        const instanceParam = urlParams.get("i");
+
+        if (!searchTerm) return;
+
+        const targetInstance = instanceParam !== null ? parseInt(instanceParam, 10) : null;
+        let currentInstance = 0;
+
+        const walker = document.createTreeWalker(document.querySelector(".markdown-body"), NodeFilter.SHOW_TEXT, null, false);
+
+        const textNodes = [];
+        let node;
+        while ((node = walker.nextNode())) {
+          textNodes.push(node);
+        }
+
+        textNodes.forEach((textNode) => {
+          const text = textNode.textContent;
+          const regex = new RegExp(`(${searchTerm})`, "gi");
+          let match;
+          const matches = [];
+
+          while ((match = regex.exec(text)) !== null) {
+            matches.push({ match: match[0], index: match.index });
+          }
+
+          if (matches.length > 0) {
+            let highlightedText = text;
+            let offset = 0;
+
+            matches.forEach((matchInfo) => {
+              if (targetInstance === null || currentInstance === targetInstance) {
+                const before = highlightedText.substring(0, matchInfo.index + offset);
+                const highlighted = `<mark>${matchInfo.match}</mark>`;
+                const after = highlightedText.substring(matchInfo.index + offset + matchInfo.match.length);
+                highlightedText = before + highlighted + after;
+                offset += "<mark></mark>".length;
+              }
+              currentInstance++;
+            });
+
+            if (highlightedText !== text) {
+              const wrapper = document.createElement("span");
+              wrapper.innerHTML = highlightedText;
+              textNode.parentNode.replaceChild(wrapper, textNode);
+            }
+          }
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", highlightText);
+    </script>
+  </body>
+</html>
