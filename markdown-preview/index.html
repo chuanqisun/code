@@ -146,6 +146,10 @@ Paste your **Markdown** on the left.
 ---
 
 > Built with vanilla JS + Shiki.
+
+Here's a footnote example. This is some text with a footnote[^1].
+
+[^1]: This is the content of the footnote.
 </textarea
       >
       <div class="preview-pane">
@@ -158,6 +162,7 @@ Paste your **Markdown** on the left.
     <script type="module">
       import { Marked } from "https://esm.sh/marked@15.0.12";
       import markedShiki from "https://esm.sh/marked-shiki@1.2.0";
+      import markedFootnote from "https://esm.sh/marked-footnote@1.0.0"; // Import marked-footnote
       import { bundledLanguages } from "https://esm.sh/shiki@3.6.0/bundle/full";
       import { createHighlighter } from "https://esm.sh/shiki@3.6.0";
 
@@ -215,7 +220,8 @@ Paste your **Markdown** on the left.
                   theme: "dark-plus",
                 });
               },
-            })
+            }),
+            markedFootnote() // Use marked-footnote plugin
           );
         }
 
