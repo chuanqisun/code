@@ -21,8 +21,8 @@
 - [Clipboard++](./clipboard)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
+- [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [Media Lab Game of Life](./media-lab-game-of-life)
 - [Wiki search](./wiki-search/)
 - [Perlin noise](./perlin-noise/)
 - [Voxel intersection](./voxel-intersection/)
-
