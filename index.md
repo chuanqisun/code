@@ -21,6 +21,7 @@
 - [Clipboard++](./clipboard)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
+- [Head tracking](./head-tracking/)
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [Media Lab Game of Life](./media-lab-game-of-life)
 - [Wiki search](./wiki-search/)
