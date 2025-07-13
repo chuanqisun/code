@@ -26,4 +26,5 @@
 - [Media Lab Game of Life](./media-lab-game-of-life)
 - [Wiki search](./wiki-search/)
 - [Perlin noise](./perlin-noise/)
+- [Spaceship](./spaceship/)
 - [Voxel intersection](./voxel-intersection/)
