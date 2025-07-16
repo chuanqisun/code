@@ -18,6 +18,7 @@
 
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
+- [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
