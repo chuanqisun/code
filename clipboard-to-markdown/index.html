@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clipboard to Markdown Converter</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .header {
+        padding: 10px;
+        border-bottom: 1px solid #ccc;
+        background: #f5f5f5;
+      }
+
+      .controls {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+      }
+
+      .control {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .main {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .panel {
+        overflow: auto;
+        padding: 10px;
+      }
+
+      .left-panel {
+        border-right: 1px solid #ccc;
+      }
+
+      .right-panel {
+        border-left: 1px solid #ccc;
+      }
+
+      .divider {
+        width: 4px;
+        background: #ddd;
+        cursor: col-resize;
+        position: relative;
+      }
+
+      .divider:hover {
+        background: #999;
+      }
+
+      textarea {
+        width: 100%;
+        height: 100%;
+        display: block;
+        border: none;
+        outline: none;
+        resize: none;
+        font-family: monospace;
+        font-size: 14px;
+      }
+
+      .preview {
+        width: 100%;
+        height: 100%;
+        font-family: monospace;
+        font-size: 14px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="controls">
+        <div class="control">
+          <input type="checkbox" id="removeImages" checked />
+          <label for="removeImages">Remove Images</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="removeLinkUrls" />
+          <label for="removeLinkUrls">Remove Link URLs</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="removeLinkTexts" />
+          <label for="removeLinkTexts">Remove Link Texts</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="inlineBlockElements" checked />
+          <label for="inlineBlockElements">Inline Block Elements in Lists</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="panel left-panel">
+        <textarea id="input" placeholder="Paste HTML content here..."></textarea>
+      </div>
+      <div class="divider" id="divider"></div>
+      <div class="panel right-panel">
+        <div class="preview" id="output"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import TurndownService from "https://esm.sh/turndown@7.1.2";
+
+      // State
+      let rawHtmlData = "";
+      let isDragging = false;
+
+      // Initialize Turndown
+      const turndownService = new TurndownService({
+        headingStyle: "atx",
+        bulletListMarker: "-",
+        codeBlockStyle: "fenced",
+      });
+
+      // DOM elements
+      const input = document.getElementById("input");
+      const output = document.getElementById("output");
+      const divider = document.getElementById("divider");
+      const main = document.querySelector(".main");
+      const controls = {
+        removeImages: document.getElementById("removeImages"),
+        removeLinkUrls: document.getElementById("removeLinkUrls"),
+        removeLinkTexts: document.getElementById("removeLinkTexts"),
+        inlineBlockElements: document.getElementById("inlineBlockElements"),
+      };
+
+      // Pre-transform functions
+      const preTransforms = {
+        removeStylesAndScripts: (html) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+
+          // Remove script, style, meta tags
+          doc.querySelectorAll('script, style, meta, link[rel="stylesheet"]').forEach((el) => el.remove());
+
+          // Remove style attributes
+          doc.querySelectorAll("*[style]").forEach((el) => el.removeAttribute("style"));
+
+          // Remove class and id attributes
+          doc.querySelectorAll("*[class], *[id]").forEach((el) => {
+            el.removeAttribute("class");
+            el.removeAttribute("id");
+          });
+
+          return doc.body ? doc.body.innerHTML : html;
+        },
+
+        removeImages: (html) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          doc.querySelectorAll("img").forEach((el) => el.remove());
+          return doc.body ? doc.body.innerHTML : html;
+        },
+
+        removeLinkUrls: (html) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          doc.querySelectorAll("a").forEach((el) => {
+            const span = doc.createElement("span");
+            span.innerHTML = el.innerHTML;
+            el.parentNode.replaceChild(span, el);
+          });
+          return doc.body ? doc.body.innerHTML : html;
+        },
+
+        removeLinkTexts: (html) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+          doc.querySelectorAll("a").forEach((el) => el.remove());
+          return doc.body ? doc.body.innerHTML : html;
+        },
+
+        inlineBlockElements: (html) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+
+          doc.querySelectorAll("li").forEach((li) => {
+            const blockElements = li.querySelectorAll("div, p, h1, h2, h3, h4, h5, h6");
+            blockElements.forEach((block) => {
+              const span = doc.createElement("span");
+              span.innerHTML = block.innerHTML;
+              block.parentNode.replaceChild(span, block);
+            });
+          });
+
+          return doc.body ? doc.body.innerHTML : html;
+        },
+      };
+
+      // Process pipeline
+      function processHtml(html, options) {
+        let processed = html;
+
+        // Always remove styles and scripts
+        processed = preTransforms.removeStylesAndScripts(processed);
+
+        // Apply optional transforms
+        if (options.removeImages) {
+          processed = preTransforms.removeImages(processed);
+        }
+        if (options.removeLinkUrls) {
+          processed = preTransforms.removeLinkUrls(processed);
+        }
+        if (options.removeLinkTexts) {
+          processed = preTransforms.removeLinkTexts(processed);
+        }
+        if (options.inlineBlockElements) {
+          processed = preTransforms.inlineBlockElements(processed);
+        }
+
+        return processed;
+      }
+
+      function htmlToMarkdown(html) {
+        return turndownService.turndown(html);
+      }
+
+      function cleanupMarkdown(markdown) {
+        return markdown
+          .replace(/\n{3,}/g, "\n\n") // Remove excessive line breaks
+          .replace(/^\s+|\s+$/g, "") // Trim whitespace
+          .replace(/\\\[/g, "[") // Unescape brackets
+          .replace(/\\\]/g, "]");
+      }
+
+      function updateOutput() {
+        const options = {
+          removeImages: controls.removeImages.checked,
+          removeLinkUrls: controls.removeLinkUrls.checked,
+          removeLinkTexts: controls.removeLinkTexts.checked,
+          inlineBlockElements: controls.inlineBlockElements.checked,
+        };
+
+        const processedHtml = processHtml(rawHtmlData, options);
+        const markdown = htmlToMarkdown(processedHtml);
+        const cleanedMarkdown = cleanupMarkdown(markdown);
+
+        output.textContent = cleanedMarkdown;
+      }
+
+      // Event handlers
+      input.addEventListener("paste", (e) => {
+        const clipboardData = e.clipboardData || window.clipboardData;
+        const htmlData = clipboardData.getData("text/html");
+
+        if (htmlData) {
+          e.preventDefault();
+          rawHtmlData = htmlData;
+          input.value = htmlData;
+          updateOutput();
+        }
+      });
+
+      input.addEventListener("input", (e) => {
+        rawHtmlData = e.target.value;
+        updateOutput();
+      });
+
+      // Control change handlers
+      Object.values(controls).forEach((control) => {
+        control.addEventListener("change", updateOutput);
+      });
+
+      // Draggable divider
+      divider.addEventListener("mousedown", (e) => {
+        isDragging = true;
+        document.addEventListener("mousemove", handleDrag);
+        document.addEventListener("mouseup", stopDrag);
+        e.preventDefault();
+      });
+
+      function handleDrag(e) {
+        if (!isDragging) return;
+
+        const rect = main.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const totalWidth = rect.width;
+        const leftWidth = Math.max(100, Math.min(totalWidth - 100, x));
+
+        main.style.gridTemplateColumns = `${leftWidth}px auto 1fr`;
+      }
+
+      function stopDrag() {
+        isDragging = false;
+        document.removeEventListener("mousemove", handleDrag);
+        document.removeEventListener("mouseup", stopDrag);
+      }
+
+      // Initialize
+      updateOutput();
+    </script>
+  </body>
+</html>

@@ -20,6 +20,7 @@
 - [Assembly theory](./assembly-theory/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
+- [Clipboard to Markdown](./clipboard-to-markdown/)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
 - [Head tracking](./head-tracking/)
