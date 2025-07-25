@@ -88,7 +88,24 @@
         <h1>Clipdown</h1>
         <div class="control">
           <input type="checkbox" id="removeImages" checked />
-          <label for="removeImages">Remove Images</label>
+          <label for="removeImages">Remove images</label>
+        </div>
+
+        <div class="control">
+          <input type="checkbox" id="inlineLinkText" checked />
+          <label for="inlineLinkText">Inline links</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="inlineBlockElements" checked />
+          <label for="inlineBlockElements">Compress Lists</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="convertTables" checked />
+          <label for="convertTables">Preserve Tables</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="prettifyOutput" checked />
+          <label for="prettifyOutput">Prettify Output</label>
         </div>
         <div class="control">
           <input type="checkbox" id="removeLinkUrls" />
@@ -99,12 +116,8 @@
           <label for="removeLinkTexts">Remove Link Texts</label>
         </div>
         <div class="control">
-          <input type="checkbox" id="inlineBlockElements" checked />
-          <label for="inlineBlockElements">Compress Lists</label>
-        </div>
-        <div class="control">
-          <input type="checkbox" id="convertTables" checked />
-          <label for="convertTables">Preserve Tables</label>
+          <input type="checkbox" id="replaceNbsp" checked />
+          <label for="replaceNbsp">Break spaces</label>
         </div>
       </div>
     </div>
@@ -125,6 +138,7 @@
       import { syntaxHighlighting, defaultHighlightStyle } from "https://esm.sh/@codemirror/language";
       import { format } from "https://esm.sh/prettier@3.6.2/standalone";
       import htmlParser from "https://esm.sh/prettier@3.6.2/plugins/html";
+      import markdownParser from "https://esm.sh/prettier@3.6.2/plugins/markdown";
 
       // State
       let rawHtmlData = "";
@@ -133,8 +147,8 @@
       // Line wrapping compartments and state for each editor
       const inputLineWrapCompartment = new Compartment();
       const outputLineWrapCompartment = new Compartment();
-      let inputLineWrapEnabled = true;
-      let outputLineWrapEnabled = true;
+      let inputLineWrapEnabled = false;
+      let outputLineWrapEnabled = false;
 
       // Toggle line wrap function for input editor
       function toggleInputLineWrap() {
@@ -193,8 +207,11 @@
         removeImages: document.getElementById("removeImages"),
         removeLinkUrls: document.getElementById("removeLinkUrls"),
         removeLinkTexts: document.getElementById("removeLinkTexts"),
+        inlineLinkText: document.getElementById("inlineLinkText"),
         inlineBlockElements: document.getElementById("inlineBlockElements"),
         convertTables: document.getElementById("convertTables"),
+        prettifyOutput: document.getElementById("prettifyOutput"),
+        replaceNbsp: document.getElementById("replaceNbsp"),
       };
 
       // Create CodeMirror editors
@@ -208,7 +225,7 @@
             inputLineWrapKeymap,
             html(),
             placeholder("Paste HTML content here..."),
-            inputLineWrapCompartment.of(EditorView.lineWrapping),
+            inputLineWrapCompartment.of([]),
             EditorView.updateListener.of((update) => {
               if (update.docChanged) {
                 rawHtmlData = update.state.doc.toString();
@@ -229,7 +246,7 @@
             keymap.of(defaultKeymap),
             outputLineWrapKeymap,
             markdown(),
-            outputLineWrapCompartment.of(EditorView.lineWrapping),
+            outputLineWrapCompartment.of([]),
           ],
         }),
         parent: outputContainer,
@@ -325,6 +342,28 @@
           return doc.body ? doc.body.innerHTML : html;
         },
 
+        inlineLinkText: (html) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+
+          doc.querySelectorAll("a").forEach((link) => {
+            // Remove block elements inside links and replace with spans
+            const blockElements = link.querySelectorAll("div, p, h1, h2, h3, h4, h5, h6, li, ul, ol, blockquote");
+            blockElements.forEach((block) => {
+              const span = doc.createElement("span");
+              span.innerHTML = block.innerHTML;
+              block.parentNode.replaceChild(span, block);
+            });
+
+            // Clean up excessive whitespace and line breaks
+            link.innerHTML = link.innerHTML
+              .replace(/\s+/g, " ") // Replace multiple whitespace with single space
+              .replace(/^\s+|\s+$/g, ""); // Trim leading/trailing whitespace
+          });
+
+          return doc.body ? doc.body.innerHTML : html;
+        },
+
         convertTables: (html, options = {}) => {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
@@ -403,6 +442,11 @@
 
           return doc.body ? doc.body.innerHTML : html;
         },
+
+        replaceNbsp: (html) => {
+          // Replace non-breaking spaces (&nbsp; or \u00A0) with regular spaces
+          return html.replace(/&nbsp;/g, " ").replace(/\u00A0/g, " ");
+        },
       };
 
       // Process pipeline
@@ -417,6 +461,10 @@
         if (options.convertTables) {
           processed = preTransforms.convertTables(processed, options);
         }
+        // Inline link text before removing links
+        if (options.inlineLinkText) {
+          processed = preTransforms.inlineLinkText(processed);
+        }
         // Remove text must happen before removing URLs
         if (options.removeLinkTexts) {
           processed = preTransforms.removeLinkTexts(processed);
@@ -426,6 +474,9 @@
         }
         if (options.inlineBlockElements) {
           processed = preTransforms.inlineBlockElements(processed);
+        }
+        if (options.replaceNbsp) {
+          processed = preTransforms.replaceNbsp(processed);
         }
 
         return processed;
@@ -444,18 +495,41 @@
           .replace(/```\n(\|.*\|[\s\S]*?)\n```/g, "$1"); // Unwrap markdown tables from code blocks
       }
 
-      function updateOutput() {
+      async function prettifyMarkdown(markdown) {
+        try {
+          const prettified = await format(markdown, {
+            parser: "markdown",
+            plugins: [markdownParser],
+            printWidth: 80,
+            proseWrap: "always",
+          });
+          return prettified;
+        } catch (error) {
+          console.warn("Failed to prettify markdown:", error);
+          return markdown; // Return original markdown if prettifying fails
+        }
+      }
+
+      async function updateOutput() {
         const options = {
           removeImages: controls.removeImages.checked,
           removeLinkUrls: controls.removeLinkUrls.checked,
           removeLinkTexts: controls.removeLinkTexts.checked,
+          inlineLinkText: controls.inlineLinkText.checked,
           inlineBlockElements: controls.inlineBlockElements.checked,
           convertTables: controls.convertTables.checked,
+          prettifyOutput: controls.prettifyOutput.checked,
+          replaceNbsp: controls.replaceNbsp.checked,
         };
 
         const processedHtml = processHtml(rawHtmlData, options);
         const markdown = htmlToMarkdown(processedHtml);
-        const cleanedMarkdown = cleanupMarkdown(markdown);
+        let cleanedMarkdown = cleanupMarkdown(markdown);
+
+        // Apply prettification as the final step if enabled
+        if (options.prettifyOutput) {
+          cleanedMarkdown = await prettifyMarkdown(cleanedMarkdown);
+        }
 
         outputEditor.dispatch({
           changes: {
