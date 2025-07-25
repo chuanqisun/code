@@ -100,7 +100,11 @@
         </div>
         <div class="control">
           <input type="checkbox" id="inlineBlockElements" checked />
-          <label for="inlineBlockElements">Inline Block Elements in Lists</label>
+          <label for="inlineBlockElements">Prettify Lists</label>
+        </div>
+        <div class="control">
+          <input type="checkbox" id="convertTables" checked />
+          <label for="convertTables">Preserve Tables</label>
         </div>
       </div>
     </div>
@@ -188,6 +192,7 @@
         removeLinkUrls: document.getElementById("removeLinkUrls"),
         removeLinkTexts: document.getElementById("removeLinkTexts"),
         inlineBlockElements: document.getElementById("inlineBlockElements"),
+        convertTables: document.getElementById("convertTables"),
       };
 
       // Create CodeMirror editors
@@ -301,6 +306,85 @@
 
           return doc.body ? doc.body.innerHTML : html;
         },
+
+        convertTables: (html, options = {}) => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, "text/html");
+
+          doc.querySelectorAll("table").forEach((table) => {
+            const rows = table.querySelectorAll("tr");
+            if (rows.length === 0) return;
+
+            let markdownTable = "";
+            let isFirstRow = true;
+            let columnCount = 0;
+
+            rows.forEach((row) => {
+              const cells = row.querySelectorAll("th, td");
+              if (cells.length === 0) return;
+
+              if (isFirstRow) {
+                columnCount = cells.length;
+              }
+
+              const rowData = Array.from(cells).map((cell) => {
+                // Create a temporary turndown service for this cell
+                const cellTurndown = new TurndownService({
+                  headingStyle: "atx",
+                  bulletListMarker: "-",
+                  codeBlockStyle: "fenced",
+                });
+
+                // Get the HTML content of the cell
+                let cellHtml = cell.innerHTML.trim();
+
+                // Apply link removal transforms to the cell if options are set
+                if (options.removeLinkUrls && cellHtml.includes("<a")) {
+                  const tempParser = new DOMParser();
+                  const tempDoc = tempParser.parseFromString(cellHtml, "text/html");
+                  tempDoc.querySelectorAll("a").forEach((el) => {
+                    const span = tempDoc.createElement("span");
+                    span.innerHTML = el.innerHTML;
+                    el.parentNode.replaceChild(span, el);
+                  });
+                  cellHtml = tempDoc.body ? tempDoc.body.innerHTML : cellHtml;
+                }
+
+                if (options.removeLinkTexts && cellHtml.includes("<a")) {
+                  const tempParser = new DOMParser();
+                  const tempDoc = tempParser.parseFromString(cellHtml, "text/html");
+                  tempDoc.querySelectorAll("a").forEach((el) => el.remove());
+                  cellHtml = tempDoc.body ? tempDoc.body.innerHTML : cellHtml;
+                }
+
+                // Convert HTML to markdown, then escape pipes
+                const cellMarkdown = cellTurndown.turndown(cellHtml);
+                return cellMarkdown.replace(/\|/g, "\\|").replace(/\n/g, " ");
+              });
+
+              // Pad row to match column count
+              while (rowData.length < columnCount) {
+                rowData.push("");
+              }
+
+              markdownTable += "| " + rowData.join(" | ") + " |\n";
+
+              // Add header separator after first row
+              if (isFirstRow) {
+                markdownTable += "|" + " --- |".repeat(columnCount) + "\n";
+                isFirstRow = false;
+              }
+            });
+
+            // Replace table with markdown
+            const pre = doc.createElement("pre");
+            pre.textContent = markdownTable;
+            pre.setAttribute("data-markdown-table", "true");
+            table.parentNode.replaceChild(pre, table);
+          });
+
+          return doc.body ? doc.body.innerHTML : html;
+        },
       };
 
       // Process pipeline
@@ -310,6 +394,10 @@
         // Apply optional transforms
         if (options.removeImages) {
           processed = preTransforms.removeImages(processed);
+        }
+        // Convert tables BEFORE removing links so links are preserved in tables
+        if (options.convertTables) {
+          processed = preTransforms.convertTables(processed, options);
         }
         if (options.removeLinkUrls) {
           processed = preTransforms.removeLinkUrls(processed);
@@ -333,7 +421,8 @@
           .replace(/\n{3,}/g, "\n\n") // Remove excessive line breaks
           .replace(/^\s+|\s+$/g, "") // Trim whitespace
           .replace(/\\\[/g, "[") // Unescape brackets
-          .replace(/\\\]/g, "]");
+          .replace(/\\\]/g, "]")
+          .replace(/```\n(\|.*\|[\s\S]*?)\n```/g, "$1"); // Unwrap markdown tables from code blocks
       }
 
       function updateOutput() {
@@ -342,6 +431,7 @@
           removeLinkUrls: controls.removeLinkUrls.checked,
           removeLinkTexts: controls.removeLinkTexts.checked,
           inlineBlockElements: controls.inlineBlockElements.checked,
+          convertTables: controls.convertTables.checked,
         };
 
         const processedHtml = processHtml(rawHtmlData, options);
