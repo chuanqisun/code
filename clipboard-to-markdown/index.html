@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Clipboard to Markdown Converter</title>
+    <title>Clipboard to Markdown</title>
     <style>
       * {
         margin: 0;
@@ -108,7 +108,7 @@
 
     <script type="module">
       import TurndownService from "https://esm.sh/turndown@7.1.2";
-      import { EditorState } from "https://esm.sh/@codemirror/state";
+      import { EditorState, Compartment } from "https://esm.sh/@codemirror/state";
       import { EditorView, keymap, lineNumbers, placeholder } from "https://esm.sh/@codemirror/view";
       import { defaultKeymap } from "https://esm.sh/@codemirror/commands";
       import { html } from "https://esm.sh/@codemirror/lang-html";
@@ -118,6 +118,53 @@
       // State
       let rawHtmlData = "";
       let isDragging = false;
+
+      // Line wrapping compartments and state for each editor
+      const inputLineWrapCompartment = new Compartment();
+      const outputLineWrapCompartment = new Compartment();
+      let inputLineWrapEnabled = true;
+      let outputLineWrapEnabled = true;
+
+      // Toggle line wrap function for input editor
+      function toggleInputLineWrap() {
+        inputLineWrapEnabled = !inputLineWrapEnabled;
+        const lineWrapExtension = inputLineWrapEnabled ? EditorView.lineWrapping : [];
+
+        inputEditor.dispatch({
+          effects: inputLineWrapCompartment.reconfigure(lineWrapExtension),
+        });
+      }
+
+      // Toggle line wrap function for output editor
+      function toggleOutputLineWrap() {
+        outputLineWrapEnabled = !outputLineWrapEnabled;
+        const lineWrapExtension = outputLineWrapEnabled ? EditorView.lineWrapping : [];
+
+        outputEditor.dispatch({
+          effects: outputLineWrapCompartment.reconfigure(lineWrapExtension),
+        });
+      }
+
+      // Custom keymap for Alt+Z (will work in whichever editor has focus)
+      const inputLineWrapKeymap = keymap.of([
+        {
+          key: "Alt-z",
+          run: () => {
+            toggleInputLineWrap();
+            return true;
+          },
+        },
+      ]);
+
+      const outputLineWrapKeymap = keymap.of([
+        {
+          key: "Alt-z",
+          run: () => {
+            toggleOutputLineWrap();
+            return true;
+          },
+        },
+      ]);
 
       // Initialize Turndown
       const turndownService = new TurndownService({
@@ -146,8 +193,10 @@
             lineNumbers(),
             syntaxHighlighting(defaultHighlightStyle),
             keymap.of(defaultKeymap),
+            inputLineWrapKeymap,
             html(),
             placeholder("Paste HTML content here..."),
+            inputLineWrapCompartment.of(EditorView.lineWrapping),
             EditorView.updateListener.of((update) => {
               if (update.docChanged) {
                 rawHtmlData = update.state.doc.toString();
@@ -162,13 +211,20 @@
       const outputEditor = new EditorView({
         state: EditorState.create({
           doc: "",
-          extensions: [lineNumbers(), syntaxHighlighting(defaultHighlightStyle), keymap.of(defaultKeymap), markdown(), EditorState.readOnly.of(true)],
+          extensions: [
+            lineNumbers(),
+            syntaxHighlighting(defaultHighlightStyle),
+            keymap.of(defaultKeymap),
+            outputLineWrapKeymap,
+            markdown(),
+            outputLineWrapCompartment.of(EditorView.lineWrapping),
+          ],
         }),
         parent: outputContainer,
       });
 
-      // Pre-transform functions
-      const preTransforms = {
+      // On-paste transform functions (run once on paste)
+      const onPasteTransforms = {
         removeStylesAndScripts: (html) => {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
@@ -185,13 +241,25 @@
             el.removeAttribute("id");
           });
 
+          // Remove data-* attributes
+          doc.querySelectorAll("*").forEach((el) => {
+            [...el.attributes].forEach((attr) => {
+              if (attr.name.startsWith("data-")) {
+                el.removeAttribute(attr.name);
+              }
+            });
+          });
+
           return doc.body ? doc.body.innerHTML : html;
         },
+      };
 
+      // Pre-transform functions (run on every change)
+      const preTransforms = {
         removeImages: (html) => {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
-          doc.querySelectorAll("img").forEach((el) => el.remove());
+          doc.querySelectorAll("img, svg").forEach((el) => el.remove());
           return doc.body ? doc.body.innerHTML : html;
         },
 
@@ -233,9 +301,6 @@
       // Process pipeline
       function processHtml(html, options) {
         let processed = html;
-
-        // Always remove styles and scripts
-        processed = preTransforms.removeStylesAndScripts(processed);
 
         // Apply optional transforms
         if (options.removeImages) {
@@ -294,12 +359,17 @@
 
         if (htmlData) {
           e.preventDefault();
-          rawHtmlData = htmlData;
+
+          // Apply on-paste transforms first
+          let processedHtml = htmlData;
+          processedHtml = onPasteTransforms.removeStylesAndScripts(processedHtml);
+
+          rawHtmlData = processedHtml;
           inputEditor.dispatch({
             changes: {
               from: 0,
               to: inputEditor.state.doc.length,
-              insert: htmlData,
+              insert: processedHtml,
             },
           });
           updateOutput();
