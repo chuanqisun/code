@@ -100,8 +100,8 @@
           <label for="inlineBlockElements">Compress Lists</label>
         </div>
         <div class="control">
-          <input type="checkbox" id="convertTables" checked />
-          <label for="convertTables">Preserve Tables</label>
+          <input type="checkbox" id="convertTables" />
+          <label for="convertTables">Inline tables</label>
         </div>
         <div class="control">
           <input type="checkbox" id="prettifyOutput" checked />
@@ -458,7 +458,8 @@
           processed = preTransforms.removeImages(processed);
         }
         // Convert tables BEFORE removing links so links are preserved in tables
-        if (options.convertTables) {
+        // If convertTables is unchecked (false), convert tables to markdown
+        if (!options.convertTables) {
           processed = preTransforms.convertTables(processed, options);
         }
         // Inline link text before removing links
