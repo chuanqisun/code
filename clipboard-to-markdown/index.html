@@ -45,7 +45,6 @@
 
       .panel {
         overflow: auto;
-        padding: 10px;
       }
 
       .left-panel {
@@ -67,24 +66,15 @@
         background: #999;
       }
 
-      textarea {
+      .cm-editor {
         width: 100%;
         height: 100%;
-        display: block;
-        border: none;
-        outline: none;
-        resize: none;
         font-family: monospace;
         font-size: 14px;
       }
 
-      .preview {
-        width: 100%;
-        height: 100%;
-        font-family: monospace;
-        font-size: 14px;
-        white-space: pre-wrap;
-        word-wrap: break-word;
+      .cm-editor.cm-focused {
+        outline: none;
       }
     </style>
   </head>
@@ -111,17 +101,19 @@
     </div>
 
     <div class="main">
-      <div class="panel left-panel">
-        <textarea id="input" placeholder="Paste HTML content here..."></textarea>
-      </div>
+      <div class="panel left-panel" id="input"></div>
       <div class="divider" id="divider"></div>
-      <div class="panel right-panel">
-        <div class="preview" id="output"></div>
-      </div>
+      <div class="panel right-panel" id="output"></div>
     </div>
 
     <script type="module">
       import TurndownService from "https://esm.sh/turndown@7.1.2";
+      import { EditorState } from "https://esm.sh/@codemirror/state";
+      import { EditorView, keymap, lineNumbers, placeholder } from "https://esm.sh/@codemirror/view";
+      import { defaultKeymap } from "https://esm.sh/@codemirror/commands";
+      import { html } from "https://esm.sh/@codemirror/lang-html";
+      import { markdown } from "https://esm.sh/@codemirror/lang-markdown";
+      import { syntaxHighlighting, defaultHighlightStyle } from "https://esm.sh/@codemirror/language";
 
       // State
       let rawHtmlData = "";
@@ -135,8 +127,8 @@
       });
 
       // DOM elements
-      const input = document.getElementById("input");
-      const output = document.getElementById("output");
+      const inputContainer = document.getElementById("input");
+      const outputContainer = document.getElementById("output");
       const divider = document.getElementById("divider");
       const main = document.querySelector(".main");
       const controls = {
@@ -145,6 +137,35 @@
         removeLinkTexts: document.getElementById("removeLinkTexts"),
         inlineBlockElements: document.getElementById("inlineBlockElements"),
       };
+
+      // Create CodeMirror editors
+      const inputEditor = new EditorView({
+        state: EditorState.create({
+          doc: "",
+          extensions: [
+            lineNumbers(),
+            syntaxHighlighting(defaultHighlightStyle),
+            keymap.of(defaultKeymap),
+            html(),
+            placeholder("Paste HTML content here..."),
+            EditorView.updateListener.of((update) => {
+              if (update.docChanged) {
+                rawHtmlData = update.state.doc.toString();
+                updateOutput();
+              }
+            }),
+          ],
+        }),
+        parent: inputContainer,
+      });
+
+      const outputEditor = new EditorView({
+        state: EditorState.create({
+          doc: "",
+          extensions: [lineNumbers(), syntaxHighlighting(defaultHighlightStyle), keymap.of(defaultKeymap), markdown(), EditorState.readOnly.of(true)],
+        }),
+        parent: outputContainer,
+      });
 
       // Pre-transform functions
       const preTransforms = {
@@ -257,25 +278,32 @@
         const markdown = htmlToMarkdown(processedHtml);
         const cleanedMarkdown = cleanupMarkdown(markdown);
 
-        output.textContent = cleanedMarkdown;
+        outputEditor.dispatch({
+          changes: {
+            from: 0,
+            to: outputEditor.state.doc.length,
+            insert: cleanedMarkdown,
+          },
+        });
       }
 
       // Event handlers
-      input.addEventListener("paste", (e) => {
+      inputContainer.addEventListener("paste", (e) => {
         const clipboardData = e.clipboardData || window.clipboardData;
         const htmlData = clipboardData.getData("text/html");
 
         if (htmlData) {
           e.preventDefault();
           rawHtmlData = htmlData;
-          input.value = htmlData;
+          inputEditor.dispatch({
+            changes: {
+              from: 0,
+              to: inputEditor.state.doc.length,
+              insert: htmlData,
+            },
+          });
           updateOutput();
         }
-      });
-
-      input.addEventListener("input", (e) => {
-        rawHtmlData = e.target.value;
-        updateOutput();
       });
 
       // Control change handlers
