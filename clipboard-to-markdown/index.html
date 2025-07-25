@@ -20,24 +20,29 @@
 
       h1 {
         font-size: inherit;
+        padding: 4px 8px;
+        background-color: black;
+        color: white;
+      }
+
+      fieldset {
+        padding: 4px 0;
+        border: none;
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
 
       .header {
-        padding: 10px;
         border-bottom: 1px solid #ccc;
         background: #f5f5f5;
       }
 
-      #controls-form {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-      }
-
       .controls {
         display: flex;
-        gap: 15px;
+        gap: 0px 16px;
         flex-wrap: wrap;
+        align-items: center;
       }
 
       .control {
@@ -90,43 +95,52 @@
   </head>
   <body>
     <div class="header">
-      <form id="controls-form">
-        <h1>Clipdown</h1>
-        <div class="controls">
+      <form id="controls-form" class="controls">
+        <h1>CLIPDOWN</h1>
+        <fieldset>
+          <b>Remove</b>
           <div class="control">
             <input type="checkbox" name="removeImages" id="removeImages" checked />
-            <label for="removeImages">Remove images</label>
+            <label for="removeImages">Images</label>
+          </div>
+          <div class="control">
+            <input type="checkbox" name="removeLinkUrls" id="removeLinkUrls" />
+            <label for="removeLinkUrls">URLs</label>
+          </div>
+          <div class="control">
+            <input type="checkbox" name="removeLinkTexts" id="removeLinkTexts" />
+            <label for="removeLinkTexts">Links</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <b>Compress</b>
+          <div class="control">
+            <input type="checkbox" name="inlineBlockElements" id="inlineBlockElements" checked />
+            <label for="inlineBlockElements">Lists</label>
           </div>
 
           <div class="control">
             <input type="checkbox" name="inlineLinkText" id="inlineLinkText" checked />
-            <label for="inlineLinkText">Inline links</label>
-          </div>
-          <div class="control">
-            <input type="checkbox" name="inlineBlockElements" id="inlineBlockElements" checked />
-            <label for="inlineBlockElements">Compress Lists</label>
-          </div>
-          <div class="control">
-            <input type="checkbox" name="convertTables" id="convertTables" />
-            <label for="convertTables">Inline tables</label>
-          </div>
-          <div class="control">
-            <input type="checkbox" name="prettifyOutput" id="prettifyOutput" checked />
-            <label for="prettifyOutput">Prettify Output</label>
-          </div>
-          <div class="control">
-            <input type="checkbox" name="removeLinkUrls" id="removeLinkUrls" />
-            <label for="removeLinkUrls">Remove Link URLs</label>
-          </div>
-          <div class="control">
-            <input type="checkbox" name="removeLinkTexts" id="removeLinkTexts" />
-            <label for="removeLinkTexts">Remove Link Texts</label>
+            <label for="inlineLinkText">Links</label>
           </div>
           <div class="control">
             <input type="checkbox" name="replaceNbsp" id="replaceNbsp" checked />
-            <label for="replaceNbsp">Break spaces</label>
+            <label for="replaceNbsp">Spaces</label>
           </div>
-        </div>
+          <div class="control">
+            <input type="checkbox" name="convertTables" id="convertTables" />
+            <label for="convertTables">Tables</label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <b>Format</b>
+          <div class="control">
+            <input type="checkbox" name="prettifyOutput" id="prettifyOutput" checked />
+            <label for="prettifyOutput">Prettify</label>
+          </div>
+        </fieldset>
       </form>
     </div>
 
@@ -222,7 +236,7 @@
             lineNumbers(),
             foldGutter({
               openText: "▾",
-              closedText: "▸"
+              closedText: "▸",
             }),
             codeFolding(),
             syntaxHighlighting(defaultHighlightStyle),
