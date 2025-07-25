@@ -123,6 +123,8 @@
       import { html } from "https://esm.sh/@codemirror/lang-html";
       import { markdown } from "https://esm.sh/@codemirror/lang-markdown";
       import { syntaxHighlighting, defaultHighlightStyle } from "https://esm.sh/@codemirror/language";
+      import { format } from "https://esm.sh/prettier@3.6.2/standalone";
+      import htmlParser from "https://esm.sh/prettier@3.6.2/plugins/html";
 
       // State
       let rawHtmlData = "";
@@ -235,6 +237,22 @@
 
       // On-paste transform functions (run once on paste)
       const onPasteTransforms = {
+        prettifyHtml: async (html) => {
+          try {
+            const prettified = await format(html, {
+              parser: "html",
+              plugins: [htmlParser],
+              printWidth: 120,
+              tabWidth: 2,
+              htmlWhitespaceSensitivity: "ignore",
+            });
+            return prettified;
+          } catch (error) {
+            console.warn("Failed to prettify HTML:", error);
+            return html; // Return original HTML if prettifying fails
+          }
+        },
+
         removeStylesAndScripts: (html) => {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, "text/html");
@@ -399,11 +417,12 @@
         if (options.convertTables) {
           processed = preTransforms.convertTables(processed, options);
         }
-        if (options.removeLinkUrls) {
-          processed = preTransforms.removeLinkUrls(processed);
-        }
+        // Remove text must happen before removing URLs
         if (options.removeLinkTexts) {
           processed = preTransforms.removeLinkTexts(processed);
+        }
+        if (options.removeLinkUrls) {
+          processed = preTransforms.removeLinkUrls(processed);
         }
         if (options.inlineBlockElements) {
           processed = preTransforms.inlineBlockElements(processed);
@@ -448,7 +467,7 @@
       }
 
       // Event handlers
-      inputContainer.addEventListener("paste", (e) => {
+      inputContainer.addEventListener("paste", async (e) => {
         const clipboardData = e.clipboardData || window.clipboardData;
         const htmlData = clipboardData.getData("text/html");
 
@@ -457,6 +476,7 @@
 
           // Apply on-paste transforms first
           let processedHtml = htmlData;
+          processedHtml = await onPasteTransforms.prettifyHtml(processedHtml);
           processedHtml = onPasteTransforms.removeStylesAndScripts(processedHtml);
 
           rawHtmlData = processedHtml;
