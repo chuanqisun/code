@@ -2,6 +2,7 @@
 
 ## Tools
 
+- [Clipboard → Markdown](./clipboard-to-markdown/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
@@ -20,7 +21,6 @@
 - [Assembly theory](./assembly-theory/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
-- [Clipboard to Markdown](./clipboard-to-markdown/)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
 - [Head tracking](./head-tracking/)
