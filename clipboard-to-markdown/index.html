@@ -140,6 +140,10 @@
             <input type="checkbox" name="prettifyOutput" id="prettifyOutput" checked />
             <label for="prettifyOutput">Prettify</label>
           </div>
+          <div class="control">
+            <input type="checkbox" name="convertToFootnotes" id="convertToFootnotes" />
+            <label for="convertToFootnotes">Footnotes</label>
+          </div>
         </fieldset>
       </form>
     </div>
@@ -162,6 +166,11 @@
       import { format } from "https://esm.sh/prettier@3.6.2/standalone";
       import htmlParser from "https://esm.sh/prettier@3.6.2/plugins/html";
       import markdownParser from "https://esm.sh/prettier@3.6.2/plugins/markdown";
+      import { remark } from "https://esm.sh/remark@15";
+      import remarkParse from "https://esm.sh/remark-parse@11";
+      import remarkStringify from "https://esm.sh/remark-stringify@11";
+      import { visit } from "https://esm.sh/unist-util-visit@5";
+      import { u } from "https://esm.sh/unist-builder@4";
 
       // State
       let rawHtmlData = "";
@@ -220,6 +229,81 @@
         bulletListMarker: "-",
         codeBlockStyle: "fenced",
       });
+
+      // Footnote conversion functionality
+      const inlineLinksToFootnotesPlugin = () => {
+        return (tree) => {
+          // Map to store collected definitions: URL -> { identifier, title }
+          const collectedDefinitions = new Map();
+          let nextId = 1; // Counter for unique footnote identifiers
+
+          // First pass: Collect any existing definitions to avoid ID collisions
+          // If an existing definition uses a numeric ID, update nextId to be higher.
+          visit(tree, "definition", (node) => {
+            const idNum = parseInt(node.identifier, 10);
+            if (!isNaN(idNum) && idNum >= nextId) {
+              nextId = idNum + 1;
+            }
+          });
+
+          // Second pass: Visit all 'link' nodes in the AST
+          visit(tree, "link", (node, index, parent) => {
+            const url = node.url;
+            const title = node.title || null; // Ensure title is null if undefined
+
+            let identifier;
+
+            // Check if this URL has already been collected for a definition
+            if (collectedDefinitions.has(url)) {
+              identifier = collectedDefinitions.get(url).identifier;
+            } else {
+              // If not, create a new unique identifier
+              identifier = String(nextId++);
+              collectedDefinitions.set(url, { identifier, title });
+            }
+
+            // Create a new 'linkReference' node to replace the original 'link' node
+            const newLinkNode = u("linkReference", {
+              identifier: identifier,
+              referenceType: "full", // 'full' means [text][id]
+              children: node.children, // Keep the original text content of the link
+            });
+
+            // Replace the original 'link' node with the new 'linkReference' node
+            // Ensure parent and parent.children exist before modifying
+            if (parent && parent.children) {
+              parent.children.splice(index, 1, newLinkNode);
+            }
+          });
+
+          // Third pass: After visiting all links, add the collected 'definition' nodes to the end of the tree
+          for (const [url, def] of collectedDefinitions.entries()) {
+            tree.children.push(
+              u("definition", {
+                identifier: def.identifier,
+                url: url,
+                title: def.title,
+              })
+            );
+          }
+        };
+      };
+
+      function convertInlineLinksToFootnotes(markdown) {
+        try {
+          // Process the markdown synchronously using the Remark pipeline
+          const file = remark()
+            .use(remarkParse) // Parse Markdown into MDAST
+            .use(inlineLinksToFootnotesPlugin) // Apply our custom plugin
+            .use(remarkStringify) // Convert MDAST back to Markdown
+            .processSync(markdown); // Perform the transformation
+
+          return String(file); // Convert the VFile result back to a string
+        } catch (error) {
+          console.warn("Failed to convert inline links to footnotes:", error);
+          return markdown; // Return original markdown if conversion fails
+        }
+      }
 
       // DOM elements
       const inputContainer = document.getElementById("input");
@@ -531,6 +615,7 @@
           convertTables: formData.has("convertTables"),
           prettifyOutput: formData.has("prettifyOutput"),
           replaceNbsp: formData.has("replaceNbsp"),
+          convertToFootnotes: formData.has("convertToFootnotes"),
         };
       }
 
@@ -555,6 +640,11 @@
         const processedHtml = processHtml(rawHtmlData, options);
         const markdown = htmlToMarkdown(processedHtml);
         let cleanedMarkdown = cleanupMarkdown(markdown);
+
+        // Apply footnote conversion if enabled
+        if (options.convertToFootnotes) {
+          cleanedMarkdown = convertInlineLinksToFootnotes(cleanedMarkdown);
+        }
 
         // Apply prettification as the final step if enabled
         if (options.prettifyOutput) {
