@@ -7,6 +7,7 @@
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview)
+- [MIT Courseek](https://chuanqisun.github.io/courseek/)
 - [JSONL viewer](./jsonl-viewer)
 - [JSON → TypeScript](./json-to-typescript)
 - [JSON ↔ YAML](./json-to-yaml)
