@@ -2,8 +2,8 @@
 
 ## Tools
 
-- [CSV Analyzer](./csv-analyzer/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
+- [CSV Analyzer](./csv-analyzer/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
