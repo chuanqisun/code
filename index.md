@@ -2,6 +2,7 @@
 
 ## Tools
 
+- [CSV Analyzer](./csv-analyzer/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSV Analyzer</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 16px; }
+    header { margin-bottom: 12px; }
+    .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+    .chart-type label { margin-right: 8px; }
+    .hint { color: #555; font-size: 0.9em; }
+    #report { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 6px; padding: 12px; background: #fff; }
+    .card h3 { margin: 0 0 8px 0; font-size: 1em; }
+    .open-ended { grid-column: 1 / -1; }
+    details { margin-bottom: 8px; }
+    summary { cursor: pointer; }
+    .footer { margin-top: 16px; color: #666; font-size: 0.9em; }
+    .small { font-size: 0.85em; color: #666; }
+    button, input[type="file"] { cursor: pointer; }
+
+    /* Fixed-height container for Chart.js to avoid endless resize loops in flex/grid layouts */
+    .chartbox { position: relative; height: 260px; width: 100%; }
+    .card canvas { display: block; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>CSV Analyzer</h1>
+    <div class="hint">
+      Upload any CSV. The app will infer column types: choice, numeric, or open-ended. It charts distributions for choice/numeric columns and lists open-ended responses.
+    </div>
+  </header>
+
+  <div class="controls">
+    <input id="fileInput" type="file" accept=".csv,text/csv" />
+    <div class="chart-type small" role="radiogroup" aria-label="Chart type">
+      <span>Chart type:</span>
+      <label><input type="radio" name="chartType" value="bar" checked> Bar</label>
+      <label><input type="radio" name="chartType" value="pie"> Pie</label>
+    </div>
+    <span id="status" class="small"></span>
+  </div>
+
+  <div id="summary" class="small"></div>
+  <div id="report"></div>
+
+  <div class="footer">
+    Notes:
+    - Choice questions are inferred as columns with relatively few unique answers.
+    - Numerical columns are inferred when values are mostly numbers (e.g., rankings).
+    - Open-ended columns are shown as text at the end.
+  </div>
+
+<script>
+(function() {
+  // Track charts to destroy them between analyses (prevents resize observers lingering)
+  let chartInstances = [];
+  let chartType = 'bar';      // 'bar' | 'pie'
+  let lastData = null;        // { rows, headers }
+
+  // Helpers
+  const isBlank = v => v === null || v === undefined || String(v).trim() === '';
+  const clean = v => String(v ?? '').trim();
+  const isNumericStrict = v => {
+    const s = clean(v);
+    if (s === '') return false;
+    return /^-?\d+(\.\d+)?$/.test(s);
+  };
+
+  function detectColumnType(values) {
+    if (values.length === 0) return 'open';
+    const numericCount = values.filter(isNumericStrict).length;
+    const avgLen = values.reduce((a, b) => a + clean(b).length, 0) / values.length;
+    const unique = new Set(values.map(v => clean(v)));
+    const uniqueRatio = unique.size / values.length;
+    const hasURL = values.some(v => /https?:\/\//i.test(v));
+    const hasEmail = values.some(v => /@/.test(v));
+    const longTextish = avgLen > 80 || values.some(v => clean(v).length > 200);
+
+    if (numericCount / values.length >= 0.8) return 'numeric';
+    if (uniqueRatio > 0.6 || longTextish || hasURL || hasEmail) return 'open';
+    return 'choice';
+  }
+
+  function countValues(values, numeric = false) {
+    const counts = new Map();
+    for (const v of values) {
+      const key = numeric ? Number(v) : clean(v);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }
+
+  function sortEntriesForDisplay(entries, numeric = false) {
+    if (numeric) {
+      entries.sort((a, b) => Number(a[0]) - Number(b[0]));
+    } else {
+      entries.sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return String(a[0]).localeCompare(String(b[0]));
+      });
+    }
+    return entries;
+  }
+
+  function buildPalette(n) {
+    const arr = [];
+    for (let i = 0; i < n; i++) {
+      const hue = (i * 47) % 360;
+      arr.push(`hsl(${hue} 70% 70%)`);
+    }
+    return arr;
+  }
+  function darkerHSL(hsl) {
+    // Expecting hsl(H S% L%)
+    return hsl.replace(/(\d+)\s+(\d+)%\s+(\d+)%/, (m, h, s, l) => `${h} ${s}% ${Math.max(0, Number(l) - 20)}%`);
+  }
+
+  function createDistributionChart(container, title, labels, data, type) {
+    const isPie = type === 'pie';
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    const h3 = document.createElement('h3');
+    h3.textContent = title;
+
+    const chartbox = document.createElement('div');
+    chartbox.className = 'chartbox';
+
+    const canvas = document.createElement('canvas');
+    chartbox.appendChild(canvas);
+
+    card.appendChild(h3);
+    card.appendChild(chartbox);
+    container.appendChild(card);
+
+    const colors = buildPalette(labels.length);
+    const borderColors = isPie ? '#fff' : colors.map(darkerHSL);
+
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false, // fill the .chartbox height
+      resizeDelay: 200,           // throttle resize observer to avoid feedback loops
+      animation: { duration: 0 },
+      plugins: {
+        legend: { display: isPie },
+        tooltip: { enabled: true }
+      }
+    };
+    if (!isPie) {
+      options.scales = {
+        x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 0 } },
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      };
+    }
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: isPie ? 'pie' : 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Responses',
+          data,
+          backgroundColor: colors,
+          borderColor: borderColors,
+          borderWidth: 1
+        }]
+      },
+      options
+    });
+
+    chartInstances.push(chart);
+  }
+
+  function renderOpenEnded(container, sections) {
+    const card = document.createElement('div');
+    card.className = 'card open-ended';
+    const h2 = document.createElement('h3');
+    h2.textContent = 'Open-ended responses';
+    card.appendChild(h2);
+
+    if (sections.length === 0) {
+      const p = document.createElement('p');
+      p.textContent = 'None detected.';
+      card.appendChild(p);
+      container.appendChild(card);
+      return;
+    }
+
+    sections.forEach(sec => {
+      const details = document.createElement('details');
+      details.open = false;
+      const summary = document.createElement('summary');
+      summary.textContent = sec.header;
+      details.appendChild(summary);
+
+      const list = document.createElement('ul');
+      list.style.marginTop = '6px';
+      sec.values.forEach(val => {
+        const li = document.createElement('li');
+        const v = clean(val);
+        if (/^https?:\/\//i.test(v)) {
+          const a = document.createElement('a');
+          a.href = v;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = v;
+          li.appendChild(a);
+        } else {
+          li.textContent = v;
+        }
+        list.appendChild(li);
+      });
+      details.appendChild(list);
+      card.appendChild(details);
+    });
+
+    container.appendChild(card);
+  }
+
+  function analyze(rows, headers) {
+    // Destroy any existing charts to detach observers before clearing DOM
+    for (const ch of chartInstances) {
+      try { ch.destroy(); } catch {}
+    }
+    chartInstances = [];
+
+    const report = document.getElementById('report');
+    report.innerHTML = '';
+
+    const openSections = [];
+    let charted = 0;
+
+    for (const header of headers) {
+      const colValsRaw = rows.map(r => r[header]);
+      const nonEmpty = colValsRaw.filter(v => !isBlank(v)).map(clean);
+      if (nonEmpty.length === 0) continue;
+
+      const type = detectColumnType(nonEmpty);
+
+      if (type === 'numeric') {
+        const counts = countValues(nonEmpty, true);
+        const entries = sortEntriesForDisplay([...counts.entries()], true);
+        const labels = entries.map(e => String(e[0]));
+        const data = entries.map(e => e[1]);
+        createDistributionChart(report, header, labels, data, chartType);
+        charted++;
+      } else if (type === 'choice') {
+        const counts = countValues(nonEmpty, false);
+        const entries = sortEntriesForDisplay([...counts.entries()], false);
+        const labels = entries.map(e => String(e[0]));
+        const data = entries.map(e => e[1]);
+        createDistributionChart(report, header, labels, data, chartType);
+        charted++;
+      } else {
+        openSections.push({ header, values: nonEmpty });
+      }
+    }
+
+    renderOpenEnded(report, openSections);
+    return { charted, openCount: openSections.length };
+  }
+
+  function parseCSV(text) {
+    const parsed = Papa.parse(text, {
+      header: true,
+      skipEmptyLines: 'greedy',
+      dynamicTyping: false
+    });
+    if (parsed.errors && parsed.errors.length) {
+      console.warn('CSV parse warnings/errors:', parsed.errors);
+    }
+    let rows = parsed.data || [];
+    rows = rows.filter(r => Object.values(r).some(v => !isBlank(v)));
+    const headers = parsed.meta.fields || Object.keys(rows[0] || {});
+    return { rows, headers };
+  }
+
+  function handleFile(file) {
+    const status = document.getElementById('status');
+    const summary = document.getElementById('summary');
+    status.textContent = 'Loading...';
+    summary.textContent = '';
+    file.text().then(text => {
+      const parsed = parseCSV(text);
+      lastData = parsed; // save for re-render on chart type change
+      const { rows, headers } = parsed;
+      if (!rows.length) {
+        status.textContent = 'No data found in CSV.';
+        return;
+      }
+      const res = analyze(rows, headers);
+      status.textContent = '';
+      summary.textContent = `Analyzed ${rows.length} rows, charted ${res.charted} columns, and grouped ${res.openCount} open-ended columns.`;
+    }).catch(err => {
+      console.error(err);
+      status.textContent = 'Failed to read file.';
+    });
+  }
+
+  // Wire up UI
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  });
+
+  // Radio group for chart type
+  document.querySelectorAll('input[name="chartType"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      chartType = e.target.value;
+      if (lastData && lastData.rows?.length) {
+        analyze(lastData.rows, lastData.headers);
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
