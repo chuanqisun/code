@@ -3,7 +3,7 @@
 ## Tools
 
 - [Clipboard → Markdown](./clipboard-to-markdown/)
-- [CSV Analyzer](./csv-analyzer/)
+- [CSV Visualizer](./csv-visualizer/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
