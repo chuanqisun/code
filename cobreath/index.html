@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Markdown Preview</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown-light.min.css" />
+    <style>
+      .markdown-body { box-sizing: border-box; min-width:200px; max-width:980px; margin:0 auto; padding:45px; }
+      @media(max-width:767px){ .markdown-body{padding:15px;} }
+      body{background:#f6f8fa;}
+      .markdown-body pre{
+        border-radius:6px;
+        code {
+          white-space: pre-wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <article class="markdown-body">
+      <h1>CoBreath: Breathing with AI as a Wearable Rhythm for Calm and Wonder</h1>
+      <h2>Summary</h2>
+      <p>
+        CoBreath is an art installation with a wearable that lets people shape an AI companion through their own breathing. The system senses respiration and
+        adapts its response cadence and visual tempo on a projected or large screen display in a loop the user can feel and guide. The goal is to reduce
+        anxiety, support meditation, and spark moments of curiosity and awe through shared rhythm rather than constant conversation. We will build and show a
+        working installation and run two light evaluations. Near term, CoBreath offers a calming and privacy conscious companion for breathwork and reflective
+        dialogue in a gallery or lobby setting. Long term, it points to an embodied, rhythm first approach to machine emotional intelligence that feels more
+        like breathing together than being analyzed.
+      </p>
+      <h2>Main idea and motivation</h2>
+      <p>
+        Most AI companions are text first and attention grabbing. CoBreath explores whether a simple shared rhythm can support calm, agency, and reflection with
+        less cognitive load. The central idea is a bidirectional biofeedback loop: people regulate their breath, the system synchronizes its responses and
+        visuals to that breath, and the person can then modulate the loop in a way that feels natural and in control. This swaps surveillance style affect
+        inference for consent led interaction grounded in the body.
+      </p>
+      <h3>What we will build</h3>
+      <ul>
+        <li>
+          A small wearable with a low power respiration signal captured by a chest strap or ear PPG, on device filtering, and a gentle haptic and light output
+          for pacing. A tethered or wireless link streams breath features to a local rendering PC that drives a projector or large display and runs a
+          lightweight AI loop that modulates response cadence.
+        </li>
+        <li>
+          An installation renderer and operator console that shows breathing aligned visuals, exposes simple controls for pace, intensity, color theme, and
+          brightness, and logs only local and consented metrics. Optional reflective prompts appear on screen with adaptive timing based on breath steadiness
+          instead of chat turns.
+        </li>
+        <li>Installation is the primary mode. We will also prepare a compact demo kit with a portable projector or high brightness display for events.</li>
+      </ul>
+      <p>
+        Assumptions: we will use off the shelf sensing to reduce risk and focus effort on interaction quality and safety. We will keep data local by default and
+        only collect research data with explicit consent during studies.
+      </p>
+      <h2>Methods and approach</h2>
+      <p>This project is an artifact with two lightweight evaluations.</p>
+      <ol>
+        <li>Interaction prototyping and internal feedback</li>
+      </ol>
+      <ul>
+        <li>
+          Rapid iterations with 8 to 12 colleagues using think aloud and short sessions to refine pacing, visuals, haptics, projection layout, and operator
+          flow.
+        </li>
+      </ul>
+      <ol start="2">
+        <li>Pilot study on calm and adherence</li>
+      </ol>
+      <ul>
+        <li>
+          Within subject design, N = 20. Conditions: baseline quiet sitting, guided paced breathing, CoBreath session in installation context. Measures: state
+          anxiety short form, perceived calm, perceived agency, simple awe item, adherence to target breathing pace, optional HRV proxy if sensing supports it.
+          Report preregistered analyses first and label any exploratory results.
+        </li>
+      </ul>
+      <ol start="3">
+        <li>Public installation evaluations</li>
+      </ol>
+      <ul>
+        <li>
+          Two short term installations at the Media Lab with 30 to 60 visitors each. Collect short exit surveys and observations on approachability, perceived
+          calm, and consent clarity. No biometric data without explicit consent.
+        </li>
+      </ul>
+      <p>
+        Ethics: file an IRB for the pilot study. Use safe pacing ranges and on device safety checks to avoid hyperventilation. Show clear consent and session
+        controls. Provide an immediate stop control on the wearable and on the operator console.
+      </p>
+      <h3>Computer graphics engineering</h3>
+      <ul>
+        <li>
+          Rendering stack: run a local renderer on a small PC driving a projector or large display. We will select a pragmatic stack used in installations such
+          as Unity URP or TouchDesigner, with GLSL/HLSL shaders that expose breath controlled parameters. Target 60 fps with vertical sync enabled.
+        </li>
+        <li>
+          Breath to visuals mapping: compute a respiration oscillator from filtered signal to derive phase, amplitude, and stability. Map these to shader and
+          particle parameters such as luminance envelope, hue shift, size/scale, blur, trail length, and emission rate. Use easing and low pass smoothing to
+          avoid abrupt transitions.
+        </li>
+        <li>
+          Latency budget: end to end sensor to photon latency under 150 ms. Budget includes sensing and filtering (&lt;40 ms), wireless link (&lt;30 ms typical
+          BLE), event processing (&lt;10 ms), render scheduling and exposure (&lt;16 ms at 60 Hz). We will measure with a photodiode and logged timestamps and
+          adjust buffers accordingly.
+        </li>
+        <li>
+          Safety for light patterns: respect photosensitive safety guidelines by avoiding high contrast flashes in the 3 to 30 Hz range, limiting luminance
+          changes per frame, and using gamma corrected fades. Provide brightness caps and a warm color default. Include an accessible mode with reduced motion.
+        </li>
+        <li>
+          Projection and calibration: support single projector or large display. Provide a simple calibration scene with a chessboard or ArUco markers to
+          compute planar homography for alignment. Store per venue calibration profiles. Include keystone and color temperature adjustments.
+        </li>
+        <li>
+          Reliability and observability: watchdog for dropped frames, local logs for frame time, input rate, and operator actions. Provide a visible status
+          strip on the operator console for sensor link, fps, and brightness.
+        </li>
+      </ul>
+      <h2>Expected outcomes</h2>
+      <ul>
+        <li>A working wearable and installation renderer with the breath synchronized interaction loop on a projector or large display.</li>
+        <li>
+          Initial quantitative signals on reduced state anxiety, improved adherence to a safe breathing pace, and perceived agency compared to a standard guided
+          breathing control.
+        </li>
+        <li>Qualitative insights on moments of calm, reflection, and curiosity in an embodied AI interaction.</li>
+        <li>Open source hardware design files, firmware, and installation renderer code with a concise README and setup steps.</li>
+        <li>A small, consented dataset of de identified breath traces and interaction events to support future research on rhythm synchronized interaction.</li>
+        <li>A short paper or demo submission to a venue such as CHI, UIST, ISWC, or an AI and wellbeing workshop.</li>
+      </ul>
+      <h2>Contribution to AHA: AI for human flourishing</h2>
+      <p>
+        CoBreath advances AI for human flourishing by moving from chat first to embodied rhythm first interaction that supports calm, agency, and reflection. It
+        prioritizes consent and privacy through user led biofeedback and local processing. It delivers impact through a simple wearable and public installations
+        and evaluates humane outcomes while producing publishable studies and open source artifacts on rhythm synchronized interaction, including a graphics
+        pipeline that others can reuse.
+      </p>
+      <h2>Brief timeline</h2>
+      <p>Weeks 1 to 2</p>
+      <ul>
+        <li>Finalize interaction storyboard, sensing choice, and safety ranges. Select rendering stack. Submit IRB. Order parts.</li>
+      </ul>
+      <p>Weeks 3 to 5</p>
+      <ul>
+        <li>
+          Build firmware and installation renderer. Implement the breath synchronized loop, visuals, and safety checks. Stand up operator console. Internal
+          tests and bug fixes.
+        </li>
+      </ul>
+      <p>Weeks 6 to 7</p>
+      <ul>
+        <li>Internal user feedback sessions. Tune pacing, visuals, prompts, and projection calibration. Prepare installation setup and transport kit.</li>
+      </ul>
+      <p>Weeks 8 to 9</p>
+      <ul>
+        <li>Run pilot study in installation context. Analyze preregistered measures. Draft initial figures.</li>
+      </ul>
+      <p>Weeks 10 to 11</p>
+      <ul>
+        <li>Host two public installation sessions at the Lab. Gather short exit surveys and observations. Iterate on visuals and calibration if needed.</li>
+      </ul>
+      <p>Week 12</p>
+      <ul>
+        <li>Package open source release, including shaders and calibration tools. Draft a short paper or demo submission and prepare a public demo video.</li>
+      </ul>
+      <h2>Risks and mitigations</h2>
+      <ul>
+        <li>Safety of breath pacing. Use conservative ranges, visible timers, and allow users to set pace. Provide a clear stop control.</li>
+        <li>Privacy. Default to local only processing. Collect no data outside study sessions. Use clear consent flows and on device deletion.</li>
+        <li>Overstated claims. Limit to calm, adherence, and perceived agency measures. Be precise and transparent about limitations.</li>
+        <li>Accessibility. Provide clear visuals and optional haptic pacing. Offer text descriptions for visuals in the app.</li>
+        <li>
+          Graphics performance and stability. Target 60 fps with headroom, monitor frame time, and reduce effect complexity if needed. Provide a fallback low
+          motion scene.
+        </li>
+        <li>
+          Photosensitive safety. Avoid high contrast flashing in sensitive ranges, cap brightness, and include a reduced motion mode. Post a safety notice at
+          the entrance.
+        </li>
+        <li>Projection alignment. Use calibration scenes and per venue profiles. Provide quick keystone tools and physical mounts to reduce drift.</li>
+      </ul>
+      <h2>Deliverables</h2>
+      <ul>
+        <li>Wearable prototype units and an installation renderer with operator console.</li>
+        <li>
+          Documentation and open source release of hardware design files, firmware, and installation renderer, including shader code and calibration tools.
+        </li>
+        <li>A small consented dataset and analysis scripts with a README.</li>
+        <li>A short paper or demo submission and a public demo video.</li>
+      </ul>
+      <h2>References and prior art</h2>
+      <p>
+        We will situate CoBreath within work on paced breathing, biofeedback for anxiety reduction, and calm technology. We will add formal citations in the
+        paper draft that follows the studies.
+      </p>
+    </article>
+  </body>
+</html>
