@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Life Choice Live</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown-light.min.css" />
+    <style>
+      .markdown-body { box-sizing: border-box; min-width:200px; max-width:980px; margin:0 auto; padding:45px; }
+      @media(max-width:767px){ .markdown-body{padding:15px;} }
+      body{background:#f6f8fa;}
+      .markdown-body pre{
+        border-radius:6px;
+        code {
+          white-space: pre-wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <article class="markdown-body">
+      <h1>Life Choice Live: Decisions as Breaking News</h1>
+      <h2>Summary</h2>
+      <p>
+        Life Choice Live turns a hard personal choice into a live news experience. The system simulates alternative paths as short news packages with anchors,
+        field reports, street interviews, timelines, and graphics you can experience in front of a physical TV set. It blends user provided context with
+        generative media to make tradeoffs and second order effects concrete without telling people what to do. The aim is better reflection, clearer values,
+        and more confident choices for life events such as moving, changing jobs, or ending relationships. We will build a gallery scale installation, run a
+        pilot study on decision clarity and confidence, and release open tools that support safe use of simulated media for personal reflection.
+      </p>
+      <h2>Main idea</h2>
+      <p>
+        People struggle to reason about the downstream effects of big choices. Text lists and pro con tables are abstract. News style narratives are concrete
+        and easy to grasp. The main idea is to render future scenarios as short news segments that update as you explore alternative decisions. This format can
+        surface tradeoffs you would otherwise miss. It can help you relate to your future self and community impact without pressure or prescription.
+      </p>
+      <h2>What we will build</h2>
+      <ul>
+        <li>
+          Timeline builder. An algorithm that turns a user described decision into a branching graph of outcomes over weeks, months, and one to two years. Nodes
+          contain facts, assumptions, and prompts. Edges encode second order effects.
+        </li>
+        <li>
+          News package generator. Templates for headlines, lower thirds, tickers, and split screens. A script orchestrates voice over, b roll, and graphics
+          including realistic street interviews with generated personas and sensational newsroom situations that dramatize decision outcomes. We use a mix of
+          template video, generative stills, and stylized animations to keep cost and risk low.
+        </li>
+        <li>
+          Interactive installation. A 2x2 grid of vintage CRT-style monitors creates a retro newsroom aesthetic. Each screen shows a different timeline branch
+          or deep dive panel. People navigate with a chunky wireless remote that matches the retro vibe. An operator computer sits nearby for session management
+          and troubleshooting.
+        </li>
+      </ul>
+      <h2>Methods and approach</h2>
+      <h3>Study design and evaluation methods</h3>
+      <p>
+        We will evaluate Life Choice Live through two complementary approaches that focus on understanding how people interact with simulated futures and
+        whether this format helps with decision-making.
+      </p>
+      <p>
+        <strong>Interaction studies with colleagues</strong> We'll start with small sessions where colleagues use the system while thinking aloud. This helps us
+        refine the pacing, screen layout, story length, and remote controls before wider testing. We'll observe how people navigate between different timeline
+        branches and what feels natural or confusing.
+      </p>
+      <p>
+        <strong>Decision-making pilot study</strong> We'll run a study with 30 participants who each try two approaches to thinking through a personal decision:
+        traditional written reflection and a Life Choice Live session. We'll measure whether the news format helps people feel more confident about their
+        choice, better understand tradeoffs, and connect with their future self. We'll also test if people remember second-order effects better after seeing
+        them as news stories.
+      </p>
+      <h3>Media generation and installation engineering</h3>
+      <ul>
+        <li>
+          Story synthesis: An LLM creates a scenario graph and beat outlines from user inputs. A content filter enforces tone and safety rules. A templater maps
+          beats to news formats.
+        </li>
+        <li>Audio: High quality TTS produces anchor and reporter voices. We apply a consistent sonic identity and pace values to avoid sensational affect.</li>
+        <li>Visuals: Generated video footage creates news-style b-roll with a cinéma vérité aesthetic, complemented by icon animations and data graphics.</li>
+        <li>Rendering: A local PC synchronizes audio, video, and graphics across tiles or projector.</li>
+        <li>Controls: Chunky wireless remote for user navigation and timeline switching.</li>
+      </ul>
+      <h2>Expected outcomes</h2>
+      <ul>
+        <li>A working installation that renders branching news style futures from user inputs.</li>
+        <li>Initial quantitative signals of reduced decisional conflict and increased tradeoff awareness compared to written reflection.</li>
+        <li>Qualitative insights on how people relate to second order effects and future self when outcomes feel concrete.</li>
+        <li>Open source templates for scenario graphs, news package layout, disclosure overlays, and safety prompts.</li>
+        <li>A short paper or demo submission to HCI venues.</li>
+      </ul>
+      <h2>Contribution to AHA: AI for human flourishing</h2>
+      <p>
+        Life Choice Live advances human flourishing by helping people reason about important life choices with more clarity and care. It uses AI to translate
+        abstract futures into understandable narratives while centering agency, consent, and transparency. It offers an installation for public engagement, a
+        pathway to publishable studies, and open components others can adapt for coaching and civic contexts.
+      </p>
+      <h2>Brief timeline</h2>
+      <p>Weeks 1 to 2</p>
+      <ul>
+        <li>Finalize storyboard, safety policies, disclosure language, and tone guides. Select rendering stack. Submit IRB. Source displays and mounts.</li>
+      </ul>
+      <p>Weeks 3 to 5</p>
+      <ul>
+        <li>
+          Build scenario graph builder and news package generator. Implement disclosure overlays, watermarks, and filters. Create initial b roll sets and
+          graphics.
+        </li>
+      </ul>
+      <p>Weeks 6 to 7</p>
+      <ul>
+        <li>Internal sessions for interaction polish. Tune pacing, UI, and data panels. Prepare installation rig and operator console.</li>
+      </ul>
+      <p>Weeks 8 to 9</p>
+      <ul>
+        <li>Pilot study with N = 30. Collect measures. Analyze preregistered metrics.</li>
+      </ul>
+      <p>Weeks 10 to 11</p>
+      <ul>
+        <li>Public installation sessions. Gather short exit surveys and observations. Iterate templates as needed.</li>
+      </ul>
+      <p>Week 12</p>
+      <ul>
+        <li>Package open source release and write a short paper or demo submission. Produce a short video.</li>
+      </ul>
+      <h2>Risks and mitigations</h2>
+      <ul>
+        <li>
+          False realism and false memory. Use stylized visuals, constant simulated labels, and a facts panel. Avoid photorealistic faces and exact likenesses.
+        </li>
+        <li>Over persuasion. Keep a neutral tone. Present multiple branches and reflective prompts. No recommendations.</li>
+        <li>Privacy. Default to local processing. Do not store personal media. Log only consented events.</li>
+        <li>Cost and compute. Favor templates and stylized animation. Reuse b roll. Cache assets.</li>
+        <li>Accessibility. Reduced motion mode, captions, clear type, and color safe palettes.</li>
+        <li>Hardware availability. Prefer projector based layout. Borrow or rent displays if needed. Provide a single screen fallback layout.</li>
+      </ul>
+      <h2>Deliverables</h2>
+      <ul>
+        <li>Installation software and templates with disclosure overlays and safety filters.</li>
+        <li>Scenario graph builder and operator console.</li>
+        <li>Open source assets: graphics package, prompt templates, and example datasets.</li>
+        <li>Study protocol, analysis scripts, and a short paper or demo submission.</li>
+      </ul>
+    </article>
+  </body>
+</html>
