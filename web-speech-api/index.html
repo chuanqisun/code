@@ -1,184 +1,165 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Speech API Echo Test</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web Speech API Demo</title>
     <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-        #container {
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-align: center;
-            width: 90%;
-            max-width: 500px;
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        button {
-            padding: 15px 30px;
-            font-size: 1.2em;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            outline: none;
-            transition: background-color 0.2s ease;
-            min-width: 200px; /* Prevent layout shift */
-            min-height: 50px; /* Prevent layout shift */
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        button:active {
-            background-color: #004085;
-        }
-        #status {
-            margin-top: 20px;
-            font-size: 1.1em;
-            color: #555;
-            min-height: 25px; /* Prevent layout shift */
-        }
-        #transcription {
-            margin-top: 15px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #e9e9e9;
-            min-height: 60px; /* Prevent layout shift */
-            text-align: left;
-            word-wrap: break-word;
-            color: #333;
-        }
-        .hidden {
-            display: none;
-        }
+      /* No CSS for styling, but a minimal style for button size to avoid layout shift */
+      button {
+          width: 150px; /* Fixed width */
+          height: 50px; /* Fixed height */
+          font-size: 16px;
+          display: block; /* To center it easily if needed, though not strictly styling */
+          margin: 20px auto; /* Just to center it a bit */
+      }
+      #output {
+          margin-top: 20px;
+          padding: 10px;
+          border: 1px solid #ccc;
+          min-height: 50px; /* Minimal height to avoid shift when text appears */
+          white-space: pre-wrap; /* To preserve line breaks */
+          word-wrap: break-word; /* To break long words */
+      }
+      #status {
+          margin-top: 10px;
+          font-weight: bold;
+          color: #333;
+      }
     </style>
-</head>
-<body>
-    <div id="container">
-        <h1>Web Speech API Echo Test</h1>
-        <p>Press and hold the button to speak. Release to hear it back.</p>
-        <button id="speechButton">Press and Hold to Speak</button>
-        <div id="status"></div>
-        <div id="transcription"></div>
-    </div>
+  </head>
+  <body>
+    <h1>Web Speech API Demo</h1>
+
+    <p>Press and hold the button to speak. Release to stop and hear the synthesized voice.</p>
+
+    <button id="speakButton">Hold to Speak</button>
+
+    <div id="status">Status: Ready</div>
+    <div id="output"></div>
 
     <script>
-        const speechButton = document.getElementById('speechButton');
-        const statusDiv = document.getElementById('status');
-        const transcriptionDiv = document.getElementById('transcription');
+      const speakButton = document.getElementById("speakButton");
+      const outputDiv = document.getElementById("output");
+      const statusDiv = document.getElementById("status");
 
-        let recognition;
-        let finalTranscript = '';
-        let interimTranscript = '';
-        let isRecognizing = false;
+      let recognition;
+      let synth;
+      let utterance;
+      let isRecognizing = false;
+      let finalTranscript = "";
 
-        // Check for Web Speech API support
-        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            statusDiv.textContent = "Web Speech API is not supported by this browser. Try Chrome.";
-            speechButton.disabled = true;
-            speechButton.textContent = "Not Supported";
-        } else {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true; // Continuous recognition
-            recognition.interimResults = true; // Get interim results
-            recognition.lang = 'en-US'; // Set language
+      // Initialize SpeechRecognition
+      if ("webkitSpeechRecognition" in window) {
+        recognition = new webkitSpeechRecognition();
+        recognition.continuous = true; // Continuous recognition
+        recognition.interimResults = true; // Get interim results
+        recognition.lang = "en-US";
 
-            recognition.onstart = () => {
-                isRecognizing = true;
-                statusDiv.textContent = "Listening...";
-                transcriptionDiv.textContent = ''; // Clear previous transcription
-                finalTranscript = '';
-                interimTranscript = '';
-                speechButton.textContent = "Release to Stop";
-            };
+        recognition.onstart = () => {
+          isRecognizing = true;
+          statusDiv.textContent = "Status: Listening...";
+          speakButton.textContent = "Release to Stop";
+          outputDiv.textContent = ""; // Clear previous output
+          finalTranscript = "";
+        };
 
-            recognition.onresult = (event) => {
-                interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-                transcriptionDiv.textContent = finalTranscript + interimTranscript;
-            };
-
-            recognition.onerror = (event) => {
-                isRecognizing = false;
-                statusDiv.textContent = "Error: " + event.error;
-                speechButton.textContent = "Press and Hold to Speak";
-                console.error('Speech recognition error', event);
-            };
-
-            recognition.onend = () => {
-                isRecognizing = false;
-                statusDiv.textContent = "Recognition stopped.";
-                speechButton.textContent = "Press and Hold to Speak";
-
-                if (finalTranscript.trim().length > 0) {
-                    transcriptionDiv.textContent = "You said: " + finalTranscript.trim();
-                    speakText(finalTranscript.trim());
-                } else {
-                    transcriptionDiv.textContent = "No speech detected.";
-                }
-            };
-
-            speechButton.addEventListener('mousedown', () => {
-                if (!isRecognizing) {
-                    recognition.start();
-                }
-            });
-
-            speechButton.addEventListener('mouseup', () => {
-                if (isRecognizing) {
-                    recognition.stop();
-                }
-            });
-
-            // Prevent context menu on long press on mobile
-            speechButton.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-            });
-        }
-
-        // Text-to-Speech function
-        function speakText(text) {
-            if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'en-US'; // Match recognition language
-                utterance.onstart = () => {
-                    statusDiv.textContent = "Speaking back...";
-                };
-                utterance.onend = () => {
-                    statusDiv.textContent = "Finished speaking.";
-                };
-                utterance.onerror = (event) => {
-                    statusDiv.textContent = "Speech synthesis error: " + event.error;
-                    console.error('Speech synthesis error', event);
-                };
-                window.speechSynthesis.speak(utterance);
+        recognition.onresult = (event) => {
+          let interimTranscript = "";
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
             } else {
-                statusDiv.textContent = "Text-to-Speech is not supported by this browser.";
+              interimTranscript += event.results[i][0].transcript;
             }
+          }
+          outputDiv.textContent = finalTranscript + interimTranscript;
+        };
+
+        recognition.onerror = (event) => {
+          isRecognizing = false;
+          statusDiv.textContent = `Status: Error - ${event.error}`;
+          speakButton.textContent = "Hold to Speak";
+          console.error("Speech recognition error:", event.error);
+        };
+
+        recognition.onend = () => {
+          isRecognizing = false;
+          statusDiv.textContent = "Status: Processing...";
+          speakButton.textContent = "Hold to Speak";
+
+          if (finalTranscript.trim().length > 0) {
+            outputDiv.textContent = finalTranscript; // Display final transcript
+            synthesizeSpeech(finalTranscript);
+          } else {
+            statusDiv.textContent = "Status: No speech detected.";
+          }
+        };
+      } else {
+        statusDiv.textContent = "Status: Web Speech API is not supported in this browser.";
+        speakButton.disabled = true;
+      }
+
+      // Initialize SpeechSynthesis
+      if ("speechSynthesis" in window) {
+        synth = window.speechSynthesis;
+        utterance = new SpeechSynthesisUtterance();
+        utterance.lang = "en-US";
+        utterance.onend = () => {
+          statusDiv.textContent = "Status: Ready";
+        };
+        utterance.onerror = (event) => {
+          statusDiv.textContent = `Status: Speech synthesis error - ${event.error}`;
+          console.error("Speech synthesis error:", event);
+        };
+      } else {
+        statusDiv.textContent = "Status: Web Speech Synthesis API is not supported in this browser.";
+      }
+
+      function synthesizeSpeech(text) {
+        if (synth && text.trim().length > 0) {
+          statusDiv.textContent = "Status: Speaking...";
+          utterance.text = text;
+          synth.speak(utterance);
         }
+      }
+
+      speakButton.addEventListener("mousedown", () => {
+        if (recognition && !isRecognizing) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error("Error starting recognition:", e);
+            statusDiv.textContent = `Status: Error starting recognition - ${e.message}`;
+          }
+        }
+      });
+
+      speakButton.addEventListener("mouseup", () => {
+        if (recognition && isRecognizing) {
+          recognition.stop();
+        }
+      });
+
+      // For touch devices
+      speakButton.addEventListener("touchstart", (e) => {
+        e.preventDefault(); // Prevent default touch behavior like scrolling
+        if (recognition && !isRecognizing) {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error("Error starting recognition:", e);
+            statusDiv.textContent = `Status: Error starting recognition - ${e.message}`;
+          }
+        }
+      });
+
+      speakButton.addEventListener("touchend", (e) => {
+        e.preventDefault(); // Prevent default touch behavior
+        if (recognition && isRecognizing) {
+          recognition.stop();
+        }
+      });
     </script>
-</body>
+  </body>
 </html>
