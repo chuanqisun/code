@@ -28,6 +28,7 @@
 - [Head tracking](./head-tracking/)
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [Media Lab Game of Life](./media-lab-game-of-life)
+- [Web Speech API](./web-speech-api/)
 - [Wiki search](./wiki-search/)
 - [Perlin noise](./perlin-noise/)
 - [Spaceship](./spaceship/)
