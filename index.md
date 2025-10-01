@@ -23,6 +23,7 @@
 - [Assembly theory](./assembly-theory/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
+- [Dialogica Times](./dialogica-times/)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
 - [Head tracking](./head-tracking/)
