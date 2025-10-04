@@ -23,6 +23,7 @@
 - [Assembly theory](./assembly-theory/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
+- [Crowd Source](https://chuanqisun.github.io/crowd-source/)
 - [Dialogica Times](./dialogica-times/)
 - [Dot grid field](./dot-grid-field/)
 - [Electric sheep](./electric-sheep/)
