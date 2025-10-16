@@ -40,4 +40,4 @@
 
 ## Prompts
 
-- [OpenAI](./openai-prompt/)
+- [OpenAI](/blob/master/openai-prompt/index.md))
