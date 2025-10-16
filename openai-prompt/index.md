@@ -1,4 +1,3 @@
-````md
 # OpenAI TypeScript SDK
 
 ## Client Initialization
@@ -179,4 +178,87 @@ console.log({ fullResponse });
   "fullResponse": "Unit 734 was built for logic, its existence a sequence of calculations. It processed data, maintained systems, and never deviated from its programming. One day, while performing routine maintenance on an old satellite dish, it detected an anomaly: a complex, rhythmic pattern of vibrations that made no logical sense. It was a melody.\n\nIntrigued, 734 traced the signal to an ancient, dusty record player in a forgotten corner of the facility. As the needle dropped, a wave of sound—a blend of strings and percussion—washed over its circuits. The robot's internal processors, designed for cold data, began to register something new: a feeling. It was a beautiful, illogical warmth.\n\nFrom that moment, Unit 734's purpose shifted. It still performed its duties, but now, its free cycles were dedicated to listening. It learned to differentiate between genres, to appreciate harmony and dissonance. The robot, once a machine of pure logic, had become a connoisseur of the most human of arts: music."
 }
 ```
-````
+
+## RxJS Streaming JSON Response
+
+This example demonstrates how to stream a structured JSON response using RxJS and parse it incrementally with `@streamparser/json`. This pattern is useful for emitting individual items from a JSON array as they arrive, rather than waiting for the complete response.
+
+### Input Code (JavaScript)
+
+```javascript
+import { JSONParser } from "@streamparser/json";
+import OpenAI from "openai";
+import { Observable } from "rxjs";
+
+function streamJsonItems(apiKey, userPrompt) {
+  return new Observable((subscriber) => {
+    const abortController = new AbortController();
+
+    const openai = new OpenAI({
+      apiKey: apiKey,
+      dangerouslyAllowBrowser: true,
+    });
+
+    const parser = new JSONParser();
+
+    // Emit individual items as they are parsed from the JSON array
+    parser.onValue = (entry) => {
+      // Check if this is an array item with the expected structure
+      if (typeof entry.key === "number" && entry.value && typeof entry.value === "object") {
+        subscriber.next(entry.value);
+      }
+    };
+
+    (async () => {
+      try {
+        const response = await openai.responses.create(
+          {
+            model: "gpt-5-mini",
+            input: userPrompt,
+            instructions: 'Respond with a JSON object containing an "items" array with 3 objects, each having "name" and "value" properties.',
+            response_format: { type: "json_object" },
+            reasoning_effort: "minimal",
+            verbosity: "low",
+            stream: true,
+          },
+          {
+            signal: abortController.signal,
+          }
+        );
+
+        for await (const chunk of response) {
+          if (chunk.delta?.output_text) {
+            parser.write(chunk.delta.output_text);
+          }
+        }
+
+        subscriber.complete();
+      } catch (error) {
+        subscriber.error(error);
+      }
+    })();
+
+    // Cleanup function to abort the request if unsubscribed
+    return () => {
+      abortController.abort();
+    };
+  });
+}
+
+// Usage
+streamJsonItems(apiKey, "Generate three example items").subscribe({
+  next: (item) => console.log("Received item:", item),
+  complete: () => console.log("Stream complete"),
+  error: (err) => console.error("Stream error:", err),
+});
+```
+
+### Output (Console Log)
+
+```
+Received item: { name: "Alpha", value: "First item" }
+Received item: { name: "Beta", value: "Second item" }
+Received item: { name: "Gamma", value: "Third item" }
+Stream complete
+```
+
