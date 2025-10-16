@@ -40,4 +40,4 @@
 
 ## Prompts
 
-- [OpenAI](/openai-prompt/index.md)
+- [OpenAI](https://github.com/chuanqisun/code/blob/master/openai-prompt/index.md)
