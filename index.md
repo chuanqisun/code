@@ -12,6 +12,7 @@
 - [JSONL viewer](./jsonl-viewer)
 - [JSON → TypeScript](./json-to-typescript)
 - [JSON ↔ YAML](./json-to-yaml)
+- [Paper](https://chuanqisun.github.io/paper/)
 - [Plotter/Emoji](./plotters/emoji.html)
 - [Plotter/TTF](./plotters/ttf.html)
 - [Plotter/Hershey+JSON](./plotters/hershey-json.html)
