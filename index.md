@@ -27,6 +27,7 @@
 - [Crowd Source](https://chuanqisun.github.io/crowd-source/)
 - [Dialogica Times](./dialogica-times/)
 - [Dot grid field](./dot-grid-field/)
+- [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
 - [Head tracking](./head-tracking/)
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
