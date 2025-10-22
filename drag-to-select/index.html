@@ -1,347 +1,538 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drag Selection Demo</title>
     <style>
-      * {
-          box-sizing: border-box;
-      }
-      body {
-          padding: 32px;
-          font-family: sans-serif;
-      }
-      .header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 4px;
-      }
-      .info-box {
-          padding: 4px 8px;
-          border: 2px solid black;
-      }
-      .container {
-          position: relative;
-          max-height: 384px; /* max-h-96 */
-          overflow: auto;
-          z-index: 10;
-          display: grid;
-          grid-template-columns: repeat(20, min-content);
-          gap: 16px; /* gap-4 */
-          padding: 16px; /* p-4 */
-          border: 2px solid black;
-          user-select: none; /* select-none */
-          transform: translateY(-0.5px); /* -translate-y-0.5 */
-      }
-      .container:focus {
-          outline: none;
-          border-style: dashed;
-      }
-      .item {
-          border: 2px solid black;
-          width: 40px; /* size-10 */
-          height: 40px; /* size-10 */
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background-color: white;
-          color: black;
-      }
-      .item.selected {
-          background-color: black;
-          color: white;
-      }
-      .selection-rect {
-          position: absolute;
-          border: 2px solid black;
-          background-color: rgba(0, 0, 0, 0.3);
-          pointer-events: none;
-      }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            padding: 32px;
+            font-family: sans-serif;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .info-box {
+            padding: 4px 8px;
+            border: 2px solid black;
+        }
+        .container {
+            position: relative;
+            max-height: 384px;
+            overflow: auto;
+            z-index: 10;
+            display: grid;
+            grid-template-columns: repeat(20, min-content);
+            gap: 16px;
+            padding: 16px;
+            border: 2px solid black;
+            user-select: none;
+            transform: translateY(-0.5px);
+        }
+        .container:focus {
+            outline: none;
+            border-style: dashed;
+        }
+        .item {
+            border: 2px solid black;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: white;
+            color: black;
+            cursor: pointer;
+            transition: transform 0.05s ease-out;
+        }
+        .item.selected {
+            background-color: black;
+            color: white;
+        }
+        .item.dragging {
+            opacity: 0.7;
+            cursor: grabbing;
+            transition: none;
+        }
+        .selection-rect {
+            position: absolute;
+            border: 2px solid black;
+            background-color: rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
     </style>
-  </head>
-  <body>
+</head>
+<body>
     <div id="root"></div>
 
     <script>
-      // DOMVector class to represent drag interactions
-      class DOMVector {
-        constructor(x, y, magnitudeX, magnitudeY) {
-          this.x = x;
-          this.y = y;
-          this.magnitudeX = magnitudeX;
-          this.magnitudeY = magnitudeY;
+        // DOMVector class to represent drag interactions
+        class DOMVector {
+            constructor(x, y, magnitudeX, magnitudeY) {
+                this.x = x;
+                this.y = y;
+                this.magnitudeX = magnitudeX;
+                this.magnitudeY = magnitudeY;
+            }
+
+            toDOMRect() {
+                return new DOMRect(
+                    Math.min(this.x, this.x + this.magnitudeX),
+                    Math.min(this.y, this.y + this.magnitudeY),
+                    Math.abs(this.magnitudeX),
+                    Math.abs(this.magnitudeY)
+                );
+            }
+
+            getDiagonalLength() {
+                return Math.sqrt(
+                    Math.pow(this.magnitudeX, 2) + Math.pow(this.magnitudeY, 2)
+                );
+            }
+
+            add(vector) {
+                return new DOMVector(
+                    this.x + vector.x,
+                    this.y + vector.y,
+                    this.magnitudeX + vector.magnitudeX,
+                    this.magnitudeY + vector.magnitudeY
+                );
+            }
+
+            clamp(rect) {
+                return new DOMVector(
+                    this.x,
+                    this.y,
+                    Math.min(rect.width - this.x, this.magnitudeX),
+                    Math.min(rect.height - this.y, this.magnitudeY)
+                );
+            }
+
+            toTerminalPoint() {
+                return new DOMPoint(this.x + this.magnitudeX, this.y + this.magnitudeY);
+            }
         }
 
-        toDOMRect() {
-          return new DOMRect(
-            Math.min(this.x, this.x + this.magnitudeX),
-            Math.min(this.y, this.y + this.magnitudeY),
-            Math.abs(this.magnitudeX),
-            Math.abs(this.magnitudeY)
-          );
+        // Helper functions
+        function intersect(rect1, rect2) {
+            if (rect1.right < rect2.left || rect2.right < rect1.left) return false;
+            if (rect1.bottom < rect2.top || rect2.bottom < rect1.top) return false;
+            return true;
         }
 
-        getDiagonalLength() {
-          return Math.sqrt(Math.pow(this.magnitudeX, 2) + Math.pow(this.magnitudeY, 2));
+        function clamp(num, min, max) {
+            return Math.min(Math.max(num, min), max);
         }
 
-        add(vector) {
-          return new DOMVector(this.x + vector.x, this.y + vector.y, this.magnitudeX + vector.magnitudeX, this.magnitudeY + vector.magnitudeY);
+        // Create items array
+        const items = Array.from({ length: 300 }, (_, i) => i + '');
+
+        // State
+        let dragVector = null;
+        let scrollVector = null;
+        let isDragging = false;
+        let selectedItems = {};
+        let rafHandle = null;
+        let dragStartModifiers = null;
+        let preSelectionState = null;
+
+        // Item drag state
+        let itemDragVector = null;
+        let isDraggingItems = false;
+        let draggedItem = null;
+        let itemPositions = {}; // Store transform positions for each item
+
+        // DOM references
+        let containerEl = null;
+
+        // --- DOM Update Functions ---
+
+        function updateSelectedItems(dragVec, scrollVec) {
+            if (!containerEl) return;
+
+            const draggedItems = {};
+            const containerRect = containerEl.getBoundingClientRect();
+
+            containerEl.querySelectorAll('[data-item]').forEach(el => {
+                if (!(el instanceof HTMLElement)) return;
+
+                const itemRect = el.getBoundingClientRect();
+                const x = itemRect.x - containerRect.x + containerEl.scrollLeft;
+                const y = itemRect.y - containerRect.y + containerEl.scrollTop;
+                const translatedItemRect = new DOMRect(x, y, itemRect.width, itemRect.height);
+
+                if (!intersect(dragVec.add(scrollVec).toDOMRect(), translatedItemRect)) return;
+
+                if (el.dataset.item && typeof el.dataset.item === 'string') {
+                    draggedItems[el.dataset.item] = true;
+                }
+            });
+
+            // Apply selection based on modifier keys
+            if (dragStartModifiers && (dragStartModifiers.ctrlKey || dragStartModifiers.shiftKey)) {
+                selectedItems = { ...preSelectionState };
+                
+                Object.keys(draggedItems).forEach(item => {
+                    if (preSelectionState[item]) {
+                        delete selectedItems[item];
+                    } else {
+                        selectedItems[item] = true;
+                    }
+                });
+            } else {
+                selectedItems = draggedItems;
+            }
+
+            updateSelectionRect();
+            updateCount();
+            updateItemStyles();
         }
 
-        clamp(rect) {
-          return new DOMVector(this.x, this.y, Math.min(rect.width - this.x, this.magnitudeX), Math.min(rect.height - this.y, this.magnitudeY));
+        function updateSelectionRect() {
+            let existingRect = document.getElementById('selection-rect');
+            
+            let selectionRect = null;
+            if (dragVector && scrollVector && isDragging && containerEl) {
+                selectionRect = dragVector
+                    .add(scrollVector)
+                    .clamp(
+                        new DOMRect(
+                            0,
+                            0,
+                            containerEl.scrollWidth,
+                            containerEl.scrollHeight
+                        )
+                    )
+                    .toDOMRect();
+            }
+
+            if (selectionRect && existingRect) {
+                existingRect.style.top = selectionRect.y + 'px';
+                existingRect.style.left = selectionRect.x + 'px';
+                existingRect.style.width = selectionRect.width + 'px';
+                existingRect.style.height = selectionRect.height + 'px';
+            } else if (selectionRect && !existingRect) {
+                const rectDiv = document.createElement('div');
+                rectDiv.id = 'selection-rect';
+                rectDiv.className = 'selection-rect';
+                rectDiv.style.top = selectionRect.y + 'px';
+                rectDiv.style.left = selectionRect.x + 'px';
+                rectDiv.style.width = selectionRect.width + 'px';
+                rectDiv.style.height = selectionRect.height + 'px';
+                containerEl.appendChild(rectDiv);
+            } else if (!selectionRect && existingRect) {
+                existingRect.remove();
+            }
         }
 
-        toTerminalPoint() {
-          return new DOMPoint(this.x + this.magnitudeX, this.y + this.magnitudeY);
-        }
-      }
-
-      // Helper functions
-      function intersect(rect1, rect2) {
-        if (rect1.right < rect2.left || rect2.right < rect1.left) return false;
-        if (rect1.bottom < rect2.top || rect2.bottom < rect1.top) return false;
-        return true;
-      }
-
-      function clamp(num, min, max) {
-        return Math.min(Math.max(num, min), max);
-      }
-
-      // Create items array
-      const items = Array.from({ length: 300 }, (_, i) => i + "");
-
-      // State
-      let dragVector = null;
-      let scrollVector = null;
-      let isDragging = false;
-      let selectedItems = {};
-      let rafHandle = null;
-
-      // DOM references
-      let containerEl = null;
-
-      // --- DOM Update Functions ---
-
-      function updateSelectedItems(dragVec, scrollVec) {
-        if (!containerEl) return;
-
-        const next = {};
-        const containerRect = containerEl.getBoundingClientRect();
-
-        containerEl.querySelectorAll("[data-item]").forEach((el) => {
-          if (!(el instanceof HTMLElement)) return;
-
-          const itemRect = el.getBoundingClientRect();
-          const x = itemRect.x - containerRect.x + containerEl.scrollLeft;
-          const y = itemRect.y - containerRect.y + containerEl.scrollTop;
-          const translatedItemRect = new DOMRect(x, y, itemRect.width, itemRect.height);
-
-          if (!intersect(dragVec.add(scrollVec).toDOMRect(), translatedItemRect)) return;
-
-          if (el.dataset.item && typeof el.dataset.item === "string") {
-            next[el.dataset.item] = true;
-          }
-        });
-
-        selectedItems = next;
-        updateSelectionRect();
-        updateCount();
-        updateItemStyles();
-      }
-
-      function updateSelectionRect() {
-        let existingRect = document.getElementById("selection-rect");
-
-        let selectionRect = null;
-        if (dragVector && scrollVector && isDragging && containerEl) {
-          selectionRect = dragVector.add(scrollVector).clamp(new DOMRect(0, 0, containerEl.scrollWidth, containerEl.scrollHeight)).toDOMRect();
+        function updateCount() {
+            const selectedCount = Object.keys(selectedItems).length;
+            let countEl = document.getElementById('count-display');
+            const header = document.querySelector('.header');
+            
+            if (selectedCount > 0) {
+                if (!countEl) {
+                    countEl = document.createElement('div');
+                    countEl.id = 'count-display';
+                    countEl.className = 'info-box';
+                    header.appendChild(countEl);
+                }
+                countEl.textContent = `count: ${selectedCount}`;
+                countEl.style.display = 'block';
+            } else if (countEl) {
+                countEl.style.display = 'none';
+            }
         }
 
-        if (selectionRect && existingRect) {
-          existingRect.style.top = selectionRect.y + "px";
-          existingRect.style.left = selectionRect.x + "px";
-          existingRect.style.width = selectionRect.width + "px";
-          existingRect.style.height = selectionRect.height + "px";
-        } else if (selectionRect && !existingRect) {
-          const rectDiv = document.createElement("div");
-          rectDiv.id = "selection-rect";
-          rectDiv.className = "selection-rect";
-          rectDiv.style.top = selectionRect.y + "px";
-          rectDiv.style.left = selectionRect.x + "px";
-          rectDiv.style.width = selectionRect.width + "px";
-          rectDiv.style.height = selectionRect.height + "px";
-          containerEl.appendChild(rectDiv);
-        } else if (!selectionRect && existingRect) {
-          existingRect.remove();
-        }
-      }
-
-      function updateCount() {
-        const selectedCount = Object.keys(selectedItems).length;
-        let countEl = document.getElementById("count-display");
-        const header = document.querySelector(".header");
-
-        if (selectedCount > 0) {
-          if (!countEl) {
-            countEl = document.createElement("div");
-            countEl.id = "count-display";
-            countEl.className = "info-box";
-            header.appendChild(countEl);
-          }
-          countEl.textContent = `count: ${selectedCount}`;
-          countEl.style.display = "block";
-        } else if (countEl) {
-          countEl.style.display = "none";
-        }
-      }
-
-      function updateItemStyles() {
-        containerEl.querySelectorAll("[data-item]").forEach((el) => {
-          const item = el.dataset.item;
-          if (selectedItems[item]) {
-            el.classList.add("selected");
-          } else {
-            el.classList.remove("selected");
-          }
-        });
-      }
-
-      // --- Auto-Scroll Logic ---
-
-      function startAutoScroll() {
-        if (rafHandle) return;
-
-        function scrollTheLad() {
-          if (!containerEl || !dragVector || !isDragging) {
-            rafHandle = null;
-            return;
-          }
-
-          const currentPointer = dragVector.toTerminalPoint();
-          const containerRect = containerEl.getBoundingClientRect();
-
-          const shouldScrollRight = containerRect.width - currentPointer.x < 20;
-          const shouldScrollLeft = currentPointer.x < 20;
-          const shouldScrollDown = containerRect.height - currentPointer.y < 20;
-          const shouldScrollUp = currentPointer.y < 20;
-
-          const left = shouldScrollRight
-            ? clamp(20 - containerRect.width + currentPointer.x, 0, 15)
-            : shouldScrollLeft
-            ? -1 * clamp(20 - currentPointer.x, 0, 15)
-            : 0;
-
-          const top = shouldScrollDown
-            ? clamp(20 - containerRect.height + currentPointer.y, 0, 15)
-            : shouldScrollUp
-            ? -1 * clamp(20 - currentPointer.y, 0, 15)
-            : 0;
-
-          if (top !== 0 || left !== 0) {
-            containerEl.scrollBy({ left, top });
-          }
-
-          rafHandle = requestAnimationFrame(scrollTheLad);
+        function updateItemStyles() {
+            containerEl.querySelectorAll('[data-item]').forEach(el => {
+                const item = el.dataset.item;
+                if (selectedItems[item]) {
+                    el.classList.add('selected');
+                } else {
+                    el.classList.remove('selected');
+                }
+            });
         }
 
-        rafHandle = requestAnimationFrame(scrollTheLad);
-      }
-
-      function stopAutoScroll() {
-        if (rafHandle) {
-          cancelAnimationFrame(rafHandle);
-          rafHandle = null;
-        }
-      }
-
-      // --- Event Handlers ---
-
-      function handlePointerDown(e) {
-        if (e.button !== 0) return;
-
-        const containerRect = e.currentTarget.getBoundingClientRect();
-
-        dragVector = new DOMVector(e.clientX - containerRect.x, e.clientY - containerRect.y, 0, 0);
-
-        scrollVector = new DOMVector(e.currentTarget.scrollLeft, e.currentTarget.scrollTop, 0, 0);
-
-        e.currentTarget.setPointerCapture(e.pointerId);
-      }
-
-      function handlePointerMove(e) {
-        if (!dragVector || !scrollVector) return;
-
-        const containerRect = e.currentTarget.getBoundingClientRect();
-
-        const nextDragVector = new DOMVector(
-          dragVector.x,
-          dragVector.y,
-          e.clientX - containerRect.x - dragVector.x,
-          e.clientY - containerRect.y - dragVector.y
-        );
-
-        if (!isDragging && nextDragVector.getDiagonalLength() < 10) return;
-
-        if (!isDragging) {
-          isDragging = true;
-          containerEl?.focus();
-          startAutoScroll();
+        function updateItemPositions() {
+            containerEl.querySelectorAll('[data-item]').forEach(el => {
+                const item = el.dataset.item;
+                const pos = itemPositions[item] || { x: 0, y: 0 };
+                el.style.transform = `translate(${pos.x}px, ${pos.y}px)`;
+            });
         }
 
-        dragVector = nextDragVector;
-        updateSelectedItems(dragVector, scrollVector);
-      }
+        // --- Auto-Scroll Logic ---
 
-      function handlePointerUp() {
-        if (!isDragging) {
-          selectedItems = {};
+        function startAutoScroll() {
+            if (rafHandle) return;
+
+            function scrollTheLad() {
+                if (!containerEl || !dragVector || !isDragging) {
+                    rafHandle = null;
+                    return;
+                }
+
+                const currentPointer = dragVector.toTerminalPoint();
+                const containerRect = containerEl.getBoundingClientRect();
+
+                const shouldScrollRight = containerRect.width - currentPointer.x < 20;
+                const shouldScrollLeft = currentPointer.x < 20;
+                const shouldScrollDown = containerRect.height - currentPointer.y < 20;
+                const shouldScrollUp = currentPointer.y < 20;
+
+                const left = shouldScrollRight
+                    ? clamp(20 - containerRect.width + currentPointer.x, 0, 15)
+                    : shouldScrollLeft
+                    ? -1 * clamp(20 - currentPointer.x, 0, 15)
+                    : 0;
+
+                const top = shouldScrollDown
+                    ? clamp(20 - containerRect.height + currentPointer.y, 0, 15)
+                    : shouldScrollUp
+                    ? -1 * clamp(20 - currentPointer.y, 0, 15)
+                    : 0;
+
+                if (top !== 0 || left !== 0) {
+                    containerEl.scrollBy({ left, top });
+                }
+
+                rafHandle = requestAnimationFrame(scrollTheLad);
+            }
+
+            rafHandle = requestAnimationFrame(scrollTheLad);
         }
 
-        dragVector = null;
-        isDragging = false;
-        scrollVector = null;
-
-        stopAutoScroll();
-        updateSelectionRect();
-        updateCount();
-        updateItemStyles();
-      }
-
-      function handleScroll(e) {
-        if (!dragVector || !scrollVector) return;
-
-        const { scrollLeft, scrollTop } = e.currentTarget;
-
-        const nextScrollVector = new DOMVector(scrollVector.x, scrollVector.y, scrollLeft - scrollVector.x, scrollTop - scrollVector.y);
-
-        scrollVector = nextScrollVector;
-        updateSelectedItems(dragVector, scrollVector);
-      }
-
-      function handleKeyDown(e) {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          selectedItems = {};
-          dragVector = null;
-          scrollVector = null;
-          isDragging = false;
-
-          stopAutoScroll();
-          updateSelectionRect();
-          updateCount();
-          updateItemStyles();
+        function stopAutoScroll() {
+            if (rafHandle) {
+                cancelAnimationFrame(rafHandle);
+                rafHandle = null;
+            }
         }
-      }
 
-      // --- Initial Render ---
+        // --- Item Drag Event Handlers ---
 
-      function render() {
-        const root = document.getElementById("root");
+        function handleItemPointerDown(e, item) {
+            if (e.button !== 0) return;
 
-        root.innerHTML = `
+            // If item is not selected and no modifier key, select only this item
+            if (!selectedItems[item] && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
+                selectedItems = { [item]: true };
+                updateCount();
+                updateItemStyles();
+            }
+
+            draggedItem = item;
+            itemDragVector = new DOMVector(e.clientX, e.clientY, 0, 0);
+
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+        }
+
+        function handleItemPointerMove(e, item) {
+            if (!itemDragVector || !draggedItem) return;
+
+            const nextDragVector = new DOMVector(
+                itemDragVector.x,
+                itemDragVector.y,
+                e.clientX - itemDragVector.x,
+                e.clientY - itemDragVector.y
+            );
+
+            if (!isDraggingItems && nextDragVector.getDiagonalLength() < 5) return;
+
+            if (!isDraggingItems) {
+                isDraggingItems = true;
+                // Add dragging class to all selected items
+                containerEl.querySelectorAll('[data-item]').forEach(el => {
+                    if (selectedItems[el.dataset.item]) {
+                        el.classList.add('dragging');
+                    }
+                });
+            }
+
+            itemDragVector = nextDragVector;
+
+            // Update positions for all selected items
+            const deltaX = itemDragVector.magnitudeX;
+            const deltaY = itemDragVector.magnitudeY;
+
+            Object.keys(selectedItems).forEach(selectedItem => {
+                const currentPos = itemPositions[selectedItem] || { x: 0, y: 0 };
+                itemPositions[selectedItem] = {
+                    x: currentPos.x + deltaX,
+                    y: currentPos.y + deltaY
+                };
+            });
+
+            updateItemPositions();
+
+            // Reset the drag vector origin for next move
+            itemDragVector = new DOMVector(e.clientX, e.clientY, 0, 0);
+
+            e.stopPropagation();
+        }
+
+        function handleItemPointerUp(e, item) {
+            if (isDraggingItems) {
+                // Remove dragging class from all items
+                containerEl.querySelectorAll('[data-item]').forEach(el => {
+                    el.classList.remove('dragging');
+                });
+            } else {
+                // This was a click, not a drag
+                handleItemClick(e, item);
+            }
+
+            itemDragVector = null;
+            isDraggingItems = false;
+            draggedItem = null;
+
+            e.stopPropagation();
+        }
+
+        // --- Selection Event Handlers ---
+
+        function handleItemClick(e, item) {
+            if (e.ctrlKey || e.shiftKey || e.metaKey) {
+                // Toggle selection
+                if (selectedItems[item]) {
+                    delete selectedItems[item];
+                } else {
+                    selectedItems[item] = true;
+                }
+            } else {
+                // Single select (replace)
+                selectedItems = { [item]: true };
+            }
+
+            updateCount();
+            updateItemStyles();
+        }
+
+        function handlePointerDown(e) {
+            if (e.button !== 0) return;
+
+            // If clicking on an item, don't start drag selection
+            if (e.target.dataset.item) {
+                return;
+            }
+
+            const containerRect = e.currentTarget.getBoundingClientRect();
+
+            dragVector = new DOMVector(
+                e.clientX - containerRect.x,
+                e.clientY - containerRect.y,
+                0,
+                0
+            );
+
+            scrollVector = new DOMVector(
+                e.currentTarget.scrollLeft,
+                e.currentTarget.scrollTop,
+                0,
+                0
+            );
+
+            dragStartModifiers = {
+                ctrlKey: e.ctrlKey,
+                shiftKey: e.shiftKey,
+                metaKey: e.metaKey
+            };
+            preSelectionState = { ...selectedItems };
+
+            e.currentTarget.setPointerCapture(e.pointerId);
+        }
+
+        function handlePointerMove(e) {
+            if (!dragVector || !scrollVector) return;
+
+            const containerRect = e.currentTarget.getBoundingClientRect();
+
+            const nextDragVector = new DOMVector(
+                dragVector.x,
+                dragVector.y,
+                e.clientX - containerRect.x - dragVector.x,
+                e.clientY - containerRect.y - dragVector.y
+            );
+
+            if (!isDragging && nextDragVector.getDiagonalLength() < 10) return;
+
+            if (!isDragging) {
+                isDragging = true;
+                containerEl?.focus();
+                startAutoScroll();
+            }
+
+            dragVector = nextDragVector;
+            updateSelectedItems(dragVector, scrollVector);
+        }
+
+        function handlePointerUp(e) {
+            if (!isDragging) {
+                // Click on empty space without modifiers clears selection
+                if (!e.ctrlKey && !e.shiftKey && !e.metaKey && !e.target.dataset.item) {
+                    selectedItems = {};
+                    updateCount();
+                    updateItemStyles();
+                }
+            }
+            
+            dragVector = null;
+            isDragging = false;
+            scrollVector = null;
+            dragStartModifiers = null;
+            preSelectionState = null;
+
+            stopAutoScroll();
+            updateSelectionRect();
+        }
+
+        function handleScroll(e) {
+            if (!dragVector || !scrollVector) return;
+
+            const { scrollLeft, scrollTop } = e.currentTarget;
+
+            const nextScrollVector = new DOMVector(
+                scrollVector.x,
+                scrollVector.y,
+                scrollLeft - scrollVector.x,
+                scrollTop - scrollVector.y
+            );
+
+            scrollVector = nextScrollVector;
+            updateSelectedItems(dragVector, scrollVector);
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                selectedItems = {};
+                dragVector = null;
+                scrollVector = null;
+                isDragging = false;
+                dragStartModifiers = null;
+                preSelectionState = null;
+
+                stopAutoScroll();
+                updateSelectionRect();
+                updateCount();
+                updateItemStyles();
+            }
+        }
+
+        // --- Initial Render ---
+
+        function render() {
+            const root = document.getElementById('root');
+
+            root.innerHTML = `
                 <div>
                     <div class="header">
                         <div class="info-box">selectable area</div>
@@ -351,36 +542,40 @@
                         class="container"
                         tabindex="-1"
                     >
-                        ${items
-                          .map(
-                            (item) => `
+                        ${items.map(item => `
                             <div
                                 data-item="${item}"
                                 class="item"
                             >
                                 ${item}
                             </div>
-                        `
-                          )
-                          .join("")}
+                        `).join('')}
                     </div>
                 </div>
             `;
 
-        // Attach event listeners
-        containerEl = document.getElementById("container");
-        if (containerEl) {
-          containerEl.addEventListener("pointerdown", handlePointerDown);
-          containerEl.addEventListener("pointermove", handlePointerMove);
-          containerEl.addEventListener("pointerup", handlePointerUp);
-          containerEl.addEventListener("scroll", handleScroll);
-          containerEl.addEventListener("keydown", handleKeyDown);
-        }
-        // Initial count update (will hide the element if count is 0)
-        updateCount();
-      }
+            // Attach event listeners
+            containerEl = document.getElementById('container');
+            if (containerEl) {
+                containerEl.addEventListener('pointerdown', handlePointerDown);
+                containerEl.addEventListener('pointermove', handlePointerMove);
+                containerEl.addEventListener('pointerup', handlePointerUp);
+                containerEl.addEventListener('scroll', handleScroll);
+                containerEl.addEventListener('keydown', handleKeyDown);
 
-      render();
+                // Add drag handlers to items
+                containerEl.querySelectorAll('[data-item]').forEach(el => {
+                    const item = el.dataset.item;
+                    el.addEventListener('pointerdown', (e) => handleItemPointerDown(e, item));
+                    el.addEventListener('pointermove', (e) => handleItemPointerMove(e, item));
+                    el.addEventListener('pointerup', (e) => handleItemPointerUp(e, item));
+                });
+            }
+
+            updateCount();
+        }
+
+        render();
     </script>
-  </body>
+</body>
 </html>
