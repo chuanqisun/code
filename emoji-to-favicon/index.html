@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Emoji Favicon Generator</title>
+    <style>
+      :root {
+        --bg: #fafafa;
+        --fg: #1a1a1a;
+        --border: #d0d0d0;
+        --accent: #2a2a2a;
+        --hover: #4a4a4a;
+        --input-bg: #ffffff;
+        --output-bg: #ffffff;
+        --hint: #999999;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1a1a;
+          --fg: #e0e0e0;
+          --border: #404040;
+          --accent: #e0e0e0;
+          --hover: #ffffff;
+          --input-bg: #2a2a2a;
+          --output-bg: #2a2a2a;
+          --hint: #808080;
+        }
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Courier New', Courier, monospace;
+        background: var(--bg);
+        color: var(--fg);
+        padding: 2rem;
+        max-width: 800px;
+        margin: 0 auto;
+        line-height: 1.6;
+      }
+
+      header {
+        margin-bottom: 3rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid var(--border);
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        letter-spacing: -0.5px;
+      }
+
+      .subtitle {
+        font-size: 0.875rem;
+        color: var(--hint);
+        margin-top: 0.5rem;
+      }
+
+      .input-section {
+        margin-bottom: 2rem;
+      }
+
+      label {
+        display: block;
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        font-family: inherit;
+        font-size: 2rem;
+        padding: 0.75rem;
+        border: 2px solid var(--border);
+        background: var(--input-bg);
+        color: var(--fg);
+        transition: border-color 0.2s;
+      }
+
+      input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .output-section {
+        margin-bottom: 1.5rem;
+      }
+
+      pre {
+        background: var(--output-bg);
+        border: 2px solid var(--border);
+        padding: 1rem;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 0.875rem;
+        min-height: 4rem;
+        color: var(--hint);
+      }
+
+      pre.has-content {
+        color: var(--fg);
+      }
+
+      .button-container {
+        display: flex;
+        gap: 1rem;
+      }
+
+      button {
+        font-family: inherit;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 1rem 2rem;
+        border: 2px solid var(--accent);
+        background: var(--accent);
+        color: var(--bg);
+        cursor: pointer;
+        transition: all 0.2s;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        flex: 1;
+      }
+
+      button:hover:not(:disabled) {
+        background: var(--hover);
+        border-color: var(--hover);
+      }
+
+      button:active:not(:disabled) {
+        transform: translateY(1px);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      button.copied {
+        background: #2d7d2d;
+        border-color: #2d7d2d;
+        color: #ffffff;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        button.copied {
+          background: #4ade80;
+          border-color: #4ade80;
+          color: #1a1a1a;
+        }
+      }
+
+      .hint {
+        font-size: 0.75rem;
+        color: var(--hint);
+        margin-top: 0.5rem;
+      }
+
+      @media (max-width: 600px) {
+        body {
+          padding: 1rem;
+        }
+
+        h1 {
+          font-size: 1.25rem;
+        }
+
+        input[type="text"] {
+          font-size: 1.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🎨 Emoji Favicon Generator</h1>
+      <p class="subtitle">Convert any emoji into a data URI favicon</p>
+    </header>
+
+    <main>
+      <section class="input-section">
+        <label for="emojiInput">Emoji</label>
+        <input type="text" id="emojiInput" autocomplete="off" spellcheck="false" />
+        <p class="hint">Type or paste any emoji</p>
+      </section>
+
+      <section class="output-section">
+        <label>Generated Code</label>
+        <pre id="output"><!-- Link tag will appear here --></pre>
+      </section>
+
+      <div class="button-container">
+        <button id="copyBtn" disabled>Copy to Clipboard</button>
+      </div>
+    </main>
+
+    <script>
+      const state = {
+        emoji: "",
+        linkTag: "",
+      };
+
+      const elements = {
+        input: document.getElementById("emojiInput"),
+        output: document.getElementById("output"),
+        copyBtn: document.getElementById("copyBtn"),
+      };
+
+      // Generate link tag from emoji (no encoding needed for UTF-8)
+      const generateLinkTag = (emoji) => {
+        if (!emoji) return "";
+
+        const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>${emoji}</text></svg>`;
+        const dataUrl = `data:image/svg+xml,${svg}`;
+
+        return `<link rel="icon" href="${dataUrl}">`;
+      };
+
+      // Update output display
+      const updateOutput = () => {
+        const { linkTag } = state;
+
+        elements.output.textContent = linkTag || "<!-- Link tag will appear here -->";
+        elements.output.classList.toggle("has-content", !!linkTag);
+        elements.copyBtn.disabled = !linkTag;
+      };
+
+      // Handle input changes
+      const handleInput = (event) => {
+        state.emoji = event.target.value.trim();
+        state.linkTag = generateLinkTag(state.emoji);
+        updateOutput();
+      };
+
+      // Handle copy action
+      const handleCopy = async () => {
+        const { linkTag } = state;
+
+        if (!linkTag) return;
+
+        try {
+          await navigator.clipboard.writeText(linkTag);
+
+          elements.copyBtn.textContent = "✓ Copied!";
+          elements.copyBtn.classList.add("copied");
+
+          setTimeout(() => {
+            elements.copyBtn.textContent = "Copy to Clipboard";
+            elements.copyBtn.classList.remove("copied");
+          }, 2000);
+        } catch (err) {
+          console.error("Failed to copy:", err);
+        }
+      };
+
+      // Event listeners
+      elements.input.addEventListener("input", handleInput);
+      elements.copyBtn.addEventListener("click", handleCopy);
+
+      // Focus input on load
+      elements.input.focus();
+    </script>
+  </body>
+</html>
