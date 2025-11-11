@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Shadowcast demo</title>
+
+    <!-- Material‑Components CSS -->
+    <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet" />
+
+    <style>
+      body {
+        font-family: roboto;
+        margin: 0;
+        padding: 0;
+        color: #3d3d3d;
+        --mdc-theme-primary: #007f8b;
+        --mdc-theme-on-primary: #f1f3f4;
+        overflow: hidden;
+      }
+      h1 {
+        color: #007f8b;
+        margin: 1em;
+      }
+      video { display: none; }
+
+      .webcam {
+        text-align: center;
+      }
+
+      .intro-screen {
+        padding: 2em;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .intro-screen.hidden {
+        display: none;
+      }
+
+      #canvas {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 100vw;
+        height: auto;
+        object-fit: contain;
+      }
+
+      #canvas.active {
+        display: block;
+      }
+
+      .controls {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        max-width: 400px;
+        width: 90%;
+        z-index: 1000;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+      }
+
+      .controls.active {
+        display: block;
+        pointer-events: auto;
+      }
+
+      .controls.active:hover {
+        opacity: 1;
+      }
+
+      .controls.active::before {
+        content: '';
+        position: absolute;
+        bottom: 100%;
+        left: 0;
+        right: 0;
+        height: 50px;
+      }
+
+      .slider-container {
+        margin: 1em 0;
+      }
+      .slider-container label {
+        display: block;
+        margin-bottom: 0.5em;
+        font-weight: 500;
+      }
+      .slider-container input[type="range"] {
+        width: 100%;
+      }
+      .slider-value {
+        display: inline-block;
+        min-width: 30px;
+        text-align: right;
+        font-weight: bold;
+        color: #007f8b;
+      }
+
+      .disable-button {
+        margin-top: 1em;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="intro-screen" id="introScreen">
+      <h1>Webcam Image Segmentation Demo</h1>
+      <section class="webcam">
+        <p>Click the button below to enable the webcam and start real‑time segmentation.</p>
+        <button id="webcamButton" class="mdc-button mdc-button--raised">
+          <span class="mdc-button__ripple"></span>
+          <span class="mdc-button__label">ENABLE WEBCAM</span>
+        </button>
+      </section>
+    </div>
+
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="canvas" width="1280" height="720"></canvas>
+
+    <div class="controls" id="controls">
+      <div class="slider-container">
+        <label for="blurSlider"> Edge Smoothing: <span class="slider-value" id="blurValue">3</span> </label>
+        <input type="range" id="blurSlider" min="0" max="100" value="3" step="5" />
+      </div>
+      <button id="disableButton" class="mdc-button mdc-button--raised disable-button">
+        <span class="mdc-button__ripple"></span>
+        <span class="mdc-button__label">DISABLE SEGMENTATION</span>
+      </button>
+    </div>
+
+    <!-- Material‑Components JS -->
+    <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+
+    <!-- Main script -->
+    <script type="module">
+      import { ImageSegmenter, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2";
+
+      const video = document.getElementById("webcam");
+      const canvasElement = document.getElementById("canvas");
+      const canvasCtx = canvasElement.getContext("2d");
+      const enableWebcamButton = document.getElementById("webcamButton");
+      const disableButton = document.getElementById("disableButton");
+      const blurSlider = document.getElementById("blurSlider");
+      const blurValue = document.getElementById("blurValue");
+      const introScreen = document.getElementById("introScreen");
+      const controls = document.getElementById("controls");
+
+      let webcamRunning = false;
+      let runningMode = "IMAGE";
+      let blurRadius = 3;
+
+      let imageSegmenter;
+      let labels = [];
+
+      // Update blur value display
+      blurSlider.addEventListener("input", (e) => {
+        blurRadius = parseInt(e.target.value);
+        blurValue.textContent = blurRadius;
+      });
+
+      async function createImageSegmenter() {
+        const audio = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2/wasm");
+
+        imageSegmenter = await ImageSegmenter.createFromOptions(audio, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite",
+            delegate: "GPU",
+          },
+          runningMode,
+          outputCategoryMask: true,
+          outputConfidenceMasks: false,
+        });
+
+        labels = imageSegmenter.getLabels();
+      }
+      createImageSegmenter();
+
+      function hasGetUserMedia() {
+        return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+      }
+
+      // Flood fill to find connected components
+      function floodFill(mask, width, height, startX, startY, visited, componentId) {
+        const stack = [[startX, startY]];
+        let size = 0;
+
+        while (stack.length > 0) {
+          const [x, y] = stack.pop();
+          const idx = y * width + x;
+
+          if (x < 0 || x >= width || y < 0 || y >= height) continue;
+          if (visited[idx] !== 0) continue;
+          if (mask[idx] === 0) continue; // background
+
+          visited[idx] = componentId;
+          size++;
+
+          // 4-connected neighbors
+          stack.push([x + 1, y]);
+          stack.push([x - 1, y]);
+          stack.push([x, y + 1]);
+          stack.push([x, y - 1]);
+        }
+
+        return size;
+      }
+
+      // Find largest connected component
+      function findLargestComponent(mask, width, height) {
+        const visited = new Uint8Array(mask.length);
+        let largestComponentId = 0;
+        let largestSize = 0;
+        let componentId = 1;
+
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = y * width + x;
+            if (mask[idx] !== 0 && visited[idx] === 0) {
+              const size = floodFill(mask, width, height, x, y, visited, componentId);
+              if (size > largestSize) {
+                largestSize = size;
+                largestComponentId = componentId;
+              }
+              componentId++;
+            }
+          }
+        }
+
+        return { visited, largestComponentId };
+      }
+
+      // Fast box blur using separable passes - O(n) complexity regardless of radius
+      function boxBlur(data, width, height, radius) {
+        if (radius === 0) return data;
+
+        const output = new Float32Array(data.length);
+        const temp = new Float32Array(data.length);
+
+        // Horizontal pass
+        for (let y = 0; y < height; y++) {
+          let sum = 0;
+          let count = 0;
+
+          // Initialize window
+          for (let x = -radius; x <= radius; x++) {
+            if (x >= 0 && x < width) {
+              sum += data[y * width + x];
+              count++;
+            }
+          }
+          temp[y * width] = sum / count;
+
+          // Slide window
+          for (let x = 1; x < width; x++) {
+            const leftX = x - radius - 1;
+            const rightX = x + radius;
+
+            if (leftX >= 0) {
+              sum -= data[y * width + leftX];
+              count--;
+            }
+            if (rightX < width) {
+              sum += data[y * width + rightX];
+              count++;
+            }
+
+            temp[y * width + x] = sum / count;
+          }
+        }
+
+        // Vertical pass
+        for (let x = 0; x < width; x++) {
+          let sum = 0;
+          let count = 0;
+
+          // Initialize window
+          for (let y = -radius; y <= radius; y++) {
+            if (y >= 0 && y < height) {
+              sum += temp[y * width + x];
+              count++;
+            }
+          }
+          output[x] = sum / count;
+
+          // Slide window
+          for (let y = 1; y < height; y++) {
+            const topY = y - radius - 1;
+            const bottomY = y + radius;
+
+            if (topY >= 0) {
+              sum -= temp[topY * width + x];
+              count--;
+            }
+            if (bottomY < height) {
+              sum += temp[bottomY * width + x];
+              count++;
+            }
+
+            output[y * width + x] = sum / count;
+          }
+        }
+
+        return output;
+      }
+
+      // Apply multiple box blur passes to approximate Gaussian blur
+      function fastGaussianBlur(data, width, height, radius) {
+        if (radius === 0) return new Uint8Array(data);
+
+        // Convert to float for processing
+        const floatData = new Float32Array(data);
+
+        // Apply 3 box blur passes to approximate Gaussian
+        // This is based on the fact that multiple box blurs converge to Gaussian
+        let result = floatData;
+        const passes = 3;
+        for (let i = 0; i < passes; i++) {
+          result = boxBlur(result, width, height, radius);
+        }
+
+        // Convert back to Uint8Array
+        const output = new Uint8Array(result.length);
+        for (let i = 0; i < result.length; i++) {
+          output[i] = Math.round(result[i]);
+        }
+
+        return output;
+      }
+
+      let lastWebcamTime = -1;
+      async function predictWebcam() {
+        if (video.currentTime === lastWebcamTime) {
+          if (webcamRunning) window.requestAnimationFrame(predictWebcam);
+          return;
+        }
+        lastWebcamTime = video.currentTime;
+
+        if (!imageSegmenter) return;
+
+        if (runningMode === "IMAGE") {
+          runningMode = "VIDEO";
+          await imageSegmenter.setOptions({ runningMode });
+        }
+
+        const startTimeMs = performance.now();
+        imageSegmenter.segmentForVideo(video, startTimeMs, callbackForVideo);
+      }
+
+      function callbackForVideo(result) {
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+
+        // Update canvas size to match video
+        if (canvasElement.width !== width || canvasElement.height !== height) {
+          canvasElement.width = width;
+          canvasElement.height = height;
+        }
+
+        const mask = result.categoryMask.getAsFloat32Array();
+
+        // Convert to binary mask
+        const binaryMask = new Uint8Array(mask.length);
+        for (let i = 0; i < mask.length; i++) {
+          binaryMask[i] = Math.round(mask[i] * 255) === 0 ? 0 : 1;
+        }
+
+        // Find largest connected component
+        const { visited, largestComponentId } = findLargestComponent(binaryMask, width, height);
+
+        // Create mask with only largest component
+        const filteredMask = new Uint8Array(mask.length);
+        for (let i = 0; i < visited.length; i++) {
+          filteredMask[i] = visited[i] === largestComponentId ? 255 : 0;
+        }
+
+        // Apply fast Gaussian blur for smooth edges
+        const smoothedMask = fastGaussianBlur(filteredMask, width, height, blurRadius);
+
+        // Create output image
+        const imageData = canvasCtx.createImageData(width, height);
+
+        for (let i = 0; i < smoothedMask.length; i++) {
+          const j = i * 4;
+          const maskVal = smoothedMask[i];
+
+          // Interpolate between white (background) and black (object)
+          const color = 255 - maskVal;
+          imageData.data[j] = color; // R
+          imageData.data[j + 1] = color; // G
+          imageData.data[j + 2] = color; // B
+          imageData.data[j + 3] = 255; // A
+        }
+
+        canvasCtx.putImageData(imageData, 0, 0);
+
+        if (webcamRunning) window.requestAnimationFrame(predictWebcam);
+      }
+
+      async function enableCam() {
+        if (!imageSegmenter) return;
+
+        webcamRunning = true;
+
+        // Hide intro screen and show canvas + controls
+        introScreen.classList.add("hidden");
+        canvasElement.classList.add("active");
+        controls.classList.add("active");
+
+        const constraints = { video: true };
+        video.srcObject = await navigator.mediaDevices.getUserMedia(constraints);
+        video.addEventListener("loadeddata", predictWebcam);
+      }
+
+      function disableCam() {
+        webcamRunning = false;
+
+        // Stop video stream
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach((track) => track.stop());
+          video.srcObject = null;
+        }
+
+        // Show intro screen and hide canvas + controls
+        introScreen.classList.remove("hidden");
+        canvasElement.classList.remove("active");
+        controls.classList.remove("active");
+      }
+
+      if (hasGetUserMedia()) {
+        enableWebcamButton.addEventListener("click", enableCam);
+        disableButton.addEventListener("click", disableCam);
+      } else {
+        console.warn("getUserMedia() is not supported by your browser");
+      }
+    </script>
+  </body>
+</html>
