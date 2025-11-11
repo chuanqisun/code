@@ -39,6 +39,7 @@
 - [Wiki search](./wiki-search/)
 - [Perlin noise](./perlin-noise/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
+- [Shadowcast](./shadowcast/)
 - [Spaceship](./spaceship/)
 - [Voxel intersection](./voxel-intersection/)
 
