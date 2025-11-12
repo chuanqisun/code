@@ -25,6 +25,7 @@
 - [Assembly theory](./assembly-theory/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
+- [Device Orientation API](./device-orientation-api/)
 - [Dialogica Times](./design-fiction/dialogica-times.html)
 - [Dot grid field](./dot-grid-field/)
 - [Drag to select](./drag-to-select/)
