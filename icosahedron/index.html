@@ -11,6 +11,8 @@
           padding: 20px;
           border-radius: 10px;
           color: white;
+          max-height: 90vh;
+          overflow-y: auto;
       }
       .slider-container {
           margin: 10px 0;
@@ -23,6 +25,10 @@
           display: inline-block;
           width: 80px;
           text-align: right;
+      }
+      input[type="range"] {
+          width: 200px;
+          vertical-align: middle;
       }
       #face-number {
           font-size: 48px;
@@ -41,34 +47,79 @@
           color: white;
           font-size: 14px;
       }
+      h3 {
+          margin-top: 0;
+          margin-bottom: 15px;
+          border-bottom: 2px solid #00ff00;
+          padding-bottom: 5px;
+      }
+      .section {
+          margin-bottom: 20px;
+      }
+      button {
+          background: #00ff00;
+          color: black;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 5px;
+          cursor: pointer;
+          font-weight: bold;
+          margin-top: 10px;
+      }
+      button:hover {
+          background: #00cc00;
+      }
     </style>
   </head>
   <body>
     <div id="controls">
-      <h3>Face Normal Angles</h3>
-      <div class="slider-container">
-        <label>Total Angle:</label>
-        <span class="value" id="angle-total">0.0°</span>
+      <div class="section">
+        <h3>Ground Calibration</h3>
+        <div class="slider-container">
+          <label>Ground X:</label>
+          <input type="range" id="ground-x" min="-100" max="100" value="0" step="1" />
+          <span class="value" id="ground-x-val">0.00</span>
+        </div>
+        <div class="slider-container">
+          <label>Ground Y:</label>
+          <input type="range" id="ground-y" min="-100" max="100" value="100" step="1" />
+          <span class="value" id="ground-y-val">1.00</span>
+        </div>
+        <div class="slider-container">
+          <label>Ground Z:</label>
+          <input type="range" id="ground-z" min="-100" max="100" value="0" step="1" />
+          <span class="value" id="ground-z-val">0.00</span>
+        </div>
+        <button id="reset-ground">Reset Ground</button>
       </div>
-      <div class="slider-container">
-        <label>Rx (Pitch):</label>
-        <span class="value" id="angle-x">0.0°</span>
+
+      <div class="section">
+        <h3>Face Normal Angles</h3>
+        <div class="slider-container">
+          <label>Total Angle:</label>
+          <span class="value" id="angle-total">0.0°</span>
+        </div>
+        <div class="slider-container">
+          <label>Rx (Pitch):</label>
+          <span class="value" id="angle-x">0.0°</span>
+        </div>
+        <div class="slider-container">
+          <label>Ry (Yaw):</label>
+          <span class="value" id="angle-y">0.0°</span>
+        </div>
+        <div class="slider-container">
+          <label>Rz (Roll):</label>
+          <span class="value" id="angle-z">0.0°</span>
+        </div>
+        <div id="face-number">Face: 1</div>
       </div>
-      <div class="slider-container">
-        <label>Ry (Yaw):</label>
-        <span class="value" id="angle-y">0.0°</span>
-      </div>
-      <div class="slider-container">
-        <label>Rz (Roll):</label>
-        <span class="value" id="angle-z">0.0°</span>
-      </div>
-      <div id="face-number">Face: 1</div>
     </div>
 
     <div id="info">
       <p>Left Mouse: Rotate | Scroll: Zoom</p>
       <p>Green face is closest to ground normal (blue arrow)</p>
       <p>Red arrow shows original top face normal</p>
+      <p>Adjust ground vector sliders to calibrate</p>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -218,9 +269,12 @@
       const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
       scene.add(ambientLight);
 
-      // Create blue ground normal arrow (fixed, pointing up)
+      // Ground normal vector (adjustable)
+      let groundNormal = new THREE.Vector3(0, 1, 0);
+
+      // Create blue ground normal arrow (adjustable)
       const arrowLength = 1.5;
-      const blueArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0), arrowLength, 0x0000ff, 0.3, 0.2);
+      const blueArrow = new THREE.ArrowHelper(groundNormal.clone().normalize(), new THREE.Vector3(0, 0, 0), arrowLength, 0x0000ff, 0.3, 0.2);
       scene.add(blueArrow);
 
       // Create red arrow (shows original top face normal, rotates with solid)
@@ -280,6 +334,51 @@
         camera.position.z = Math.max(1.5, Math.min(10, camera.position.z));
       });
 
+      // Ground vector sliders
+      const groundXSlider = document.getElementById("ground-x");
+      const groundYSlider = document.getElementById("ground-y");
+      const groundZSlider = document.getElementById("ground-z");
+      const groundXVal = document.getElementById("ground-x-val");
+      const groundYVal = document.getElementById("ground-y-val");
+      const groundZVal = document.getElementById("ground-z-val");
+
+      function updateGroundVector() {
+        const x = parseFloat(groundXSlider.value) / 100;
+        const y = parseFloat(groundYSlider.value) / 100;
+        const z = parseFloat(groundZSlider.value) / 100;
+
+        groundNormal.set(x, y, z);
+
+        // Normalize if not zero vector
+        if (groundNormal.length() > 0.001) {
+          groundNormal.normalize();
+        } else {
+          groundNormal.set(0, 1, 0); // Default to up if zero
+        }
+
+        // Update display values
+        groundXVal.textContent = groundNormal.x.toFixed(2);
+        groundYVal.textContent = groundNormal.y.toFixed(2);
+        groundZVal.textContent = groundNormal.z.toFixed(2);
+
+        // Update blue arrow
+        blueArrow.setDirection(groundNormal);
+
+        updateDisplay();
+      }
+
+      groundXSlider.addEventListener("input", updateGroundVector);
+      groundYSlider.addEventListener("input", updateGroundVector);
+      groundZSlider.addEventListener("input", updateGroundVector);
+
+      // Reset ground button
+      document.getElementById("reset-ground").addEventListener("click", () => {
+        groundXSlider.value = 0;
+        groundYSlider.value = 100;
+        groundZSlider.value = 0;
+        updateGroundVector();
+      });
+
       // Function to decompose rotation into Euler angles relative to a reference vector
       function getEulerAnglesFromVectors(currentVec, referenceVec) {
         const current = currentVec.clone().normalize();
@@ -296,9 +395,6 @@
       }
 
       function updateDisplay() {
-        // Ground normal (always pointing up)
-        const groundNormal = new THREE.Vector3(0, 1, 0);
-
         // Get current orientation of the original top face normal
         const currentTopNormal = originalTopNormal.clone();
         currentTopNormal.applyQuaternion(rotationQuaternion);
@@ -307,7 +403,7 @@
         // Update red arrow to show current orientation of original top face
         redArrow.setDirection(currentTopNormal);
 
-        // Calculate total angle between red vector and blue vector
+        // Calculate total angle between red vector and blue vector (ground normal)
         const dotProduct = currentTopNormal.dot(groundNormal);
         const totalAngleRad = Math.acos(Math.max(-1, Math.min(1, dotProduct)));
         const totalAngleDeg = (totalAngleRad * 180) / Math.PI;
@@ -374,7 +470,7 @@
       }
 
       // Initial display
-      updateDisplay();
+      updateGroundVector();
       animate();
 
       // Handle window resize
