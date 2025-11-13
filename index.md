@@ -33,6 +33,7 @@
 - [Head tracking](./head-tracking/)
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [HumanGPT](https://chuanqisun.github.io/human-gpt/)
+- [Icosahedron](./icosahedron/)
 - [InkForm](https://chuanqisun.github.io/ink-form/107-pipeline.html)
 - [Knowledge Chronicle](./design-fiction/knowledge-chronicle.html)
 - [Media Lab Game of Life](./media-lab-game-of-life)
