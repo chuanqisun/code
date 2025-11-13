@@ -76,19 +76,18 @@
       <div class="section">
         <h3>Ground Calibration</h3>
         <div class="slider-container">
-          <label>Ground X:</label>
-          <input type="range" id="ground-x" min="-100" max="100" value="0" step="1" />
-          <span class="value" id="ground-x-val">0.00</span>
+          <label>Azimuth (0-360°):</label>
+          <input type="range" id="ground-azimuth" min="0" max="360" value="0" step="1" />
+          <span class="value" id="ground-azimuth-val">0°</span>
         </div>
         <div class="slider-container">
-          <label>Ground Y:</label>
-          <input type="range" id="ground-y" min="-100" max="100" value="100" step="1" />
-          <span class="value" id="ground-y-val">1.00</span>
+          <label>Elevation (-90 to 90°):</label>
+          <input type="range" id="ground-elevation" min="-90" max="90" value="90" step="1" />
+          <span class="value" id="ground-elevation-val">90°</span>
         </div>
         <div class="slider-container">
-          <label>Ground Z:</label>
-          <input type="range" id="ground-z" min="-100" max="100" value="0" step="1" />
-          <span class="value" id="ground-z-val">0.00</span>
+          <label>Normal Vector:</label>
+          <span class="value" id="ground-normal-display">X: 0.00 Y: 1.00 Z: 0.00</span>
         </div>
         <button id="reset-ground">Reset Ground</button>
       </div>
@@ -119,7 +118,7 @@
       <p>Left Mouse: Rotate | Scroll: Zoom</p>
       <p>Green face is closest to ground normal (blue arrow)</p>
       <p>Red arrow shows original top face normal</p>
-      <p>Adjust ground vector sliders to calibrate</p>
+      <p>Adjust ground sliders to calibrate (360° coverage)</p>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -291,6 +290,11 @@
       const rotationQuaternion = new THREE.Quaternion();
 
       document.addEventListener("mousedown", (e) => {
+        // Check if click is on controls panel
+        const controlsPanel = document.getElementById("controls");
+        if (controlsPanel.contains(e.target)) {
+          return; // Don't start rotation if clicking on controls
+        }
         isDragging = true;
         previousMousePosition = { x: e.clientX, y: e.clientY };
       });
@@ -329,37 +333,40 @@
 
       // Zoom with mouse wheel
       document.addEventListener("wheel", (e) => {
+        // Check if wheel is over controls
+        const controlsPanel = document.getElementById("controls");
+        if (controlsPanel.contains(e.target)) {
+          return; // Allow normal scrolling in controls
+        }
         e.preventDefault();
         camera.position.z += e.deltaY * 0.01;
         camera.position.z = Math.max(1.5, Math.min(10, camera.position.z));
       });
 
-      // Ground vector sliders
-      const groundXSlider = document.getElementById("ground-x");
-      const groundYSlider = document.getElementById("ground-y");
-      const groundZSlider = document.getElementById("ground-z");
-      const groundXVal = document.getElementById("ground-x-val");
-      const groundYVal = document.getElementById("ground-y-val");
-      const groundZVal = document.getElementById("ground-z-val");
+      // Ground vector sliders using spherical coordinates
+      const groundAzimuthSlider = document.getElementById("ground-azimuth");
+      const groundElevationSlider = document.getElementById("ground-elevation");
+      const groundAzimuthVal = document.getElementById("ground-azimuth-val");
+      const groundElevationVal = document.getElementById("ground-elevation-val");
+      const groundNormalDisplay = document.getElementById("ground-normal-display");
 
       function updateGroundVector() {
-        const x = parseFloat(groundXSlider.value) / 100;
-        const y = parseFloat(groundYSlider.value) / 100;
-        const z = parseFloat(groundZSlider.value) / 100;
+        const azimuth = (parseFloat(groundAzimuthSlider.value) * Math.PI) / 180;
+        const elevation = (parseFloat(groundElevationSlider.value) * Math.PI) / 180;
 
-        groundNormal.set(x, y, z);
+        // Convert spherical coordinates to Cartesian
+        // azimuth: 0° = +X, 90° = +Z, 180° = -X, 270° = -Z
+        // elevation: 90° = +Y (up), 0° = horizontal, -90° = -Y (down)
+        const cosElev = Math.cos(elevation);
 
-        // Normalize if not zero vector
-        if (groundNormal.length() > 0.001) {
-          groundNormal.normalize();
-        } else {
-          groundNormal.set(0, 1, 0); // Default to up if zero
-        }
+        groundNormal.set(Math.cos(azimuth) * cosElev, Math.sin(elevation), Math.sin(azimuth) * cosElev);
+
+        groundNormal.normalize();
 
         // Update display values
-        groundXVal.textContent = groundNormal.x.toFixed(2);
-        groundYVal.textContent = groundNormal.y.toFixed(2);
-        groundZVal.textContent = groundNormal.z.toFixed(2);
+        groundAzimuthVal.textContent = groundAzimuthSlider.value + "°";
+        groundElevationVal.textContent = groundElevationSlider.value + "°";
+        groundNormalDisplay.textContent = `X: ${groundNormal.x.toFixed(2)} Y: ${groundNormal.y.toFixed(2)} Z: ${groundNormal.z.toFixed(2)}`;
 
         // Update blue arrow
         blueArrow.setDirection(groundNormal);
@@ -367,15 +374,22 @@
         updateDisplay();
       }
 
-      groundXSlider.addEventListener("input", updateGroundVector);
-      groundYSlider.addEventListener("input", updateGroundVector);
-      groundZSlider.addEventListener("input", updateGroundVector);
+      // Prevent event propagation for sliders
+      groundAzimuthSlider.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+      });
+      groundElevationSlider.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+      });
+
+      groundAzimuthSlider.addEventListener("input", updateGroundVector);
+      groundElevationSlider.addEventListener("input", updateGroundVector);
 
       // Reset ground button
-      document.getElementById("reset-ground").addEventListener("click", () => {
-        groundXSlider.value = 0;
-        groundYSlider.value = 100;
-        groundZSlider.value = 0;
+      document.getElementById("reset-ground").addEventListener("click", (e) => {
+        e.stopPropagation();
+        groundAzimuthSlider.value = 0;
+        groundElevationSlider.value = 90;
         updateGroundVector();
       });
 
