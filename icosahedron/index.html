@@ -24,6 +24,13 @@
           width: 80px;
           text-align: right;
       }
+      #face-number {
+          font-size: 48px;
+          font-weight: bold;
+          color: #00ff00;
+          margin-top: 15px;
+          text-align: center;
+      }
       #info {
           position: absolute;
           bottom: 20px;
@@ -55,6 +62,7 @@
         <label>Rz (Roll):</label>
         <span class="value" id="angle-z">0.0°</span>
       </div>
+      <div id="face-number">Face: 1</div>
     </div>
 
     <div id="info">
@@ -136,6 +144,72 @@
       const wireframe = new THREE.Mesh(wireframeGeometry, wireframeMaterial);
       scene.add(wireframe);
 
+      // Create a group to hold all text meshes
+      const textGroup = new THREE.Group();
+      scene.add(textGroup);
+
+      // Function to create text canvas texture
+      function createTextTexture(text) {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+        canvas.width = 256;
+        canvas.height = 256;
+
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw text
+        context.fillStyle = "rgba(0, 0, 0, 0.9)";
+        context.font = "Bold 120px Arial";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(text, 128, 128);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        return texture;
+      }
+
+      // Function to create a plane with text on a face
+      function createTextPlane(text, v1, v2, v3, normal) {
+        // Calculate center of triangle
+        const center = new THREE.Vector3().add(v1).add(v2).add(v3).divideScalar(3);
+
+        // Create a small plane
+        const planeGeometry = new THREE.PlaneGeometry(0.4, 0.4);
+        const texture = createTextTexture(text);
+        const planeMaterial = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          side: THREE.DoubleSide,
+          depthTest: true,
+          depthWrite: false,
+        });
+
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+
+        // Position the plane at the face center, slightly above the surface
+        plane.position.copy(center);
+        plane.position.add(normal.clone().multiplyScalar(0.02));
+
+        // Orient the plane to face outward along the normal
+        plane.lookAt(center.clone().add(normal));
+
+        return plane;
+      }
+
+      // Create text planes for each face
+      const textPlanes = [];
+      for (let i = 0; i < faceCount; i++) {
+        const i9 = i * 9;
+        const v1 = new THREE.Vector3(positions[i9], positions[i9 + 1], positions[i9 + 2]);
+        const v2 = new THREE.Vector3(positions[i9 + 3], positions[i9 + 4], positions[i9 + 5]);
+        const v3 = new THREE.Vector3(positions[i9 + 6], positions[i9 + 7], positions[i9 + 8]);
+
+        const textPlane = createTextPlane((i + 1).toString(), v1, v2, v3, faceNormals[i]);
+        textGroup.add(textPlane);
+        textPlanes.push(textPlane);
+      }
+
       // Add lighting
       const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
       directionalLight.position.set(5, 5, 5);
@@ -175,20 +249,19 @@
           const rotationSpeed = 0.005;
 
           // Create rotation quaternions for each axis
-          // Rotate around camera's up axis (Y) for horizontal mouse movement
           const deltaRotationQuaternionY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * rotationSpeed);
 
-          // Rotate around camera's right axis (X) for vertical mouse movement
           const deltaRotationQuaternionX = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), deltaY * rotationSpeed);
 
-          // Combine rotations: apply Y rotation first, then X rotation
+          // Combine rotations
           rotationQuaternion.multiplyQuaternions(deltaRotationQuaternionY, rotationQuaternion);
           rotationQuaternion.multiplyQuaternions(deltaRotationQuaternionX, rotationQuaternion);
           rotationQuaternion.normalize();
 
-          // Apply quaternion to both meshes
+          // Apply quaternion to meshes and text group
           icosahedron.quaternion.copy(rotationQuaternion);
           wireframe.quaternion.copy(rotationQuaternion);
+          textGroup.quaternion.copy(rotationQuaternion);
 
           previousMousePosition = { x: e.clientX, y: e.clientY };
 
@@ -209,14 +282,10 @@
 
       // Function to decompose rotation into Euler angles relative to a reference vector
       function getEulerAnglesFromVectors(currentVec, referenceVec) {
-        // Normalize vectors
         const current = currentVec.clone().normalize();
         const reference = referenceVec.clone().normalize();
 
-        // Calculate the rotation quaternion from reference to current
         const quaternion = new THREE.Quaternion().setFromUnitVectors(reference, current);
-
-        // Convert to Euler angles (XYZ order)
         const euler = new THREE.Euler().setFromQuaternion(quaternion, "XYZ");
 
         return {
@@ -268,6 +337,9 @@
             closestFaceIndex = i;
           }
         }
+
+        // Update face number display
+        document.getElementById("face-number").textContent = "Face: " + (closestFaceIndex + 1);
 
         // Update colors - highlight closest face in green
         const colorAttr = geometry.attributes.color;
