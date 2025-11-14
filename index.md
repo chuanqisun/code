@@ -36,6 +36,7 @@
 - [Icosahedron](./icosahedron/)
 - [InkForm](https://chuanqisun.github.io/ink-form/107-pipeline.html)
 - [Knowledge Chronicle](./design-fiction/knowledge-chronicle.html)
+- [Life clock](./life-clock/)
 - [Media Lab Game of Life](./media-lab-game-of-life)
 - [Web Speech API](./web-speech-api/)
 - [Wiki search](./wiki-search/)
