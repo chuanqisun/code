@@ -5,6 +5,7 @@
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [CSV Visualizer](./csv-visualizer/)
 - [Emoji → Favicon](./emoji-to-favicon/)
+- [Euler to Quaternion](./euler-to-quaternion/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)

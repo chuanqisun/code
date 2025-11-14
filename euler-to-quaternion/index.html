@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Euler to Quaternion Converter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .label-text {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .axis-badge {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .x-axis { background: #ef4444; }
+        .y-axis { background: #10b981; }
+        .z-axis { background: #3b82f6; }
+
+        .value-display {
+            background: #f3f4f6;
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #e5e7eb;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #764ba2;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            background: #764ba2;
+        }
+
+        .output-section {
+            margin-top: 35px;
+            padding: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            color: white;
+        }
+
+        .output-section h2 {
+            margin-bottom: 15px;
+            font-size: 20px;
+            text-align: center;
+        }
+
+        .quaternion-output {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .quat-value {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .quat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .quat-number {
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .reset-btn {
+            width: 100%;
+            margin-top: 20px;
+            padding: 12px;
+            background: white;
+            color: #667eea;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Euler to Quaternion</h1>
+        
+        <div class="control-group">
+            <label>
+                <span class="label-text">
+                    <span class="axis-badge x-axis">X</span>
+                    <span>Rotation</span>
+                </span>
+                <span class="value-display" id="x-value">0°</span>
+            </label>
+            <input type="range" id="x-slider" min="-180" max="180" value="0" step="1">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="label-text">
+                    <span class="axis-badge y-axis">Y</span>
+                    <span>Rotation</span>
+                </span>
+                <span class="value-display" id="y-value">0°</span>
+            </label>
+            <input type="range" id="y-slider" min="-180" max="180" value="0" step="1">
+        </div>
+
+        <div class="control-group">
+            <label>
+                <span class="label-text">
+                    <span class="axis-badge z-axis">Z</span>
+                    <span>Rotation</span>
+                </span>
+                <span class="value-display" id="z-value">0°</span>
+            </label>
+            <input type="range" id="z-slider" min="-180" max="180" value="0" step="1">
+        </div>
+
+        <div class="output-section">
+            <h2>Quaternion Output</h2>
+            <div class="quaternion-output">
+                <div class="quat-value">
+                    <div class="quat-label">W</div>
+                    <div class="quat-number" id="quat-w">1.0000</div>
+                </div>
+                <div class="quat-value">
+                    <div class="quat-label">X</div>
+                    <div class="quat-number" id="quat-x">0.0000</div>
+                </div>
+                <div class="quat-value">
+                    <div class="quat-label">Y</div>
+                    <div class="quat-number" id="quat-y">0.0000</div>
+                </div>
+                <div class="quat-value">
+                    <div class="quat-label">Z</div>
+                    <div class="quat-number" id="quat-z">0.0000</div>
+                </div>
+            </div>
+            <button class="reset-btn" onclick="resetRotations()">Reset All</button>
+        </div>
+    </div>
+
+    <script>
+        // Get all elements
+        const xSlider = document.getElementById('x-slider');
+        const ySlider = document.getElementById('y-slider');
+        const zSlider = document.getElementById('z-slider');
+        
+        const xValue = document.getElementById('x-value');
+        const yValue = document.getElementById('y-value');
+        const zValue = document.getElementById('z-value');
+        
+        const quatW = document.getElementById('quat-w');
+        const quatX = document.getElementById('quat-x');
+        const quatY = document.getElementById('quat-y');
+        const quatZ = document.getElementById('quat-z');
+
+        // Convert degrees to radians
+        function toRadians(degrees) {
+            return degrees * Math.PI / 180;
+        }
+
+        // Convert Euler angles (in degrees) to Quaternion
+        function eulerToQuaternion(x, y, z) {
+            // Convert to radians
+            const xRad = toRadians(x);
+            const yRad = toRadians(y);
+            const zRad = toRadians(z);
+
+            // Calculate half angles
+            const cx = Math.cos(xRad / 2);
+            const sx = Math.sin(xRad / 2);
+            const cy = Math.cos(yRad / 2);
+            const sy = Math.sin(yRad / 2);
+            const cz = Math.cos(zRad / 2);
+            const sz = Math.sin(zRad / 2);
+
+            // Calculate quaternion components (ZYX order)
+            const w = cx * cy * cz + sx * sy * sz;
+            const qx = sx * cy * cz - cx * sy * sz;
+            const qy = cx * sy * cz + sx * cy * sz;
+            const qz = cx * cy * sz - sx * sy * cz;
+
+            return { w, x: qx, y: qy, z: qz };
+        }
+
+        // Update quaternion display
+        function updateQuaternion() {
+            const x = parseFloat(xSlider.value);
+            const y = parseFloat(ySlider.value);
+            const z = parseFloat(zSlider.value);
+
+            // Update degree displays
+            xValue.textContent = `${x}°`;
+            yValue.textContent = `${y}°`;
+            zValue.textContent = `${z}°`;
+
+            // Calculate quaternion
+            const quat = eulerToQuaternion(x, y, z);
+
+            // Update quaternion displays
+            quatW.textContent = quat.w.toFixed(4);
+            quatX.textContent = quat.x.toFixed(4);
+            quatY.textContent = quat.y.toFixed(4);
+            quatZ.textContent = quat.z.toFixed(4);
+        }
+
+        // Reset all rotations
+        function resetRotations() {
+            xSlider.value = 0;
+            ySlider.value = 0;
+            zSlider.value = 0;
+            updateQuaternion();
+        }
+
+        // Add event listeners
+        xSlider.addEventListener('input', updateQuaternion);
+        ySlider.addEventListener('input', updateQuaternion);
+        zSlider.addEventListener('input', updateQuaternion);
+
+        // Initial update
+        updateQuaternion();
+    </script>
+</body>
+</html>
