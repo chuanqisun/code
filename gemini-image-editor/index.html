@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Multi-Image Manipulator (esm.sh)</title>
+    <style>
+      /* CSS Variables for easy theming/refactoring */
+      :root {
+          --color-text-primary: #333;
+          --color-text-secondary: #555;
+          --color-border-light: #eee;
+          --color-border-medium: #ccc;
+          --color-border-dark: #aaa;
+          --color-accent: blue;
+          --color-background-hover: #f0f8ff;
+          --color-overlay: rgba(0, 0, 0, 0.5);
+          --color-white: white;
+      }
+
+      /* Minimal CSS to ensure readability and structure */
+      body {
+          font-family: sans-serif;
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 20px;
+          color: var(--color-text-primary);
+      }
+      header h1 {
+          border-bottom: 1px solid var(--color-border-medium);
+          padding-bottom: 10px;
+      }
+      .input-section, .output-section {
+          margin-bottom: 20px;
+          padding: 15px;
+          border: 1px solid var(--color-border-light);
+          border-radius: 4px;
+      }
+      .image-drop-area {
+          border: 2px dashed var(--color-border-dark);
+          padding: 20px;
+          text-align: center;
+          min-height: 100px;
+          margin-top: 10px;
+      }
+      .image-drop-area.drag-over {
+          border-color: var(--color-accent);
+          background-color: var(--color-background-hover);
+      }
+      #preview-container {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 10px;
+          justify-content: center; /* Keep previews centered within the drop area */
+      }
+
+      /* Styles for the deletable image preview */
+      .preview-wrapper {
+          position: relative;
+          width: 100px;
+          height: 100px;
+          cursor: pointer;
+          border: 1px solid var(--color-border-medium);
+          overflow: hidden;
+      }
+      .preview-image {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+      }
+
+      /* Delete overlay */
+      .delete-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: var(--color-overlay);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0;
+          transition: opacity 0.2s;
+      }
+      .preview-wrapper:hover .delete-overlay,
+      .preview-wrapper:focus .delete-overlay {
+          opacity: 1;
+      }
+      .delete-overlay span {
+          font-size: 2em;
+          color: var(--color-white);
+          pointer-events: none;
+      }
+
+      #output-image {
+          max-width: 100%;
+          height: auto;
+          border: 1px solid var(--color-border-medium);
+          margin-top: 10px;
+      }
+      textarea, input[type="text"], input[type="password"] {
+          width: 100%;
+          padding: 8px;
+          box-sizing: border-box;
+          margin-top: 5px;
+          margin-bottom: 10px;
+      }
+      button {
+          padding: 10px 15px;
+          cursor: pointer;
+          margin-right: 10px;
+      }
+
+      /* Alignment fix: Ensure buttons are left-aligned */
+      .action-buttons {
+          margin-top: 10px;
+          text-align: left; /* Left align the buttons */
+      }
+
+      /* Ensure the main generate button is also left-aligned */
+      #generate-button {
+          margin-left: 0;
+          margin-right: 0;
+      }
+
+      .loading {
+          display: none;
+          margin-top: 10px;
+          color: var(--color-text-secondary);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Gemini Multi-Image Manipulator</h1>
+      <p>Upload multiple images and use a prompt to blend, compare, or manipulate them.</p>
+    </header>
+
+    <div class="input-section">
+      <h2>1. API Key</h2>
+      <label for="api-key">Gemini API Key:</label>
+      <input type="password" id="api-key" placeholder="Enter your Gemini API Key here" />
+    </div>
+
+    <div class="input-section">
+      <h2>2. Image Input (Multiple Supported)</h2>
+      <div id="image-drop-area" class="image-drop-area">
+        <p>Drag & Drop images here, or Paste (Ctrl+V / Cmd+V).</p>
+        <input type="file" id="file-input" accept="image/*" multiple style="display: none;" />
+        <div id="preview-container">
+          <!-- Image previews will be inserted here -->
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button id="add-button">Add Image</button>
+        <button id="clear-button">Clear All Images</button>
+      </div>
+
+      <small id="image-status">0 images loaded. Click an image to remove it.</small>
+    </div>
+
+    <div class="input-section">
+      <h2>3. Prompt</h2>
+      <label for="prompt-input">Manipulation Prompt:</label>
+      <textarea id="prompt-input" rows="4" placeholder="e.g., 'Blend the two images into a single surreal landscape.'"></textarea>
+      <button id="generate-button">Generate Image</button>
+      <div id="loading" class="loading">Processing... Please wait.</div>
+    </div>
+
+    <div class="output-section">
+      <h2>4. Output</h2>
+      <p id="output-text"></p>
+      <img id="output-image" style="display: none;" alt="Generated Image" />
+    </div>
+
+    <script type="module">
+      import { GoogleGenAI } from "https://esm.sh/@google/genai";
+      import { get, set, createStore } from "https://esm.sh/idb-keyval";
+
+      class GeminiImageManipulator {
+        // --- 1. CONSTANTS ---
+        static MODEL = "gemini-2.5-flash-image-preview";
+        static DRAG_EVENTS = ["dragenter", "dragover", "dragleave", "drop"];
+        static DB_NAME = "gemini-image-sandbox";
+        static STORE_NAME = "keyval";
+
+        // --- 2. MAIN CLASS & CONSTRUCTOR ---
+
+        constructor() {
+          // State
+          this.loadedImages = []; // Stores {data: Blob, mimeType, dataUrl}
+
+          // Persistence Store
+          this.store = createStore(GeminiImageManipulator.DB_NAME, GeminiImageManipulator.STORE_NAME);
+
+          // DOM Elements
+          this.elements = {
+            apiKeyInput: document.getElementById("api-key"),
+            promptInput: document.getElementById("prompt-input"),
+            generateButton: document.getElementById("generate-button"),
+            imageDropArea: document.getElementById("image-drop-area"),
+            fileInput: document.getElementById("file-input"),
+            previewContainer: document.getElementById("preview-container"),
+            imageStatus: document.getElementById("image-status"),
+            outputImage: document.getElementById("output-image"),
+            outputText: document.getElementById("output-text"),
+            loadingIndicator: document.getElementById("loading"),
+            addButton: document.getElementById("add-button"),
+            clearButton: document.getElementById("clear-button"),
+          };
+
+          this.loadState().then(() => {
+            this.bindEvents();
+            this.updateImagePreviews();
+          });
+        }
+
+        // --- Persistence Methods ---
+
+        async loadState() {
+          try {
+            const { apiKeyInput, promptInput, outputImage } = this.elements;
+
+            // Load API Key
+            const apiKey = await get("apiKey", this.store);
+            if (apiKey) apiKeyInput.value = apiKey;
+
+            // Load Prompt
+            const prompt = await get("prompt", this.store);
+            if (prompt) promptInput.value = prompt;
+
+            // Load Images
+            const images = await get("loadedImages", this.store);
+            if (images && Array.isArray(images)) {
+              // Convert Blobs back to data URLs for display
+              this.loadedImages = await Promise.all(
+                images.map(async (img) => {
+                  const dataUrl = await GeminiImageManipulator.blobToDataUrl(img.data);
+                  return {
+                    data: img.data, // Keep the Blob for persistence/API
+                    mimeType: img.mimeType,
+                    dataUrl: dataUrl,
+                  };
+                })
+              );
+            }
+
+            // Load Output Image
+            const outputDataUrl = await get("outputImage", this.store);
+            if (outputDataUrl) {
+              outputImage.src = outputDataUrl;
+              outputImage.style.display = "block";
+            }
+          } catch (error) {
+            console.error("Error loading state from IndexedDB:", error);
+          }
+        }
+
+        async saveApiKey(key) {
+          await set("apiKey", key, this.store);
+        }
+
+        async savePrompt(prompt) {
+          await set("prompt", prompt, this.store);
+        }
+
+        async saveImages() {
+          // Store only the Blob and mimeType, as dataUrl is redundant and large
+          const serializableImages = this.loadedImages.map((img) => ({
+            data: img.data, // IndexedDB handles Blobs
+            mimeType: img.mimeType,
+          }));
+          await set("loadedImages", serializableImages, this.store);
+        }
+
+        async saveOutput(dataUrl) {
+          await set("outputImage", dataUrl, this.store);
+        }
+
+        // --- Event Binding ---
+
+        bindEvents() {
+          this.elements.generateButton.addEventListener("click", () => this.handleGenerate());
+          this.elements.addButton.addEventListener("click", () => this.elements.fileInput.click());
+          this.elements.clearButton.addEventListener("click", () => this.handleClearImages());
+          this.elements.fileInput.addEventListener("change", (e) => this.handleFileInput(e));
+          document.addEventListener("paste", (e) => this.handlePaste(e));
+          this.setupDragAndDrop();
+
+          // Persistence listeners
+          this.elements.apiKeyInput.addEventListener("input", (e) => this.saveApiKey(e.target.value.trim()));
+          this.elements.promptInput.addEventListener("input", (e) => this.savePrompt(e.target.value.trim()));
+        }
+
+        setupDragAndDrop() {
+          const dropArea = this.elements.imageDropArea;
+
+          GeminiImageManipulator.DRAG_EVENTS.forEach((eventName) => {
+            dropArea.addEventListener(
+              eventName,
+              (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              },
+              false
+            );
+          });
+
+          dropArea.addEventListener("dragenter", () => dropArea.classList.add("drag-over"), false);
+          dropArea.addEventListener("dragover", () => dropArea.classList.add("drag-over"), false);
+          dropArea.addEventListener("dragleave", () => dropArea.classList.remove("drag-over"), false);
+
+          dropArea.addEventListener("drop", (e) => this.handleDrop(e), false);
+        }
+
+        // --- 3. CORE LOGIC METHODS ---
+
+        async handleGenerate() {
+          const { apiKeyInput, promptInput, generateButton, loadingIndicator, outputImage, outputText } = this.elements;
+          const apiKey = apiKeyInput.value.trim();
+          const prompt = promptInput.value.trim();
+
+          if (!apiKey || this.loadedImages.length === 0 || !prompt) {
+            alert("Please ensure API Key, images, and prompt are provided.");
+            return;
+          }
+
+          // UI State: Start Loading
+          outputImage.style.display = "none";
+          outputImage.src = "";
+          outputText.textContent = "";
+          loadingIndicator.style.display = "block";
+          generateButton.disabled = true;
+
+          try {
+            const ai = new GoogleGenAI({ apiKey });
+            await this.generateContent(ai, prompt);
+          } catch (error) {
+            console.error("Gemini API Error:", error);
+            outputText.textContent = `Error: ${error.message || "An unknown error occurred."}`;
+            outputImage.style.display = "none";
+          } finally {
+            // UI State: Stop Loading
+            loadingIndicator.style.display = "none";
+            generateButton.disabled = false;
+          }
+        }
+
+        /**
+         * Calls the Gemini API and handles the streaming response.
+         * @param {GoogleGenAI} ai
+         * @param {string} prompt
+         */
+        async generateContent(ai, prompt) {
+          const { outputImage, outputText } = this.elements;
+
+          // Convert Blobs (stored in state) to base64 strings for the API call
+          const imageParts = await Promise.all(
+            this.loadedImages.map(async (img) => {
+              const base64Data = await GeminiImageManipulator.blobToBase64(img.data);
+              return {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: img.mimeType,
+                },
+              };
+            })
+          );
+
+          const contents = [
+            {
+              role: "user",
+              parts: [...imageParts, { text: prompt }],
+            },
+          ];
+
+          const config = {
+            responseModalities: ["IMAGE"],
+          };
+
+          const response = await ai.models.generateContentStream({
+            model: GeminiImageManipulator.MODEL,
+            config,
+            contents,
+          });
+
+          let generatedImageUrls = [];
+          let textContent = "";
+
+          for await (const chunk of response) {
+            const parts = chunk.candidates?.[0]?.content?.parts || [];
+            for (const part of parts) {
+              if (part.inlineData) {
+                const { mimeType: imgMimeType, data } = part.inlineData;
+                const imageUrl = `data:${imgMimeType};base64,${data}`;
+                generatedImageUrls.push(imageUrl);
+              } else if (part.text) {
+                textContent += part.text;
+              }
+            }
+          }
+
+          // Display results
+          if (generatedImageUrls.length > 0) {
+            const finalImageUrl = generatedImageUrls[0];
+            outputImage.src = finalImageUrl;
+            outputImage.style.display = "block";
+            outputText.textContent = "Image successfully generated.";
+            this.saveOutput(finalImageUrl); // Persist output
+          } else {
+            outputText.textContent = "Generation complete, but no image was returned. Check the text response below.";
+            this.saveOutput(null);
+          }
+
+          if (textContent) {
+            outputText.textContent = `Model Response: ${textContent}`;
+          }
+        }
+
+        /**
+         * Processes an array of files/blobs and adds them to the state.
+         * @param {Array<File | Blob>} files
+         */
+        async processFiles(files) {
+          for (const file of files) {
+            if (file.type.startsWith("image/")) {
+              try {
+                const part = await GeminiImageManipulator.fileToGenerativePart(file);
+                this.loadedImages.push(part);
+              } catch (e) {
+                console.error("Error processing file:", e);
+              }
+            }
+          }
+          this.updateImagePreviews();
+          this.saveImages();
+        }
+
+        // --- 4. UI/DOM MANIPULATION METHODS ---
+
+        handleClearImages() {
+          this.loadedImages = [];
+          this.updateImagePreviews();
+          this.saveImages();
+        }
+
+        async handleFileInput(event) {
+          const files = Array.from(event.target.files);
+          await this.processFiles(files);
+          event.target.value = ""; // Clear input for next selection
+        }
+
+        async handleDrop(e) {
+          this.elements.imageDropArea.classList.remove("drag-over");
+          const files = Array.from(e.dataTransfer.files);
+          await this.processFiles(files);
+        }
+
+        async handlePaste(e) {
+          const items = e.clipboardData.items;
+          const pastedBlobs = [];
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf("image") !== -1) {
+              const blob = items[i].getAsFile();
+              if (blob) {
+                pastedBlobs.push(blob);
+              }
+            }
+          }
+          if (pastedBlobs.length > 0) {
+            await this.processFiles(pastedBlobs);
+            e.preventDefault();
+          }
+        }
+
+        /**
+         * Updates the UI with the loaded images, including delete functionality.
+         */
+        updateImagePreviews() {
+          const { previewContainer, imageStatus } = this.elements;
+          previewContainer.innerHTML = "";
+
+          this.loadedImages.forEach((img, index) => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "preview-wrapper";
+            wrapper.tabIndex = 0;
+
+            const imgElement = document.createElement("img");
+            imgElement.src = img.dataUrl;
+            imgElement.className = "preview-image";
+            imgElement.alt = `Image ${index + 1}`;
+
+            const deleteOverlay = document.createElement("div");
+            deleteOverlay.className = "delete-overlay";
+            deleteOverlay.innerHTML = "<span>🗑️</span>";
+
+            wrapper.appendChild(imgElement);
+            wrapper.appendChild(deleteOverlay);
+
+            // Closure to capture the correct index for deletion
+            wrapper.addEventListener("click", () => {
+              this.loadedImages.splice(index, 1);
+              this.updateImagePreviews();
+              this.saveImages(); // Save state after deletion
+            });
+
+            previewContainer.appendChild(wrapper);
+          });
+          imageStatus.textContent = `${this.loadedImages.length} image(s) loaded. Click an image to remove it.`;
+        }
+
+        // --- 5. UTILITY PURE FUNCTIONS (Static) ---
+
+        /**
+         * Converts a File or Blob object into a structure containing the Blob and data URL.
+         * @param {File | Blob} file
+         * @returns {Promise<{data: Blob, mimeType: string, dataUrl: string}>}
+         */
+        static fileToGenerativePart(file) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = reader.result;
+              resolve({
+                data: file, // Store the Blob for persistence
+                mimeType: file.type,
+                dataUrl: dataUrl,
+              });
+            };
+            reader.onerror = (error) => reject(error);
+            reader.readAsDataURL(file);
+          });
+        }
+
+        /**
+         * Converts a Blob object into a base64 string (for API transmission).
+         * @param {Blob} blob
+         * @returns {Promise<string>} Base64 string without the data URL prefix.
+         */
+        static blobToBase64(blob) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataUrl = reader.result;
+              const base64 = dataUrl.split(",")[1];
+              resolve(base64);
+            };
+            reader.onerror = (error) => reject(error);
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        /**
+         * Converts a Blob object into a data URL (for UI display).
+         * @param {Blob} blob
+         * @returns {Promise<string>} Data URL string.
+         */
+        static blobToDataUrl(blob) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = (error) => reject(error);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+
+      // Initialize the application
+      document.addEventListener("DOMContentLoaded", () => {
+        new GeminiImageManipulator();
+      });
+    </script>
+  </body>
+</html>

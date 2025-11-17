@@ -7,6 +7,7 @@
 - [Emoji → Favicon](./emoji-to-favicon/)
 - [Euler to Quaternion](./euler-to-quaternion/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
+- [Gemini Image Editor](./gemini-image-editor/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview)
