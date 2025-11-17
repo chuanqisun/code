@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -7,140 +7,207 @@
     <style>
       /* CSS Variables for easy theming/refactoring */
       :root {
-          --color-text-primary: #333;
-          --color-text-secondary: #555;
-          --color-border-light: #eee;
-          --color-border-medium: #ccc;
-          --color-border-dark: #aaa;
-          --color-accent: blue;
-          --color-background-hover: #f0f8ff;
-          --color-overlay: rgba(0, 0, 0, 0.5);
-          --color-white: white;
+        --color-text-primary: #333;
+        --color-text-secondary: #555;
+        --color-border-light: #eee;
+        --color-border-medium: #ccc;
+        --color-border-dark: #aaa;
+        --color-accent: blue;
+        --color-background-hover: #f0f8ff;
+        --color-overlay: rgba(0, 0, 0, 0.5);
+        --color-white: white;
+        --color-drag-handle: #999;
+        --color-delete-button: transparent; /* Changed for emoji button */
+        --color-insert-indicator: #28a745;
       }
 
       /* Minimal CSS to ensure readability and structure */
       body {
-          font-family: sans-serif;
-          max-width: 900px;
-          margin: 0 auto;
-          padding: 20px;
-          color: var(--color-text-primary);
+        font-family: sans-serif;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+        color: var(--color-text-primary);
       }
       header h1 {
-          border-bottom: 1px solid var(--color-border-medium);
-          padding-bottom: 10px;
+        border-bottom: 1px solid var(--color-border-medium);
+        padding-bottom: 10px;
       }
-      .input-section, .output-section {
-          margin-bottom: 20px;
-          padding: 15px;
-          border: 1px solid var(--color-border-light);
-          border-radius: 4px;
-      }
-      .image-drop-area {
-          border: 2px dashed var(--color-border-dark);
-          padding: 20px;
-          text-align: center;
-          min-height: 100px;
-          margin-top: 10px;
-      }
-      .image-drop-area.drag-over {
-          border-color: var(--color-accent);
-          background-color: var(--color-background-hover);
-      }
-      #preview-container {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 10px;
-          margin-top: 10px;
-          justify-content: center; /* Keep previews centered within the drop area */
+      .input-section,
+      .output-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        border: 1px solid var(--color-border-light);
+        border-radius: 4px;
       }
 
-      /* Styles for the deletable image preview */
-      .preview-wrapper {
-          position: relative;
-          width: 100px;
-          height: 100px;
-          cursor: pointer;
-          border: 1px solid var(--color-border-medium);
-          overflow: hidden;
-      }
-      .preview-image {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-      }
-
-      /* Delete overlay */
-      .delete-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background-color: var(--color-overlay);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          opacity: 0;
-          transition: opacity 0.2s;
-      }
-      .preview-wrapper:hover .delete-overlay,
-      .preview-wrapper:focus .delete-overlay {
-          opacity: 1;
-      }
-      .delete-overlay span {
-          font-size: 2em;
-          color: var(--color-white);
-          pointer-events: none;
-      }
-
-      #output-image {
-          max-width: 100%;
-          height: auto;
-          border: 1px solid var(--color-border-medium);
-          margin-top: 10px;
-      }
-      textarea, input[type="text"], input[type="password"] {
-          width: 100%;
-          padding: 8px;
-          box-sizing: border-box;
-          margin-top: 5px;
-          margin-bottom: 10px;
+      textarea,
+      input[type="text"],
+      input[type="password"] {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        margin-top: 5px;
+        margin-bottom: 10px;
       }
       textarea {
         field-sizing: content;
         resize: none;
       }
       button {
-          padding: 10px 15px;
-          cursor: pointer;
-          margin-right: 10px;
+        cursor: pointer;
       }
 
-      /* Alignment fix: Ensure buttons are left-aligned */
       .action-buttons {
-          margin-top: 10px;
-          text-align: left; /* Left align the buttons */
-      }
-
-      /* Ensure the main generate button is also left-aligned */
-      #generate-button {
-          margin-left: 0;
-          margin-right: 0;
+        margin-top: 10px;
+        text-align: left;
       }
 
       .loading {
-          display: none;
-          margin-top: 10px;
-          color: var(--color-text-secondary);
+        display: none;
+        margin-top: 10px;
+        color: var(--color-text-secondary);
+      }
+
+      /* Message Items Container */
+      #messages-container {
+        margin-top: 15px;
+      }
+
+      /* Individual Message Item */
+      .message-item {
+        /* Using Grid Layout for flexible column organization */
+        display: grid;
+        grid-template-columns: auto auto 1fr auto; /* Handle | Thumbnail | Content | Delete */
+        align-items: start; /* Vertically align items */
+        margin-bottom: 10px;
+        border: 1px solid var(--color-border-medium);
+        border-radius: 4px;
+        background-color: var(--color-white);
+        position: relative;
+      }
+
+      .message-item.dragging {
+        opacity: 0.5;
+      }
+
+      .message-item.drag-over-top::before,
+      .message-item.drag-over-bottom::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background-color: var(--color-insert-indicator);
+        z-index: 10;
+      }
+
+      .message-item.drag-over-top::before {
+        top: -2px;
+      }
+
+      .message-item.drag-over-bottom::after {
+        bottom: -2px;
+      }
+
+      /* Drag Handle (Column 1) */
+      .drag-handle {
+        grid-column: 1 / 2;
+        width: 30px;
+        /* height is removed to allow vertical centering based on content */
+        background-color: transparent; /* Made transparent */
+        cursor: grab;
+        display: flex;
+        align-items: center; /* Vertically center the content (⋮⋮) */
+        justify-content: center;
+        color: var(--color-drag-handle);
+        font-size: 24px; /* Larger size for '⋮⋮' */
+        line-height: 1;
+        user-select: none;
+        padding: 8px 0; /* Add padding to give it vertical space */
+      }
+
+      .drag-handle:active {
+        cursor: grabbing;
+      }
+
+      /* Content Area (Thumbnail/Textarea Wrapper) */
+      /* Note: For text-only items, the thumbnail column collapses, and the content spans two columns */
+
+      .message-content {
+        grid-column: 3 / 4; /* Default placement for image or text */
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        /* Remove align-items: center so textarea bleeds top/bottom */
+      }
+
+      .message-item[data-type="text"] .message-content {
+        grid-column: 2 / 4; /* Text items span the thumbnail and content columns */
+        gap: 0; /* No gap needed if only textarea is present */
+      }
+
+      /* Thumbnail (Column 2) */
+      .message-thumbnail {
+        grid-column: 2 / 3;
+        width: 80px;
+        height: 80px;
+        object-fit: cover;
+        border: 1px solid var(--color-border-medium);
+        border-radius: 4px;
+        padding: 10px;
+      }
+      .message-item[data-type="text"] .message-thumbnail {
+        display: none; /* Hide thumbnail column for text items */
+      }
+
+      /* Textarea for text items and image names (takes the available space) */
+      .message-textarea {
+        flex: 1;
+        min-width: 100%; /* Ensure it fills the grid column space */
+        margin: 0; /* Remove default margin */
+        padding: 10px; /* Add padding inside the textarea */
+        border: none; /* --- REMOVE BORDER --- */
+        /* Ensure it bleeds top to bottom */
+        height: 100%;
+      }
+
+      /* Delete Button (Column 4) */
+      .delete-button {
+        grid-column: 4 / 5;
+        justify-self: center;
+        align-self: flex-start; /* Align to the top of the row */
+        background-color: var(--color-delete-button);
+        border: none;
+        cursor: pointer;
+        font-size: 24px; /* Larger size for the emoji */
+        padding: 0;
+        line-height: 1;
+        margin: 10px; /* Add margin for spacing */
+      }
+
+      .delete-button:hover {
+        opacity: 0.8;
+      }
+
+      /* Output Image */
+      #output-image {
+        max-width: 100%;
+        height: auto;
+        border: 1px solid var(--color-border-medium);
+        margin-top: 10px;
+      }
+
+      /* Hidden file input */
+      .hidden-file-input {
+        display: none;
       }
     </style>
   </head>
   <body>
     <header>
       <h1>Gemini Multi-Image Manipulator</h1>
-      <p>Upload multiple images and use a prompt to blend, compare, or manipulate them.</p>
+      <p>Add text and images, then use a prompt to manipulate them.</p>
     </header>
 
     <div class="input-section">
@@ -150,21 +217,16 @@
     </div>
 
     <div class="input-section">
-      <h2>2. Image Input (Multiple Supported)</h2>
-      <div id="image-drop-area" class="image-drop-area">
-        <p>Drag & Drop images here, or Paste (Ctrl+V / Cmd+V).</p>
-        <input type="file" id="file-input" accept="image/*" multiple style="display: none;" />
-        <div id="preview-container">
-          <!-- Image previews will be inserted here -->
-        </div>
-      </div>
-
+      <h2>2. Messages (Text & Images)</h2>
       <div class="action-buttons">
-        <button id="add-button">Add Image</button>
-        <button id="clear-button">Clear All Images</button>
+        <button id="add-text-button">Add Text</button>
+        <button id="add-image-button">Add Image</button>
+        <button id="delete-all-button">Delete All</button>
       </div>
-
-      <small id="image-status">0 images loaded. Click an image to remove it.</small>
+      <div id="messages-container">
+        <!-- Message items will be inserted here -->
+      </div>
+      <input type="file" id="hidden-file-input" class="hidden-file-input" accept="image/*" />
     </div>
 
     <div class="input-section">
@@ -178,7 +240,7 @@
     <div class="output-section">
       <h2>4. Output</h2>
       <p id="output-text"></p>
-      <img id="output-image" style="display: none;" alt="Generated Image" />
+      <img id="output-image" style="display: none" alt="Generated Image" />
     </div>
 
     <script type="module">
@@ -188,15 +250,22 @@
       class GeminiImageManipulator {
         // --- 1. CONSTANTS ---
         static MODEL = "gemini-2.5-flash-image-preview";
-        static DRAG_EVENTS = ["dragenter", "dragover", "dragleave", "drop"];
         static DB_NAME = "gemini-image-sandbox";
         static STORE_NAME = "keyval";
+        static MESSAGE_TYPE_TEXT = "text";
+        static MESSAGE_TYPE_IMAGE = "image";
 
         // --- 2. MAIN CLASS & CONSTRUCTOR ---
 
         constructor() {
-          // State
-          this.loadedImages = []; // Stores {data: Blob, mimeType, dataUrl}
+          // State: Array of message items
+          // Each item: { id: string, type: "text" | "image", content: string (for text) or {blob, mimeType, dataUrl, name} (for image) }
+          this.messages = [];
+          this.nextId = 1;
+
+          // Drag state
+          this.draggedElement = null;
+          this.draggedId = null;
 
           // Persistence Store
           this.store = createStore(GeminiImageManipulator.DB_NAME, GeminiImageManipulator.STORE_NAME);
@@ -206,20 +275,19 @@
             apiKeyInput: document.getElementById("api-key"),
             promptInput: document.getElementById("prompt-input"),
             generateButton: document.getElementById("generate-button"),
-            imageDropArea: document.getElementById("image-drop-area"),
-            fileInput: document.getElementById("file-input"),
-            previewContainer: document.getElementById("preview-container"),
-            imageStatus: document.getElementById("image-status"),
+            messagesContainer: document.getElementById("messages-container"),
+            addTextButton: document.getElementById("add-text-button"),
+            addImageButton: document.getElementById("add-image-button"),
+            deleteAllButton: document.getElementById("delete-all-button"),
+            hiddenFileInput: document.getElementById("hidden-file-input"),
             outputImage: document.getElementById("output-image"),
             outputText: document.getElementById("output-text"),
             loadingIndicator: document.getElementById("loading"),
-            addButton: document.getElementById("add-button"),
-            clearButton: document.getElementById("clear-button"),
           };
 
           this.loadState().then(() => {
             this.bindEvents();
-            this.updateImagePreviews();
+            this.renderMessages();
           });
         }
 
@@ -237,20 +305,28 @@
             const prompt = await get("prompt", this.store);
             if (prompt) promptInput.value = prompt;
 
-            // Load Images
-            const images = await get("loadedImages", this.store);
-            if (images && Array.isArray(images)) {
-              // Convert Blobs back to data URLs for display
-              this.loadedImages = await Promise.all(
-                images.map(async (img) => {
-                  const dataUrl = await GeminiImageManipulator.blobToDataUrl(img.data);
-                  return {
-                    data: img.data, // Keep the Blob for persistence/API
-                    mimeType: img.mimeType,
-                    dataUrl: dataUrl,
-                  };
+            // Load Messages
+            const messages = await get("messages", this.store);
+            if (messages && Array.isArray(messages)) {
+              // Reconstruct messages, converting Blobs back to data URLs for images
+              this.messages = await Promise.all(
+                messages.map(async (msg) => {
+                  if (msg.type === GeminiImageManipulator.MESSAGE_TYPE_IMAGE) {
+                    const dataUrl = await GeminiImageManipulator.blobToDataUrl(msg.content.blob);
+                    return {
+                      ...msg,
+                      content: {
+                        ...msg.content,
+                        dataUrl: dataUrl,
+                      },
+                    };
+                  }
+                  return msg;
                 })
               );
+              // Update nextId to avoid collisions
+              const maxId = Math.max(...this.messages.map((m) => parseInt(m.id)), 0);
+              this.nextId = maxId + 1;
             }
 
             // Load Output Image
@@ -272,13 +348,23 @@
           await set("prompt", prompt, this.store);
         }
 
-        async saveImages() {
-          // Store only the Blob and mimeType, as dataUrl is redundant and large
-          const serializableImages = this.loadedImages.map((img) => ({
-            data: img.data, // IndexedDB handles Blobs
-            mimeType: img.mimeType,
-          }));
-          await set("loadedImages", serializableImages, this.store);
+        async saveMessages() {
+          // Store messages, keeping Blobs for images but removing dataUrl
+          const serializableMessages = this.messages.map((msg) => {
+            if (msg.type === GeminiImageManipulator.MESSAGE_TYPE_IMAGE) {
+              return {
+                ...msg,
+                content: {
+                  blob: msg.content.blob,
+                  mimeType: msg.content.mimeType,
+                  name: msg.content.name,
+                  // dataUrl is omitted for storage efficiency
+                },
+              };
+            }
+            return msg;
+          });
+          await set("messages", serializableMessages, this.store);
         }
 
         async saveOutput(dataUrl) {
@@ -289,36 +375,253 @@
 
         bindEvents() {
           this.elements.generateButton.addEventListener("click", () => this.handleGenerate());
-          this.elements.addButton.addEventListener("click", () => this.elements.fileInput.click());
-          this.elements.clearButton.addEventListener("click", () => this.handleClearImages());
-          this.elements.fileInput.addEventListener("change", (e) => this.handleFileInput(e));
-          document.addEventListener("paste", (e) => this.handlePaste(e));
-          this.setupDragAndDrop();
+          this.elements.addTextButton.addEventListener("click", () => this.addTextMessage());
+          this.elements.addImageButton.addEventListener("click", () => this.elements.hiddenFileInput.click());
+          this.elements.deleteAllButton.addEventListener("click", () => this.deleteAllMessages());
+          this.elements.hiddenFileInput.addEventListener("change", (e) => this.handleImageFileInput(e));
 
           // Persistence listeners
           this.elements.apiKeyInput.addEventListener("input", (e) => this.saveApiKey(e.target.value.trim()));
           this.elements.promptInput.addEventListener("input", (e) => this.savePrompt(e.target.value.trim()));
         }
 
-        setupDragAndDrop() {
-          const dropArea = this.elements.imageDropArea;
+        // --- Message Management ---
 
-          GeminiImageManipulator.DRAG_EVENTS.forEach((eventName) => {
-            dropArea.addEventListener(
-              eventName,
-              (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              },
-              false
-            );
+        addTextMessage() {
+          const id = String(this.nextId++);
+          this.messages.push({
+            id,
+            type: GeminiImageManipulator.MESSAGE_TYPE_TEXT,
+            content: "",
           });
+          this.renderMessages();
+          this.saveMessages();
+        }
 
-          dropArea.addEventListener("dragenter", () => dropArea.classList.add("drag-over"), false);
-          dropArea.addEventListener("dragover", () => dropArea.classList.add("drag-over"), false);
-          dropArea.addEventListener("dragleave", () => dropArea.classList.remove("drag-over"), false);
+        async addImageMessage(file) {
+          if (!file.type.startsWith("image/")) return;
 
-          dropArea.addEventListener("drop", (e) => this.handleDrop(e), false);
+          const id = String(this.nextId++);
+          const blob = file;
+          const mimeType = file.type;
+          const dataUrl = await GeminiImageManipulator.blobToDataUrl(blob);
+
+          this.messages.push({
+            id,
+            type: GeminiImageManipulator.MESSAGE_TYPE_IMAGE,
+            content: {
+              blob,
+              mimeType,
+              dataUrl,
+              name: "",
+            },
+          });
+          this.renderMessages();
+          this.saveMessages();
+        }
+
+        deleteMessage(id) {
+          this.messages = this.messages.filter((msg) => msg.id !== id);
+          this.renderMessages();
+          this.saveMessages();
+        }
+
+        deleteAllMessages() {
+          this.messages = [];
+          this.renderMessages();
+          this.saveMessages();
+        }
+
+        updateMessageContent(id, content) {
+          const message = this.messages.find((msg) => msg.id === id);
+          if (message) {
+            if (message.type === GeminiImageManipulator.MESSAGE_TYPE_TEXT) {
+              message.content = content;
+            } else if (message.type === GeminiImageManipulator.MESSAGE_TYPE_IMAGE) {
+              message.content.name = content;
+            }
+            this.saveMessages();
+          }
+        }
+
+        async handleImageFileInput(event) {
+          const file = event.target.files[0];
+          if (file) {
+            await this.addImageMessage(file);
+          }
+          event.target.value = ""; // Clear input for next selection
+        }
+
+        // --- Rendering ---
+
+        renderMessages() {
+          const container = this.elements.messagesContainer;
+          container.innerHTML = "";
+
+          this.messages.forEach((message) => {
+            const itemElement = this.createMessageElement(message);
+            container.appendChild(itemElement);
+          });
+        }
+
+        createMessageElement(message) {
+          const item = document.createElement("div");
+          item.className = "message-item";
+          item.dataset.id = message.id;
+          item.dataset.type = message.type; /* Added data-type for CSS grid adjustment */
+          item.draggable = true;
+
+          // Drag Handle (Column 1)
+          const dragHandle = document.createElement("div");
+          dragHandle.className = "drag-handle";
+          dragHandle.innerHTML = "⋮"; // Vertical three dots
+          item.appendChild(dragHandle);
+
+          // Thumbnail (Column 2 - only visible for image type)
+          const thumbnail = document.createElement("img");
+          thumbnail.className = "message-thumbnail";
+          if (message.type === GeminiImageManipulator.MESSAGE_TYPE_IMAGE) {
+            thumbnail.src = message.content.dataUrl;
+            thumbnail.alt = "Image";
+          }
+          item.appendChild(thumbnail);
+
+          // Content Area (Column 3)
+          const contentArea = document.createElement("div");
+          contentArea.className = "message-content";
+
+          const textarea = document.createElement("textarea");
+          textarea.className = "message-textarea";
+
+          if (message.type === GeminiImageManipulator.MESSAGE_TYPE_TEXT) {
+            textarea.value = message.content;
+            textarea.placeholder = "Enter text...";
+            textarea.addEventListener("input", (e) => {
+              this.updateMessageContent(message.id, e.target.value);
+            });
+            contentArea.appendChild(textarea);
+          } else if (message.type === GeminiImageManipulator.MESSAGE_TYPE_IMAGE) {
+            textarea.value = message.content.name;
+            textarea.placeholder = "Optional name/caption for the image...";
+            textarea.addEventListener("input", (e) => {
+              this.updateMessageContent(message.id, e.target.value);
+            });
+            contentArea.appendChild(textarea);
+          }
+
+          item.appendChild(contentArea);
+
+          // Delete Button (Column 4)
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "delete-button";
+          deleteButton.innerHTML = "🗑️"; /* Using trash emoji button */
+          deleteButton.addEventListener("click", () => this.deleteMessage(message.id));
+          item.appendChild(deleteButton);
+
+          // Drag Events
+          item.addEventListener("dragstart", (e) => this.handleDragStart(e, message.id));
+          item.addEventListener("dragend", (e) => this.handleDragEnd(e));
+          item.addEventListener("dragover", (e) => this.handleDragOver(e));
+          item.addEventListener("dragleave", (e) => this.handleDragLeave(e));
+          item.addEventListener("drop", (e) => this.handleDrop(e, message.id));
+
+          return item;
+        }
+
+        // --- Drag and Drop for Reordering ---
+
+        handleDragStart(e, id) {
+          this.draggedElement = e.currentTarget;
+          this.draggedId = id;
+          e.currentTarget.classList.add("dragging");
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/html", e.currentTarget.innerHTML);
+        }
+
+        handleDragEnd(e) {
+          e.currentTarget.classList.remove("dragging");
+          // Remove all drag-over classes
+          document.querySelectorAll(".message-item").forEach((item) => {
+            item.classList.remove("drag-over-top", "drag-over-bottom");
+          });
+          this.draggedElement = null;
+          this.draggedId = null;
+        }
+
+        handleDragOver(e) {
+          if (e.preventDefault) {
+            e.preventDefault();
+          }
+          e.dataTransfer.dropEffect = "move";
+
+          const targetElement = e.currentTarget;
+          if (targetElement === this.draggedElement) {
+            return;
+          }
+
+          // Determine if we should insert above or below
+          const rect = targetElement.getBoundingClientRect();
+          const midpoint = rect.top + rect.height / 2;
+          const isTop = e.clientY < midpoint;
+
+          // Remove previous indicators
+          targetElement.classList.remove("drag-over-top", "drag-over-bottom");
+
+          // Add appropriate indicator
+          if (isTop) {
+            targetElement.classList.add("drag-over-top");
+          } else {
+            targetElement.classList.add("drag-over-bottom");
+          }
+
+          return false;
+        }
+
+        handleDragLeave(e) {
+          e.currentTarget.classList.remove("drag-over-top", "drag-over-bottom");
+        }
+
+        handleDrop(e, targetId) {
+          if (e.stopPropagation) {
+            e.stopPropagation();
+          }
+          e.preventDefault();
+
+          const targetElement = e.currentTarget;
+          targetElement.classList.remove("drag-over-top", "drag-over-bottom");
+
+          if (this.draggedId === targetId) {
+            return;
+          }
+
+          // Determine insertion position
+          const rect = targetElement.getBoundingClientRect();
+          const midpoint = rect.top + rect.height / 2;
+          const isTop = e.clientY < midpoint;
+
+          // Reorder messages array
+          const draggedIndex = this.messages.findIndex((msg) => msg.id === this.draggedId);
+          const targetIndex = this.messages.findIndex((msg) => msg.id === targetId);
+
+          if (draggedIndex === -1 || targetIndex === -1) return;
+
+          const [draggedMessage] = this.messages.splice(draggedIndex, 1);
+
+          let insertIndex = targetIndex;
+          if (draggedIndex < targetIndex) {
+            // If dragging down, adjust index
+            insertIndex = isTop ? targetIndex - 1 : targetIndex;
+          } else {
+            // If dragging up
+            insertIndex = isTop ? targetIndex : targetIndex + 1;
+          }
+
+          this.messages.splice(insertIndex, 0, draggedMessage);
+
+          this.renderMessages();
+          this.saveMessages();
+
+          return false;
         }
 
         // --- 3. CORE LOGIC METHODS ---
@@ -328,8 +631,8 @@
           const apiKey = apiKeyInput.value.trim();
           const prompt = promptInput.value.trim();
 
-          if (!apiKey || this.loadedImages.length === 0 || !prompt) {
-            alert("Please ensure API Key, images, and prompt are provided.");
+          if (!apiKey || this.messages.length === 0 || !prompt) {
+            alert("Please ensure API Key, at least one message, and prompt are provided.");
             return;
           }
 
@@ -362,23 +665,34 @@
         async generateContent(ai, prompt) {
           const { outputImage, outputText } = this.elements;
 
-          // Convert Blobs (stored in state) to base64 strings for the API call
-          const imageParts = await Promise.all(
-            this.loadedImages.map(async (img) => {
-              const base64Data = await GeminiImageManipulator.blobToBase64(img.data);
-              return {
+          // Build parts array from messages
+          const parts = [];
+          for (const message of this.messages) {
+            if (message.type === GeminiImageManipulator.MESSAGE_TYPE_TEXT) {
+              parts.push({ text: message.content });
+            } else if (message.type === GeminiImageManipulator.MESSAGE_TYPE_IMAGE) {
+              const base64Data = await GeminiImageManipulator.blobToBase64(message.content.blob);
+              const imagePart = {
                 inlineData: {
                   data: base64Data,
-                  mimeType: img.mimeType,
+                  mimeType: message.content.mimeType,
                 },
               };
-            })
-          );
+              parts.push(imagePart);
+              // If there's a name, add it as text after the image
+              if (message.content.name.trim()) {
+                parts.push({ text: message.content.name.trim() });
+              }
+            }
+          }
+
+          // Add the final prompt
+          parts.push({ text: prompt });
 
           const contents = [
             {
               role: "user",
-              parts: [...imageParts, { text: prompt }],
+              parts,
             },
           ];
 
@@ -425,120 +739,7 @@
           }
         }
 
-        /**
-         * Processes an array of files/blobs and adds them to the state.
-         * @param {Array<File | Blob>} files
-         */
-        async processFiles(files) {
-          for (const file of files) {
-            if (file.type.startsWith("image/")) {
-              try {
-                const part = await GeminiImageManipulator.fileToGenerativePart(file);
-                this.loadedImages.push(part);
-              } catch (e) {
-                console.error("Error processing file:", e);
-              }
-            }
-          }
-          this.updateImagePreviews();
-          this.saveImages();
-        }
-
-        // --- 4. UI/DOM MANIPULATION METHODS ---
-
-        handleClearImages() {
-          this.loadedImages = [];
-          this.updateImagePreviews();
-          this.saveImages();
-        }
-
-        async handleFileInput(event) {
-          const files = Array.from(event.target.files);
-          await this.processFiles(files);
-          event.target.value = ""; // Clear input for next selection
-        }
-
-        async handleDrop(e) {
-          this.elements.imageDropArea.classList.remove("drag-over");
-          const files = Array.from(e.dataTransfer.files);
-          await this.processFiles(files);
-        }
-
-        async handlePaste(e) {
-          const items = e.clipboardData.items;
-          const pastedBlobs = [];
-          for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf("image") !== -1) {
-              const blob = items[i].getAsFile();
-              if (blob) {
-                pastedBlobs.push(blob);
-              }
-            }
-          }
-          if (pastedBlobs.length > 0) {
-            await this.processFiles(pastedBlobs);
-            e.preventDefault();
-          }
-        }
-
-        /**
-         * Updates the UI with the loaded images, including delete functionality.
-         */
-        updateImagePreviews() {
-          const { previewContainer, imageStatus } = this.elements;
-          previewContainer.innerHTML = "";
-
-          this.loadedImages.forEach((img, index) => {
-            const wrapper = document.createElement("div");
-            wrapper.className = "preview-wrapper";
-            wrapper.tabIndex = 0;
-
-            const imgElement = document.createElement("img");
-            imgElement.src = img.dataUrl;
-            imgElement.className = "preview-image";
-            imgElement.alt = `Image ${index + 1}`;
-
-            const deleteOverlay = document.createElement("div");
-            deleteOverlay.className = "delete-overlay";
-            deleteOverlay.innerHTML = "<span>🗑️</span>";
-
-            wrapper.appendChild(imgElement);
-            wrapper.appendChild(deleteOverlay);
-
-            // Closure to capture the correct index for deletion
-            wrapper.addEventListener("click", () => {
-              this.loadedImages.splice(index, 1);
-              this.updateImagePreviews();
-              this.saveImages(); // Save state after deletion
-            });
-
-            previewContainer.appendChild(wrapper);
-          });
-          imageStatus.textContent = `${this.loadedImages.length} image(s) loaded. Click an image to remove it.`;
-        }
-
         // --- 5. UTILITY PURE FUNCTIONS (Static) ---
-
-        /**
-         * Converts a File or Blob object into a structure containing the Blob and data URL.
-         * @param {File | Blob} file
-         * @returns {Promise<{data: Blob, mimeType: string, dataUrl: string}>}
-         */
-        static fileToGenerativePart(file) {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const dataUrl = reader.result;
-              resolve({
-                data: file, // Store the Blob for persistence
-                mimeType: file.type,
-                dataUrl: dataUrl,
-              });
-            };
-            reader.onerror = (error) => reject(error);
-            reader.readAsDataURL(file);
-          });
-        }
 
         /**
          * Converts a Blob object into a base64 string (for API transmission).
