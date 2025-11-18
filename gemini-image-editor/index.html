@@ -922,8 +922,14 @@
 
           // Add user messages
           for (const message of this.messages) {
-            // Add image if present
+            // If message has an image, add text first (with "See image:" suffix), then the image
             if (message.image) {
+              // Add text if present, or just "See image:"
+              const textContent = message.text.trim();
+              const textWithPrompt = textContent ? `${textContent}\nSee image:` : "See image:";
+              parts.push({ text: textWithPrompt });
+
+              // Then add the image
               const base64Data = await GeminiImageManipulator.blobToBase64(message.image.blob);
               const imagePart = {
                 inlineData: {
@@ -932,11 +938,11 @@
                 },
               };
               parts.push(imagePart);
-            }
-
-            // Add text if present
-            if (message.text.trim()) {
-              parts.push({ text: message.text.trim() });
+            } else {
+              // If no image, just add text if present
+              if (message.text.trim()) {
+                parts.push({ text: message.text.trim() });
+              }
             }
           }
 
@@ -994,8 +1000,14 @@
 
           // Add user messages
           for (const message of this.messages) {
-            // Add image if present
+            // If message has an image, add text first (with "See image:" suffix), then the image
             if (message.image) {
+              // Add text if present, or just "See image:"
+              const textContent = message.text.trim();
+              const textWithPrompt = textContent ? `${textContent} See image:` : "See image:";
+              parts.push({ text: textWithPrompt });
+
+              // Then add the image
               const base64Data = await GeminiImageManipulator.blobToBase64(message.image.blob);
               const imagePart = {
                 inlineData: {
@@ -1004,11 +1016,11 @@
                 },
               };
               parts.push(imagePart);
-            }
-
-            // Add text if present
-            if (message.text.trim()) {
-              parts.push({ text: message.text.trim() });
+            } else {
+              // If no image, just add text if present
+              if (message.text.trim()) {
+                parts.push({ text: message.text.trim() });
+              }
             }
           }
 
