@@ -29,6 +29,10 @@
         box-sizing: border-box;
       }
 
+      html {
+        scrollbar-gutter: stable;
+      }
+
       /* Minimal CSS to ensure readability and structure */
       body {
         font-family: sans-serif;
@@ -249,7 +253,8 @@
       }
 
       .output-item {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto;
         align-items: start;
         margin-bottom: 16px;
         border: 1px solid var(--color-border-medium);
@@ -258,11 +263,8 @@
       }
 
       .output-item-content {
-        flex: 1;
-        min-width: 0;
-        display: grid;
-        grid-template-columns: 1fr auto;
         padding: 8px;
+        min-width: 0;
       }
 
       .output-item-image {
@@ -270,6 +272,7 @@
         height: auto;
         border: 1px solid var(--color-border-medium);
         border-radius: 4px;
+        margin-bottom: 8px;
       }
 
       .output-item-image.loading {
@@ -281,17 +284,13 @@
         font-size: 14px;
       }
 
-      .output-item-delete {
-        background-color: transparent;
-        border: none;
-        cursor: pointer;
-        font-size: 20px;
-        color: var(--color-text-secondary);
-      }
-
-      .output-item-delete:hover {
-        background-color: var(--color-action-button-hover);
-        border-radius: 4px;
+      .output-item-buttons {
+        border-left: 1px solid var(--color-border-medium);
+        grid-column: 2 / 3;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        align-self: stretch;
       }
 
       /* Hidden file input */
@@ -741,13 +740,19 @@
 
           item.appendChild(content);
 
+          // Buttons Container (matching message-buttons style)
+          const buttonsContainer = document.createElement("div");
+          buttonsContainer.className = "output-item-buttons";
+
           // Delete button
           const deleteButton = document.createElement("button");
           deleteButton.className = "message-button";
           deleteButton.innerHTML = "🗑️";
           deleteButton.title = "Delete";
           deleteButton.addEventListener("click", () => this.deleteOutput(output.id));
-          item.appendChild(deleteButton);
+          buttonsContainer.appendChild(deleteButton);
+
+          item.appendChild(buttonsContainer);
 
           return item;
         }
