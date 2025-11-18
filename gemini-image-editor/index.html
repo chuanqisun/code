@@ -224,12 +224,56 @@
         background-color: var(--color-action-button-hover);
       }
 
-      /* Output Image */
-      #output-image {
+      /* Output Items */
+      #output-container {
+        margin-top: 8px;
+      }
+
+      .output-item {
+        display: flex;
+        align-items: start;
+        gap: 12px;
+        margin-bottom: 16px;
+        padding: 12px;
+        border: 1px solid var(--color-border-medium);
+        border-radius: 4px;
+        background-color: var(--color-white);
+      }
+
+      .output-item-content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .output-item-image {
         max-width: 100%;
         height: auto;
         border: 1px solid var(--color-border-medium);
+        border-radius: 4px;
+      }
+
+      .output-item-image.loading {
+        opacity: 0.5;
+      }
+
+      .output-item-text {
         margin-top: 8px;
+        color: var(--color-text-secondary);
+        font-size: 14px;
+      }
+
+      .output-item-delete {
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 20px;
+        padding: 4px 8px;
+        color: var(--color-text-secondary);
+      }
+
+      .output-item-delete:hover {
+        background-color: var(--color-action-button-hover);
+        border-radius: 4px;
       }
 
       /* Hidden file input */
@@ -266,14 +310,17 @@
         <button id="add-item-button">Add Item</button>
         <button id="delete-all-button">Delete All</button>
         <button id="generate-button">Generate Image</button>
-        <div id="loading" class="loading">Processing... Please wait.</div>
       </div>
     </div>
 
     <div class="output-section">
       <h2>Output</h2>
-      <p id="output-text"></p>
-      <img id="output-image" style="display: none" alt="Generated Image" />
+      <div class="action-buttons">
+        <button id="delete-all-outputs-button">Delete All Outputs</button>
+      </div>
+      <div id="output-container">
+        <!-- Output items will be inserted here -->
+      </div>
     </div>
 
     <script type="module">
@@ -285,6 +332,7 @@
         static MODEL = "gemini-2.5-flash-image-preview";
         static DB_NAME = "gemini-image-sandbox";
         static STORE_NAME = "keyval";
+        static PLACEHOLDER_IMAGE = "https://placehold.co/800";
 
         // --- 2. MAIN CLASS & CONSTRUCTOR ---
 
@@ -293,6 +341,11 @@
           // Each item: { id: string, text: string, image: {blob, mimeType, dataUrl} | null }
           this.messages = [];
           this.nextId = 1;
+
+          // Output items state
+          // Each item: { id: string, imageUrl: string, text: string, loading: boolean }
+          this.outputs = [];
+          this.nextOutputId = 1;
 
           // Drag state
           this.draggedElement = null;
@@ -309,14 +362,14 @@
             messagesContainer: document.getElementById("messages-container"),
             addItemButton: document.getElementById("add-item-button"),
             deleteAllButton: document.getElementById("delete-all-button"),
-            outputImage: document.getElementById("output-image"),
-            outputText: document.getElementById("output-text"),
-            loadingIndicator: document.getElementById("loading"),
+            outputContainer: document.getElementById("output-container"),
+            deleteAllOutputsButton: document.getElementById("delete-all-outputs-button"),
           };
 
           this.loadState().then(() => {
             this.bindEvents();
             this.renderMessages();
+            this.renderOutputs();
           });
         }
 
@@ -324,7 +377,7 @@
 
         async loadState() {
           try {
-            const { apiKeyInput, systemMessage, outputImage } = this.elements;
+            const { apiKeyInput, systemMessage } = this.elements;
 
             // Load API Key
             const apiKey = await get("apiKey", this.store);
@@ -358,11 +411,12 @@
               this.nextId = maxId + 1;
             }
 
-            // Load Output Image
-            const outputDataUrl = await get("outputImage", this.store);
-            if (outputDataUrl) {
-              outputImage.src = outputDataUrl;
-              outputImage.style.display = "block";
+            // Load Outputs
+            const outputs = await get("outputs", this.store);
+            if (outputs && Array.isArray(outputs)) {
+              this.outputs = outputs.filter((output) => !output.loading); // Remove any loading states
+              const maxOutputId = Math.max(...this.outputs.map((o) => parseInt(o.id)), 0);
+              this.nextOutputId = maxOutputId + 1;
             }
           } catch (error) {
             console.error("Error loading state from IndexedDB:", error);
@@ -395,8 +449,10 @@
           await set("messages", serializableMessages, this.store);
         }
 
-        async saveOutput(dataUrl) {
-          await set("outputImage", dataUrl, this.store);
+        async saveOutputs() {
+          // Only save non-loading outputs
+          const serializableOutputs = this.outputs.filter((output) => !output.loading);
+          await set("outputs", serializableOutputs, this.store);
         }
 
         // --- Event Binding ---
@@ -405,6 +461,7 @@
           this.elements.generateButton.addEventListener("click", () => this.handleGenerate());
           this.elements.addItemButton.addEventListener("click", () => this.addItem());
           this.elements.deleteAllButton.addEventListener("click", () => this.deleteAllMessages());
+          this.elements.deleteAllOutputsButton.addEventListener("click", () => this.deleteAllOutputs());
 
           // Persistence listeners
           this.elements.apiKeyInput.addEventListener("input", (e) => this.saveApiKey(e.target.value.trim()));
@@ -462,6 +519,44 @@
             this.renderMessages();
             this.saveMessages();
           }
+        }
+
+        // --- Output Management ---
+
+        addOutput() {
+          const id = String(this.nextOutputId++);
+          const output = {
+            id,
+            imageUrl: GeminiImageManipulator.PLACEHOLDER_IMAGE,
+            text: "Generating...",
+            loading: true,
+          };
+          this.outputs.unshift(output); // Add to top
+          this.renderOutputs();
+          return id;
+        }
+
+        updateOutput(id, imageUrl, text) {
+          const output = this.outputs.find((o) => o.id === id);
+          if (output) {
+            output.imageUrl = imageUrl;
+            output.text = text;
+            output.loading = false;
+            this.renderOutputs();
+            this.saveOutputs();
+          }
+        }
+
+        deleteOutput(id) {
+          this.outputs = this.outputs.filter((o) => o.id !== id);
+          this.renderOutputs();
+          this.saveOutputs();
+        }
+
+        deleteAllOutputs() {
+          this.outputs = [];
+          this.renderOutputs();
+          this.saveOutputs();
         }
 
         // --- Rendering ---
@@ -570,6 +665,59 @@
           return item;
         }
 
+        renderOutputs() {
+          const container = this.elements.outputContainer;
+          container.innerHTML = "";
+
+          if (this.outputs.length === 0) {
+            container.innerHTML = "<p>No outputs yet. Click 'Generate Image' to create one.</p>";
+            return;
+          }
+
+          this.outputs.forEach((output) => {
+            const itemElement = this.createOutputElement(output);
+            container.appendChild(itemElement);
+          });
+        }
+
+        createOutputElement(output) {
+          const item = document.createElement("div");
+          item.className = "output-item";
+          item.dataset.id = output.id;
+
+          // Content container
+          const content = document.createElement("div");
+          content.className = "output-item-content";
+
+          // Image
+          const image = document.createElement("img");
+          image.className = "output-item-image";
+          if (output.loading) {
+            image.classList.add("loading");
+          }
+          image.src = output.imageUrl;
+          image.alt = "Generated Image";
+          content.appendChild(image);
+
+          // Text
+          const text = document.createElement("div");
+          text.className = "output-item-text";
+          text.textContent = output.text;
+          content.appendChild(text);
+
+          item.appendChild(content);
+
+          // Delete button
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "output-item-delete";
+          deleteButton.innerHTML = "🗑️";
+          deleteButton.title = "Delete";
+          deleteButton.addEventListener("click", () => this.deleteOutput(output.id));
+          item.appendChild(deleteButton);
+
+          return item;
+        }
+
         // --- Drag and Drop for Reordering ---
 
         handleDragStart(e, id) {
@@ -669,7 +817,7 @@
         // --- 3. CORE LOGIC METHODS ---
 
         async handleGenerate() {
-          const { apiKeyInput, systemMessage, generateButton, loadingIndicator, outputImage, outputText } = this.elements;
+          const { apiKeyInput, systemMessage } = this.elements;
           const apiKey = apiKeyInput.value.trim();
           const systemMsg = systemMessage.value.trim();
 
@@ -683,24 +831,15 @@
             return;
           }
 
-          // UI State: Start Loading
-          outputImage.style.display = "none";
-          outputImage.src = "";
-          outputText.textContent = "";
-          loadingIndicator.style.display = "block";
-          generateButton.disabled = true;
+          // Create output item immediately with placeholder
+          const outputId = this.addOutput();
 
           try {
             const ai = new GoogleGenAI({ apiKey });
-            await this.generateContent(ai, systemMsg);
+            await this.generateContent(ai, systemMsg, outputId);
           } catch (error) {
             console.error("Gemini API Error:", error);
-            outputText.textContent = `Error: ${error.message || "An unknown error occurred."}`;
-            outputImage.style.display = "none";
-          } finally {
-            // UI State: Stop Loading
-            loadingIndicator.style.display = "none";
-            generateButton.disabled = false;
+            this.updateOutput(outputId, GeminiImageManipulator.PLACEHOLDER_IMAGE, `Error: ${error.message || "An unknown error occurred."}`);
           }
         }
 
@@ -708,10 +847,9 @@
          * Calls the Gemini API and handles the streaming response.
          * @param {GoogleGenAI} ai
          * @param {string} systemMsg
+         * @param {string} outputId
          */
-        async generateContent(ai, systemMsg) {
-          const { outputImage, outputText } = this.elements;
-
+        async generateContent(ai, systemMsg, outputId) {
           // Build parts array from messages
           const parts = [];
 
@@ -773,20 +911,12 @@
             }
           }
 
-          // Display results
+          // Update output with results
           if (generatedImageUrls.length > 0) {
             const finalImageUrl = generatedImageUrls[0];
-            outputImage.src = finalImageUrl;
-            outputImage.style.display = "block";
-            outputText.textContent = "Image successfully generated.";
-            this.saveOutput(finalImageUrl); // Persist output
+            this.updateOutput(outputId, finalImageUrl, textContent || "Image successfully generated.");
           } else {
-            outputText.textContent = "Generation complete, but no image was returned. Check the text response below.";
-            this.saveOutput(null);
-          }
-
-          if (textContent) {
-            outputText.textContent = `Model Response: ${textContent}`;
+            this.updateOutput(outputId, GeminiImageManipulator.PLACEHOLDER_IMAGE, textContent || "Generation complete, but no image was returned.");
           }
         }
 
