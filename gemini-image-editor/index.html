@@ -927,6 +927,11 @@
 
           // Add user messages
           for (const message of this.messages) {
+            // Skip empty items (no image and no text)
+            if (!message.image && !message.text.trim()) {
+              continue;
+            }
+
             // If message has an image, add text first (with "See image:" suffix), then the image
             if (message.image) {
               // Add text if present, or just "See image:"
@@ -1005,6 +1010,11 @@
 
           // Add user messages
           for (const message of this.messages) {
+            // Skip empty items (no image and no text)
+            if (!message.image && !message.text.trim()) {
+              continue;
+            }
+
             // If message has an image, add text first (with "See image:" suffix), then the image
             if (message.image) {
               // Add text if present, or just "See image:"
