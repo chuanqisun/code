@@ -36,6 +36,7 @@
         margin: 0 auto;
         padding: 16px;
         color: var(--color-text-primary);
+        line-height: 1.4;
       }
       .input-section,
       .output-section {
@@ -250,9 +251,7 @@
       .output-item {
         display: flex;
         align-items: start;
-        gap: 12px;
         margin-bottom: 16px;
-        padding: 12px;
         border: 1px solid var(--color-border-medium);
         border-radius: 4px;
         background-color: var(--color-white);
@@ -261,6 +260,9 @@
       .output-item-content {
         flex: 1;
         min-width: 0;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        padding: 8px;
       }
 
       .output-item-image {
@@ -275,7 +277,6 @@
       }
 
       .output-item-text {
-        margin-top: 8px;
         color: var(--color-text-secondary);
         font-size: 14px;
       }
@@ -285,7 +286,6 @@
         border: none;
         cursor: pointer;
         font-size: 20px;
-        padding: 4px 8px;
         color: var(--color-text-secondary);
       }
 
@@ -743,7 +743,7 @@
 
           // Delete button
           const deleteButton = document.createElement("button");
-          deleteButton.className = "output-item-delete";
+          deleteButton.className = "message-button";
           deleteButton.innerHTML = "🗑️";
           deleteButton.title = "Delete";
           deleteButton.addEventListener("click", () => this.deleteOutput(output.id));
