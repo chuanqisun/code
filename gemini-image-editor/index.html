@@ -75,22 +75,19 @@
 
       /* System Message Area */
       .system-message {
-        margin-bottom: 0;
-        padding: 16px;
-        border: 2px solid var(--color-border-medium);
-        border-radius: 4px;
-        background-color: var(--color-system-bg);
+        margin-bottom: 4px;
       }
 
       .system-message label {
         display: block;
-        font-weight: bold;
         margin-bottom: 4px;
         color: var(--color-text-secondary);
       }
 
       .system-message textarea {
         margin: 0;
+        border-radius: 4px;
+        border: 1px solid var(--color-border-medium);
       }
 
       /* Message Items Container */
@@ -257,8 +254,8 @@
 
       <!-- System Message (Fixed at top) -->
       <div class="system-message">
-        <label for="system-message">System Message:</label>
-        <textarea id="system-message" rows="3" placeholder="Enter system instructions here..."></textarea>
+        <label for="system-message">System message</label>
+        <textarea id="system-message" rows="3" placeholder="Optional system instructions prompt..."></textarea>
       </div>
 
       <div id="messages-container">
