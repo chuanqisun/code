@@ -1046,7 +1046,9 @@
             },
           ];
 
-          const config = {};
+          const config = {
+            responseModalities: ["TEXT"],
+          };
 
           // Set system instruction in config if present
           if (systemMsg) {
