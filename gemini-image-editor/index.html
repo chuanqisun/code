@@ -21,6 +21,7 @@
         --color-delete-button: transparent;
         --color-insert-indicator: #28a745;
         --color-action-button-hover: #eeeeee;
+        --color-system-bg: #f9f9f9;
       }
 
       * {
@@ -62,7 +63,7 @@
       }
 
       .action-buttons {
-        margin-top: 10px;
+        margin-top: 15px;
         text-align: left;
       }
 
@@ -72,9 +73,29 @@
         color: var(--color-text-secondary);
       }
 
+      /* System Message Area */
+      .system-message {
+        margin-bottom: 0;
+        padding: 15px;
+        border: 2px solid var(--color-border-medium);
+        border-radius: 4px;
+        background-color: var(--color-system-bg);
+      }
+
+      .system-message label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+        color: var(--color-text-secondary);
+      }
+
+      .system-message textarea {
+        margin: 0;
+      }
+
       /* Message Items Container */
       #messages-container {
-        margin-top: 15px;
+        margin-top: 0;
       }
 
       /* Individual Message Item */
@@ -185,6 +206,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        align-self: stretch;
       }
 
       .message-item.has-image .message-buttons {
@@ -232,21 +254,23 @@
 
     <div class="input-section">
       <h2>Input</h2>
-      <div class="action-buttons">
-        <button id="add-item-button">Add Item</button>
-        <button id="delete-all-button">Delete All</button>
+
+      <!-- System Message (Fixed at top) -->
+      <div class="system-message">
+        <label for="system-message">System Message:</label>
+        <textarea id="system-message" rows="3" placeholder="Enter system instructions here..."></textarea>
       </div>
+
       <div id="messages-container">
         <!-- Message items will be inserted here -->
       </div>
-    </div>
 
-    <div class="input-section">
-      <h2>Prompt</h2>
-      <label for="prompt-input">Manipulation Prompt:</label>
-      <textarea id="prompt-input" rows="4" placeholder="e.g., 'Blend the two images into a single surreal landscape.'"></textarea>
-      <button id="generate-button">Generate Image</button>
-      <div id="loading" class="loading">Processing... Please wait.</div>
+      <div class="action-buttons">
+        <button id="add-item-button">Add Item</button>
+        <button id="delete-all-button">Delete All</button>
+        <button id="generate-button">Generate Image</button>
+        <div id="loading" class="loading">Processing... Please wait.</div>
+      </div>
     </div>
 
     <div class="output-section">
@@ -283,7 +307,7 @@
           // DOM Elements
           this.elements = {
             apiKeyInput: document.getElementById("api-key"),
-            promptInput: document.getElementById("prompt-input"),
+            systemMessage: document.getElementById("system-message"),
             generateButton: document.getElementById("generate-button"),
             messagesContainer: document.getElementById("messages-container"),
             addItemButton: document.getElementById("add-item-button"),
@@ -303,15 +327,15 @@
 
         async loadState() {
           try {
-            const { apiKeyInput, promptInput, outputImage } = this.elements;
+            const { apiKeyInput, systemMessage, outputImage } = this.elements;
 
             // Load API Key
             const apiKey = await get("apiKey", this.store);
             if (apiKey) apiKeyInput.value = apiKey;
 
-            // Load Prompt
-            const prompt = await get("prompt", this.store);
-            if (prompt) promptInput.value = prompt;
+            // Load System Message
+            const systemMsg = await get("systemMessage", this.store);
+            if (systemMsg) systemMessage.value = systemMsg;
 
             // Load Messages
             const messages = await get("messages", this.store);
@@ -352,8 +376,8 @@
           await set("apiKey", key, this.store);
         }
 
-        async savePrompt(prompt) {
-          await set("prompt", prompt, this.store);
+        async saveSystemMessage(message) {
+          await set("systemMessage", message, this.store);
         }
 
         async saveMessages() {
@@ -387,7 +411,7 @@
 
           // Persistence listeners
           this.elements.apiKeyInput.addEventListener("input", (e) => this.saveApiKey(e.target.value.trim()));
-          this.elements.promptInput.addEventListener("input", (e) => this.savePrompt(e.target.value.trim()));
+          this.elements.systemMessage.addEventListener("input", (e) => this.saveSystemMessage(e.target.value.trim()));
         }
 
         // --- Message Management ---
@@ -648,12 +672,17 @@
         // --- 3. CORE LOGIC METHODS ---
 
         async handleGenerate() {
-          const { apiKeyInput, promptInput, generateButton, loadingIndicator, outputImage, outputText } = this.elements;
+          const { apiKeyInput, systemMessage, generateButton, loadingIndicator, outputImage, outputText } = this.elements;
           const apiKey = apiKeyInput.value.trim();
-          const prompt = promptInput.value.trim();
+          const systemMsg = systemMessage.value.trim();
 
-          if (!apiKey || this.messages.length === 0 || !prompt) {
-            alert("Please ensure API Key, at least one message, and prompt are provided.");
+          if (!apiKey) {
+            alert("Please provide an API Key.");
+            return;
+          }
+
+          if (!systemMsg && this.messages.length === 0) {
+            alert("Please provide either a system message or at least one message item.");
             return;
           }
 
@@ -666,7 +695,7 @@
 
           try {
             const ai = new GoogleGenAI({ apiKey });
-            await this.generateContent(ai, prompt);
+            await this.generateContent(ai, systemMsg);
           } catch (error) {
             console.error("Gemini API Error:", error);
             outputText.textContent = `Error: ${error.message || "An unknown error occurred."}`;
@@ -681,13 +710,20 @@
         /**
          * Calls the Gemini API and handles the streaming response.
          * @param {GoogleGenAI} ai
-         * @param {string} prompt
+         * @param {string} systemMsg
          */
-        async generateContent(ai, prompt) {
+        async generateContent(ai, systemMsg) {
           const { outputImage, outputText } = this.elements;
 
           // Build parts array from messages
           const parts = [];
+
+          // Add system message first if present
+          if (systemMsg) {
+            parts.push({ text: systemMsg });
+          }
+
+          // Add user messages
           for (const message of this.messages) {
             // Add image if present
             if (message.image) {
@@ -706,9 +742,6 @@
               parts.push({ text: message.text.trim() });
             }
           }
-
-          // Add the final prompt
-          parts.push({ text: prompt });
 
           const contents = [
             {
