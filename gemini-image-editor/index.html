@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Gemini Multi-Image Manipulator (esm.sh)</title>
+    <title>Gemini Workbench</title>
     <style>
       /* CSS Variables for easy theming/refactoring */
       :root {
@@ -40,9 +40,6 @@
       .input-section,
       .output-section {
         margin-bottom: 24px;
-        padding: 16px;
-        border: 1px solid var(--color-border-light);
-        border-radius: 4px;
       }
 
       textarea,
@@ -60,9 +57,27 @@
       }
       button {
         cursor: pointer;
+        background-color: transparent;
+        border: 1px solid var(--color-border-medium);
+        padding: 8px 16px;
+        border-radius: 4px;
+        color: var(--color-text-secondary);
+
+        &:hover,
+        &:focus {
+          color: var(--color-text-primary);
+          background-color: var(--color-action-button-hover);
+        }
+      }
+      label {
+        color: var(--color-text-secondary);
+        font-size: 14px;
       }
 
       .action-buttons {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
         margin-top: 16px;
         text-align: left;
       }
@@ -84,7 +99,9 @@
         color: var(--color-text-secondary);
       }
 
-      .system-message textarea {
+      input,
+      textarea {
+        font-family: monospace;
         margin: 0;
         border-radius: 4px;
         border: 1px solid var(--color-border-medium);
@@ -162,6 +179,7 @@
       }
 
       .drag-handle:hover {
+        color: var(--color-text-primary);
         background-color: var(--color-drag-handle-hover);
       }
 
@@ -280,15 +298,25 @@
       .hidden-file-input {
         display: none;
       }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+      }
     </style>
   </head>
   <body>
     <header>
-      <h1>Gemini Editor</h1>
+      <h1>Setup</h1>
     </header>
 
     <div class="input-section">
-      <h2>Connect</h2>
       <label for="api-key">Gemini API Key</label>
       <input type="password" id="api-key" placeholder="Enter your Gemini API Key here" />
     </div>
@@ -315,9 +343,9 @@
     <div class="output-section">
       <h2>Output</h2>
       <div class="action-buttons">
-        <button id="generate-button">Generate Image</button>
-        <button id="generate-text-button">Generate Text</button>
-        <button id="delete-all-outputs-button">Delete All Outputs</button>
+        <button id="generate-button">Generate image</button>
+        <button id="generate-text-button">Generate text</button>
+        <button id="delete-all-outputs-button">Delete all</button>
       </div>
       <div id="output-container">
         <!-- Output items will be inserted here -->
@@ -674,7 +702,7 @@
           container.innerHTML = "";
 
           if (this.outputs.length === 0) {
-            container.innerHTML = "<p>No outputs yet. Click 'Generate Image' to create one.</p>";
+            container.innerHTML = "<p>No outputs yet</p>";
             return;
           }
 
@@ -886,6 +914,12 @@
           // Build parts array from messages
           const parts = [];
 
+          // Add system message as a user message
+          // This appears to be a but. Image model ignores real system message
+          if (systemMgs) {
+            parts.push({ text: systemMgs.trim() });
+          }
+
           // Add user messages
           for (const message of this.messages) {
             // Add image if present
@@ -916,10 +950,6 @@
           const config = {
             responseModalities: ["IMAGE"],
           };
-
-          if (systemMsg) {
-            config.systemInstruction = systemMsg;
-          }
 
           const response = await ai.models.generateContentStream({
             model: GeminiImageManipulator.MODEL,
