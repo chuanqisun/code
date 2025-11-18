@@ -309,13 +309,14 @@
       <div class="action-buttons">
         <button id="add-item-button">Add Item</button>
         <button id="delete-all-button">Delete All</button>
-        <button id="generate-button">Generate Image</button>
       </div>
     </div>
 
     <div class="output-section">
       <h2>Output</h2>
       <div class="action-buttons">
+        <button id="generate-button">Generate Image</button>
+        <button id="generate-text-button">Generate Text</button>
         <button id="delete-all-outputs-button">Delete All Outputs</button>
       </div>
       <div id="output-container">
@@ -330,6 +331,7 @@
       class GeminiImageManipulator {
         // --- 1. CONSTANTS ---
         static MODEL = "gemini-2.5-flash-image-preview";
+        static TEXT_MODEL = "gemini-2.5-flash";
         static DB_NAME = "gemini-image-sandbox";
         static STORE_NAME = "keyval";
         static PLACEHOLDER_IMAGE = "https://placehold.co/800";
@@ -358,7 +360,8 @@
           this.elements = {
             apiKeyInput: document.getElementById("api-key"),
             systemMessage: document.getElementById("system-message"),
-            generateButton: document.getElementById("generate-button"),
+            generateImageButton: document.getElementById("generate-button"),
+            generateTextButton: document.getElementById("generate-text-button"),
             messagesContainer: document.getElementById("messages-container"),
             addItemButton: document.getElementById("add-item-button"),
             deleteAllButton: document.getElementById("delete-all-button"),
@@ -458,7 +461,8 @@
         // --- Event Binding ---
 
         bindEvents() {
-          this.elements.generateButton.addEventListener("click", () => this.handleGenerate());
+          this.elements.generateImageButton.addEventListener("click", () => this.handleGenerateImage());
+          this.elements.generateTextButton.addEventListener("click", () => this.handleGenerateText());
           this.elements.addItemButton.addEventListener("click", () => this.addItem());
           this.elements.deleteAllButton.addEventListener("click", () => this.deleteAllMessages());
           this.elements.deleteAllOutputsButton.addEventListener("click", () => this.deleteAllOutputs());
@@ -523,11 +527,11 @@
 
         // --- Output Management ---
 
-        addOutput() {
+        addOutput(showImage = true) {
           const id = String(this.nextOutputId++);
           const output = {
             id,
-            imageUrl: GeminiImageManipulator.PLACEHOLDER_IMAGE,
+            imageUrl: showImage ? GeminiImageManipulator.PLACEHOLDER_IMAGE : null,
             text: "Generating...",
             loading: true,
           };
@@ -689,15 +693,17 @@
           const content = document.createElement("div");
           content.className = "output-item-content";
 
-          // Image
-          const image = document.createElement("img");
-          image.className = "output-item-image";
-          if (output.loading) {
-            image.classList.add("loading");
+          // Image (only show if imageUrl is not null)
+          if (output.imageUrl) {
+            const image = document.createElement("img");
+            image.className = "output-item-image";
+            if (output.loading) {
+              image.classList.add("loading");
+            }
+            image.src = output.imageUrl;
+            image.alt = "Generated Image";
+            content.appendChild(image);
           }
-          image.src = output.imageUrl;
-          image.alt = "Generated Image";
-          content.appendChild(image);
 
           // Text
           const text = document.createElement("div");
@@ -816,7 +822,7 @@
 
         // --- 3. CORE LOGIC METHODS ---
 
-        async handleGenerate() {
+        async handleGenerateImage() {
           const { apiKeyInput, systemMessage } = this.elements;
           const apiKey = apiKeyInput.value.trim();
           const systemMsg = systemMessage.value.trim();
@@ -836,10 +842,37 @@
 
           try {
             const ai = new GoogleGenAI({ apiKey });
-            await this.generateContent(ai, systemMsg, outputId);
+            await this.generateImageContent(ai, systemMsg, outputId);
           } catch (error) {
             console.error("Gemini API Error:", error);
             this.updateOutput(outputId, GeminiImageManipulator.PLACEHOLDER_IMAGE, `Error: ${error.message || "An unknown error occurred."}`);
+          }
+        }
+
+        async handleGenerateText() {
+          const { apiKeyInput, systemMessage } = this.elements;
+          const apiKey = apiKeyInput.value.trim();
+          const systemMsg = systemMessage.value.trim();
+
+          if (!apiKey) {
+            alert("Please provide an API Key.");
+            return;
+          }
+
+          if (!systemMsg && this.messages.length === 0) {
+            alert("Please provide either a system message or at least one message item.");
+            return;
+          }
+
+          // Create output item without image for text generation
+          const outputId = this.addOutput(false);
+
+          try {
+            const ai = new GoogleGenAI({ apiKey });
+            await this.generateTextContent(ai, systemMsg, outputId);
+          } catch (error) {
+            console.error("Gemini API Error:", error);
+            this.updateOutput(outputId, null, `Error: ${error.message || "An unknown error occurred."}`);
           }
         }
 
@@ -849,14 +882,9 @@
          * @param {string} systemMsg
          * @param {string} outputId
          */
-        async generateContent(ai, systemMsg, outputId) {
+        async generateImageContent(ai, systemMgs, outputId) {
           // Build parts array from messages
           const parts = [];
-
-          // Add system message first if present
-          if (systemMsg) {
-            parts.push({ text: systemMsg });
-          }
 
           // Add user messages
           for (const message of this.messages) {
@@ -889,6 +917,10 @@
             responseModalities: ["IMAGE"],
           };
 
+          if (systemMsg) {
+            config.systemInstruction = systemMsg;
+          }
+
           const response = await ai.models.generateContentStream({
             model: GeminiImageManipulator.MODEL,
             config,
@@ -918,6 +950,73 @@
           } else {
             this.updateOutput(outputId, GeminiImageManipulator.PLACEHOLDER_IMAGE, textContent || "Generation complete, but no image was returned.");
           }
+        }
+
+        /**
+         * Calls the Gemini API for text generation and handles the streaming response.
+         * @param {GoogleGenAI} ai
+         * @param {string} systemMsg
+         * @param {string} outputId
+         */
+        async generateTextContent(ai, systemMsg, outputId) {
+          // Build parts array from messages
+          const parts = [];
+
+          // Add user messages
+          for (const message of this.messages) {
+            // Add image if present
+            if (message.image) {
+              const base64Data = await GeminiImageManipulator.blobToBase64(message.image.blob);
+              const imagePart = {
+                inlineData: {
+                  data: base64Data,
+                  mimeType: message.image.mimeType,
+                },
+              };
+              parts.push(imagePart);
+            }
+
+            // Add text if present
+            if (message.text.trim()) {
+              parts.push({ text: message.text.trim() });
+            }
+          }
+
+          const contents = [
+            {
+              role: "user",
+              parts,
+            },
+          ];
+
+          const config = {};
+
+          // Set system instruction in config if present
+          if (systemMsg) {
+            config.systemInstruction = systemMsg;
+          }
+
+          const response = await ai.models.generateContentStream({
+            model: GeminiImageManipulator.TEXT_MODEL,
+            config,
+            contents,
+          });
+
+          let textContent = "";
+
+          for await (const chunk of response) {
+            const chunkText = chunk.text || "";
+            textContent += chunkText;
+
+            // Update output with streaming text (no image)
+            this.updateOutput(outputId, null, textContent);
+          }
+
+          // Final update to mark as complete
+          if (!textContent) {
+            textContent = "Text generation complete, but no text was returned.";
+          }
+          this.updateOutput(outputId, null, textContent);
         }
 
         // --- 5. UTILITY PURE FUNCTIONS (Static) ---
