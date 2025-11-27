@@ -46,6 +46,7 @@
 - [Re:draw](https://chuanqisun.github.io/redraw/)
 - [Shadowcast](./shadowcast/)
 - [Spaceship](./spaceship/)
+- [Umbrella](./umbrella/)
 - [Voxel intersection](./voxel-intersection/)
 
 ## Prompts

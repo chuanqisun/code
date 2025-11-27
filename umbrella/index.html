@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Morphing Heat Blob with Rain Cooling</title>
+    <style>
+      body {
+          margin: 0;
+          overflow: hidden;
+          background: #000;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+      }
+      canvas {
+          border: 1px solid #333;
+      }
+      .controls {
+          position: fixed;
+          top: 10px;
+          left: 10px;
+          color: white;
+          font-family: Arial, sans-serif;
+          font-size: 14px;
+          background: rgba(0,0,0,0.5);
+          padding: 10px;
+          border-radius: 5px;
+      }
+      .controls label {
+          display: block;
+          margin: 5px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Rain Intensity: <input type="range" id="rainIntensity" min="1" max="50" value="15" /></label>
+      <label>Drop Size: <input type="range" id="dropSize" min="10" max="100" value="40" /></label>
+    </div>
+    <canvas id="glCanvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("glCanvas");
+      const gl = canvas.getContext("webgl");
+
+      // Set canvas size
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+
+      // Maximum number of rain drops to track
+      const MAX_DROPS = 100;
+
+      // Vertex shader
+      const vertexShaderSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        `;
+
+      // Fragment shader with heat blob and rain cooling effect
+      const fragmentShaderSource = `
+            precision mediump float;
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            uniform vec2 u_offset1;
+            uniform vec2 u_offset2;
+            uniform vec2 u_offset3;
+            uniform vec2 u_offset4;
+            
+            // Rain drop uniforms
+            uniform vec2 u_dropPositions[${MAX_DROPS}];
+            uniform float u_dropTimes[${MAX_DROPS}];
+            uniform float u_dropDurations[${MAX_DROPS}];
+            uniform int u_activeDrops;
+            uniform float u_dropSize;
+
+            // Noise function for organic movement
+            float random(vec2 st) {
+                return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+            }
+
+            float noise(vec2 st) {
+                vec2 i = floor(st);
+                vec2 f = fract(st);
+                float a = random(i);
+                float b = random(i + vec2(1.0, 0.0));
+                float c = random(i + vec2(0.0, 1.0));
+                float d = random(i + vec2(1.0, 1.0));
+                vec2 u = f * f * (3.0 - 2.0 * f);
+                return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+            }
+
+            // Fractal Brownian Motion for more organic shapes
+            float fbm(vec2 st) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                float frequency = 2.0;
+                for(int i = 0; i < 5; i++) {
+                    value += amplitude * noise(st * frequency);
+                    frequency *= 2.0;
+                    amplitude *= 0.5;
+                }
+                return value;
+            }
+
+            // Heat map color gradient
+            vec3 heatColor(float t) {
+                t = clamp(t, 0.0, 1.0);
+                
+                vec3 color1 = vec3(0.0, 0.0, 0.5);      // Dark blue
+                vec3 color2 = vec3(0.0, 0.5, 1.0);      // Cyan
+                vec3 color3 = vec3(0.0, 1.0, 0.5);      // Green-cyan
+                vec3 color4 = vec3(1.0, 1.0, 0.0);      // Yellow
+                vec3 color5 = vec3(1.0, 0.5, 0.0);      // Orange
+                vec3 color6 = vec3(1.0, 0.0, 0.0);      // Red
+                
+                vec3 color;
+                if(t < 0.2) {
+                    color = mix(color1, color2, t / 0.2);
+                } else if(t < 0.4) {
+                    color = mix(color2, color3, (t - 0.2) / 0.2);
+                } else if(t < 0.6) {
+                    color = mix(color3, color4, (t - 0.4) / 0.2);
+                } else if(t < 0.8) {
+                    color = mix(color4, color5, (t - 0.6) / 0.2);
+                } else {
+                    color = mix(color5, color6, (t - 0.8) / 0.2);
+                }
+                
+                return color;
+            }
+
+            // Calculate cooling effect from a single drop
+            float dropCooling(vec2 st, vec2 dropPos, float dropAge, float duration) {
+                float dist = length(st - dropPos);
+                float radius = u_dropSize * 0.001;
+                
+                // Normalized age (0 = just hit, 1 = fully recovered)
+                float normalizedAge = dropAge / duration;
+                
+                // Quick cooling, slower recovery (exponential ease out)
+                float coolingIntensity;
+                if(normalizedAge < 0.1) {
+                    // Rapid cooling phase
+                    coolingIntensity = normalizedAge / 0.1;
+                } else {
+                    // Recovery phase - exponential decay
+                    float recoveryPhase = (normalizedAge - 0.1) / 0.9;
+                    coolingIntensity = 1.0 - recoveryPhase * recoveryPhase;
+                }
+                
+                // Ripple effect that expands outward
+                float rippleRadius = radius * (1.0 + normalizedAge * 2.0);
+                float ripple = smoothstep(rippleRadius, rippleRadius * 0.3, dist);
+                
+                // Core cooling spot
+                float core = smoothstep(radius, radius * 0.2, dist);
+                
+                // Combine core and ripple
+                float effect = mix(ripple * 0.5, core, 0.7);
+                
+                return effect * coolingIntensity;
+            }
+
+            void main() {
+                vec2 st = gl_FragCoord.xy / u_resolution.xy;
+                st = st * 2.0 - 1.0;
+                st.x *= u_resolution.x / u_resolution.y;
+
+                // Create multiple heat sources that morph
+                vec2 center1 = u_offset1 * 0.3;
+                vec2 center2 = u_offset2 * 0.2;
+                vec2 center3 = u_offset3 * 0.25;
+                vec2 center4 = u_offset4 * 0.15;
+
+                // Calculate distances from multiple centers
+                float dist1 = length(st - center1);
+                float dist2 = length(st - center2);
+                float dist3 = length(st - center3);
+                float dist4 = length(st - center4);
+
+                // Add noise-based distortion for organic morphing
+                float noiseVal = fbm(st * 2.0 + u_time * 0.1);
+                float noiseVal2 = fbm(st * 3.0 - u_time * 0.15);
+                
+                // Combine distances with noise
+                float heat = 0.0;
+                heat += (1.0 - smoothstep(0.0, 0.8, dist1)) * 0.4;
+                heat += (1.0 - smoothstep(0.0, 0.6, dist2)) * 0.3;
+                heat += (1.0 - smoothstep(0.0, 0.7, dist3)) * 0.2;
+                heat += (1.0 - smoothstep(0.0, 0.5, dist4)) * 0.25;
+                
+                // Add noise for morphing effect
+                heat += noiseVal * 0.3;
+                heat += noiseVal2 * 0.2;
+                
+                // Store original heat for mask
+                float originalHeat = heat;
+                
+                // Apply rain drop cooling
+                float totalCooling = 0.0;
+                for(int i = 0; i < ${MAX_DROPS}; i++) {
+                    if(i >= u_activeDrops) break;
+                    
+                    float dropAge = u_time - u_dropTimes[i];
+                    if(dropAge >= 0.0 && dropAge < u_dropDurations[i]) {
+                        totalCooling += dropCooling(st, u_dropPositions[i], dropAge, u_dropDurations[i]);
+                    }
+                }
+                
+                // Apply cooling to heat (cooling reduces heat value)
+                heat = heat - totalCooling * 0.8;
+                heat = max(heat, 0.0);
+                
+                // Create blob shape with smooth falloff
+                float blobMask = smoothstep(0.2, 0.8, originalHeat);
+                
+                // Apply heat color
+                vec3 color = heatColor(heat);
+                
+                // Add some glow
+                color += vec3(0.1, 0.05, 0.0) * heat;
+                
+                // Add subtle blue tint where cooling is happening
+                color += vec3(-0.1, 0.0, 0.2) * totalCooling * blobMask;
+                
+                // Fade edges
+                color *= blobMask;
+                
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+      // Compile shader
+      function compileShader(source, type) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          console.error("Shader compile error:", gl.getShaderInfoLog(shader));
+          gl.deleteShader(shader);
+          return null;
+        }
+        return shader;
+      }
+
+      // Create program
+      const vertexShader = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
+      const fragmentShader = compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER);
+
+      const program = gl.createProgram();
+      gl.attachShader(program, vertexShader);
+      gl.attachShader(program, fragmentShader);
+      gl.linkProgram(program);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        console.error("Program link error:", gl.getProgramInfoLog(program));
+      }
+
+      gl.useProgram(program);
+
+      // Create a full-screen quad
+      const positions = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+
+      const positionBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+      const positionLocation = gl.getAttribLocation(program, "a_position");
+      gl.enableVertexAttribArray(positionLocation);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+      // Get uniform locations
+      const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+      const timeLocation = gl.getUniformLocation(program, "u_time");
+      const offset1Location = gl.getUniformLocation(program, "u_offset1");
+      const offset2Location = gl.getUniformLocation(program, "u_offset2");
+      const offset3Location = gl.getUniformLocation(program, "u_offset3");
+      const offset4Location = gl.getUniformLocation(program, "u_offset4");
+      const activeDropsLocation = gl.getUniformLocation(program, "u_activeDrops");
+      const dropSizeLocation = gl.getUniformLocation(program, "u_dropSize");
+
+      // Get drop uniform locations
+      const dropPositionLocations = [];
+      const dropTimeLocations = [];
+      const dropDurationLocations = [];
+      for (let i = 0; i < MAX_DROPS; i++) {
+        dropPositionLocations.push(gl.getUniformLocation(program, `u_dropPositions[${i}]`));
+        dropTimeLocations.push(gl.getUniformLocation(program, `u_dropTimes[${i}]`));
+        dropDurationLocations.push(gl.getUniformLocation(program, `u_dropDurations[${i}]`));
+      }
+
+      // Set resolution
+      gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+
+      // Rain drop management
+      class RainDrop {
+        constructor(x, y, time, duration) {
+          this.x = x;
+          this.y = y;
+          this.time = time;
+          this.duration = duration;
+        }
+
+        isExpired(currentTime) {
+          return currentTime - this.time > this.duration;
+        }
+      }
+
+      let rainDrops = [];
+      let lastDropTime = 0;
+
+      function addRainDrop(time) {
+        // Random position in normalized coordinates
+        const aspectRatio = canvas.width / canvas.height;
+        const x = (Math.random() * 2 - 1) * aspectRatio;
+        const y = Math.random() * 2 - 1;
+
+        // Random duration around 1 second (0.7 to 1.3 seconds)
+        const duration = 0.7 + Math.random() * 0.6;
+
+        rainDrops.push(new RainDrop(x, y, time, duration));
+
+        // Remove expired drops
+        rainDrops = rainDrops.filter((drop) => !drop.isExpired(time));
+
+        // Limit total drops
+        if (rainDrops.length > MAX_DROPS) {
+          rainDrops = rainDrops.slice(-MAX_DROPS);
+        }
+      }
+
+      // Animation loop
+      let startTime = Date.now();
+
+      function render() {
+        const time = (Date.now() - startTime) * 0.001;
+
+        // Get control values
+        const rainIntensity = parseInt(document.getElementById("rainIntensity").value);
+        const dropSize = parseInt(document.getElementById("dropSize").value);
+
+        // Add new rain drops based on intensity
+        const dropInterval = 1.0 / rainIntensity;
+        if (time - lastDropTime > dropInterval) {
+          addRainDrop(time);
+          lastDropTime = time;
+        }
+
+        // Create slowly morphing offsets for heat centers
+        const offset1X = Math.sin(time * 0.3) * 0.5;
+        const offset1Y = Math.cos(time * 0.4) * 0.5;
+
+        const offset2X = Math.sin(time * 0.25 + 1.5) * 0.6;
+        const offset2Y = Math.cos(time * 0.35 + 2.0) * 0.6;
+
+        const offset3X = Math.sin(time * 0.2 + 3.0) * 0.4;
+        const offset3Y = Math.cos(time * 0.3 + 1.0) * 0.4;
+
+        const offset4X = Math.sin(time * 0.35 + 4.0) * 0.3;
+        const offset4Y = Math.cos(time * 0.25 + 3.5) * 0.3;
+
+        gl.uniform1f(timeLocation, time);
+        gl.uniform2f(offset1Location, offset1X, offset1Y);
+        gl.uniform2f(offset2Location, offset2X, offset2Y);
+        gl.uniform2f(offset3Location, offset3X, offset3Y);
+        gl.uniform2f(offset4Location, offset4X, offset4Y);
+
+        // Update rain drop uniforms
+        gl.uniform1i(activeDropsLocation, rainDrops.length);
+        gl.uniform1f(dropSizeLocation, dropSize);
+
+        for (let i = 0; i < rainDrops.length; i++) {
+          gl.uniform2f(dropPositionLocations[i], rainDrops[i].x, rainDrops[i].y);
+          gl.uniform1f(dropTimeLocations[i], rainDrops[i].time);
+          gl.uniform1f(dropDurationLocations[i], rainDrops[i].duration);
+        }
+
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        requestAnimationFrame(render);
+      }
+
+      render();
+
+      // Handle window resize
+      window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+      });
+
+      // Allow clicking to add drops manually
+      canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = (((e.clientX - rect.left) / canvas.width) * 2 - 1) * (canvas.width / canvas.height);
+        const y = -(((e.clientY - rect.top) / canvas.height) * 2 - 1);
+        const time = (Date.now() - startTime) * 0.001;
+        const duration = 0.7 + Math.random() * 0.6;
+        rainDrops.push(new RainDrop(x, y, time, duration));
+      });
+    </script>
+  </body>
+</html>
