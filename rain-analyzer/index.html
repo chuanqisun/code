@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rain Density Analyzer</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #1a1a2e;
+        color: #eee;
+      }
+      #visualizer {
+        display: flex;
+        align-items: flex-end;
+        height: 200px;
+        gap: 2px;
+        background: #0f0f1a;
+        padding: 10px;
+        margin-top: 20px;
+      }
+      .bar {
+        flex: 1;
+        background: #4cc9f0;
+        min-width: 4px;
+      }
+      #controls {
+        margin: 10px 0;
+      }
+      audio {
+        width: 100%;
+        max-width: 400px;
+      }
+      #metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+      }
+      .metric-box {
+        background: #0f0f1a;
+        padding: 15px;
+        border-left: 4px solid #4cc9f0;
+      }
+      .metric-value {
+        font-size: 2em;
+        font-weight: bold;
+        color: #4cc9f0;
+      }
+      .metric-label {
+        color: #888;
+        font-size: 0.9em;
+      }
+      #density-bar {
+        height: 30px;
+        background: linear-gradient(to right, #2d6a4f, #40916c, #74c69d, #f9c74f, #f8961e, #f3722c, #e63946);
+        margin-top: 20px;
+        position: relative;
+      }
+      #density-marker {
+        position: absolute;
+        top: -5px;
+        width: 4px;
+        height: 40px;
+        background: white;
+        transform: translateX(-50%);
+        transition: left 0.1s;
+      }
+      #density-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8em;
+        color: #888;
+      }
+      #rain-status {
+        font-size: 1.5em;
+        margin-top: 15px;
+        padding: 10px;
+        background: #0f0f1a;
+        text-align: center;
+      }
+      #history {
+        margin-top: 20px;
+        background: #0f0f1a;
+        padding: 10px;
+      }
+      #history-canvas {
+        width: 100%;
+        height: 100px;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🌧️ Rain Density Analyzer</h1>
+
+    <div id="controls">
+      <input type="file" id="audioFile" accept="audio/*" />
+      <br /><br />
+      <audio id="audio" controls></audio>
+    </div>
+
+    <div id="visualizer"></div>
+
+    <div id="density-bar">
+      <div id="density-marker" style="left: 0%"></div>
+    </div>
+    <div id="density-labels">
+      <span>None</span>
+      <span>Drizzle</span>
+      <span>Light</span>
+      <span>Moderate</span>
+      <span>Heavy</span>
+      <span>Violent</span>
+    </div>
+
+    <div id="rain-status">Upload audio to analyze</div>
+
+    <div id="metrics">
+      <div class="metric-box">
+        <div class="metric-value" id="rms-value">0</div>
+        <div class="metric-label">RMS Energy (dB)</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value" id="peak-value">0</div>
+        <div class="metric-label">Peak Rate (/sec)</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value" id="centroid-value">0</div>
+        <div class="metric-label">Spectral Centroid (Hz)</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value" id="flux-value">0</div>
+        <div class="metric-label">Spectral Flux</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value" id="lowhi-value">0</div>
+        <div class="metric-label">Low/High Ratio</div>
+      </div>
+      <div class="metric-box">
+        <div class="metric-value" id="density-value">0</div>
+        <div class="metric-label">Est. mm/hour</div>
+      </div>
+    </div>
+
+    <div id="history">
+      <div>Density History</div>
+      <canvas id="history-canvas"></canvas>
+    </div>
+
+    <script>
+      const audioFileInput = document.getElementById("audioFile");
+      const audioElement = document.getElementById("audio");
+      const visualizer = document.getElementById("visualizer");
+      const densityMarker = document.getElementById("density-marker");
+      const rainStatus = document.getElementById("rain-status");
+      const historyCanvas = document.getElementById("history-canvas");
+      const historyCtx = historyCanvas.getContext("2d");
+
+      let audioContext;
+      let analyser;
+      let source;
+      let dataArray;
+      let timeDataArray;
+      let bars = [];
+      let animationId;
+      let previousSpectrum = null;
+      let densityHistory = [];
+
+      const NUM_BARS = 64;
+      const SAMPLE_RATE = 44100;
+
+      // Create bars
+      for (let i = 0; i < NUM_BARS; i++) {
+        const bar = document.createElement("div");
+        bar.className = "bar";
+        bar.style.height = "0px";
+        visualizer.appendChild(bar);
+        bars.push(bar);
+      }
+
+      // Resize canvas
+      function resizeCanvas() {
+        historyCanvas.width = historyCanvas.offsetWidth;
+        historyCanvas.height = historyCanvas.offsetHeight;
+      }
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
+      audioFileInput.addEventListener("change", function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const url = URL.createObjectURL(file);
+        audioElement.src = url;
+
+        if (audioContext) {
+          cancelAnimationFrame(animationId);
+          audioContext.close();
+        }
+
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.3;
+
+        source = audioContext.createMediaElementSource(audioElement);
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        timeDataArray = new Float32Array(analyser.fftSize);
+        previousSpectrum = new Uint8Array(analyser.frequencyBinCount);
+        densityHistory = [];
+
+        visualize();
+      });
+
+      audioElement.addEventListener("play", function () {
+        if (audioContext && audioContext.state === "suspended") {
+          audioContext.resume();
+        }
+      });
+
+      // Calculate RMS energy
+      function calculateRMS(timeData) {
+        let sum = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          sum += timeData[i] * timeData[i];
+        }
+        return Math.sqrt(sum / timeData.length);
+      }
+
+      // Calculate spectral centroid (brightness indicator)
+      function calculateSpectralCentroid(spectrum, sampleRate, fftSize) {
+        let weightedSum = 0;
+        let sum = 0;
+        const binFrequency = sampleRate / fftSize;
+
+        for (let i = 0; i < spectrum.length; i++) {
+          const frequency = i * binFrequency;
+          const magnitude = spectrum[i];
+          weightedSum += frequency * magnitude;
+          sum += magnitude;
+        }
+
+        return sum > 0 ? weightedSum / sum : 0;
+      }
+
+      // Calculate spectral flux (change detection - correlates with drop impacts)
+      function calculateSpectralFlux(current, previous) {
+        let flux = 0;
+        for (let i = 0; i < current.length; i++) {
+          const diff = current[i] - previous[i];
+          flux += diff > 0 ? diff : 0; // Only positive changes (onsets)
+        }
+        return flux / current.length;
+      }
+
+      // Calculate low/high frequency ratio (drop size indicator)
+      function calculateLowHighRatio(spectrum, sampleRate, fftSize) {
+        const binFrequency = sampleRate / fftSize;
+        const lowCutoff = 1000; // Hz
+        const lowBins = Math.floor(lowCutoff / binFrequency);
+
+        let lowEnergy = 0;
+        let highEnergy = 0;
+
+        for (let i = 0; i < spectrum.length; i++) {
+          const energy = spectrum[i] * spectrum[i];
+          if (i < lowBins) {
+            lowEnergy += energy;
+          } else {
+            highEnergy += energy;
+          }
+        }
+
+        return highEnergy > 0 ? lowEnergy / highEnergy : 0;
+      }
+
+      // Count transient peaks in time domain
+      function countPeaks(timeData, threshold) {
+        let peaks = 0;
+        let lastWasAbove = false;
+
+        for (let i = 0; i < timeData.length; i++) {
+          const isAbove = Math.abs(timeData[i]) > threshold;
+          if (isAbove && !lastWasAbove) {
+            peaks++;
+          }
+          lastWasAbove = isAbove;
+        }
+
+        return peaks;
+      }
+
+      // Estimate rain density based on multiple features
+      function estimateRainDensity(rms, flux, centroid, lowHighRatio, peakRate) {
+        // Normalize features (these thresholds may need calibration)
+        const rmsNorm = Math.min(rms / 0.1, 1);
+        const fluxNorm = Math.min(flux / 50, 1);
+        const centroidFactor = centroid > 500 && centroid < 4000 ? 1 : 0.5;
+        const peakNorm = Math.min(peakRate / 500, 1);
+
+        // Weighted combination
+        const density = (rmsNorm * 0.3 + fluxNorm * 0.3 + peakNorm * 0.3 + (lowHighRatio > 0.5 ? 0.1 : 0)) * centroidFactor;
+
+        return Math.min(density, 1);
+      }
+
+      // Get rain category
+      function getRainCategory(density) {
+        if (density < 0.05) return { text: "No Rain Detected", emoji: "☀️" };
+        if (density < 0.15) return { text: "Drizzle", emoji: "🌦️" };
+        if (density < 0.3) return { text: "Light Rain", emoji: "🌧️" };
+        if (density < 0.5) return { text: "Moderate Rain", emoji: "🌧️🌧️" };
+        if (density < 0.75) return { text: "Heavy Rain", emoji: "⛈️" };
+        return { text: "Violent Rain", emoji: "🌊⛈️" };
+      }
+
+      // Convert density to approximate mm/hour
+      function densityToMmPerHour(density) {
+        // Rough mapping: 0-1 density to 0-50 mm/hour
+        return (density * 50).toFixed(1);
+      }
+
+      // Draw history graph
+      function drawHistory() {
+        const ctx = historyCtx;
+        const w = historyCanvas.width;
+        const h = historyCanvas.height;
+
+        ctx.fillStyle = "#0f0f1a";
+        ctx.fillRect(0, 0, w, h);
+
+        if (densityHistory.length < 2) return;
+
+        ctx.beginPath();
+        ctx.strokeStyle = "#4cc9f0";
+        ctx.lineWidth = 2;
+
+        const step = w / Math.max(densityHistory.length - 1, 1);
+
+        for (let i = 0; i < densityHistory.length; i++) {
+          const x = i * step;
+          const y = h - densityHistory[i] * h;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+
+        ctx.stroke();
+
+        // Fill under curve
+        ctx.lineTo((densityHistory.length - 1) * step, h);
+        ctx.lineTo(0, h);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(76, 201, 240, 0.2)";
+        ctx.fill();
+      }
+
+      function visualize() {
+        animationId = requestAnimationFrame(visualize);
+
+        analyser.getByteFrequencyData(dataArray);
+        analyser.getFloatTimeDomainData(timeDataArray);
+
+        // Update frequency bars
+        const step = Math.floor(dataArray.length / NUM_BARS);
+        for (let i = 0; i < NUM_BARS; i++) {
+          const value = dataArray[i * step];
+          const height = (value / 255) * 180;
+          bars[i].style.height = height + "px";
+
+          const hue = 180 + (value / 255) * 40;
+          bars[i].style.background = `hsl(${hue}, 80%, 50%)`;
+        }
+
+        // Calculate metrics
+        const rms = calculateRMS(timeDataArray);
+        const rmsDb = 20 * Math.log10(rms + 0.0001);
+        const centroid = calculateSpectralCentroid(dataArray, SAMPLE_RATE, analyser.fftSize);
+        const flux = calculateSpectralFlux(dataArray, previousSpectrum);
+        const lowHighRatio = calculateLowHighRatio(dataArray, SAMPLE_RATE, analyser.fftSize);
+        const peaks = countPeaks(timeDataArray, 0.05);
+        const peakRate = peaks * (SAMPLE_RATE / analyser.fftSize);
+
+        // Copy current spectrum for next frame
+        previousSpectrum.set(dataArray);
+
+        // Estimate rain density
+        const density = estimateRainDensity(rms, flux, centroid, lowHighRatio, peakRate);
+        const category = getRainCategory(density);
+
+        // Update UI
+        document.getElementById("rms-value").textContent = rmsDb.toFixed(1);
+        document.getElementById("peak-value").textContent = peakRate.toFixed(0);
+        document.getElementById("centroid-value").textContent = centroid.toFixed(0);
+        document.getElementById("flux-value").textContent = flux.toFixed(1);
+        document.getElementById("lowhi-value").textContent = lowHighRatio.toFixed(2);
+        document.getElementById("density-value").textContent = densityToMmPerHour(density);
+
+        densityMarker.style.left = density * 100 + "%";
+        rainStatus.textContent = `${category.emoji} ${category.text}`;
+
+        // Update history
+        densityHistory.push(density);
+        if (densityHistory.length > 200) {
+          densityHistory.shift();
+        }
+        drawHistory();
+      }
+    </script>
+  </body>
+</html>

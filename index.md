@@ -43,6 +43,7 @@
 - [Web Speech API](./web-speech-api/)
 - [Wiki search](./wiki-search/)
 - [Perlin noise](./perlin-noise/)
+- [Rain Analyzer](./rain-analyzer/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
 - [Shadowcast](./shadowcast/)
 - [Spaceship](./spaceship/)
