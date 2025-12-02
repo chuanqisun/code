@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,50 +6,50 @@
     <title>Morphing Heat Blob with Rain Cooling</title>
     <style>
       body {
-          margin: 0;
-          overflow: hidden;
-          background: #000;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
       }
       canvas {
-          border: 1px solid #333;
+        border: 1px solid #333;
       }
       .controls {
-          position: fixed;
-          top: 10px;
-          left: 10px;
-          color: white;
-          font-family: Arial, sans-serif;
-          font-size: 14px;
-          background: rgba(0,0,0,0.5);
-          padding: 10px;
-          border-radius: 5px;
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 5px;
       }
       .controls label {
-          display: block;
-          margin: 5px 0;
+        display: block;
+        margin: 5px 0;
       }
       .controls button {
-          margin-top: 10px;
-          padding: 8px 16px;
-          background: #444;
-          color: white;
-          border: none;
-          border-radius: 4px;
-          cursor: pointer;
-          font-size: 14px;
+        margin-top: 10px;
+        padding: 8px 16px;
+        background: #444;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
       }
       .controls button:hover {
-          background: #555;
+        background: #555;
       }
       .controls button.recording {
-          background: #c00;
+        background: #c00;
       }
       .controls button.recording:hover {
-          background: #e00;
+        background: #e00;
       }
     </style>
   </head>
@@ -57,6 +57,7 @@
     <div class="controls">
       <label>Rain Intensity: <input type="range" id="rainIntensity" min="1" max="50" value="15" /></label>
       <label>Drop Size: <input type="range" id="dropSize" min="10" max="100" value="40" /></label>
+      <label>Blob Size: <input type="range" id="blobSize" min="20" max="200" value="100" /></label>
       <button id="recordBtn">Start Recording</button>
     </div>
     <canvas id="glCanvas"></canvas>
@@ -97,6 +98,7 @@
             uniform float u_dropDurations[${MAX_DROPS}];
             uniform int u_activeDrops;
             uniform float u_dropSize;
+            uniform float u_blobSize;
 
             // Noise function for organic movement
             float random(vec2 st) {
@@ -202,6 +204,9 @@
                 float dist2 = length(st - center2);
                 float dist3 = length(st - center3);
                 float dist4 = length(st - center4);
+                
+                // Scale factor for blob size (1.0 = default at 100)
+                float sizeScale = u_blobSize * 0.01;
 
                 // Add noise-based distortion for organic morphing
                 float noiseVal = fbm(st * 2.0 + u_time * 0.1);
@@ -209,10 +214,10 @@
                 
                 // Combine distances with noise
                 float heat = 0.0;
-                heat += (1.0 - smoothstep(0.0, 0.8, dist1)) * 0.4;
-                heat += (1.0 - smoothstep(0.0, 0.6, dist2)) * 0.3;
-                heat += (1.0 - smoothstep(0.0, 0.7, dist3)) * 0.2;
-                heat += (1.0 - smoothstep(0.0, 0.5, dist4)) * 0.25;
+                heat += (1.0 - smoothstep(0.0, 0.8 * sizeScale, dist1)) * 0.4;
+                heat += (1.0 - smoothstep(0.0, 0.6 * sizeScale, dist2)) * 0.3;
+                heat += (1.0 - smoothstep(0.0, 0.7 * sizeScale, dist3)) * 0.2;
+                heat += (1.0 - smoothstep(0.0, 0.5 * sizeScale, dist4)) * 0.25;
                 
                 // Add noise for morphing effect
                 heat += noiseVal * 0.3;
@@ -304,6 +309,7 @@
       const offset4Location = gl.getUniformLocation(program, "u_offset4");
       const activeDropsLocation = gl.getUniformLocation(program, "u_activeDrops");
       const dropSizeLocation = gl.getUniformLocation(program, "u_dropSize");
+      const blobSizeLocation = gl.getUniformLocation(program, "u_blobSize");
 
       // Get drop uniform locations
       const dropPositionLocations = [];
@@ -364,6 +370,7 @@
         // Get control values
         const rainIntensity = parseInt(document.getElementById("rainIntensity").value);
         const dropSize = parseInt(document.getElementById("dropSize").value);
+        const blobSize = parseInt(document.getElementById("blobSize").value);
 
         // Add new rain drops based on intensity
         const dropInterval = 1.0 / rainIntensity;
@@ -394,6 +401,7 @@
         // Update rain drop uniforms
         gl.uniform1i(activeDropsLocation, rainDrops.length);
         gl.uniform1f(dropSizeLocation, dropSize);
+        gl.uniform1f(blobSizeLocation, blobSize);
 
         for (let i = 0; i < rainDrops.length; i++) {
           gl.uniform2f(dropPositionLocations[i], rainDrops[i].x, rainDrops[i].y);
@@ -445,45 +453,40 @@
 
       function startRecording() {
         recordedChunks = [];
-        
+
         // Capture the canvas stream at 60 FPS
         const stream = canvas.captureStream(60);
-        
+
         // Try to use VP9 codec for better quality, fallback to VP8 or default
-        const mimeTypes = [
-          'video/webm;codecs=vp9',
-          'video/webm;codecs=vp8',
-          'video/webm',
-          'video/mp4'
-        ];
-        
-        let selectedMimeType = '';
+        const mimeTypes = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"];
+
+        let selectedMimeType = "";
         for (const mimeType of mimeTypes) {
           if (MediaRecorder.isTypeSupported(mimeType)) {
             selectedMimeType = mimeType;
             break;
           }
         }
-        
+
         const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
-        
+
         try {
           mediaRecorder = new MediaRecorder(stream, options);
         } catch (e) {
           console.error("MediaRecorder error:", e);
           mediaRecorder = new MediaRecorder(stream);
         }
-        
+
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             recordedChunks.push(event.data);
           }
         };
-        
+
         mediaRecorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+          const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "video/webm" });
           const url = URL.createObjectURL(blob);
-          
+
           // Create download link
           const a = document.createElement("a");
           a.href = url;
@@ -491,12 +494,12 @@
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          
+
           // Clean up
           URL.revokeObjectURL(url);
           recordedChunks = [];
         };
-        
+
         mediaRecorder.start();
         isRecording = true;
         recordBtn.textContent = "Stop Recording";
