@@ -470,18 +470,24 @@
           combinedStream = canvasStream;
         }
 
-        // Try MP4 first (Safari), then WebM codecs (Chrome/Firefox/Edge)
-        // Note: MP4/H.264 recording is only natively supported in Safari
-        // Chrome/Firefox only support WebM containers with VP8/VP9
+        /**
+         * Convert to AVI for playback
+         * ffmpeg -i input.mp4 -vf scale=640:360 -c:v libx264 -c:a aac input.avi
+         */
+
+        // Codec priority for maximum playback compatibility:
+        // - MP4 + H.264 + AAC: Most compatible (plays on virtually all devices)
+        // - WebM + VP8/VP9: Good browser support, less device compatibility
+        // Safari uses MP4/AAC natively. Chrome/Firefox use WebM with Opus audio.
+        // Unfortunately, Chrome/Firefox MediaRecorder doesn't support AAC audio.
         const mimeTypes = [
-          "video/mp4;codecs=avc1.42E01E", // H.264 Baseline (Safari)
-          "video/mp4;codecs=avc1", // H.264 generic (Safari)
-          "video/mp4", // MP4 fallback (Safari)
-          "video/webm;codecs=h264", // WebM with H.264 (rare support)
-          "video/webm;codecs=vp9,opus", // VP9 + Opus audio (Chrome/Firefox)
-          "video/webm;codecs=vp8,opus", // VP8 + Opus audio (Chrome/Firefox)
-          "video/webm;codecs=vp9", // VP9 (Chrome/Firefox)
-          "video/webm;codecs=vp8", // VP8 (Chrome/Firefox)
+          "video/mp4;codecs=avc1.42E01E,mp4a.40.2", // H.264 Baseline + AAC-LC (most compatible)
+          "video/mp4;codecs=avc1,mp4a.40.2", // H.264 + AAC-LC
+          "video/mp4", // MP4 (Safari - uses AAC by default)
+          "video/webm;codecs=vp8,opus", // VP8 + Opus (Chrome/Firefox)
+          "video/webm;codecs=vp9,opus", // VP9 + Opus (Chrome/Firefox)
+          "video/webm;codecs=vp8", // VP8 only
+          "video/webm;codecs=vp9", // VP9 only
           "video/webm", // WebM fallback
         ];
 
@@ -494,7 +500,7 @@
           }
         }
 
-        const options = selectedMimeType ? { mimeType: selectedMimeType, videoBitsPerSecond: 8000000 } : {};
+        const options = selectedMimeType ? { mimeType: selectedMimeType, videoBitsPerSecond: 8000000, audioBitsPerSecond: 128000 } : {};
 
         try {
           mediaRecorder = new MediaRecorder(combinedStream, options);
