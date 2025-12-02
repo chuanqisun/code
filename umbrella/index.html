@@ -32,12 +32,32 @@
           display: block;
           margin: 5px 0;
       }
+      .controls button {
+          margin-top: 10px;
+          padding: 8px 16px;
+          background: #444;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+      }
+      .controls button:hover {
+          background: #555;
+      }
+      .controls button.recording {
+          background: #c00;
+      }
+      .controls button.recording:hover {
+          background: #e00;
+      }
     </style>
   </head>
   <body>
     <div class="controls">
       <label>Rain Intensity: <input type="range" id="rainIntensity" min="1" max="50" value="15" /></label>
       <label>Drop Size: <input type="range" id="dropSize" min="10" max="100" value="40" /></label>
+      <button id="recordBtn">Start Recording</button>
     </div>
     <canvas id="glCanvas"></canvas>
 
@@ -400,6 +420,7 @@
 
       // Allow clicking to add drops manually
       canvas.addEventListener("click", (e) => {
+        if (isRecording) return; // Don't add drops while recording on click
         const rect = canvas.getBoundingClientRect();
         const x = (((e.clientX - rect.left) / canvas.width) * 2 - 1) * (canvas.width / canvas.height);
         const y = -(((e.clientY - rect.top) / canvas.height) * 2 - 1);
@@ -407,6 +428,89 @@
         const duration = 0.7 + Math.random() * 0.6;
         rainDrops.push(new RainDrop(x, y, time, duration));
       });
+
+      // Video recording using MediaRecorder API with canvas.captureStream()
+      let mediaRecorder = null;
+      let recordedChunks = [];
+      let isRecording = false;
+      const recordBtn = document.getElementById("recordBtn");
+
+      recordBtn.addEventListener("click", () => {
+        if (!isRecording) {
+          startRecording();
+        } else {
+          stopRecording();
+        }
+      });
+
+      function startRecording() {
+        recordedChunks = [];
+        
+        // Capture the canvas stream at 60 FPS
+        const stream = canvas.captureStream(60);
+        
+        // Try to use VP9 codec for better quality, fallback to VP8 or default
+        const mimeTypes = [
+          'video/webm;codecs=vp9',
+          'video/webm;codecs=vp8',
+          'video/webm',
+          'video/mp4'
+        ];
+        
+        let selectedMimeType = '';
+        for (const mimeType of mimeTypes) {
+          if (MediaRecorder.isTypeSupported(mimeType)) {
+            selectedMimeType = mimeType;
+            break;
+          }
+        }
+        
+        const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
+        
+        try {
+          mediaRecorder = new MediaRecorder(stream, options);
+        } catch (e) {
+          console.error("MediaRecorder error:", e);
+          mediaRecorder = new MediaRecorder(stream);
+        }
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+        
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          
+          // Create download link
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `heat-blob-recording-${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          
+          // Clean up
+          URL.revokeObjectURL(url);
+          recordedChunks = [];
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        recordBtn.textContent = "Stop Recording";
+        recordBtn.classList.add("recording");
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
+        isRecording = false;
+        recordBtn.textContent = "Start Recording";
+        recordBtn.classList.remove("recording");
+      }
     </script>
   </body>
 </html>
