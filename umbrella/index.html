@@ -451,30 +451,56 @@
         }
       });
 
-      function startRecording() {
+      async function startRecording() {
         recordedChunks = [];
 
         // Capture the canvas stream at 60 FPS
-        const stream = canvas.captureStream(60);
+        const canvasStream = canvas.captureStream(60);
 
-        // Try to use VP9 codec for better quality, fallback to VP8 or default
-        const mimeTypes = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"];
+        // Try to get microphone audio
+        let combinedStream;
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          // Combine canvas video with microphone audio
+          const audioTrack = audioStream.getAudioTracks()[0];
+          combinedStream = new MediaStream([...canvasStream.getVideoTracks(), audioTrack]);
+          console.log("Recording with microphone audio");
+        } catch (e) {
+          console.warn("Could not access microphone, recording video only:", e);
+          combinedStream = canvasStream;
+        }
+
+        // Try MP4 first (Safari), then WebM codecs (Chrome/Firefox/Edge)
+        // Note: MP4/H.264 recording is only natively supported in Safari
+        // Chrome/Firefox only support WebM containers with VP8/VP9
+        const mimeTypes = [
+          "video/mp4;codecs=avc1.42E01E", // H.264 Baseline (Safari)
+          "video/mp4;codecs=avc1", // H.264 generic (Safari)
+          "video/mp4", // MP4 fallback (Safari)
+          "video/webm;codecs=h264", // WebM with H.264 (rare support)
+          "video/webm;codecs=vp9,opus", // VP9 + Opus audio (Chrome/Firefox)
+          "video/webm;codecs=vp8,opus", // VP8 + Opus audio (Chrome/Firefox)
+          "video/webm;codecs=vp9", // VP9 (Chrome/Firefox)
+          "video/webm;codecs=vp8", // VP8 (Chrome/Firefox)
+          "video/webm", // WebM fallback
+        ];
 
         let selectedMimeType = "";
         for (const mimeType of mimeTypes) {
           if (MediaRecorder.isTypeSupported(mimeType)) {
             selectedMimeType = mimeType;
+            console.log("Using codec:", mimeType);
             break;
           }
         }
 
-        const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
+        const options = selectedMimeType ? { mimeType: selectedMimeType, videoBitsPerSecond: 8000000 } : {};
 
         try {
-          mediaRecorder = new MediaRecorder(stream, options);
+          mediaRecorder = new MediaRecorder(combinedStream, options);
         } catch (e) {
           console.error("MediaRecorder error:", e);
-          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder = new MediaRecorder(combinedStream);
         }
 
         mediaRecorder.ondataavailable = (event) => {
@@ -484,13 +510,20 @@
         };
 
         mediaRecorder.onstop = () => {
+          // Stop all audio tracks when recording stops
+          combinedStream.getAudioTracks().forEach((track) => track.stop());
+
           const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "video/webm" });
           const url = URL.createObjectURL(blob);
+
+          // Determine file extension based on actual mime type
+          const isMP4 = mediaRecorder.mimeType && mediaRecorder.mimeType.includes("mp4");
+          const extension = isMP4 ? "mp4" : "webm";
 
           // Create download link
           const a = document.createElement("a");
           a.href = url;
-          a.download = `heat-blob-recording-${Date.now()}.webm`;
+          a.download = `heat-blob-recording-${Date.now()}.${extension}`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
