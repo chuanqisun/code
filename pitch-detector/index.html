@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pitch Detection - Virtual Filter Bank</title>
+    <style>
+      body {
+          font-family: system-ui, -apple-system, sans-serif;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+      }
+      #filterBankDisplay {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 2px;
+          margin: 20px 0;
+      }
+      .filter-band {
+          width: 30px;
+          height: 100px;
+          background: #ddd;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          position: relative;
+      }
+      .filter-level {
+          background: green;
+          width: 100%;
+          transition: height 0.05s;
+      }
+      .filter-label {
+          font-size: 8px;
+          text-align: center;
+          position: absolute;
+          bottom: -15px;
+          width: 100%;
+      }
+      #pitchDisplay {
+          font-size: 48px;
+          text-align: center;
+          margin: 20px 0;
+      }
+      #noteDisplay {
+          font-size: 72px;
+          text-align: center;
+          font-weight: bold;
+      }
+      #centsDisplay {
+          font-size: 24px;
+          text-align: center;
+          margin-bottom: 20px;
+      }
+      #waveform {
+          width: 100%;
+          height: 100px;
+          background: #f0f0f0;
+      }
+      #status {
+          padding: 10px;
+          margin: 10px 0;
+          background: #ffffcc;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Pitch Detection with Virtual Filter Bank</h1>
+
+    <button id="startBtn">Start Microphone</button>
+    <button id="stopBtn" disabled>Stop</button>
+
+    <div id="status">Click "Start Microphone" to begin</div>
+
+    <div id="noteDisplay">--</div>
+    <div id="pitchDisplay">-- Hz</div>
+    <div id="centsDisplay">-- cents</div>
+
+    <h3>Filter Bank Response</h3>
+    <div id="filterBankDisplay"></div>
+
+    <h3>Waveform</h3>
+    <canvas id="waveform"></canvas>
+
+    <h3>Detection Info</h3>
+    <pre id="debugInfo"></pre>
+
+    <script>
+      // Note frequencies and names
+      const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+      // Virtual Filter Bank class
+      class VirtualFilterBank {
+        constructor(audioContext, numFilters = 48, minFreq = 65, maxFreq = 1050) {
+          this.audioContext = audioContext;
+          this.numFilters = numFilters;
+          this.minFreq = minFreq;
+          this.maxFreq = maxFreq;
+          this.filters = [];
+          this.analysers = [];
+          this.filterFrequencies = [];
+
+          this.createFilterBank();
+        }
+
+        createFilterBank() {
+          // Create logarithmically spaced center frequencies
+          const logMin = Math.log2(this.minFreq);
+          const logMax = Math.log2(this.maxFreq);
+          const logStep = (logMax - logMin) / (this.numFilters - 1);
+
+          for (let i = 0; i < this.numFilters; i++) {
+            const centerFreq = Math.pow(2, logMin + i * logStep);
+            this.filterFrequencies.push(centerFreq);
+
+            // Create bandpass filter
+            const filter = this.audioContext.createBiquadFilter();
+            filter.type = "bandpass";
+            filter.frequency.value = centerFreq;
+            filter.Q.value = 15; // Narrow bandwidth for pitch detection
+
+            // Create analyser for this band
+            const analyser = this.audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            analyser.smoothingTimeConstant = 0.5;
+
+            filter.connect(analyser);
+
+            this.filters.push(filter);
+            this.analysers.push(analyser);
+          }
+        }
+
+        connect(source) {
+          this.filters.forEach((filter) => {
+            source.connect(filter);
+          });
+        }
+
+        disconnect() {
+          this.filters.forEach((filter) => {
+            filter.disconnect();
+          });
+        }
+
+        getFilterOutputs() {
+          const outputs = [];
+          const dataArray = new Uint8Array(128);
+
+          for (let i = 0; i < this.numFilters; i++) {
+            this.analysers[i].getByteTimeDomainData(dataArray);
+
+            // Calculate RMS energy for this band
+            let sum = 0;
+            for (let j = 0; j < dataArray.length; j++) {
+              const value = (dataArray[j] - 128) / 128;
+              sum += value * value;
+            }
+            const rms = Math.sqrt(sum / dataArray.length);
+
+            outputs.push({
+              frequency: this.filterFrequencies[i],
+              energy: rms,
+            });
+          }
+
+          return outputs;
+        }
+
+        detectPitch() {
+          const outputs = this.getFilterOutputs();
+
+          // Find the filter with maximum energy
+          let maxEnergy = 0;
+          let maxIndex = -1;
+
+          for (let i = 0; i < outputs.length; i++) {
+            if (outputs[i].energy > maxEnergy) {
+              maxEnergy = outputs[i].energy;
+              maxIndex = i;
+            }
+          }
+
+          // Threshold check
+          if (maxEnergy < 0.01) {
+            return { pitch: null, confidence: 0, outputs };
+          }
+
+          // Parabolic interpolation for better accuracy
+          let refinedFreq = outputs[maxIndex].frequency;
+
+          if (maxIndex > 0 && maxIndex < outputs.length - 1) {
+            const alpha = outputs[maxIndex - 1].energy;
+            const beta = outputs[maxIndex].energy;
+            const gamma = outputs[maxIndex + 1].energy;
+
+            if (beta > alpha && beta > gamma) {
+              const p = (0.5 * (alpha - gamma)) / (alpha - 2 * beta + gamma);
+
+              // Interpolate frequency
+              const logFreqStep = Math.log2(outputs[maxIndex + 1].frequency) - Math.log2(outputs[maxIndex].frequency);
+              refinedFreq = Math.pow(2, Math.log2(outputs[maxIndex].frequency) + p * logFreqStep);
+            }
+          }
+
+          // Check for harmonic consistency (reduce octave errors)
+          const harmonicScore = this.checkHarmonics(outputs, refinedFreq);
+
+          return {
+            pitch: refinedFreq,
+            confidence: maxEnergy * harmonicScore,
+            outputs,
+          };
+        }
+
+        checkHarmonics(outputs, fundamentalFreq) {
+          let score = 1;
+          const harmonics = [2, 3, 4];
+
+          for (const h of harmonics) {
+            const harmonicFreq = fundamentalFreq * h;
+
+            // Find closest filter to harmonic
+            let closestIdx = 0;
+            let minDist = Infinity;
+
+            for (let i = 0; i < outputs.length; i++) {
+              const dist = Math.abs(Math.log2(outputs[i].frequency) - Math.log2(harmonicFreq));
+              if (dist < minDist) {
+                minDist = dist;
+                closestIdx = i;
+              }
+            }
+
+            // Check if harmonic has energy
+            if (minDist < 0.1 && outputs[closestIdx].energy > 0.005) {
+              score += 0.2;
+            }
+          }
+
+          return Math.min(score, 1.5);
+        }
+      }
+
+      // Pitch to note conversion
+      function frequencyToNote(freq) {
+        if (!freq || freq < 20) return { note: "--", octave: "", cents: 0 };
+
+        const A4 = 440;
+        const semitonesFromA4 = 12 * Math.log2(freq / A4);
+        const roundedSemitones = Math.round(semitonesFromA4);
+        const cents = Math.round((semitonesFromA4 - roundedSemitones) * 100);
+
+        const noteIndex = ((roundedSemitones % 12) + 12 + 9) % 12; // A is index 9
+        const octave = Math.floor((roundedSemitones + 9) / 12) + 4;
+
+        return {
+          note: NOTE_NAMES[noteIndex],
+          octave: octave,
+          cents: cents,
+        };
+      }
+
+      // Main application
+      let audioContext;
+      let filterBank;
+      let microphone;
+      let mainAnalyser;
+      let animationId;
+      let isRunning = false;
+
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const statusDiv = document.getElementById("status");
+      const noteDisplay = document.getElementById("noteDisplay");
+      const pitchDisplay = document.getElementById("pitchDisplay");
+      const centsDisplay = document.getElementById("centsDisplay");
+      const filterBankDisplay = document.getElementById("filterBankDisplay");
+      const debugInfo = document.getElementById("debugInfo");
+      const waveformCanvas = document.getElementById("waveform");
+      const waveformCtx = waveformCanvas.getContext("2d");
+
+      // Initialize filter bank display
+      function initFilterBankDisplay(frequencies) {
+        filterBankDisplay.innerHTML = "";
+        frequencies.forEach((freq, i) => {
+          const band = document.createElement("div");
+          band.className = "filter-band";
+          band.innerHTML = `
+                    <div class="filter-level" id="band-${i}"></div>
+                    <div class="filter-label">${Math.round(freq)}</div>
+                `;
+          filterBankDisplay.appendChild(band);
+        });
+      }
+
+      // Update filter bank display
+      function updateFilterBankDisplay(outputs) {
+        outputs.forEach((output, i) => {
+          const level = document.getElementById(`band-${i}`);
+          if (level) {
+            const height = Math.min(100, output.energy * 500);
+            level.style.height = `${height}%`;
+
+            // Color based on energy
+            if (output.energy > 0.05) {
+              level.style.background = "red";
+            } else if (output.energy > 0.02) {
+              level.style.background = "orange";
+            } else {
+              level.style.background = "green";
+            }
+          }
+        });
+      }
+
+      // Draw waveform
+      function drawWaveform() {
+        if (!mainAnalyser) return;
+
+        const bufferLength = mainAnalyser.fftSize;
+        const dataArray = new Uint8Array(bufferLength);
+        mainAnalyser.getByteTimeDomainData(dataArray);
+
+        waveformCanvas.width = waveformCanvas.offsetWidth;
+        waveformCanvas.height = 100;
+
+        waveformCtx.fillStyle = "#f0f0f0";
+        waveformCtx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+
+        waveformCtx.lineWidth = 2;
+        waveformCtx.strokeStyle = "#333";
+        waveformCtx.beginPath();
+
+        const sliceWidth = waveformCanvas.width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = (v * waveformCanvas.height) / 2;
+
+          if (i === 0) {
+            waveformCtx.moveTo(x, y);
+          } else {
+            waveformCtx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        waveformCtx.stroke();
+      }
+
+      // Main update loop
+      function update() {
+        if (!isRunning) return;
+
+        const result = filterBank.detectPitch();
+
+        updateFilterBankDisplay(result.outputs);
+        drawWaveform();
+
+        if (result.pitch && result.confidence > 0.02) {
+          const noteInfo = frequencyToNote(result.pitch);
+
+          noteDisplay.textContent = `${noteInfo.note}${noteInfo.octave}`;
+          pitchDisplay.textContent = `${result.pitch.toFixed(1)} Hz`;
+
+          const centsSign = noteInfo.cents >= 0 ? "+" : "";
+          centsDisplay.textContent = `${centsSign}${noteInfo.cents} cents`;
+
+          // Color cents display
+          if (Math.abs(noteInfo.cents) < 10) {
+            centsDisplay.style.color = "green";
+          } else if (Math.abs(noteInfo.cents) < 25) {
+            centsDisplay.style.color = "orange";
+          } else {
+            centsDisplay.style.color = "red";
+          }
+
+          debugInfo.textContent = `Detected Frequency: ${result.pitch.toFixed(2)} Hz
+Confidence: ${(result.confidence * 100).toFixed(1)}%
+Note: ${noteInfo.note}${noteInfo.octave}
+Cents deviation: ${noteInfo.cents}`;
+        } else {
+          noteDisplay.textContent = "--";
+          pitchDisplay.textContent = "-- Hz";
+          centsDisplay.textContent = "-- cents";
+          centsDisplay.style.color = "black";
+          debugInfo.textContent = "No pitch detected (sing or play an instrument)";
+        }
+
+        animationId = requestAnimationFrame(update);
+      }
+
+      // Start microphone
+      async function startMicrophone() {
+        try {
+          statusDiv.textContent = "Requesting microphone access...";
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          microphone = audioContext.createMediaStreamSource(stream);
+
+          // Create main analyser for waveform
+          mainAnalyser = audioContext.createAnalyser();
+          mainAnalyser.fftSize = 2048;
+          microphone.connect(mainAnalyser);
+
+          // Create filter bank
+          filterBank = new VirtualFilterBank(audioContext, 36, 80, 800);
+          filterBank.connect(microphone);
+
+          initFilterBankDisplay(filterBank.filterFrequencies);
+
+          isRunning = true;
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+          statusDiv.textContent = "Listening... Sing or play an instrument!";
+          statusDiv.style.background = "#ccffcc";
+
+          update();
+        } catch (err) {
+          statusDiv.textContent = `Error: ${err.message}`;
+          statusDiv.style.background = "#ffcccc";
+          console.error(err);
+        }
+      }
+
+      // Stop microphone
+      function stopMicrophone() {
+        isRunning = false;
+
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+
+        if (filterBank) {
+          filterBank.disconnect();
+        }
+
+        if (audioContext) {
+          audioContext.close();
+        }
+
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        statusDiv.textContent = 'Stopped. Click "Start Microphone" to begin again.';
+        statusDiv.style.background = "#ffffcc";
+
+        noteDisplay.textContent = "--";
+        pitchDisplay.textContent = "-- Hz";
+        centsDisplay.textContent = "-- cents";
+      }
+
+      // Event listeners
+      startBtn.addEventListener("click", startMicrophone);
+      stopBtn.addEventListener("click", stopMicrophone);
+
+      // Resize canvas on window resize
+      window.addEventListener("resize", () => {
+        if (waveformCanvas) {
+          waveformCanvas.width = waveformCanvas.offsetWidth;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -12,6 +12,7 @@
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
+- [Pitch detector](./pitch-detector/)
 - [JSONL viewer](./jsonl-viewer)
 - [JSON → TypeScript](./json-to-typescript)
 - [JSON ↔ YAML](./json-to-yaml)
