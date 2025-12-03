@@ -70,15 +70,11 @@
       const status = document.getElementById("status");
       const info = document.getElementById("info");
 
-      // Fixed parameters
+      // Fixed parameters - NEVER CHANGE THESE
       const FFT_SIZE = 1024;
       const HOP_SIZE = 256;
       const NUM_BINS = FFT_SIZE / 2;
       const SAMPLE_RATE = 44100;
-
-      // Linear magnitude range for encoding
-      // Typical speech/audio magnitudes from FFT are in range 0 to ~50
-      const MAG_MAX = 100.0;
 
       let audioContext;
       let workletNode;
@@ -187,23 +183,33 @@
             registerProcessor('spectrogram-processor', SpectrogramProcessor);
         `;
 
-      // Convert magnitude to 16-bit integer for storage
-      function magnitudeTo16Bit(mag) {
-        // Direct linear mapping with fixed max
-        const normalized = Math.min(1, mag / MAG_MAX);
-        return Math.round(normalized * 65535);
+      // Store raw magnitude as 32-bit float using all 4 channels
+      function magnitudeToRGBA(mag) {
+        const buffer = new ArrayBuffer(4);
+        const floatView = new Float32Array(buffer);
+        const uintView = new Uint8Array(buffer);
+        floatView[0] = mag;
+        return [uintView[0], uintView[1], uintView[2], uintView[3]];
       }
 
-      // Convert 16-bit integer back to magnitude
-      function int16ToMagnitude(value16) {
-        const normalized = value16 / 65535;
-        return normalized * MAG_MAX;
+      // Read raw magnitude from RGBA
+      function rgbaToMagnitude(r, g, b, a) {
+        const buffer = new ArrayBuffer(4);
+        const uintView = new Uint8Array(buffer);
+        const floatView = new Float32Array(buffer);
+        uintView[0] = r;
+        uintView[1] = g;
+        uintView[2] = b;
+        uintView[3] = a;
+        return floatView[0];
       }
 
       // For display only - use log scale for better visualization
       function magnitudeToDisplay(mag) {
         if (mag <= 0) return 0;
-        const db = 20 * Math.log10(mag / MAG_MAX);
+        // Reference: FFT of full-scale sine gives magnitude of ~FFT_SIZE/2
+        const refMag = FFT_SIZE / 2;
+        const db = 20 * Math.log10(mag / refMag);
         const normalized = (db + 80) / 80; // -80dB to 0dB range
         return Math.max(0, Math.min(1, normalized));
       }
@@ -279,7 +285,7 @@
             }
           }
 
-          info.textContent = `Frames: ${spectrogramData.length} | Duration: ${duration}s | Max Magnitude: ${maxMag.toFixed(2)}`;
+          info.textContent = `Frames: ${spectrogramData.length} | Duration: ${duration}s | Max Magnitude: ${maxMag.toFixed(4)}`;
         } else {
           info.textContent = "";
         }
@@ -361,8 +367,9 @@
         const outputLength = (numFrames - 1) * hopSize + fftSize;
         let signal = new Float32Array(outputLength);
 
+        // Initialize with small random noise
         for (let i = 0; i < signal.length; i++) {
-          signal[i] = (Math.random() * 2 - 1) * 0.01;
+          signal[i] = (Math.random() * 2 - 1) * 0.001;
         }
 
         const windowFunc = new Float32Array(fftSize);
@@ -457,6 +464,7 @@
                 frameImag[i] = targetMag * Math.sin(angle);
               }
 
+              // Mirror for conjugate symmetry
               if (i > 0 && i < numBins) {
                 frameReal[fftSize - i] = frameReal[i];
                 frameImag[fftSize - i] = -frameImag[i];
@@ -478,18 +486,7 @@
           }
         }
 
-        // Normalize to reasonable audio level
-        let maxAbs = 0;
-        for (let i = 0; i < signal.length; i++) {
-          maxAbs = Math.max(maxAbs, Math.abs(signal[i]));
-        }
-        if (maxAbs > 0) {
-          const targetLevel = 0.9;
-          for (let i = 0; i < signal.length; i++) {
-            signal[i] = (signal[i] / maxAbs) * targetLevel;
-          }
-        }
-
+        // NO normalization - return signal as-is for absolute volume
         return signal;
       }
 
@@ -525,7 +522,13 @@
           source.connect(playbackContext.destination);
 
           const duration = audioData.length / SAMPLE_RATE;
-          status.textContent = `Playing reconstructed audio (${duration.toFixed(2)}s)...`;
+
+          // Report max amplitude for debugging
+          let maxAmp = 0;
+          for (let i = 0; i < audioData.length; i++) {
+            maxAmp = Math.max(maxAmp, Math.abs(audioData[i]));
+          }
+          status.textContent = `Playing (${duration.toFixed(2)}s, peak: ${maxAmp.toFixed(4)})...`;
 
           source.onended = () => {
             isPlaying = false;
@@ -563,16 +566,14 @@
           for (let freqIndex = 0; freqIndex < NUM_BINS; freqIndex++) {
             const y = NUM_BINS - 1 - freqIndex;
 
-            // Store raw magnitude as 16-bit value
-            const value16 = magnitudeTo16Bit(column[freqIndex]);
-            const highByte = (value16 >> 8) & 0xff;
-            const lowByte = value16 & 0xff;
+            // Store raw magnitude as 32-bit float
+            const rgba = magnitudeToRGBA(column[freqIndex]);
 
             const idx = (y * numFrames + x) * 4;
-            data[idx] = highByte;
-            data[idx + 1] = lowByte;
-            data[idx + 2] = 0; // Not used
-            data[idx + 3] = 255;
+            data[idx] = rgba[0];
+            data[idx + 1] = rgba[1];
+            data[idx + 2] = rgba[2];
+            data[idx + 3] = rgba[3];
           }
         }
 
@@ -583,7 +584,7 @@
         link.href = exportCanvas.toDataURL("image/png");
         link.click();
 
-        status.textContent = `Image downloaded (${numFrames}x${NUM_BINS} pixels).`;
+        status.textContent = `Image downloaded (${numFrames}x${NUM_BINS} pixels, 32-bit float magnitudes).`;
       }
 
       function uploadImage() {
@@ -608,7 +609,11 @@
           const data = imageData.data;
 
           const numFrames = img.width;
-          const imgHeight = img.height;
+
+          // Image height should be NUM_BINS for exact match
+          if (img.height !== NUM_BINS) {
+            status.textContent = `Warning: Image height (${img.height}) != expected (${NUM_BINS}). Results may vary.`;
+          }
 
           spectrogramData = [];
 
@@ -617,17 +622,15 @@
 
             for (let freqIndex = 0; freqIndex < NUM_BINS; freqIndex++) {
               const y = NUM_BINS - 1 - freqIndex;
-              const imgY = Math.round((y * (imgHeight - 1)) / (NUM_BINS - 1));
-              const clampedY = Math.max(0, Math.min(imgHeight - 1, imgY));
+
+              // For images with different height, scale
+              const imgY = img.height === NUM_BINS ? y : Math.round((y * (img.height - 1)) / (NUM_BINS - 1));
+              const clampedY = Math.max(0, Math.min(img.height - 1, imgY));
 
               const idx = (clampedY * img.width + x) * 4;
 
-              // Read 16-bit value from R (high) and G (low)
-              const highByte = data[idx];
-              const lowByte = data[idx + 1];
-              const value16 = (highByte << 8) | lowByte;
-
-              column[freqIndex] = int16ToMagnitude(value16);
+              // Read 32-bit float from RGBA
+              column[freqIndex] = rgbaToMagnitude(data[idx], data[idx + 1], data[idx + 2], data[idx + 3]);
             }
 
             spectrogramData.push(column);
