@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real-time Spectrogram</title>
+    <style>
+      body {
+          font-family: system-ui, sans-serif;
+          max-width: 900px;
+          margin: 20px auto;
+          padding: 0 20px;
+      }
+      canvas {
+          border: 1px solid #ccc;
+          display: block;
+          width: 100%;
+          margin-top: 10px;
+          image-rendering: pixelated;
+      }
+      button {
+          padding: 10px 20px;
+          font-size: 16px;
+          cursor: pointer;
+          margin-right: 10px;
+          margin-bottom: 10px;
+      }
+      button:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
+      }
+      #status {
+          margin-top: 10px;
+          color: #666;
+      }
+      .controls {
+          margin-top: 10px;
+      }
+      #fileInput {
+          display: none;
+      }
+      .info {
+          font-size: 12px;
+          color: #888;
+          margin-top: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Real-time Spectrogram</h1>
+    <div class="controls">
+      <button id="toggleBtn">Start Recording</button>
+      <button id="playBtn" disabled>Play Spectrogram</button>
+      <button id="downloadBtn" disabled>Download Image</button>
+      <button id="uploadBtn">Upload Image</button>
+      <input type="file" id="fileInput" accept="image/png" />
+    </div>
+    <p id="status">Click the button to start</p>
+    <p class="info" id="info"></p>
+    <canvas id="spectrogram" width="800" height="512"></canvas>
+
+    <script type="module">
+      const canvas = document.getElementById("spectrogram");
+      const ctx = canvas.getContext("2d");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const playBtn = document.getElementById("playBtn");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const uploadBtn = document.getElementById("uploadBtn");
+      const fileInput = document.getElementById("fileInput");
+      const status = document.getElementById("status");
+      const info = document.getElementById("info");
+
+      // Fixed parameters
+      const FFT_SIZE = 1024;
+      const HOP_SIZE = 256;
+      const NUM_BINS = FFT_SIZE / 2;
+      const SAMPLE_RATE = 44100;
+
+      // Linear magnitude range for encoding
+      // Typical speech/audio magnitudes from FFT are in range 0 to ~50
+      const MAG_MAX = 100.0;
+
+      let audioContext;
+      let workletNode;
+      let mediaStream;
+      let isRecording = false;
+      let isPlaying = false;
+      let animationId;
+      let spectrogramData = [];
+
+      const workletCode = `
+            class SpectrogramProcessor extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.fftSize = ${FFT_SIZE};
+                    this.hopSize = ${HOP_SIZE};
+                    this.buffer = new Float32Array(this.fftSize);
+                    this.bufferIndex = 0;
+                    this.samplesSinceLastHop = 0;
+                    this.window = new Float32Array(this.fftSize);
+                    
+                    for (let i = 0; i < this.fftSize; i++) {
+                        this.window[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / this.fftSize));
+                    }
+                }
+
+                fft(real, imag) {
+                    const n = real.length;
+                    
+                    let j = 0;
+                    for (let i = 0; i < n - 1; i++) {
+                        if (i < j) {
+                            let temp = real[i];
+                            real[i] = real[j];
+                            real[j] = temp;
+                            temp = imag[i];
+                            imag[i] = imag[j];
+                            imag[j] = temp;
+                        }
+                        let k = n >> 1;
+                        while (k <= j) {
+                            j -= k;
+                            k >>= 1;
+                        }
+                        j += k;
+                    }
+
+                    for (let len = 2; len <= n; len <<= 1) {
+                        const halfLen = len >> 1;
+                        const angleStep = -2 * Math.PI / len;
+                        for (let i = 0; i < n; i += len) {
+                            let angle = 0;
+                            for (let k = 0; k < halfLen; k++) {
+                                const cos = Math.cos(angle);
+                                const sin = Math.sin(angle);
+                                const tReal = cos * real[i + k + halfLen] - sin * imag[i + k + halfLen];
+                                const tImag = sin * real[i + k + halfLen] + cos * imag[i + k + halfLen];
+                                real[i + k + halfLen] = real[i + k] - tReal;
+                                imag[i + k + halfLen] = imag[i + k] - tImag;
+                                real[i + k] += tReal;
+                                imag[i + k] += tImag;
+                                angle += angleStep;
+                            }
+                        }
+                    }
+                }
+
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    if (!input || !input[0]) return true;
+
+                    const inputChannel = input[0];
+
+                    for (let i = 0; i < inputChannel.length; i++) {
+                        this.buffer[this.bufferIndex] = inputChannel[i];
+                        this.bufferIndex = (this.bufferIndex + 1) % this.fftSize;
+                        this.samplesSinceLastHop++;
+
+                        if (this.samplesSinceLastHop >= this.hopSize) {
+                            this.samplesSinceLastHop = 0;
+
+                            const real = new Float32Array(this.fftSize);
+                            const imag = new Float32Array(this.fftSize);
+
+                            for (let j = 0; j < this.fftSize; j++) {
+                                const idx = (this.bufferIndex + j) % this.fftSize;
+                                real[j] = this.buffer[idx] * this.window[j];
+                            }
+
+                            this.fft(real, imag);
+
+                            const numBins = this.fftSize / 2;
+                            const magnitudes = new Float32Array(numBins);
+
+                            for (let j = 0; j < numBins; j++) {
+                                magnitudes[j] = Math.sqrt(real[j] * real[j] + imag[j] * imag[j]);
+                            }
+
+                            this.port.postMessage({ magnitudes: magnitudes });
+                        }
+                    }
+
+                    return true;
+                }
+            }
+
+            registerProcessor('spectrogram-processor', SpectrogramProcessor);
+        `;
+
+      // Convert magnitude to 16-bit integer for storage
+      function magnitudeTo16Bit(mag) {
+        // Direct linear mapping with fixed max
+        const normalized = Math.min(1, mag / MAG_MAX);
+        return Math.round(normalized * 65535);
+      }
+
+      // Convert 16-bit integer back to magnitude
+      function int16ToMagnitude(value16) {
+        const normalized = value16 / 65535;
+        return normalized * MAG_MAX;
+      }
+
+      // For display only - use log scale for better visualization
+      function magnitudeToDisplay(mag) {
+        if (mag <= 0) return 0;
+        const db = 20 * Math.log10(mag / MAG_MAX);
+        const normalized = (db + 80) / 80; // -80dB to 0dB range
+        return Math.max(0, Math.min(1, normalized));
+      }
+
+      function renderSpectrogram() {
+        if (spectrogramData.length === 0) {
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          return;
+        }
+
+        const displayWidth = canvas.width;
+        const displayHeight = canvas.height;
+        const imageData = ctx.createImageData(displayWidth, displayHeight);
+        const data = imageData.data;
+
+        const startFrame = Math.max(0, spectrogramData.length - displayWidth);
+        const visibleFrames = spectrogramData.slice(startFrame);
+
+        for (let x = 0; x < displayWidth; x++) {
+          if (x < visibleFrames.length) {
+            const column = visibleFrames[x];
+            for (let y = 0; y < displayHeight; y++) {
+              const freqIndex = Math.floor((1 - y / displayHeight) * NUM_BINS);
+              const clampedIndex = Math.min(NUM_BINS - 1, Math.max(0, freqIndex));
+
+              // Use log scale for display
+              const displayValue = magnitudeToDisplay(column[clampedIndex]);
+              const value = Math.round(displayValue * 255);
+
+              const idx = (y * displayWidth + x) * 4;
+              data[idx] = value;
+              data[idx + 1] = value;
+              data[idx + 2] = value;
+              data[idx + 3] = 255;
+            }
+          } else {
+            for (let y = 0; y < displayHeight; y++) {
+              const idx = (y * displayWidth + x) * 4;
+              data[idx] = 0;
+              data[idx + 1] = 0;
+              data[idx + 2] = 0;
+              data[idx + 3] = 255;
+            }
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      function animateSpectrogram() {
+        renderSpectrogram();
+        if (isRecording) {
+          animationId = requestAnimationFrame(animateSpectrogram);
+        }
+      }
+
+      function updateButtonStates() {
+        const hasData = spectrogramData.length > 0;
+        playBtn.disabled = !hasData || isPlaying || isRecording;
+        downloadBtn.disabled = !hasData || isRecording;
+      }
+
+      function updateInfo() {
+        if (spectrogramData.length > 0) {
+          const duration = ((spectrogramData.length * HOP_SIZE) / SAMPLE_RATE).toFixed(2);
+
+          // Find max magnitude for debugging
+          let maxMag = 0;
+          for (const frame of spectrogramData) {
+            for (let i = 0; i < frame.length; i++) {
+              if (frame[i] > maxMag) maxMag = frame[i];
+            }
+          }
+
+          info.textContent = `Frames: ${spectrogramData.length} | Duration: ${duration}s | Max Magnitude: ${maxMag.toFixed(2)}`;
+        } else {
+          info.textContent = "";
+        }
+      }
+
+      async function startRecording() {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: { sampleRate: SAMPLE_RATE },
+          });
+
+          audioContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: SAMPLE_RATE,
+          });
+
+          const blob = new Blob([workletCode], { type: "application/javascript" });
+          const workletUrl = URL.createObjectURL(blob);
+          await audioContext.audioWorklet.addModule(workletUrl);
+          URL.revokeObjectURL(workletUrl);
+
+          workletNode = new AudioWorkletNode(audioContext, "spectrogram-processor");
+
+          workletNode.port.onmessage = (event) => {
+            const { magnitudes } = event.data;
+            spectrogramData.push(new Float32Array(magnitudes));
+            updateInfo();
+          };
+
+          const source = audioContext.createMediaStreamSource(mediaStream);
+          source.connect(workletNode);
+
+          isRecording = true;
+          spectrogramData = [];
+          toggleBtn.textContent = "Stop Recording";
+          status.textContent = "Recording... Speak into your microphone";
+          updateButtonStates();
+
+          animateSpectrogram();
+        } catch (err) {
+          status.textContent = "Error: " + err.message;
+          console.error("Error accessing microphone:", err);
+        }
+      }
+
+      function stopRecording() {
+        isRecording = false;
+
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+        }
+
+        if (workletNode) {
+          workletNode.disconnect();
+        }
+
+        if (mediaStream) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+        }
+
+        if (audioContext) {
+          audioContext.close();
+          audioContext = null;
+        }
+
+        renderSpectrogram();
+
+        toggleBtn.textContent = "Start Recording";
+        status.textContent = `Recording stopped. ${spectrogramData.length} frames captured.`;
+        updateButtonStates();
+        updateInfo();
+      }
+
+      function griffinLim(magnitudes, iterations = 50) {
+        const numFrames = magnitudes.length;
+        const fftSize = FFT_SIZE;
+        const hopSize = HOP_SIZE;
+        const numBins = fftSize / 2;
+
+        const outputLength = (numFrames - 1) * hopSize + fftSize;
+        let signal = new Float32Array(outputLength);
+
+        for (let i = 0; i < signal.length; i++) {
+          signal[i] = (Math.random() * 2 - 1) * 0.01;
+        }
+
+        const windowFunc = new Float32Array(fftSize);
+        for (let i = 0; i < fftSize; i++) {
+          windowFunc[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / fftSize));
+        }
+
+        function fft(real, imag) {
+          const n = real.length;
+
+          let j = 0;
+          for (let i = 0; i < n - 1; i++) {
+            if (i < j) {
+              let temp = real[i];
+              real[i] = real[j];
+              real[j] = temp;
+              temp = imag[i];
+              imag[i] = imag[j];
+              imag[j] = temp;
+            }
+            let k = n >> 1;
+            while (k <= j) {
+              j -= k;
+              k >>= 1;
+            }
+            j += k;
+          }
+
+          for (let len = 2; len <= n; len <<= 1) {
+            const halfLen = len >> 1;
+            const angleStep = (-2 * Math.PI) / len;
+            for (let i = 0; i < n; i += len) {
+              let angle = 0;
+              for (let k = 0; k < halfLen; k++) {
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const tReal = cos * real[i + k + halfLen] - sin * imag[i + k + halfLen];
+                const tImag = sin * real[i + k + halfLen] + cos * imag[i + k + halfLen];
+                real[i + k + halfLen] = real[i + k] - tReal;
+                imag[i + k + halfLen] = imag[i + k] - tImag;
+                real[i + k] += tReal;
+                imag[i + k] += tImag;
+                angle += angleStep;
+              }
+            }
+          }
+        }
+
+        function ifft(real, imag) {
+          const n = real.length;
+
+          for (let i = 0; i < n; i++) {
+            imag[i] = -imag[i];
+          }
+
+          fft(real, imag);
+
+          for (let i = 0; i < n; i++) {
+            real[i] = real[i] / n;
+            imag[i] = -imag[i] / n;
+          }
+        }
+
+        for (let iter = 0; iter < iterations; iter++) {
+          const newSignal = new Float32Array(outputLength);
+          const windowSum = new Float32Array(outputLength);
+
+          for (let frame = 0; frame < numFrames; frame++) {
+            const start = frame * hopSize;
+
+            const frameReal = new Float32Array(fftSize);
+            const frameImag = new Float32Array(fftSize);
+
+            for (let i = 0; i < fftSize && start + i < signal.length; i++) {
+              frameReal[i] = signal[start + i] * windowFunc[i];
+            }
+
+            fft(frameReal, frameImag);
+
+            const mag = magnitudes[frame];
+            for (let i = 0; i < numBins; i++) {
+              const currentMag = Math.sqrt(frameReal[i] * frameReal[i] + frameImag[i] * frameImag[i]);
+              const targetMag = mag[i];
+
+              if (currentMag > 1e-10) {
+                const scale = targetMag / currentMag;
+                frameReal[i] *= scale;
+                frameImag[i] *= scale;
+              } else {
+                const angle = Math.random() * 2 * Math.PI;
+                frameReal[i] = targetMag * Math.cos(angle);
+                frameImag[i] = targetMag * Math.sin(angle);
+              }
+
+              if (i > 0 && i < numBins) {
+                frameReal[fftSize - i] = frameReal[i];
+                frameImag[fftSize - i] = -frameImag[i];
+              }
+            }
+
+            ifft(frameReal, frameImag);
+
+            for (let i = 0; i < fftSize && start + i < outputLength; i++) {
+              newSignal[start + i] += frameReal[i] * windowFunc[i];
+              windowSum[start + i] += windowFunc[i] * windowFunc[i];
+            }
+          }
+
+          for (let i = 0; i < outputLength; i++) {
+            if (windowSum[i] > 1e-10) {
+              signal[i] = newSignal[i] / windowSum[i];
+            }
+          }
+        }
+
+        // Normalize to reasonable audio level
+        let maxAbs = 0;
+        for (let i = 0; i < signal.length; i++) {
+          maxAbs = Math.max(maxAbs, Math.abs(signal[i]));
+        }
+        if (maxAbs > 0) {
+          const targetLevel = 0.9;
+          for (let i = 0; i < signal.length; i++) {
+            signal[i] = (signal[i] / maxAbs) * targetLevel;
+          }
+        }
+
+        return signal;
+      }
+
+      async function playSpectrogram() {
+        if (spectrogramData.length === 0 || isPlaying) return;
+
+        isPlaying = true;
+        updateButtonStates();
+        toggleBtn.disabled = true;
+        status.textContent = "Reconstructing audio from spectrogram...";
+
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        try {
+          status.textContent = "Running Griffin-Lim algorithm (50 iterations)...";
+          await new Promise((resolve) => setTimeout(resolve, 10));
+
+          const audioData = griffinLim(spectrogramData, 50);
+
+          const playbackContext = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: SAMPLE_RATE,
+          });
+
+          const buffer = playbackContext.createBuffer(1, audioData.length, SAMPLE_RATE);
+          const channelData = buffer.getChannelData(0);
+
+          for (let i = 0; i < audioData.length; i++) {
+            channelData[i] = audioData[i];
+          }
+
+          const source = playbackContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(playbackContext.destination);
+
+          const duration = audioData.length / SAMPLE_RATE;
+          status.textContent = `Playing reconstructed audio (${duration.toFixed(2)}s)...`;
+
+          source.onended = () => {
+            isPlaying = false;
+            toggleBtn.disabled = false;
+            updateButtonStates();
+            status.textContent = "Playback finished.";
+            playbackContext.close();
+          };
+
+          source.start();
+        } catch (err) {
+          console.error("Error playing spectrogram:", err);
+          status.textContent = "Error: " + err.message;
+          isPlaying = false;
+          toggleBtn.disabled = false;
+          updateButtonStates();
+        }
+      }
+
+      function downloadImage() {
+        if (spectrogramData.length === 0) return;
+
+        const numFrames = spectrogramData.length;
+        const exportCanvas = document.createElement("canvas");
+
+        exportCanvas.width = numFrames;
+        exportCanvas.height = NUM_BINS;
+        const exportCtx = exportCanvas.getContext("2d");
+
+        const imageData = exportCtx.createImageData(numFrames, NUM_BINS);
+        const data = imageData.data;
+
+        for (let x = 0; x < numFrames; x++) {
+          const column = spectrogramData[x];
+          for (let freqIndex = 0; freqIndex < NUM_BINS; freqIndex++) {
+            const y = NUM_BINS - 1 - freqIndex;
+
+            // Store raw magnitude as 16-bit value
+            const value16 = magnitudeTo16Bit(column[freqIndex]);
+            const highByte = (value16 >> 8) & 0xff;
+            const lowByte = value16 & 0xff;
+
+            const idx = (y * numFrames + x) * 4;
+            data[idx] = highByte;
+            data[idx + 1] = lowByte;
+            data[idx + 2] = 0; // Not used
+            data[idx + 3] = 255;
+          }
+        }
+
+        exportCtx.putImageData(imageData, 0, 0);
+
+        const link = document.createElement("a");
+        link.download = "spectrogram.png";
+        link.href = exportCanvas.toDataURL("image/png");
+        link.click();
+
+        status.textContent = `Image downloaded (${numFrames}x${NUM_BINS} pixels).`;
+      }
+
+      function uploadImage() {
+        fileInput.click();
+      }
+
+      function handleImageUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        status.textContent = "Loading image...";
+
+        const img = new Image();
+        img.onload = () => {
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = img.width;
+          tempCanvas.height = img.height;
+          const tempCtx = tempCanvas.getContext("2d");
+          tempCtx.drawImage(img, 0, 0);
+
+          const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+          const data = imageData.data;
+
+          const numFrames = img.width;
+          const imgHeight = img.height;
+
+          spectrogramData = [];
+
+          for (let x = 0; x < numFrames; x++) {
+            const column = new Float32Array(NUM_BINS);
+
+            for (let freqIndex = 0; freqIndex < NUM_BINS; freqIndex++) {
+              const y = NUM_BINS - 1 - freqIndex;
+              const imgY = Math.round((y * (imgHeight - 1)) / (NUM_BINS - 1));
+              const clampedY = Math.max(0, Math.min(imgHeight - 1, imgY));
+
+              const idx = (clampedY * img.width + x) * 4;
+
+              // Read 16-bit value from R (high) and G (low)
+              const highByte = data[idx];
+              const lowByte = data[idx + 1];
+              const value16 = (highByte << 8) | lowByte;
+
+              column[freqIndex] = int16ToMagnitude(value16);
+            }
+
+            spectrogramData.push(column);
+          }
+
+          status.textContent = `Loaded: ${numFrames} frames from ${img.width}x${img.height} image`;
+
+          canvas.width = Math.min(800, spectrogramData.length);
+          canvas.height = NUM_BINS;
+          renderSpectrogram();
+          updateButtonStates();
+          updateInfo();
+
+          fileInput.value = "";
+        };
+
+        img.onerror = () => {
+          status.textContent = "Error loading image.";
+          fileInput.value = "";
+        };
+
+        img.src = URL.createObjectURL(file);
+      }
+
+      toggleBtn.addEventListener("click", () => {
+        if (isRecording) {
+          stopRecording();
+        } else {
+          startRecording();
+        }
+      });
+
+      playBtn.addEventListener("click", playSpectrogram);
+      downloadBtn.addEventListener("click", downloadImage);
+      uploadBtn.addEventListener("click", uploadImage);
+      fileInput.addEventListener("change", handleImageUpload);
+
+      canvas.height = NUM_BINS;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    </script>
+  </body>
+</html>

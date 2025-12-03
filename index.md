@@ -20,6 +20,7 @@
 - [Plotter/Emoji](./plotters/emoji.html)
 - [Plotter/TTF](./plotters/ttf.html)
 - [Plotter/Hershey+JSON](./plotters/hershey-json.html)
+- [Spectrogram Recorder](./spectrogram-recorder/)
 - [Tax estimator](https://chuanqisun.github.io/tax/)
 
 ## Experiments
