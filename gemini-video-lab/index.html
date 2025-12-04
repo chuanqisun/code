@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Video Lab</title>
+    <style>
+      :root {
+        --color-text-primary: #333;
+        --color-text-secondary: #555;
+        --color-border-light: #eee;
+        --color-border-medium: #ccc;
+        --color-accent: #4285f4;
+        --color-white: white;
+        --color-drag-handle: #999;
+        --color-drag-handle-hover: #666;
+        --color-insert-indicator: #4285f4;
+        --color-action-button-hover: #f1f3f4;
+        --color-bg-app: #f9f9f9;
+        --color-error: #d93025;
+        --color-success: #188038;
+      }
+
+      * {
+        font-size: inherit;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        max-width: 48rem;
+        margin: 0 auto;
+        padding: 20px;
+        color: var(--color-text-primary);
+        background-color: var(--color-bg-app);
+        line-height: 1.5;
+      }
+
+      h1,
+      h2 {
+        margin-top: 0;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+      }
+      h2 {
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+        color: var(--color-text-secondary);
+      }
+
+      /* Inputs */
+      input[type="text"],
+      input[type="password"],
+      select,
+      textarea {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--color-border-medium);
+        border-radius: 6px;
+        margin-bottom: 12px;
+        font-family: inherit;
+        background: var(--color-white);
+      }
+
+      textarea {
+        resize: vertical;
+        field-sizing: content;
+        min-height: 60px;
+      }
+
+      /* Buttons */
+      button {
+        cursor: pointer;
+        background-color: var(--color-white);
+        border: 1px solid var(--color-border-medium);
+        padding: 8px 16px;
+        border-radius: 6px;
+        color: var(--color-text-primary);
+        font-weight: 500;
+        transition: background 0.2s;
+      }
+      button:hover {
+        background-color: var(--color-action-button-hover);
+      }
+      button.primary {
+        background-color: var(--color-accent);
+        color: white;
+        border: none;
+      }
+      button.primary:hover {
+        opacity: 0.9;
+      }
+
+      .action-bar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+
+      /* Config Grid */
+      .config-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+        background: var(--color-white);
+        padding: 16px;
+        border-radius: 8px;
+        border: 1px solid var(--color-border-medium);
+      }
+      .config-item label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+        margin-bottom: 4px;
+      }
+      .config-item select {
+        margin-bottom: 0;
+      }
+
+      /* Input List */
+      #input-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .input-item {
+        display: grid;
+        grid-template-columns: 32px 1fr auto; /* Drag | Content | Controls */
+        background: var(--color-white);
+        border: 1px solid var(--color-border-medium);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+
+      .input-item.has-media {
+        grid-template-columns: 32px 100px 1fr auto; /* Drag | Thumb | Content | Controls */
+      }
+
+      /* Drag Handle */
+      .drag-handle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f4f4f4;
+        cursor: grab;
+        color: var(--color-drag-handle);
+        border-right: 1px solid var(--color-border-light);
+      }
+      .drag-handle:hover {
+        color: var(--color-drag-handle-hover);
+      }
+      .input-item.dragging {
+        opacity: 0.5;
+      }
+      .input-item.drag-over-top {
+        border-top: 2px solid var(--color-insert-indicator);
+      }
+      .input-item.drag-over-bottom {
+        border-bottom: 2px solid var(--color-insert-indicator);
+      }
+
+      /* Media Thumbnail */
+      .media-preview {
+        width: 100px;
+        height: 100px;
+        object-fit: cover;
+        background: #000;
+        border-right: 1px solid var(--color-border-light);
+      }
+      .video-icon-overlay {
+        position: absolute;
+        color: white;
+        font-size: 24px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+      }
+
+      /* Content Area */
+      .item-content {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .item-content textarea {
+        margin: 0;
+        border: 1px solid var(--color-border-light);
+      }
+      .file-info {
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+        word-break: break-all;
+      }
+
+      /* Controls Area */
+      .item-controls {
+        padding: 12px;
+        background: #fcfcfc;
+        border-left: 1px solid var(--color-border-light);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 140px;
+      }
+      .role-select {
+        font-size: 0.9rem;
+        padding: 4px;
+        margin: 0;
+      }
+      .delete-btn {
+        color: var(--color-error);
+        border-color: transparent;
+        padding: 4px;
+        align-self: flex-end;
+        font-size: 0.9rem;
+      }
+      .delete-btn:hover {
+        background: #fee;
+      }
+
+      /* Output Section */
+      .output-card {
+        background: var(--color-white);
+        border: 1px solid var(--color-border-medium);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .status-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-size: 0.9rem;
+        color: var(--color-text-secondary);
+      }
+      .timer {
+        font-family: monospace;
+        font-weight: bold;
+      }
+
+      video {
+        width: 100%;
+        border-radius: 4px;
+        background: #000;
+        display: block;
+      }
+
+      .error-msg {
+        color: var(--color-error);
+        background: #fce8e6;
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+      }
+
+      .loading-spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--color-text-secondary);
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spin 1s linear infinite;
+        margin-right: 8px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Veo Video Workbench</h1>
+      <input type="password" id="api-key" placeholder="Enter Gemini API Key" />
+    </header>
+
+    <main>
+      <!-- Configuration -->
+      <section>
+        <h2>Configuration</h2>
+        <div class="config-grid">
+          <div class="config-item">
+            <label>Model</label>
+            <select id="cfg-model">
+              <option value="veo-3.1-generate-preview">Veo 3.1 (Preview)</option>
+              <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast (Preview)</option>
+            </select>
+          </div>
+          <div class="config-item">
+            <label>Duration</label>
+            <select id="cfg-duration">
+              <option value="4">4 Seconds</option>
+              <option value="6">6 Seconds</option>
+              <option value="8" selected>8 Seconds</option>
+            </select>
+          </div>
+          <div class="config-item">
+            <label>Aspect Ratio</label>
+            <select id="cfg-aspect">
+              <option value="16:9">16:9 (Landscape)</option>
+              <option value="9:16">9:16 (Portrait)</option>
+            </select>
+          </div>
+          <div class="config-item">
+            <label>Resolution</label>
+            <select id="cfg-resolution">
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- Inputs -->
+      <section>
+        <h2>Inputs</h2>
+        <div id="input-list"></div>
+
+        <div class="action-bar">
+          <button id="btn-add-text">+ Text</button>
+          <button id="btn-add-image">+ Image</button>
+          <button id="btn-add-video">+ Video</button>
+          <div style="flex-grow: 1"></div>
+          <button id="btn-clear-inputs">Clear All</button>
+        </div>
+      </section>
+
+      <!-- Generation Action -->
+      <div class="action-bar">
+        <button id="btn-generate" class="primary" style="width: 100%; padding: 12px">Generate Video</button>
+      </div>
+
+      <!-- Outputs -->
+      <section>
+        <h2>Output</h2>
+        <div id="output-list"></div>
+      </section>
+    </main>
+
+    <!-- Hidden File Input -->
+    <input type="file" id="file-picker" style="display: none" />
+
+    <script type="module">
+      import { GoogleGenAI } from "https://esm.sh/@google/genai";
+      import { get, set, createStore } from "https://esm.sh/idb-keyval";
+
+      class VeoApp {
+        static DB_NAME = "veo-workbench";
+        static STORE_NAME = "state";
+
+        constructor() {
+          this.store = createStore(VeoApp.DB_NAME, VeoApp.STORE_NAME);
+
+          // State
+          this.inputs = []; // { id, type: 'text'|'image'|'video', role, content, file: {blob, dataUrl, mimeType} }
+          this.outputs = [];
+          this.nextId = 1;
+          this.isGenerating = false;
+
+          // DOM
+          this.dom = {
+            apiKey: document.getElementById("api-key"),
+            inputList: document.getElementById("input-list"),
+            outputList: document.getElementById("output-list"),
+            filePicker: document.getElementById("file-picker"),
+            config: {
+              model: document.getElementById("cfg-model"),
+              duration: document.getElementById("cfg-duration"),
+              aspect: document.getElementById("cfg-aspect"),
+              resolution: document.getElementById("cfg-resolution"),
+            },
+          };
+
+          this.bindEvents();
+          this.loadState();
+        }
+
+        bindEvents() {
+          // Add Buttons
+          document.getElementById("btn-add-text").onclick = () => this.addInput("text");
+          document.getElementById("btn-add-image").onclick = () => this.triggerFilePicker("image");
+          document.getElementById("btn-add-video").onclick = () => this.triggerFilePicker("video");
+          document.getElementById("btn-clear-inputs").onclick = () => {
+            this.inputs = [];
+            this.renderInputs();
+            this.saveState();
+          };
+
+          // Generate
+          document.getElementById("btn-generate").onclick = () => this.handleGenerate();
+
+          // File Picker
+          this.dom.filePicker.onchange = (e) => this.handleFileSelection(e);
+
+          // Persistence
+          this.dom.apiKey.oninput = (e) => set("apiKey", e.target.value, this.store);
+          Object.values(this.dom.config).forEach((el) => {
+            el.onchange = () => this.saveState();
+          });
+        }
+
+        // --- Input Management ---
+
+        addInput(type, fileData = null) {
+          const id = String(this.nextId++);
+          let role = "prompt"; // default
+
+          if (type === "image") role = "image"; // Start frame
+          if (type === "video") role = "video"; // Extension input
+
+          this.inputs.push({
+            id,
+            type,
+            role,
+            content: "",
+            file: fileData,
+          });
+          this.renderInputs();
+          this.saveState();
+        }
+
+        triggerFilePicker(type) {
+          this.dom.filePicker.accept = type === "image" ? "image/*" : "video/*";
+          this.dom.filePicker.dataset.targetType = type;
+          this.dom.filePicker.click();
+        }
+
+        async handleFileSelection(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+
+          const type = this.dom.filePicker.dataset.targetType;
+          const dataUrl = await VeoUtils.blobToDataUrl(file);
+
+          this.addInput(type, {
+            blob: file,
+            mimeType: file.type,
+            dataUrl: dataUrl,
+            name: file.name,
+          });
+          this.dom.filePicker.value = ""; // reset
+        }
+
+        updateInput(id, updates) {
+          const idx = this.inputs.findIndex((i) => i.id === id);
+          if (idx !== -1) {
+            this.inputs[idx] = { ...this.inputs[idx], ...updates };
+            this.saveState();
+          }
+        }
+
+        removeInput(id) {
+          this.inputs = this.inputs.filter((i) => i.id !== id);
+          this.renderInputs();
+          this.saveState();
+        }
+
+        // --- Rendering ---
+
+        renderInputs() {
+          this.dom.inputList.innerHTML = "";
+          this.inputs.forEach((item) => {
+            const el = document.createElement("div");
+            el.className = `input-item ${item.type !== "text" ? "has-media" : ""}`;
+            el.draggable = true;
+            el.dataset.id = item.id;
+
+            // 1. Drag Handle
+            const drag = document.createElement("div");
+            drag.className = "drag-handle";
+            drag.innerHTML = "⋮";
+            el.appendChild(drag);
+
+            // 2. Media Preview (if applicable)
+            if (item.type !== "text") {
+              const thumbContainer = document.createElement("div");
+              thumbContainer.style.position = "relative";
+              thumbContainer.style.display = "flex";
+              thumbContainer.style.alignItems = "center";
+              thumbContainer.style.justifyContent = "center";
+              thumbContainer.style.background = "#000";
+
+              if (item.type === "image") {
+                const img = document.createElement("img");
+                img.className = "media-preview";
+                img.src = item.file.dataUrl;
+                thumbContainer.appendChild(img);
+              } else {
+                const vid = document.createElement("video");
+                vid.className = "media-preview";
+                vid.src = item.file.dataUrl;
+                vid.muted = true;
+                thumbContainer.appendChild(vid);
+                const icon = document.createElement("div");
+                icon.className = "video-icon-overlay";
+                icon.innerHTML = "▶";
+                thumbContainer.appendChild(icon);
+              }
+              el.appendChild(thumbContainer);
+            }
+
+            // 3. Content
+            const content = document.createElement("div");
+            content.className = "item-content";
+            if (item.type === "text") {
+              const ta = document.createElement("textarea");
+              ta.placeholder = "Enter text...";
+              ta.value = item.content;
+              ta.oninput = (e) => this.updateInput(item.id, { content: e.target.value });
+              content.appendChild(ta);
+            } else {
+              const info = document.createElement("div");
+              info.className = "file-info";
+              info.textContent = item.file.name;
+              content.appendChild(info);
+            }
+            el.appendChild(content);
+
+            // 4. Controls
+            const controls = document.createElement("div");
+            controls.className = "item-controls";
+
+            const roleSelect = document.createElement("select");
+            roleSelect.className = "role-select";
+            this.getRolesForType(item.type).forEach((opt) => {
+              const option = document.createElement("option");
+              option.value = opt.value;
+              option.text = opt.label;
+              option.selected = item.role === opt.value;
+              roleSelect.appendChild(option);
+            });
+            roleSelect.onchange = (e) => this.updateInput(item.id, { role: e.target.value });
+            controls.appendChild(roleSelect);
+
+            const delBtn = document.createElement("button");
+            delBtn.className = "delete-btn";
+            delBtn.textContent = "Remove";
+            delBtn.onclick = () => this.removeInput(item.id);
+            controls.appendChild(delBtn);
+
+            el.appendChild(controls);
+
+            // Drag Events
+            this.setupDragEvents(el, item.id);
+            this.dom.inputList.appendChild(el);
+          });
+        }
+
+        getRolesForType(type) {
+          if (type === "text")
+            return [
+              { value: "prompt", label: "Positive Prompt" },
+              { value: "negativePrompt", label: "Negative Prompt" },
+            ];
+          if (type === "image")
+            return [
+              { value: "image", label: "Start Frame" },
+              { value: "lastFrame", label: "End Frame" },
+              { value: "reference_asset", label: "Ref: Asset (Character/Object)" },
+              { value: "reference_style", label: "Ref: Style" },
+            ];
+          if (type === "video") return [{ value: "video", label: "Input Video (Extend)" }];
+          return [];
+        }
+
+        // --- Drag & Drop Logic ---
+        setupDragEvents(el, id) {
+          el.ondragstart = (e) => {
+            e.dataTransfer.effectAllowed = "move";
+            el.classList.add("dragging");
+            this.draggedId = id;
+          };
+          el.ondragend = () => {
+            el.classList.remove("dragging");
+            document.querySelectorAll(".input-item").forEach((i) => i.classList.remove("drag-over-top", "drag-over-bottom"));
+          };
+          el.ondragover = (e) => {
+            e.preventDefault();
+            if (el.dataset.id === this.draggedId) return;
+            const rect = el.getBoundingClientRect();
+            const isTop = e.clientY < rect.top + rect.height / 2;
+            el.classList.remove("drag-over-top", "drag-over-bottom");
+            el.classList.add(isTop ? "drag-over-top" : "drag-over-bottom");
+          };
+          el.ondragleave = () => el.classList.remove("drag-over-top", "drag-over-bottom");
+          el.ondrop = (e) => {
+            e.preventDefault();
+            el.classList.remove("drag-over-top", "drag-over-bottom");
+            if (this.draggedId === id) return;
+
+            const fromIdx = this.inputs.findIndex((i) => i.id === this.draggedId);
+            const toIdx = this.inputs.findIndex((i) => i.id === id);
+            const rect = el.getBoundingClientRect();
+            const isTop = e.clientY < rect.top + rect.height / 2;
+
+            const item = this.inputs.splice(fromIdx, 1)[0];
+            let newIdx = toIdx;
+            if (fromIdx < toIdx) newIdx = isTop ? toIdx - 1 : toIdx;
+            else newIdx = isTop ? toIdx : toIdx + 1;
+
+            this.inputs.splice(newIdx, 0, item);
+            this.renderInputs();
+            this.saveState();
+          };
+        }
+
+        // --- Generation Logic ---
+
+        async handleGenerate() {
+          const apiKey = this.dom.apiKey.value.trim();
+          if (!apiKey) return alert("Please enter an API Key");
+          if (this.isGenerating) return;
+
+          this.isGenerating = true;
+          const outputId = Date.now();
+          this.addOutputItem(outputId);
+
+          try {
+            const ai = new GoogleGenAI({ apiKey });
+
+            // 1. Construct Payload
+            const params = {
+              model: this.dom.config.model.value,
+              config: {
+                aspectRatio: this.dom.config.aspect.value,
+                resolution: this.dom.config.resolution.value,
+                durationSeconds: this.dom.config.duration.valueAsNumber,
+              },
+            };
+
+            // 2. Map Inputs to Params
+            const prompts = [];
+            const negativePrompts = [];
+            const references = [];
+
+            for (const input of this.inputs) {
+              if (input.type === "text") {
+                if (input.role === "prompt") prompts.push(input.content);
+                if (input.role === "negativePrompt") negativePrompts.push(input.content);
+              } else if (input.type === "image") {
+                const b64 = await VeoUtils.blobToBase64(input.file.blob);
+                const imgObj = { imageBytes: b64, mimeType: input.file.mimeType };
+
+                if (input.role === "image") params.image = imgObj;
+                if (input.role === "lastFrame") params.config.lastFrame = imgObj;
+                if (input.role.startsWith("reference_")) {
+                  references.push({
+                    image: imgObj,
+                    referenceType: input.role === "reference_style" ? "STYLE" : "ASSET",
+                  });
+                }
+              } else if (input.type === "video") {
+                const b64 = await VeoUtils.blobToBase64(input.file.blob);
+                params.video = { videoBytes: b64, mimeType: input.file.mimeType };
+              }
+            }
+
+            if (prompts.length) params.prompt = prompts.join("\n");
+            if (negativePrompts.length) params.config.negativePrompt = negativePrompts.join(", ");
+            if (references.length) params.config.referenceImages = references;
+
+            // 3. Validation (Basic)
+            if (!params.prompt && !params.image && !params.video) {
+              throw new Error("At least one input (Prompt, Image, or Video) is required.");
+            }
+
+            // 4. Start Operation
+            this.updateOutputStatus(outputId, "Starting generation...", true);
+            let operation = await ai.models.generateVideos(params);
+
+            // 5. Poll
+            const startTime = Date.now();
+            const pollInterval = setInterval(() => {
+              const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+              this.updateOutputStatus(outputId, `Generating... ${elapsed}s`, true);
+            }, 100);
+
+            while (!operation.done) {
+              await new Promise((r) => setTimeout(r, 5000)); // Poll every 5s
+              operation = await ai.operations.getVideosOperation({ operation });
+            }
+
+            clearInterval(pollInterval);
+
+            // 6. Handle Result
+            if (operation.error) {
+              throw new Error(JSON.stringify(operation.error, null, 2));
+            }
+
+            const videoUri = operation.response.generatedVideos[0].video.uri;
+            // Note: The SDK might return a URI or bytes depending on backend.
+            // Usually for client-side without GCS setup, we hope for bytes or a signed URL.
+            // However, the SDK types show `videoBytes` or `uri`.
+            // If it's a URI (GCS), we can't display it directly without auth.
+            // BUT, usually `generateVideos` returns a short-lived accessible URI or we download it.
+            // Let's try to handle `videoBytes` if present, else assume we need to download via SDK helper (which we can't do easily in browser without node fs).
+            // *Correction*: The SDK `ai.files.download` is for Node. In browser, we check `videoBytes`.
+
+            // If the API returns a GCS URI, we can't fetch it directly from browser due to CORS/Auth usually.
+            // However, for the purpose of this demo, let's check what we get.
+            // Veo API often returns `videoBytes` in the operation response if configured, or we might need to rely on the fact that this is a client-side demo.
+
+            // Actually, looking at the SDK source/docs, `generatedVideos[0].video` contains `videoBytes` (base64) usually for small generations or if requested.
+            // If not, we display the URI.
+
+            const vidData = operation.response.generatedVideos[0].video;
+
+            if (vidData.videoBytes) {
+              const blob = await (await fetch(`data:${vidData.mimeType};base64,${vidData.videoBytes}`)).blob();
+              const url = URL.createObjectURL(blob);
+              this.renderOutputVideo(outputId, url);
+            } else if (vidData.uri) {
+              // Fallback: Just show the URI text if we can't display it
+              throw new Error(`Video generated at ${vidData.uri}. Cannot display GCS URI directly in browser without proxy.`);
+            } else {
+              throw new Error("No video data returned.");
+            }
+          } catch (e) {
+            this.renderOutputError(outputId, e.message);
+          } finally {
+            this.isGenerating = false;
+          }
+        }
+
+        // --- Output Management ---
+
+        addOutputItem(id) {
+          const div = document.createElement("div");
+          div.className = "output-card";
+          div.id = `out-${id}`;
+          div.innerHTML = `
+            <div class="status-bar">
+              <span class="status-text"><span class="loading-spinner"></span>Initializing...</span>
+              <span class="timer">0.0s</span>
+            </div>
+            <div class="video-container"></div>
+          `;
+          this.dom.outputList.prepend(div);
+        }
+
+        updateOutputStatus(id, text, isLoading) {
+          const el = document.getElementById(`out-${id}`);
+          if (!el) return;
+          const statusText = el.querySelector(".status-text");
+          statusText.innerHTML = isLoading ? `<span class="loading-spinner"></span>${text}` : text;
+        }
+
+        renderOutputVideo(id, url) {
+          const el = document.getElementById(`out-${id}`);
+          if (!el) return;
+          el.querySelector(".status-bar").innerHTML = `<span style="color:var(--color-success)">✓ Generation Complete</span>`;
+
+          const container = el.querySelector(".video-container");
+          container.innerHTML = `
+            <video controls autoplay loop src="${url}"></video>
+            <div style="margin-top:8px; text-align:right">
+              <a href="${url}" download="veo_video_${id}.mp4"><button>Download MP4</button></a>
+            </div>
+          `;
+        }
+
+        renderOutputError(id, msg) {
+          const el = document.getElementById(`out-${id}`);
+          if (!el) return;
+          el.querySelector(".status-bar").innerHTML = `<span style="color:var(--color-error)">⚠ Failed</span>`;
+          el.querySelector(".video-container").innerHTML = `<div class="error-msg">${msg}</div>`;
+        }
+
+        // --- Persistence ---
+
+        async loadState() {
+          const key = await get("apiKey", this.store);
+          if (key) this.dom.apiKey.value = key;
+
+          const savedInputs = await get("inputs", this.store);
+          if (savedInputs) {
+            // Rehydrate blobs from stored data (simplified for demo, usually store metadata)
+            // Since we can't easily store Blobs in IDB across sessions reliably without re-creating them from DataURLs
+            // We will rely on DataURLs stored in state.
+            this.inputs = savedInputs.map((i) => {
+              // Reconstruct file object structure if needed
+              return i;
+            });
+            this.nextId = (Math.max(...this.inputs.map((i) => parseInt(i.id))) || 0) + 1;
+            this.renderInputs();
+          }
+
+          const savedConfig = await get("config", this.store);
+          if (savedConfig) {
+            this.dom.config.model.value = savedConfig.model;
+            this.dom.config.duration.value = savedConfig.duration;
+            this.dom.config.aspect.value = savedConfig.aspect;
+            this.dom.config.resolution.value = savedConfig.resolution;
+          }
+        }
+
+        async saveState() {
+          // We store inputs. For files, we store the DataURL which is heavy but works for a demo.
+          // In prod, use FileSystem API or just don't persist heavy media.
+          await set("inputs", this.inputs, this.store);
+          await set(
+            "config",
+            {
+              model: this.dom.config.model.value,
+              duration: this.dom.config.duration.value,
+              aspect: this.dom.config.aspect.value,
+              resolution: this.dom.config.resolution.value,
+            },
+            this.store
+          );
+        }
+      }
+
+      class VeoUtils {
+        static blobToBase64(blob) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result.split(",")[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+        static blobToDataUrl(blob) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => new VeoApp());
+    </script>
+  </body>
+</html>
