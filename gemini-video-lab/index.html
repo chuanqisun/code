@@ -214,6 +214,10 @@
         padding: 4px;
         margin: 0;
       }
+      .role-select:has(option:checked:disabled) {
+        border-color: var(--color-error);
+        background-color: #fce8e6;
+      }
       .delete-btn {
         color: var(--color-error);
         border-color: transparent;
@@ -281,6 +285,8 @@
             <select id="cfg-model">
               <option value="veo-3.1-generate-preview">Veo 3.1 (Preview)</option>
               <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast (Preview)</option>
+              <option value="veo-3.0-generate-001">Veo 3.0</option>
+              <option value="veo-3.0-fast-generate-001">Veo 3.0 Fast</option>
             </select>
           </div>
           <div class="config-item">
@@ -294,8 +300,8 @@
           <div class="config-item">
             <label>Aspect Ratio</label>
             <select id="cfg-aspect">
-              <option value="16:9">16:9 (Landscape)</option>
-              <option value="9:16">9:16 (Portrait)</option>
+              <option value="16:9">16:9 Landscape</option>
+              <option value="9:16">9:16 Portrait</option>
             </select>
           </div>
           <div class="config-item">
@@ -403,6 +409,12 @@
           Object.values(this.dom.config).forEach((el) => {
             el.onchange = () => this.saveState();
           });
+
+          // Re-render inputs when model changes to update available roles
+          this.dom.config.model.onchange = () => {
+            this.saveState();
+            this.renderInputs();
+          };
         }
 
         // --- Input Management ---
@@ -533,6 +545,7 @@
               option.value = opt.value;
               option.text = opt.label;
               option.selected = item.role === opt.value;
+              option.disabled = opt.disabled || false;
               roleSelect.appendChild(option);
             });
             roleSelect.onchange = (e) => this.updateInput(item.id, { role: e.target.value });
@@ -553,19 +566,21 @@
         }
 
         getRolesForType(type) {
+          const isVeo3 = this.dom.config.model.value.startsWith("veo-3.0");
           if (type === "text")
             return [
               { value: "prompt", label: "Positive Prompt" },
               { value: "negativePrompt", label: "Negative Prompt" },
             ];
-          if (type === "image")
+          if (type === "image") {
             return [
               { value: "image", label: "Start Frame" },
               { value: "lastFrame", label: "End Frame" },
-              { value: "reference_asset", label: "Reference content" },
-              { value: "reference_style", label: "Reference style" },
+              { value: "reference_asset", label: "Reference content", disabled: isVeo3 },
+              { value: "reference_style", label: "Reference style", disabled: isVeo3 },
             ];
-          if (type === "video") return [{ value: "video", label: "Input Video (Extend)" }];
+          }
+          if (type === "video") return [{ value: "video", label: "Input Video (Extend)", disabled: isVeo3 }];
           return [];
         }
 
@@ -638,6 +653,7 @@
             const prompts = [];
             const negativePrompts = [];
             const references = [];
+            const isVeo3 = this.dom.config.model.value.startsWith("veo-3.0");
 
             for (const input of this.inputs) {
               if (input.type === "text") {
@@ -649,15 +665,19 @@
 
                 if (input.role === "image") params.image = imgObj;
                 if (input.role === "lastFrame") params.config.lastFrame = imgObj;
-                if (input.role.startsWith("reference_")) {
+                // Skip reference images for Veo 3.0 models
+                if (!isVeo3 && input.role.startsWith("reference_")) {
                   references.push({
                     image: imgObj,
                     referenceType: input.role === "reference_style" ? "STYLE" : "ASSET",
                   });
                 }
               } else if (input.type === "video") {
-                const b64 = await VeoUtils.blobToBase64(input.file.blob);
-                params.video = { videoBytes: b64, mimeType: input.file.mimeType };
+                // Skip video input for Veo 3.0 models
+                if (!isVeo3) {
+                  const b64 = await VeoUtils.blobToBase64(input.file.blob);
+                  params.video = { videoBytes: b64, mimeType: input.file.mimeType };
+                }
               }
             }
 
