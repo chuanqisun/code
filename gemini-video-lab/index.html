@@ -283,8 +283,8 @@
           <div class="config-item">
             <label>Model</label>
             <select id="cfg-model">
-              <option value="veo-3.1-generate-preview">Veo 3.1 (Preview)</option>
-              <option value="veo-3.1-fast-generate-preview">Veo 3.1 Fast (Preview)</option>
+              <option value="veo-3.1-generate-preview">Veo 3.1</option>
+              <option value="veo-3.1-fast-generate-preview" selected>Veo 3.1 Fast</option>
               <option value="veo-3.0-generate-001">Veo 3.0</option>
               <option value="veo-3.0-fast-generate-001">Veo 3.0 Fast</option>
             </select>
@@ -292,9 +292,9 @@
           <div class="config-item">
             <label>Duration</label>
             <select id="cfg-duration">
-              <option value="4">4 Seconds</option>
+              <option value="4" selected>4 Seconds</option>
               <option value="6">6 Seconds</option>
-              <option value="8" selected>8 Seconds</option>
+              <option value="8">8 Seconds</option>
             </select>
           </div>
           <div class="config-item">
@@ -363,6 +363,7 @@
           this.outputs = [];
           this.nextId = 1;
           this.isGenerating = false;
+          this.activeGenerations = new Map(); // outputId -> AbortController
 
           // DOM
           this.dom = {
@@ -634,7 +635,15 @@
 
           this.isGenerating = true;
           const outputId = Date.now();
-          this.addOutputItem(outputId);
+          const abortController = new AbortController();
+          this.activeGenerations.set(outputId, abortController);
+          const outputConfig = {
+            model: this.dom.config.model.value,
+            duration: this.dom.config.duration.value,
+            aspect: this.dom.config.aspect.value,
+            resolution: this.dom.config.resolution.value,
+          };
+          this.addOutputItem(outputId, outputConfig);
 
           try {
             const ai = new GoogleGenAI({ apiKey });
@@ -646,6 +655,7 @@
                 aspectRatio: this.dom.config.aspect.value,
                 resolution: this.dom.config.resolution.value,
                 durationSeconds: this.dom.config.duration.valueAsNumber,
+                abortSignal: abortController.signal,
               },
             };
 
@@ -691,17 +701,23 @@
             }
 
             // 4. Start Operation
-            this.updateOutputStatus(outputId, "0.0s", false);
+            this.updateOutputStatus(outputId, "generating");
+            this.updateOutputTimer(outputId, "0.0s");
             let operation = await ai.models.generateVideos(params);
 
             // 5. Poll
             const startTime = Date.now();
             const pollInterval = setInterval(() => {
               const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-              this.updateOutputStatus(outputId, `${elapsed}s`, false);
+              this.updateOutputTimer(outputId, `${elapsed}s`);
             }, 100);
 
             while (!operation.done) {
+              // Check if aborted before polling
+              if (abortController.signal.aborted) {
+                clearInterval(pollInterval);
+                throw new DOMException("Generation cancelled", "AbortError");
+              }
               await new Promise((r) => setTimeout(r, 5000)); // Poll every 5s
               operation = await ai.operations.getVideosOperation({ operation });
             }
@@ -721,7 +737,7 @@
               this.renderOutputVideo(outputId, url);
             } else if (vidData.uri) {
               // Download the video using the URI with API key authentication
-              this.updateOutputStatus(outputId, "Downloading video...", true);
+              this.updateOutputStatus(outputId, "downloading");
               const videoResponse = await fetch(vidData.uri, {
                 headers: { "x-goog-api-key": apiKey },
                 redirect: "follow",
@@ -736,21 +752,27 @@
               throw new Error("No video data returned.");
             }
           } catch (e) {
-            this.renderOutputError(outputId, e.message);
+            // Don't show error if it was an intentional cancellation
+            if (e.name === "AbortError") {
+              // Output was already removed by user, nothing to do
+            } else {
+              this.renderOutputError(outputId, e.message);
+            }
           } finally {
+            this.activeGenerations.delete(outputId);
             this.isGenerating = false;
           }
         }
 
         // --- Output Management ---
 
-        addOutputItem(id) {
+        addOutputItem(id, config) {
           const div = document.createElement("div");
           div.className = "output-card";
           div.id = `out-${id}`;
           div.innerHTML = `
             <div class="status-bar">
-              <span class="status-text">Generating video...</span>
+              <span class="config-info">${config.model} · ${config.duration}s · ${config.aspect} · ${config.resolution} · <span class="status-text">starting</span></span>
               <div class="status-right">
                 <span class="timer">0.0s</span>
                 <button class="delete-btn output-remove-btn">Remove</button>
@@ -762,18 +784,31 @@
           this.dom.outputList.prepend(div);
         }
 
-        updateOutputStatus(id, text, isLoading) {
+        updateOutputStatus(id, statusText) {
+          const el = document.getElementById(`out-${id}`);
+          if (!el) return;
+          const status = el.querySelector(".status-text");
+          if (status) status.textContent = statusText;
+        }
+
+        updateOutputTimer(id, timeText) {
           const el = document.getElementById(`out-${id}`);
           if (!el) return;
           const timer = el.querySelector(".timer");
-          timer.textContent = text;
+          timer.textContent = timeText;
         }
 
         renderOutputVideo(id, url) {
           const el = document.getElementById(`out-${id}`);
           if (!el) return;
+          const configInfo = el.querySelector(".config-info").cloneNode(true);
+          const statusText = configInfo.querySelector(".status-text");
+          if (statusText) statusText.remove();
+          // Remove trailing " · " from config info
+          const cleanConfigInfo = configInfo.textContent.replace(/ · $/, "");
+          const finalTime = el.querySelector(".timer").textContent;
           el.querySelector(".status-bar").innerHTML =
-            `<span style="color:var(--color-success)">✓ Generation Complete</span><div class="status-right"><button class="delete-btn output-remove-btn">Remove</button></div>`;
+            `<span class="config-info">${cleanConfigInfo}</span><div class="status-right"><span class="timer">${finalTime}</span><button class="delete-btn output-remove-btn">Remove</button></div>`;
           el.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
 
           const container = el.querySelector(".video-container");
@@ -788,13 +823,25 @@
         renderOutputError(id, msg) {
           const el = document.getElementById(`out-${id}`);
           if (!el) return;
+          const configInfo = el.querySelector(".config-info").cloneNode(true);
+          const statusText = configInfo.querySelector(".status-text");
+          if (statusText) statusText.remove();
+          // Remove trailing " · " from config info
+          const cleanConfigInfo = configInfo.textContent.replace(/ · $/, "");
+          const finalTime = el.querySelector(".timer").textContent;
           el.querySelector(".status-bar").innerHTML =
-            `<span style="color:var(--color-error)">⚠ Failed</span><div class="status-right"><button class="delete-btn output-remove-btn">Remove</button></div>`;
+            `<span class="config-info">${cleanConfigInfo}</span><div class="status-right"><span class="timer">${finalTime}</span><button class="delete-btn output-remove-btn">Remove</button></div>`;
           el.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
           el.querySelector(".video-container").innerHTML = `<div class="error-msg">${msg}</div>`;
         }
 
         removeOutput(id) {
+          // Cancel any active generation for this output
+          const controller = this.activeGenerations.get(id);
+          if (controller) {
+            controller.abort();
+            this.activeGenerations.delete(id);
+          }
           const el = document.getElementById(`out-${id}`);
           if (el) el.remove();
         }
