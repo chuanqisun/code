@@ -360,7 +360,7 @@
 
           // State
           this.inputs = []; // { id, type: 'text'|'image'|'video', role, content, file: {blob, dataUrl, mimeType} }
-          this.outputs = [];
+          this.outputs = []; // { id, config, videoDataUrl, error }
           this.nextId = 1;
           this.isGenerating = false;
           this.activeGenerations = new Map(); // outputId -> AbortController
@@ -400,6 +400,8 @@
           // Clear Outputs
           document.getElementById("btn-clear-outputs").onclick = () => {
             this.dom.outputList.innerHTML = "";
+            this.outputs = [];
+            this.saveOutputs();
           };
 
           // File Picker
@@ -654,7 +656,7 @@
               config: {
                 aspectRatio: this.dom.config.aspect.value,
                 resolution: this.dom.config.resolution.value,
-                durationSeconds: this.dom.config.duration.valueAsNumber,
+                durationSeconds: parseInt(this.dom.config.duration.value, 10),
                 abortSignal: abortController.signal,
               },
             };
@@ -701,11 +703,10 @@
             }
 
             // 4. Start Operation
-            this.updateOutputStatus(outputId, "generating");
-            this.updateOutputTimer(outputId, "0.0s");
             let operation = await ai.models.generateVideos(params);
 
             // 5. Poll
+            this.updateOutputStatus(outputId, "generating");
             const startTime = Date.now();
             const pollInterval = setInterval(() => {
               const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -734,7 +735,9 @@
             if (vidData.videoBytes) {
               const blob = await (await fetch(`data:${vidData.mimeType};base64,${vidData.videoBytes}`)).blob();
               const url = URL.createObjectURL(blob);
+              const dataUrl = await VeoUtils.blobToDataUrl(blob);
               this.renderOutputVideo(outputId, url);
+              this.saveOutput(outputId, outputConfig, dataUrl);
             } else if (vidData.uri) {
               // Download the video using the URI with API key authentication
               this.updateOutputStatus(outputId, "downloading");
@@ -747,7 +750,9 @@
               }
               const videoBlob = await videoResponse.blob();
               const url = URL.createObjectURL(videoBlob);
+              const dataUrl = await VeoUtils.blobToDataUrl(videoBlob);
               this.renderOutputVideo(outputId, url);
+              this.saveOutput(outputId, outputConfig, dataUrl);
             } else {
               throw new Error("No video data returned.");
             }
@@ -756,6 +761,7 @@
             if (e.name === "AbortError") {
               // Output was already removed by user, nothing to do
             } else {
+              console.log("Generation error:", e);
               this.renderOutputError(outputId, e.message);
             }
           } finally {
@@ -844,6 +850,54 @@
           }
           const el = document.getElementById(`out-${id}`);
           if (el) el.remove();
+          // Remove from saved outputs
+          this.outputs = this.outputs.filter((o) => o.id !== id);
+          this.saveOutputs();
+        }
+
+        // --- Output Persistence ---
+
+        async saveOutput(id, config, videoDataUrl) {
+          this.outputs.push({ id, config, videoDataUrl });
+          await this.saveOutputs();
+        }
+
+        async saveOutputs() {
+          await set("outputs", this.outputs, this.store);
+        }
+
+        async loadOutputs() {
+          const savedOutputs = await get("outputs", this.store);
+          if (savedOutputs && savedOutputs.length) {
+            this.outputs = savedOutputs;
+            // Render in reverse order so newer outputs appear on top
+            for (let i = this.outputs.length - 1; i >= 0; i--) {
+              this.renderSavedOutput(this.outputs[i]);
+            }
+          }
+        }
+
+        renderSavedOutput(output) {
+          const { id, config, videoDataUrl } = output;
+          const div = document.createElement("div");
+          div.className = "output-card";
+          div.id = `out-${id}`;
+          div.innerHTML = `
+            <div class="status-bar">
+              <span class="config-info">${config.model} · ${config.duration}s · ${config.aspect} · ${config.resolution}</span>
+              <div class="status-right">
+                <button class="delete-btn output-remove-btn">Remove</button>
+              </div>
+            </div>
+            <div class="video-container">
+              <video controls loop src="${videoDataUrl}"></video>
+              <div style="margin-top:8px; text-align:right">
+                <a href="${videoDataUrl}" download="veo_video_${id}.mp4"><button>Download MP4</button></a>
+              </div>
+            </div>
+          `;
+          div.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
+          this.dom.outputList.prepend(div);
         }
 
         // --- Persistence ---
@@ -872,6 +926,9 @@
             this.dom.config.aspect.value = savedConfig.aspect;
             this.dom.config.resolution.value = savedConfig.resolution;
           }
+
+          // Load saved outputs
+          await this.loadOutputs();
         }
 
         async saveState() {
