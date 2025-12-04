@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,49 +6,52 @@
     <title>Real-time Spectrogram</title>
     <style>
       body {
-          font-family: system-ui, sans-serif;
-          max-width: 900px;
-          margin: 20px auto;
-          padding: 0 20px;
+        font-family: system-ui, sans-serif;
+        max-width: 900px;
+        margin: 20px auto;
+        padding: 0 20px;
       }
       canvas {
-          border: 1px solid #ccc;
-          display: block;
-          width: 100%;
-          margin-top: 10px;
-          image-rendering: pixelated;
+        border: 1px solid #ccc;
+        display: block;
+        width: 100%;
+        margin-top: 10px;
+        image-rendering: pixelated;
       }
       button {
-          padding: 10px 20px;
-          font-size: 16px;
-          cursor: pointer;
-          margin-right: 10px;
-          margin-bottom: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+        margin-right: 10px;
+        margin-bottom: 10px;
       }
       button:disabled {
-          cursor: not-allowed;
-          opacity: 0.6;
+        cursor: not-allowed;
+        opacity: 0.6;
       }
       #status {
-          margin-top: 10px;
-          color: #666;
+        margin-top: 10px;
+        color: #666;
       }
       .controls {
-          margin-top: 10px;
+        margin-top: 10px;
       }
-      #fileInput {
-          display: none;
+      #fileInput,
+      #audioFileInput {
+        display: none;
       }
       .info {
-          font-size: 12px;
-          color: #888;
-          margin-top: 5px;
+        font-size: 12px;
+        color: #888;
+        margin-top: 5px;
       }
     </style>
   </head>
   <body>
     <h1>Real-time Spectrogram</h1>
     <div class="controls">
+      <button id="uploadAudioBtn">Upload Audio</button>
+      <input type="file" id="audioFileInput" accept="audio/mp3,audio/wav,audio/mpeg,.mp3,.wav" />
       <button id="toggleBtn">Start Recording</button>
       <button id="playBtn" disabled>Play Spectrogram</button>
       <button id="downloadBtn" disabled>Download Image</button>
@@ -67,6 +70,8 @@
       const downloadBtn = document.getElementById("downloadBtn");
       const uploadBtn = document.getElementById("uploadBtn");
       const fileInput = document.getElementById("fileInput");
+      const uploadAudioBtn = document.getElementById("uploadAudioBtn");
+      const audioFileInput = document.getElementById("audioFileInput");
       const status = document.getElementById("status");
       const info = document.getElementById("info");
 
@@ -638,8 +643,6 @@
 
           status.textContent = `Loaded: ${numFrames} frames from ${img.width}x${img.height} image`;
 
-          canvas.width = Math.min(800, spectrogramData.length);
-          canvas.height = NUM_BINS;
           renderSpectrogram();
           updateButtonStates();
           updateInfo();
@@ -667,6 +670,138 @@
       downloadBtn.addEventListener("click", downloadImage);
       uploadBtn.addEventListener("click", uploadImage);
       fileInput.addEventListener("change", handleImageUpload);
+
+      uploadAudioBtn.addEventListener("click", () => audioFileInput.click());
+      audioFileInput.addEventListener("change", handleAudioUpload);
+
+      async function handleAudioUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        status.textContent = "Loading audio file...";
+
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+            sampleRate: SAMPLE_RATE,
+          });
+
+          status.textContent = "Decoding audio...";
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+          // Get mono audio data (mix down if stereo)
+          let audioData;
+          if (audioBuffer.numberOfChannels === 1) {
+            audioData = audioBuffer.getChannelData(0);
+          } else {
+            // Mix stereo to mono
+            const left = audioBuffer.getChannelData(0);
+            const right = audioBuffer.getChannelData(1);
+            audioData = new Float32Array(left.length);
+            for (let i = 0; i < left.length; i++) {
+              audioData[i] = (left[i] + right[i]) / 2;
+            }
+          }
+
+          // Resample if necessary
+          let resampledData = audioData;
+          if (audioBuffer.sampleRate !== SAMPLE_RATE) {
+            status.textContent = `Resampling from ${audioBuffer.sampleRate}Hz to ${SAMPLE_RATE}Hz...`;
+            const ratio = SAMPLE_RATE / audioBuffer.sampleRate;
+            const newLength = Math.floor(audioData.length * ratio);
+            resampledData = new Float32Array(newLength);
+            for (let i = 0; i < newLength; i++) {
+              const srcIdx = i / ratio;
+              const srcIdxFloor = Math.floor(srcIdx);
+              const srcIdxCeil = Math.min(srcIdxFloor + 1, audioData.length - 1);
+              const frac = srcIdx - srcIdxFloor;
+              resampledData[i] = audioData[srcIdxFloor] * (1 - frac) + audioData[srcIdxCeil] * frac;
+            }
+          }
+
+          status.textContent = "Computing spectrogram...";
+          await new Promise((resolve) => setTimeout(resolve, 10));
+
+          // Compute spectrogram using STFT
+          spectrogramData = [];
+          const windowFunc = new Float32Array(FFT_SIZE);
+          for (let i = 0; i < FFT_SIZE; i++) {
+            windowFunc[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / FFT_SIZE));
+          }
+
+          function fft(real, imag) {
+            const n = real.length;
+            let j = 0;
+            for (let i = 0; i < n - 1; i++) {
+              if (i < j) {
+                let temp = real[i];
+                real[i] = real[j];
+                real[j] = temp;
+                temp = imag[i];
+                imag[i] = imag[j];
+                imag[j] = temp;
+              }
+              let k = n >> 1;
+              while (k <= j) {
+                j -= k;
+                k >>= 1;
+              }
+              j += k;
+            }
+            for (let len = 2; len <= n; len <<= 1) {
+              const halfLen = len >> 1;
+              const angleStep = (-2 * Math.PI) / len;
+              for (let i = 0; i < n; i += len) {
+                let angle = 0;
+                for (let k = 0; k < halfLen; k++) {
+                  const cos = Math.cos(angle);
+                  const sin = Math.sin(angle);
+                  const tReal = cos * real[i + k + halfLen] - sin * imag[i + k + halfLen];
+                  const tImag = sin * real[i + k + halfLen] + cos * imag[i + k + halfLen];
+                  real[i + k + halfLen] = real[i + k] - tReal;
+                  imag[i + k + halfLen] = imag[i + k] - tImag;
+                  real[i + k] += tReal;
+                  imag[i + k] += tImag;
+                  angle += angleStep;
+                }
+              }
+            }
+          }
+
+          const numFrames = Math.floor((resampledData.length - FFT_SIZE) / HOP_SIZE) + 1;
+          for (let frame = 0; frame < numFrames; frame++) {
+            const start = frame * HOP_SIZE;
+            const real = new Float32Array(FFT_SIZE);
+            const imag = new Float32Array(FFT_SIZE);
+
+            for (let i = 0; i < FFT_SIZE; i++) {
+              real[i] = (resampledData[start + i] || 0) * windowFunc[i];
+            }
+
+            fft(real, imag);
+
+            const magnitudes = new Float32Array(NUM_BINS);
+            for (let i = 0; i < NUM_BINS; i++) {
+              magnitudes[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]);
+            }
+
+            spectrogramData.push(magnitudes);
+          }
+
+          audioCtx.close();
+
+          renderSpectrogram();
+          updateButtonStates();
+          updateInfo();
+
+          status.textContent = `Loaded audio: ${spectrogramData.length} frames from ${file.name}`;
+          audioFileInput.value = "";
+        } catch (err) {
+          console.error("Error processing audio:", err);
+          status.textContent = "Error: " + err.message;
+          audioFileInput.value = "";
+        }
+      }
 
       canvas.height = NUM_BINS;
       ctx.fillStyle = "#000";
