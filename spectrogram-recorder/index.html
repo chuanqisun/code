@@ -56,7 +56,7 @@
       <button id="playBtn" disabled>Play Spectrogram</button>
       <button id="downloadBtn" disabled>Download Image</button>
       <button id="uploadBtn">Upload Image</button>
-      <input type="file" id="fileInput" accept="image/png" />
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
     </div>
     <p id="status">Click the button to start</p>
     <p class="info" id="info"></p>
@@ -188,25 +188,22 @@
             registerProcessor('spectrogram-processor', SpectrogramProcessor);
         `;
 
-      // Store raw magnitude as 32-bit float using all 4 channels
-      function magnitudeToRGBA(mag) {
-        const buffer = new ArrayBuffer(4);
-        const floatView = new Float32Array(buffer);
-        const uintView = new Uint8Array(buffer);
-        floatView[0] = mag;
-        return [uintView[0], uintView[1], uintView[2], uintView[3]];
+      // Convert magnitude to grayscale value (0-255) for export
+      // Uses the same log-scale as display
+      function magnitudeToGrayscale(mag) {
+        return Math.round(magnitudeToDisplay(mag) * 255);
       }
 
-      // Read raw magnitude from RGBA
-      function rgbaToMagnitude(r, g, b, a) {
-        const buffer = new ArrayBuffer(4);
-        const uintView = new Uint8Array(buffer);
-        const floatView = new Float32Array(buffer);
-        uintView[0] = r;
-        uintView[1] = g;
-        uintView[2] = b;
-        uintView[3] = a;
-        return floatView[0];
+      // Reverse the log-scale conversion: grayscale (0-255) back to magnitude
+      // This inverts: normalized = (db + 80) / 80, where db = 20 * log10(mag / refMag)
+      function grayscaleToMagnitude(gray) {
+        if (gray <= 0) return 0;
+
+        const normalized = gray / 255; // 0 to 1
+        const db = normalized * 80 - 80; // -80dB to 0dB
+        const refMag = FFT_SIZE / 2;
+        const mag = refMag * Math.pow(10, db / 20);
+        return mag;
       }
 
       // For display only - use log scale for better visualization
@@ -571,14 +568,14 @@
           for (let freqIndex = 0; freqIndex < NUM_BINS; freqIndex++) {
             const y = NUM_BINS - 1 - freqIndex;
 
-            // Store raw magnitude as 32-bit float
-            const rgba = magnitudeToRGBA(column[freqIndex]);
+            // Pure grayscale: R = G = B (same as display)
+            const gray = magnitudeToGrayscale(column[freqIndex]);
 
             const idx = (y * numFrames + x) * 4;
-            data[idx] = rgba[0];
-            data[idx + 1] = rgba[1];
-            data[idx + 2] = rgba[2];
-            data[idx + 3] = rgba[3];
+            data[idx] = gray; // R
+            data[idx + 1] = gray; // G
+            data[idx + 2] = gray; // B
+            data[idx + 3] = 255; // A: always opaque
           }
         }
 
@@ -589,7 +586,7 @@
         link.href = exportCanvas.toDataURL("image/png");
         link.click();
 
-        status.textContent = `Image downloaded (${numFrames}x${NUM_BINS} pixels, 32-bit float magnitudes).`;
+        status.textContent = `Image downloaded (${numFrames}x${NUM_BINS} pixels, grayscale).`;
       }
 
       function uploadImage() {
@@ -634,8 +631,10 @@
 
               const idx = (clampedY * img.width + x) * 4;
 
-              // Read 32-bit float from RGBA
-              column[freqIndex] = rgbaToMagnitude(data[idx], data[idx + 1], data[idx + 2], data[idx + 3]);
+              // Read grayscale value and convert back to magnitude
+              // Use average of RGB in case image isn't perfectly grayscale (e.g., JPEG artifacts)
+              const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+              column[freqIndex] = grayscaleToMagnitude(gray);
             }
 
             spectrogramData.push(column);
