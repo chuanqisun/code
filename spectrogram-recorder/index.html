@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Real-time Spectrogram</title>
+    <title>Spectrogram Recorder</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -45,6 +45,10 @@
         color: #888;
         margin-top: 5px;
       }
+      #audioPlayer {
+        margin-top: 10px;
+        width: 100%;
+      }
     </style>
   </head>
   <body>
@@ -61,6 +65,7 @@
     <p id="status">Click the button to start</p>
     <p class="info" id="info"></p>
     <canvas id="spectrogram" width="800" height="512"></canvas>
+    <audio id="audioPlayer" controls></audio>
 
     <script type="module">
       const canvas = document.getElementById("spectrogram");
@@ -72,6 +77,7 @@
       const fileInput = document.getElementById("fileInput");
       const uploadAudioBtn = document.getElementById("uploadAudioBtn");
       const audioFileInput = document.getElementById("audioFileInput");
+      const audioPlayer = document.getElementById("audioPlayer");
       const status = document.getElementById("status");
       const info = document.getElementById("info");
 
@@ -492,6 +498,53 @@
         return signal;
       }
 
+      function createWavBlob(audioData, sampleRate) {
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const bytesPerSample = bitsPerSample / 8;
+        const blockAlign = numChannels * bytesPerSample;
+        const byteRate = sampleRate * blockAlign;
+        const dataSize = audioData.length * bytesPerSample;
+        const bufferSize = 44 + dataSize;
+
+        const buffer = new ArrayBuffer(bufferSize);
+        const view = new DataView(buffer);
+
+        // WAV header
+        const writeString = (offset, str) => {
+          for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i));
+          }
+        };
+
+        writeString(0, "RIFF");
+        view.setUint32(4, bufferSize - 8, true);
+        writeString(8, "WAVE");
+        writeString(12, "fmt ");
+        view.setUint32(16, 16, true); // fmt chunk size
+        view.setUint16(20, 1, true); // audio format (PCM)
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+        writeString(36, "data");
+        view.setUint32(40, dataSize, true);
+
+        // Audio data
+        let offset = 44;
+        for (let i = 0; i < audioData.length; i++) {
+          const sample = Math.max(-1, Math.min(1, audioData[i]));
+          const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+          view.setInt16(offset, intSample, true);
+          offset += 2;
+        }
+
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+
+      let currentAudioUrl = null;
+
       async function playSpectrogram() {
         if (spectrogramData.length === 0 || isPlaying) return;
 
@@ -508,20 +561,17 @@
 
           const audioData = griffinLim(spectrogramData, 50);
 
-          const playbackContext = new (window.AudioContext || window.webkitAudioContext)({
-            sampleRate: SAMPLE_RATE,
-          });
+          // Create WAV blob
+          const wavBlob = createWavBlob(audioData, SAMPLE_RATE);
 
-          const buffer = playbackContext.createBuffer(1, audioData.length, SAMPLE_RATE);
-          const channelData = buffer.getChannelData(0);
-
-          for (let i = 0; i < audioData.length; i++) {
-            channelData[i] = audioData[i];
+          // Revoke previous URL if exists
+          if (currentAudioUrl) {
+            URL.revokeObjectURL(currentAudioUrl);
           }
+          currentAudioUrl = URL.createObjectURL(wavBlob);
 
-          const source = playbackContext.createBufferSource();
-          source.buffer = buffer;
-          source.connect(playbackContext.destination);
+          // Set up audio player
+          audioPlayer.src = currentAudioUrl;
 
           const duration = audioData.length / SAMPLE_RATE;
 
@@ -530,17 +580,24 @@
           for (let i = 0; i < audioData.length; i++) {
             maxAmp = Math.max(maxAmp, Math.abs(audioData[i]));
           }
-          status.textContent = `Playing (${duration.toFixed(2)}s, peak: ${maxAmp.toFixed(4)})...`;
+          status.textContent = `Ready to play (${duration.toFixed(2)}s, peak: ${maxAmp.toFixed(4)})`;
 
-          source.onended = () => {
+          // Play using the audio element
+          audioPlayer.onended = () => {
             isPlaying = false;
             toggleBtn.disabled = false;
             updateButtonStates();
             status.textContent = "Playback finished.";
-            playbackContext.close();
           };
 
-          source.start();
+          audioPlayer.onerror = () => {
+            isPlaying = false;
+            toggleBtn.disabled = false;
+            updateButtonStates();
+            status.textContent = "Error playing audio.";
+          };
+
+          await audioPlayer.play();
         } catch (err) {
           console.error("Error playing spectrogram:", err);
           status.textContent = "Error: " + err.message;
