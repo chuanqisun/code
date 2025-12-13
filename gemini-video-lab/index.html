@@ -326,6 +326,7 @@
           <button id="btn-add-text">+ Text</button>
           <button id="btn-add-image">+ Image</button>
           <button id="btn-add-video">+ Video</button>
+          <span style="color: var(--color-text-secondary); font-size: 0.9rem; align-self: center">Drop or paste files</span>
         </div>
       </section>
 
@@ -397,6 +398,16 @@
           // Generate
           document.getElementById("btn-generate").onclick = () => this.handleGenerate();
 
+          // Global paste handler
+          document.addEventListener("paste", (e) => this.handlePaste(e));
+
+          // Global drag and drop handler
+          document.body.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          });
+          document.body.addEventListener("drop", (e) => this.handleDrop(e));
+
           // Clear Outputs
           document.getElementById("btn-clear-outputs").onclick = () => {
             this.dom.outputList.innerHTML = "";
@@ -460,6 +471,82 @@
             name: file.name,
           });
           this.dom.filePicker.value = ""; // reset
+        }
+
+        async handlePaste(e) {
+          // Don't intercept paste when user is typing in a text input
+          const activeEl = document.activeElement;
+          if (activeEl && (activeEl.tagName === "TEXTAREA" || activeEl.tagName === "INPUT")) {
+            return;
+          }
+
+          const clipboardData = e.clipboardData;
+          if (!clipboardData) return;
+
+          // Check for files (images/videos)
+          const files = clipboardData.files;
+          if (files.length > 0) {
+            e.preventDefault();
+            for (const file of files) {
+              if (file.type.startsWith("image/")) {
+                const dataUrl = await VeoUtils.blobToDataUrl(file);
+                this.addInput("image", {
+                  blob: file,
+                  mimeType: file.type,
+                  dataUrl: dataUrl,
+                  name: file.name || "pasted-image",
+                });
+              } else if (file.type.startsWith("video/")) {
+                const dataUrl = await VeoUtils.blobToDataUrl(file);
+                this.addInput("video", {
+                  blob: file,
+                  mimeType: file.type,
+                  dataUrl: dataUrl,
+                  name: file.name || "pasted-video",
+                });
+              }
+            }
+            return;
+          }
+
+          // Check for plain text
+          const text = clipboardData.getData("text/plain");
+          if (text && text.trim()) {
+            e.preventDefault();
+            this.addInput("text");
+            // Set the content of the newly added text input
+            const lastInput = this.inputs[this.inputs.length - 1];
+            lastInput.content = text.trim();
+            this.renderInputs();
+            this.saveState();
+          }
+        }
+
+        async handleDrop(e) {
+          e.preventDefault();
+
+          const files = e.dataTransfer.files;
+          if (files.length === 0) return;
+
+          for (const file of files) {
+            if (file.type.startsWith("image/")) {
+              const dataUrl = await VeoUtils.blobToDataUrl(file);
+              this.addInput("image", {
+                blob: file,
+                mimeType: file.type,
+                dataUrl: dataUrl,
+                name: file.name,
+              });
+            } else if (file.type.startsWith("video/")) {
+              const dataUrl = await VeoUtils.blobToDataUrl(file);
+              this.addInput("video", {
+                blob: file,
+                mimeType: file.type,
+                dataUrl: dataUrl,
+                name: file.name,
+              });
+            }
+          }
         }
 
         updateInput(id, updates) {
