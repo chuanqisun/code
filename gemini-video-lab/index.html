@@ -356,17 +356,29 @@
         static DB_NAME = "veo-workbench";
         static STORE_NAME = "state";
 
+        // Role definitions by input type
+        static ROLES = {
+          text: [
+            { value: "prompt", label: "Positive Prompt" },
+            { value: "negativePrompt", label: "Negative Prompt" },
+          ],
+          image: [
+            { value: "image", label: "Start Frame" },
+            { value: "lastFrame", label: "End Frame" },
+            { value: "reference_asset", label: "Reference content", veo31Only: true },
+            { value: "reference_style", label: "Reference style", veo31Only: true },
+          ],
+          video: [{ value: "video", label: "Input Video (Extend)", veo31Only: true }],
+        };
+
         constructor() {
           this.store = createStore(VeoApp.DB_NAME, VeoApp.STORE_NAME);
-
-          // State
-          this.inputs = []; // { id, type: 'text'|'image'|'video', role, content, file: {blob, dataUrl, mimeType} }
-          this.outputs = []; // { id, config, videoDataUrl, error }
+          this.inputs = [];
+          this.outputs = [];
           this.nextId = 1;
           this.isGenerating = false;
-          this.activeGenerations = new Map(); // outputId -> AbortController
+          this.activeGenerations = new Map();
 
-          // DOM
           this.dom = {
             apiKey: document.getElementById("api-key"),
             inputList: document.getElementById("input-list"),
@@ -384,71 +396,129 @@
           this.loadState();
         }
 
+        // --- Config Helpers ---
+
+        get isVeo31() {
+          return this.dom.config.model.value.startsWith("veo-3.1");
+        }
+
+        getConfig() {
+          return {
+            model: this.dom.config.model.value,
+            duration: this.dom.config.duration.value,
+            aspect: this.dom.config.aspect.value,
+            resolution: this.dom.config.resolution.value,
+          };
+        }
+
+        setConfig(config) {
+          for (const [key, value] of Object.entries(config)) {
+            const el = this.dom.config[key];
+            if (el && [...el.options].some((o) => o.value === value)) {
+              el.value = value;
+            }
+          }
+        }
+
+        // --- Role Helpers ---
+
+        getRolesForType(type) {
+          return (VeoApp.ROLES[type] || []).map((r) => ({
+            ...r,
+            disabled: r.veo31Only && !this.isVeo31,
+          }));
+        }
+
+        getDefaultRole(type) {
+          const roles = this.getRolesForType(type);
+          const enabled = roles.find((r) => !r.disabled);
+          return enabled?.value || roles[0]?.value || "prompt";
+        }
+
+        isRoleValid(type, role) {
+          const roles = this.getRolesForType(type);
+          const r = roles.find((x) => x.value === role);
+          return r && !r.disabled;
+        }
+
+        // Fix any invalid roles based on current model
+        normalizeInputRoles() {
+          let changed = false;
+          for (const input of this.inputs) {
+            if (!this.isRoleValid(input.type, input.role)) {
+              input.role = this.getDefaultRole(input.type);
+              changed = true;
+            }
+          }
+          return changed;
+        }
+
         bindEvents() {
-          // Add Buttons
           document.getElementById("btn-add-text").onclick = () => this.addInput("text");
           document.getElementById("btn-add-image").onclick = () => this.triggerFilePicker("image");
           document.getElementById("btn-add-video").onclick = () => this.triggerFilePicker("video");
           document.getElementById("btn-clear-inputs").onclick = () => {
             this.inputs = [];
-            this.renderInputs();
-            this.saveState();
+            this.render();
+            this.saveInputs();
+          };
+          document.getElementById("btn-generate").onclick = () => this.handleGenerate();
+          document.getElementById("btn-clear-outputs").onclick = () => {
+            this.outputs = [];
+            this.dom.outputList.innerHTML = "";
+            this.saveOutputs();
           };
 
-          // Generate
-          document.getElementById("btn-generate").onclick = () => this.handleGenerate();
+          // File input
+          this.dom.filePicker.onchange = (e) => this.handleFileSelection(e);
 
-          // Global paste handler
+          // Paste & drop
           document.addEventListener("paste", (e) => this.handlePaste(e));
-
-          // Global drag and drop handler
           document.body.addEventListener("dragover", (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           });
           document.body.addEventListener("drop", (e) => this.handleDrop(e));
 
-          // Clear Outputs
-          document.getElementById("btn-clear-outputs").onclick = () => {
-            this.dom.outputList.innerHTML = "";
-            this.outputs = [];
-            this.saveOutputs();
-          };
-
-          // File Picker
-          this.dom.filePicker.onchange = (e) => this.handleFileSelection(e);
-
-          // Persistence
-          this.dom.apiKey.oninput = (e) => set("apiKey", e.target.value, this.store);
-          Object.values(this.dom.config).forEach((el) => {
-            el.onchange = () => this.saveState();
-          });
-
-          // Re-render inputs when model changes to update available roles
-          this.dom.config.model.onchange = () => {
-            this.saveState();
-            this.renderInputs();
-          };
+          // Persistence on change
+          this.dom.apiKey.oninput = () => set("apiKey", this.dom.apiKey.value, this.store);
+          for (const el of Object.values(this.dom.config)) {
+            el.onchange = () => {
+              // When model changes, fix invalid roles
+              if (el === this.dom.config.model && this.normalizeInputRoles()) {
+                this.saveInputs();
+              }
+              this.saveConfig();
+              this.render();
+            };
+          }
         }
 
         // --- Input Management ---
 
-        addInput(type, fileData = null) {
-          const id = String(this.nextId++);
-          let role = "prompt"; // default
-
-          if (type === "image") role = "image"; // Start frame
-          if (type === "video") role = "video"; // Extension input
-
+        async addInput(type, content = "") {
           this.inputs.push({
-            id,
+            id: String(this.nextId++),
             type,
-            role,
-            content: "",
-            file: fileData,
+            role: this.getDefaultRole(type),
+            content,
+            file: null,
           });
-          this.renderInputs();
-          this.saveState();
+          this.render();
+          this.saveInputs();
+        }
+
+        async addMediaInput(type, file) {
+          const dataUrl = await VeoUtils.blobToDataUrl(file);
+          this.inputs.push({
+            id: String(this.nextId++),
+            type,
+            role: this.getDefaultRole(type),
+            content: "",
+            file: { dataUrl, mimeType: file.type, name: file.name || `pasted-${type}` },
+          });
+          this.render();
+          this.saveInputs();
         }
 
         triggerFilePicker(type) {
@@ -458,223 +528,126 @@
         }
 
         async handleFileSelection(e) {
-          const file = e.target.files[0];
-          if (!file) return;
-
-          const type = this.dom.filePicker.dataset.targetType;
-          const dataUrl = await VeoUtils.blobToDataUrl(file);
-
-          this.addInput(type, {
-            blob: file,
-            mimeType: file.type,
-            dataUrl: dataUrl,
-            name: file.name,
-          });
-          this.dom.filePicker.value = ""; // reset
+          const file = e.target.files?.[0];
+          if (file) {
+            await this.addMediaInput(this.dom.filePicker.dataset.targetType, file);
+          }
+          this.dom.filePicker.value = "";
         }
 
         async handlePaste(e) {
-          // Don't intercept paste when user is typing in a text input
-          const activeEl = document.activeElement;
-          if (activeEl && (activeEl.tagName === "TEXTAREA" || activeEl.tagName === "INPUT")) {
-            return;
-          }
+          if (["TEXTAREA", "INPUT"].includes(document.activeElement?.tagName)) return;
 
-          const clipboardData = e.clipboardData;
-          if (!clipboardData) return;
-
-          // Check for files (images/videos)
-          const files = clipboardData.files;
-          if (files.length > 0) {
+          const files = e.clipboardData?.files;
+          if (files?.length) {
             e.preventDefault();
             for (const file of files) {
-              if (file.type.startsWith("image/")) {
-                const dataUrl = await VeoUtils.blobToDataUrl(file);
-                this.addInput("image", {
-                  blob: file,
-                  mimeType: file.type,
-                  dataUrl: dataUrl,
-                  name: file.name || "pasted-image",
-                });
-              } else if (file.type.startsWith("video/")) {
-                const dataUrl = await VeoUtils.blobToDataUrl(file);
-                this.addInput("video", {
-                  blob: file,
-                  mimeType: file.type,
-                  dataUrl: dataUrl,
-                  name: file.name || "pasted-video",
-                });
-              }
+              const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : null;
+              if (type) await this.addMediaInput(type, file);
             }
             return;
           }
 
-          // Check for plain text
-          const text = clipboardData.getData("text/plain");
-          if (text && text.trim()) {
+          const text = e.clipboardData?.getData("text/plain")?.trim();
+          if (text) {
             e.preventDefault();
-            this.addInput("text");
-            // Set the content of the newly added text input
-            const lastInput = this.inputs[this.inputs.length - 1];
-            lastInput.content = text.trim();
-            this.renderInputs();
-            this.saveState();
+            this.addInput("text", text);
           }
         }
 
         async handleDrop(e) {
           e.preventDefault();
-
-          const files = e.dataTransfer.files;
-          if (files.length === 0) return;
-
-          for (const file of files) {
-            if (file.type.startsWith("image/")) {
-              const dataUrl = await VeoUtils.blobToDataUrl(file);
-              this.addInput("image", {
-                blob: file,
-                mimeType: file.type,
-                dataUrl: dataUrl,
-                name: file.name,
-              });
-            } else if (file.type.startsWith("video/")) {
-              const dataUrl = await VeoUtils.blobToDataUrl(file);
-              this.addInput("video", {
-                blob: file,
-                mimeType: file.type,
-                dataUrl: dataUrl,
-                name: file.name,
-              });
-            }
+          for (const file of e.dataTransfer.files) {
+            const type = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : null;
+            if (type) await this.addMediaInput(type, file);
           }
         }
 
         updateInput(id, updates) {
-          const idx = this.inputs.findIndex((i) => i.id === id);
-          if (idx !== -1) {
-            this.inputs[idx] = { ...this.inputs[idx], ...updates };
-            this.saveState();
+          const input = this.inputs.find((i) => i.id === id);
+          if (input) {
+            Object.assign(input, updates);
+            this.saveInputs();
           }
         }
 
         removeInput(id) {
           this.inputs = this.inputs.filter((i) => i.id !== id);
-          this.renderInputs();
-          this.saveState();
+          this.render();
+          this.saveInputs();
         }
 
         // --- Rendering ---
 
-        renderInputs() {
+        render() {
           this.dom.inputList.innerHTML = "";
-          this.inputs.forEach((item) => {
-            const el = document.createElement("div");
-            el.className = `input-item ${item.type !== "text" ? "has-media" : ""}`;
-            el.draggable = true;
-            el.dataset.id = item.id;
-
-            // 1. Drag Handle
-            const drag = document.createElement("div");
-            drag.className = "drag-handle";
-            drag.innerHTML = "⋮";
-            el.appendChild(drag);
-
-            // 2. Media Preview (if applicable)
-            if (item.type !== "text") {
-              const thumbContainer = document.createElement("div");
-              thumbContainer.style.position = "relative";
-              thumbContainer.style.display = "flex";
-              thumbContainer.style.alignItems = "center";
-              thumbContainer.style.justifyContent = "center";
-              thumbContainer.style.background = "#000";
-
-              if (item.type === "image") {
-                const img = document.createElement("img");
-                img.className = "media-preview";
-                img.src = item.file.dataUrl;
-                thumbContainer.appendChild(img);
-              } else {
-                const vid = document.createElement("video");
-                vid.className = "media-preview";
-                vid.src = item.file.dataUrl;
-                vid.muted = true;
-                thumbContainer.appendChild(vid);
-                const icon = document.createElement("div");
-                icon.className = "video-icon-overlay";
-                icon.innerHTML = "▶";
-                thumbContainer.appendChild(icon);
-              }
-              el.appendChild(thumbContainer);
-            }
-
-            // 3. Content
-            const content = document.createElement("div");
-            content.className = "item-content";
-            if (item.type === "text") {
-              const ta = document.createElement("textarea");
-              ta.placeholder = "Enter text...";
-              ta.value = item.content;
-              ta.oninput = (e) => this.updateInput(item.id, { content: e.target.value });
-              content.appendChild(ta);
-            } else {
-              const info = document.createElement("div");
-              info.className = "file-info";
-              info.textContent = item.file.name;
-              content.appendChild(info);
-            }
-            el.appendChild(content);
-
-            // 4. Controls
-            const controls = document.createElement("div");
-            controls.className = "item-controls";
-
-            const roleSelect = document.createElement("select");
-            roleSelect.className = "role-select";
-            this.getRolesForType(item.type).forEach((opt) => {
-              const option = document.createElement("option");
-              option.value = opt.value;
-              option.text = opt.label;
-              option.selected = item.role === opt.value;
-              option.disabled = opt.disabled || false;
-              roleSelect.appendChild(option);
-            });
-            roleSelect.onchange = (e) => this.updateInput(item.id, { role: e.target.value });
-            controls.appendChild(roleSelect);
-
-            const delBtn = document.createElement("button");
-            delBtn.className = "delete-btn";
-            delBtn.textContent = "Remove";
-            delBtn.onclick = () => this.removeInput(item.id);
-            controls.appendChild(delBtn);
-
-            el.appendChild(controls);
-
-            // Drag Events
-            this.setupDragEvents(el, item.id);
-            this.dom.inputList.appendChild(el);
-          });
-        }
-
-        getRolesForType(type) {
-          const isVeo3 = this.dom.config.model.value.startsWith("veo-3.0");
-          if (type === "text")
-            return [
-              { value: "prompt", label: "Positive Prompt" },
-              { value: "negativePrompt", label: "Negative Prompt" },
-            ];
-          if (type === "image") {
-            return [
-              { value: "image", label: "Start Frame" },
-              { value: "lastFrame", label: "End Frame" },
-              { value: "reference_asset", label: "Reference content", disabled: isVeo3 },
-              { value: "reference_style", label: "Reference style", disabled: isVeo3 },
-            ];
+          for (const item of this.inputs) {
+            this.dom.inputList.appendChild(this.createInputElement(item));
           }
-          if (type === "video") return [{ value: "video", label: "Input Video (Extend)", disabled: isVeo3 }];
-          return [];
         }
 
-        // --- Drag & Drop Logic ---
+        createInputElement(item) {
+          const el = document.createElement("div");
+          el.className = `input-item ${item.file ? "has-media" : ""}`;
+          el.draggable = true;
+          el.dataset.id = item.id;
+
+          // Drag handle
+          el.innerHTML = `<div class="drag-handle">⋮</div>`;
+
+          // Media preview
+          if (item.file) {
+            const thumb = document.createElement("div");
+            thumb.style.cssText = "position:relative;display:flex;align-items:center;justify-content:center;background:#000";
+            if (item.type === "image") {
+              thumb.innerHTML = `<img class="media-preview" src="${item.file.dataUrl}">`;
+            } else {
+              thumb.innerHTML = `<video class="media-preview" src="${item.file.dataUrl}" muted></video><div class="video-icon-overlay">▶</div>`;
+            }
+            el.appendChild(thumb);
+          }
+
+          // Content
+          const content = document.createElement("div");
+          content.className = "item-content";
+          if (item.type === "text") {
+            const ta = document.createElement("textarea");
+            ta.placeholder = "Enter text...";
+            ta.value = item.content;
+            ta.oninput = (e) => this.updateInput(item.id, { content: e.target.value });
+            content.appendChild(ta);
+          } else {
+            content.innerHTML = `<div class="file-info">${item.file?.name || "Unknown file"}</div>`;
+          }
+          el.appendChild(content);
+
+          // Controls
+          const controls = document.createElement("div");
+          controls.className = "item-controls";
+
+          const roleSelect = document.createElement("select");
+          roleSelect.className = "role-select";
+          for (const opt of this.getRolesForType(item.type)) {
+            const option = new Option(opt.label, opt.value, false, item.role === opt.value);
+            option.disabled = opt.disabled;
+            roleSelect.add(option);
+          }
+          roleSelect.onchange = (e) => this.updateInput(item.id, { role: e.target.value });
+          controls.appendChild(roleSelect);
+
+          const delBtn = document.createElement("button");
+          delBtn.className = "delete-btn";
+          delBtn.textContent = "Remove";
+          delBtn.onclick = () => this.removeInput(item.id);
+          controls.appendChild(delBtn);
+
+          el.appendChild(controls);
+          this.setupDragEvents(el, item.id);
+          return el;
+        }
+
+        // --- Drag & Drop Reordering ---
+
         setupDragEvents(el, id) {
           el.ondragstart = (e) => {
             e.dataTransfer.effectAllowed = "move";
@@ -683,7 +656,7 @@
           };
           el.ondragend = () => {
             el.classList.remove("dragging");
-            document.querySelectorAll(".input-item").forEach((i) => i.classList.remove("drag-over-top", "drag-over-bottom"));
+            this.dom.inputList.querySelectorAll(".input-item").forEach((i) => i.classList.remove("drag-over-top", "drag-over-bottom"));
           };
           el.ondragover = (e) => {
             e.preventDefault();
@@ -704,18 +677,16 @@
             const rect = el.getBoundingClientRect();
             const isTop = e.clientY < rect.top + rect.height / 2;
 
-            const item = this.inputs.splice(fromIdx, 1)[0];
-            let newIdx = toIdx;
-            if (fromIdx < toIdx) newIdx = isTop ? toIdx - 1 : toIdx;
-            else newIdx = isTop ? toIdx : toIdx + 1;
-
+            const [item] = this.inputs.splice(fromIdx, 1);
+            const newIdx = fromIdx < toIdx ? (isTop ? toIdx - 1 : toIdx) : isTop ? toIdx : toIdx + 1;
             this.inputs.splice(newIdx, 0, item);
-            this.renderInputs();
-            this.saveState();
+
+            this.render();
+            this.saveInputs();
           };
         }
 
-        // --- Generation Logic ---
+        // --- Generation ---
 
         async handleGenerate() {
           const apiKey = this.dom.apiKey.value.trim();
@@ -726,129 +697,57 @@
           const outputId = Date.now();
           const abortController = new AbortController();
           this.activeGenerations.set(outputId, abortController);
-          const outputConfig = {
-            model: this.dom.config.model.value,
-            duration: this.dom.config.duration.value,
-            aspect: this.dom.config.aspect.value,
-            resolution: this.dom.config.resolution.value,
-          };
-          this.addOutputItem(outputId, outputConfig);
+          const config = this.getConfig();
+
+          this.addOutputCard(outputId, config);
 
           try {
             const ai = new GoogleGenAI({ apiKey });
+            const params = await this.buildGenerationParams(config, abortController.signal);
 
-            // 1. Construct Payload
-            const params = {
-              model: this.dom.config.model.value,
-              config: {
-                aspectRatio: this.dom.config.aspect.value,
-                resolution: this.dom.config.resolution.value,
-                durationSeconds: parseInt(this.dom.config.duration.value, 10),
-                abortSignal: abortController.signal,
-              },
-            };
-
-            // 2. Map Inputs to Params
-            const prompts = [];
-            const negativePrompts = [];
-            const references = [];
-            const isVeo3 = this.dom.config.model.value.startsWith("veo-3.0");
-
-            for (const input of this.inputs) {
-              if (input.type === "text") {
-                if (input.role === "prompt") prompts.push(input.content);
-                if (input.role === "negativePrompt") negativePrompts.push(input.content);
-              } else if (input.type === "image") {
-                const b64 = await VeoUtils.blobToBase64(input.file.blob);
-                const imgObj = { imageBytes: b64, mimeType: input.file.mimeType };
-
-                if (input.role === "image") params.image = imgObj;
-                if (input.role === "lastFrame") params.config.lastFrame = imgObj;
-                // Skip reference images for Veo 3.0 models
-                if (!isVeo3 && input.role.startsWith("reference_")) {
-                  references.push({
-                    image: imgObj,
-                    referenceType: input.role === "reference_style" ? "STYLE" : "ASSET",
-                  });
-                }
-              } else if (input.type === "video") {
-                // Skip video input for Veo 3.0 models
-                if (!isVeo3) {
-                  const b64 = await VeoUtils.blobToBase64(input.file.blob);
-                  params.video = { videoBytes: b64, mimeType: input.file.mimeType };
-                }
-              }
-            }
-
-            if (prompts.length) params.prompt = prompts.join("\n");
-            if (negativePrompts.length) params.config.negativePrompt = negativePrompts.join(", ");
-            if (references.length) params.config.referenceImages = references;
-
-            // 3. Validation (Basic)
-            if (!params.prompt && !params.image && !params.video && !references.length) {
-              throw new Error("At least one input (Prompt, Image, Video, or Reference) is required.");
-            }
-
-            // 4. Start Operation
             let operation = await ai.models.generateVideos(params);
 
-            // 5. Poll
+            // Poll for completion
             this.updateOutputStatus(outputId, "generating");
             const startTime = Date.now();
             const pollInterval = setInterval(() => {
-              const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-              this.updateOutputTimer(outputId, `${elapsed}s`);
+              this.updateOutputTimer(outputId, `${((Date.now() - startTime) / 1000).toFixed(1)}s`);
             }, 100);
 
             while (!operation.done) {
-              // Check if aborted before polling
               if (abortController.signal.aborted) {
                 clearInterval(pollInterval);
                 throw new DOMException("Generation cancelled", "AbortError");
               }
-              await new Promise((r) => setTimeout(r, 5000)); // Poll every 5s
+              await new Promise((r) => setTimeout(r, 5000));
               operation = await ai.operations.getVideosOperation({ operation });
             }
-
             clearInterval(pollInterval);
 
-            // 6. Handle Result
-            if (operation.error) {
-              throw new Error(JSON.stringify(operation.error, null, 2));
-            }
+            if (operation.error) throw new Error(JSON.stringify(operation.error, null, 2));
 
+            // Get video result
             const vidData = operation.response.generatedVideos[0].video;
+            let videoBlob;
 
             if (vidData.videoBytes) {
-              const blob = await (await fetch(`data:${vidData.mimeType};base64,${vidData.videoBytes}`)).blob();
-              const url = URL.createObjectURL(blob);
-              const dataUrl = await VeoUtils.blobToDataUrl(blob);
-              this.renderOutputVideo(outputId, url);
-              this.saveOutput(outputId, outputConfig, dataUrl);
+              videoBlob = await (await fetch(`data:${vidData.mimeType};base64,${vidData.videoBytes}`)).blob();
             } else if (vidData.uri) {
-              // Download the video using the URI with API key authentication
               this.updateOutputStatus(outputId, "downloading");
-              const videoResponse = await fetch(vidData.uri, {
-                headers: { "x-goog-api-key": apiKey },
-                redirect: "follow",
-              });
-              if (!videoResponse.ok) {
-                throw new Error(`Failed to download video: ${videoResponse.status} ${videoResponse.statusText}`);
-              }
-              const videoBlob = await videoResponse.blob();
-              const url = URL.createObjectURL(videoBlob);
-              const dataUrl = await VeoUtils.blobToDataUrl(videoBlob);
-              this.renderOutputVideo(outputId, url);
-              this.saveOutput(outputId, outputConfig, dataUrl);
+              const resp = await fetch(vidData.uri, { headers: { "x-goog-api-key": apiKey }, redirect: "follow" });
+              if (!resp.ok) throw new Error(`Failed to download: ${resp.status}`);
+              videoBlob = await resp.blob();
             } else {
               throw new Error("No video data returned.");
             }
+
+            const dataUrl = await VeoUtils.blobToDataUrl(videoBlob);
+            this.renderOutputVideo(outputId, URL.createObjectURL(videoBlob));
+            this.outputs.push({ id: outputId, config, videoDataUrl: dataUrl });
+            this.saveOutputs();
           } catch (e) {
-            // Don't show error if it was an intentional cancellation
-            if (e.name === "AbortError") {
-              // Output was already removed by user, nothing to do
-            } else {
-              console.log("Generation error:", e);
+            if (e.name !== "AbortError") {
+              console.error("Generation error:", e);
               this.renderOutputError(outputId, e.message);
             }
           } finally {
@@ -857,9 +756,67 @@
           }
         }
 
-        // --- Output Management ---
+        async buildGenerationParams(config, abortSignal) {
+          const params = {
+            model: config.model,
+            config: {
+              aspectRatio: config.aspect,
+              resolution: config.resolution,
+              durationSeconds: parseInt(config.duration, 10),
+              abortSignal,
+            },
+          };
 
-        addOutputItem(id, config) {
+          const prompts = [];
+          const negativePrompts = [];
+          const references = [];
+
+          for (const input of this.inputs) {
+            if (input.type === "text") {
+              (input.role === "negativePrompt" ? negativePrompts : prompts).push(input.content);
+            } else if (input.file) {
+              const b64 = VeoUtils.dataUrlToBase64(input.file.dataUrl);
+              const mediaObj = { imageBytes: b64, mimeType: input.file.mimeType };
+
+              if (input.type === "image") {
+                if (input.role === "image") params.image = mediaObj;
+                else if (input.role === "lastFrame") params.config.lastFrame = mediaObj;
+                else if (input.role.startsWith("reference_")) {
+                  references.push({
+                    image: mediaObj,
+                    referenceType: input.role === "reference_style" ? "STYLE" : "ASSET",
+                  });
+                }
+              } else if (input.type === "video") {
+                params.video = { videoBytes: b64, mimeType: input.file.mimeType };
+              }
+            }
+          }
+
+          if (prompts.length) params.prompt = prompts.join("\n");
+          if (negativePrompts.length) params.config.negativePrompt = negativePrompts.join(", ");
+          if (references.length) params.config.referenceImages = references;
+
+          // Validate referenceImages constraints
+          if (references.length > 0) {
+            if (!params.prompt) {
+              throw new Error("Reference images require a text prompt.");
+            }
+            if (params.image || params.video || params.config.lastFrame) {
+              throw new Error("Reference images cannot be used with Start Frame, End Frame, or Input Video. Remove conflicting inputs.");
+            }
+          }
+
+          if (!params.prompt && !params.image && !params.video && !references.length) {
+            throw new Error("At least one input (Prompt, Image, Video, or Reference) is required.");
+          }
+
+          return params;
+        }
+
+        // --- Output UI ---
+
+        addOutputCard(id, config) {
           const div = document.createElement("div");
           div.className = "output-card";
           div.id = `out-${id}`;
@@ -877,35 +834,30 @@
           this.dom.outputList.prepend(div);
         }
 
-        updateOutputStatus(id, statusText) {
-          const el = document.getElementById(`out-${id}`);
-          if (!el) return;
-          const status = el.querySelector(".status-text");
-          if (status) status.textContent = statusText;
+        updateOutputStatus(id, text) {
+          document
+            .querySelector(`#out-${id} .status-text`)
+            ?.replaceWith(Object.assign(document.createElement("span"), { className: "status-text", textContent: text }));
         }
 
-        updateOutputTimer(id, timeText) {
-          const el = document.getElementById(`out-${id}`);
-          if (!el) return;
-          const timer = el.querySelector(".timer");
-          timer.textContent = timeText;
+        updateOutputTimer(id, text) {
+          const timer = document.querySelector(`#out-${id} .timer`);
+          if (timer) timer.textContent = text;
         }
 
         renderOutputVideo(id, url) {
           const el = document.getElementById(`out-${id}`);
           if (!el) return;
-          const configInfo = el.querySelector(".config-info").cloneNode(true);
-          const statusText = configInfo.querySelector(".status-text");
-          if (statusText) statusText.remove();
-          // Remove trailing " · " from config info
-          const cleanConfigInfo = configInfo.textContent.replace(/ · $/, "");
-          const finalTime = el.querySelector(".timer").textContent;
-          el.querySelector(".status-bar").innerHTML =
-            `<span class="config-info">${cleanConfigInfo}</span><div class="status-right"><span class="timer">${finalTime}</span><button class="delete-btn output-remove-btn">Remove</button></div>`;
-          el.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
 
-          const container = el.querySelector(".video-container");
-          container.innerHTML = `
+          const config = el.querySelector(".config-info").textContent.replace(/ · [^·]+$/, "");
+          const time = el.querySelector(".timer").textContent;
+
+          el.querySelector(".status-bar").innerHTML = `
+            <span class="config-info">${config}</span>
+            <div class="status-right"><span class="timer">${time}</span><button class="delete-btn output-remove-btn">Remove</button></div>
+          `;
+          el.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
+          el.querySelector(".video-container").innerHTML = `
             <video controls autoplay loop src="${url}"></video>
             <div style="margin-top:8px; text-align:right">
               <a href="${url}" download="veo_video_${id}.mp4"><button>Download MP4</button></a>
@@ -916,65 +868,86 @@
         renderOutputError(id, msg) {
           const el = document.getElementById(`out-${id}`);
           if (!el) return;
-          const configInfo = el.querySelector(".config-info").cloneNode(true);
-          const statusText = configInfo.querySelector(".status-text");
-          if (statusText) statusText.remove();
-          // Remove trailing " · " from config info
-          const cleanConfigInfo = configInfo.textContent.replace(/ · $/, "");
-          const finalTime = el.querySelector(".timer").textContent;
-          el.querySelector(".status-bar").innerHTML =
-            `<span class="config-info">${cleanConfigInfo}</span><div class="status-right"><span class="timer">${finalTime}</span><button class="delete-btn output-remove-btn">Remove</button></div>`;
+
+          const config = el.querySelector(".config-info").textContent.replace(/ · [^·]+$/, "");
+          const time = el.querySelector(".timer").textContent;
+
+          el.querySelector(".status-bar").innerHTML = `
+            <span class="config-info">${config}</span>
+            <div class="status-right"><span class="timer">${time}</span><button class="delete-btn output-remove-btn">Remove</button></div>
+          `;
           el.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
           el.querySelector(".video-container").innerHTML = `<div class="error-msg">${msg}</div>`;
         }
 
         removeOutput(id) {
-          // Cancel any active generation for this output
-          const controller = this.activeGenerations.get(id);
-          if (controller) {
-            controller.abort();
-            this.activeGenerations.delete(id);
-          }
-          const el = document.getElementById(`out-${id}`);
-          if (el) el.remove();
-          // Remove from saved outputs
+          this.activeGenerations.get(id)?.abort();
+          this.activeGenerations.delete(id);
+          document.getElementById(`out-${id}`)?.remove();
           this.outputs = this.outputs.filter((o) => o.id !== id);
           this.saveOutputs();
         }
 
-        // --- Output Persistence ---
+        // --- Persistence ---
 
-        async saveOutput(id, config, videoDataUrl) {
-          this.outputs.push({ id, config, videoDataUrl });
-          await this.saveOutputs();
+        async saveInputs() {
+          // Only save serializable data (no blobs)
+          const toSave = this.inputs.map(({ id, type, role, content, file }) => ({
+            id,
+            type,
+            role,
+            content,
+            file: file ? { dataUrl: file.dataUrl, mimeType: file.mimeType, name: file.name } : null,
+          }));
+          await set("inputs", toSave, this.store);
+        }
+
+        async saveConfig() {
+          await set("config", this.getConfig(), this.store);
         }
 
         async saveOutputs() {
           await set("outputs", this.outputs, this.store);
         }
 
-        async loadOutputs() {
+        async loadState() {
+          // Load API key
+          const key = await get("apiKey", this.store);
+          if (key) this.dom.apiKey.value = key;
+
+          // Load config (validate against available options)
+          const savedConfig = await get("config", this.store);
+          if (savedConfig) this.setConfig(savedConfig);
+
+          // Load inputs
+          const savedInputs = await get("inputs", this.store);
+          if (savedInputs?.length) {
+            this.inputs = savedInputs;
+            this.nextId = Math.max(...this.inputs.map((i) => parseInt(i.id))) + 1;
+            // Fix any roles that are now invalid for current model
+            this.normalizeInputRoles();
+            this.render();
+          }
+
+          // Load outputs
           const savedOutputs = await get("outputs", this.store);
-          if (savedOutputs && savedOutputs.length) {
+          if (savedOutputs?.length) {
             this.outputs = savedOutputs;
-            // Render in reverse order so newer outputs appear on top
+            // Render newest first
             for (let i = this.outputs.length - 1; i >= 0; i--) {
               this.renderSavedOutput(this.outputs[i]);
             }
           }
         }
 
-        renderSavedOutput(output) {
-          const { id, config, videoDataUrl } = output;
+        renderSavedOutput({ id, config, videoDataUrl }) {
           const div = document.createElement("div");
           div.className = "output-card";
           div.id = `out-${id}`;
           div.innerHTML = `
             <div class="status-bar">
               <span class="config-info">${config.model} · ${config.duration}s · ${config.aspect} · ${config.resolution}</span>
-              <div class="status-right">
-                <button class="delete-btn output-remove-btn">Remove</button>
-              </div>
+              <div class="status-right"><button class="delete-btn output-remove-btn">Remove</button></div>
             </div>
             <div class="video-container">
               <video controls loop src="${videoDataUrl}"></video>
@@ -986,64 +959,9 @@
           div.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
           this.dom.outputList.prepend(div);
         }
-
-        // --- Persistence ---
-
-        async loadState() {
-          const key = await get("apiKey", this.store);
-          if (key) this.dom.apiKey.value = key;
-
-          const savedInputs = await get("inputs", this.store);
-          if (savedInputs) {
-            // Rehydrate blobs from stored data (simplified for demo, usually store metadata)
-            // Since we can't easily store Blobs in IDB across sessions reliably without re-creating them from DataURLs
-            // We will rely on DataURLs stored in state.
-            this.inputs = savedInputs.map((i) => {
-              // Reconstruct file object structure if needed
-              return i;
-            });
-            this.nextId = (Math.max(...this.inputs.map((i) => parseInt(i.id))) || 0) + 1;
-            this.renderInputs();
-          }
-
-          const savedConfig = await get("config", this.store);
-          if (savedConfig) {
-            this.dom.config.model.value = savedConfig.model;
-            this.dom.config.duration.value = savedConfig.duration;
-            this.dom.config.aspect.value = savedConfig.aspect;
-            this.dom.config.resolution.value = savedConfig.resolution;
-          }
-
-          // Load saved outputs
-          await this.loadOutputs();
-        }
-
-        async saveState() {
-          // We store inputs. For files, we store the DataURL which is heavy but works for a demo.
-          // In prod, use FileSystem API or just don't persist heavy media.
-          await set("inputs", this.inputs, this.store);
-          await set(
-            "config",
-            {
-              model: this.dom.config.model.value,
-              duration: this.dom.config.duration.value,
-              aspect: this.dom.config.aspect.value,
-              resolution: this.dom.config.resolution.value,
-            },
-            this.store
-          );
-        }
       }
 
       class VeoUtils {
-        static blobToBase64(blob) {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result.split(",")[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        }
         static blobToDataUrl(blob) {
           return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -1051,6 +969,10 @@
             reader.onerror = reject;
             reader.readAsDataURL(blob);
           });
+        }
+
+        static dataUrlToBase64(dataUrl) {
+          return dataUrl.split(",")[1];
         }
       }
 
