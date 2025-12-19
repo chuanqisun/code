@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -376,7 +376,6 @@
           this.inputs = [];
           this.outputs = [];
           this.nextId = 1;
-          this.isGenerating = false;
           this.activeGenerations = new Map();
 
           this.dom = {
@@ -691,10 +690,8 @@
         async handleGenerate() {
           const apiKey = this.dom.apiKey.value.trim();
           if (!apiKey) return alert("Please enter an API Key");
-          if (this.isGenerating) return;
 
-          this.isGenerating = true;
-          const outputId = Date.now();
+          const outputId = Date.now() + "-" + Math.random().toString(36).substring(2, 9);
           const abortController = new AbortController();
           this.activeGenerations.set(outputId, abortController);
           const config = this.getConfig();
@@ -744,7 +741,7 @@
             const dataUrl = await VeoUtils.blobToDataUrl(videoBlob);
             this.renderOutputVideo(outputId, URL.createObjectURL(videoBlob));
             this.outputs.push({ id: outputId, config, videoDataUrl: dataUrl });
-            this.saveOutputs();
+            await this.saveOutputs();
           } catch (e) {
             if (e.name !== "AbortError") {
               console.error("Generation error:", e);
@@ -752,7 +749,6 @@
             }
           } finally {
             this.activeGenerations.delete(outputId);
-            this.isGenerating = false;
           }
         }
 
@@ -796,6 +792,11 @@
           if (prompts.length) params.prompt = prompts.join("\n");
           if (negativePrompts.length) params.config.negativePrompt = negativePrompts.join(", ");
           if (references.length) params.config.referenceImages = references;
+
+          // Duration is only supported when NOT using reference images and NOT having last frame
+          if (references.length === 0 && !params.config.lastFrame) {
+            params.config.durationSeconds = parseInt(config.duration);
+          }
 
           // Validate referenceImages constraints
           if (references.length > 0) {
