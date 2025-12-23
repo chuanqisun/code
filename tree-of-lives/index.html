@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tree of Lives</title>
+    <style>
+      body {
+          margin: 0;
+          background-color: #000;
+          overflow: hidden;
+          color: #ff00ff;
+          font-family: monospace;
+      }
+      canvas {
+          display: block;
+      }
+      #ui {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          pointer-events: none;
+          text-shadow: 0 0 8px #ff00ff;
+          font-size: 14px;
+          line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      STATUS: SIMULATING<br />
+      AGE: <span id="epoch">0</span><br />
+      DECISION: <span id="decision">0</span>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three";
+      import { OrbitControls } from "https://esm.sh/three/examples/jsm/controls/OrbitControls.js";
+
+      // --- UI Elements ---
+      const epochEl = document.getElementById("epoch");
+      const decisionEl = document.getElementById("decision");
+
+      // --- Scene Setup ---
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+      camera.position.set(20, 10, 30);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      // --- Controls ---
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 1.5; // Speed of rotation
+
+      // Logic to handle "unless user intervenes"
+      // OrbitControls.autoRotate is disabled when the user interacts,
+      // but we want it to resume after a period of inactivity.
+      let interactionTimeout;
+      controls.addEventListener("start", () => {
+        controls.autoRotate = false;
+        clearTimeout(interactionTimeout);
+      });
+
+      controls.addEventListener("end", () => {
+        // Resume auto-rotation after 3 seconds of no interaction
+        interactionTimeout = setTimeout(() => {
+          controls.autoRotate = true;
+        }, 3000);
+      });
+
+      // --- Tree State ---
+      const material = new THREE.LineBasicMaterial({
+        color: 0xff00ff,
+        transparent: true,
+        opacity: 0.8,
+      });
+
+      let leafNodes = [];
+      const segmentLength = 1.5;
+
+      let leadPoint = new THREE.Vector3(0, 2, 0);
+      let maxHeight = 2;
+      let decisionCount = 0;
+
+      // Initial Root
+      const p1 = new THREE.Vector3(0, 0, 0);
+      const p2 = new THREE.Vector3(0, 2, 0);
+      const initGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      scene.add(new THREE.Line(initGeo, material));
+      leafNodes.push(p2);
+
+      function selectNodeIndex() {
+        if (leafNodes.length === 0) return -1;
+        const weights = [];
+        let totalWeight = 0;
+        for (let i = 0; i < leafNodes.length; i++) {
+          // Exponential bias towards the top
+          const w = Math.exp(leafNodes[i].y - maxHeight);
+          weights.push(w);
+          totalWeight += w;
+        }
+        let random = Math.random() * totalWeight;
+        for (let i = 0; i < weights.length; i++) {
+          if (random < weights[i]) return i;
+          random -= weights[i];
+        }
+        return leafNodes.length - 1;
+      }
+
+      function growStep() {
+        // Safety cap for performance
+        if (scene.children.length > 15000) return;
+
+        const index = selectNodeIndex();
+        if (index === -1) return;
+
+        const parentNode = leafNodes[index];
+        leafNodes.splice(index, 1);
+
+        decisionCount++;
+
+        for (let i = 0; i < 2; i++) {
+          const dir = new THREE.Vector3((Math.random() - 0.5) * 4.0, Math.random() * 2.0 + 0.2, (Math.random() - 0.5) * 4.0).normalize();
+
+          const newNode = new THREE.Vector3().copy(parentNode).add(dir.multiplyScalar(segmentLength));
+
+          const geometry = new THREE.BufferGeometry().setFromPoints([parentNode, newNode]);
+          const line = new THREE.Line(geometry, material);
+          scene.add(line);
+
+          leafNodes.push(newNode);
+
+          if (newNode.y > maxHeight) {
+            maxHeight = newNode.y;
+            leadPoint.copy(newNode);
+          }
+        }
+
+        epochEl.innerText = Math.floor(maxHeight);
+        decisionEl.innerText = decisionCount;
+      }
+
+      const targetFocus = new THREE.Vector3();
+      const lastTargetPos = new THREE.Vector3();
+
+      function updateCameraFollow() {
+        // Look slightly ahead (above) the lead point
+        targetFocus.copy(leadPoint).add(new THREE.Vector3(0, 5, 0));
+
+        lastTargetPos.copy(controls.target);
+
+        // Smoothly move the orbit target towards the focus (X, Y, Z)
+        controls.target.lerp(targetFocus, 0.03);
+
+        // Shift camera position by the same delta to preserve user zoom/angle
+        const delta = new THREE.Vector3().subVectors(controls.target, lastTargetPos);
+        camera.position.add(delta);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        growStep();
+        updateCameraFollow();
+
+        controls.update(); // Required for autoRotate and damping
+        renderer.render(scene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      animate();
+    </script>
+  </body>
+</html>
