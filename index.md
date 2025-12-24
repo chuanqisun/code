@@ -43,8 +43,7 @@
 - [Knowledge Chronicle](./design-fiction/knowledge-chronicle.html)
 - [Life clock](./life-clock/)
 - [Media Lab Game of Life](./media-lab-game-of-life)
-- [Web Speech API](./web-speech-api/)
-- [Wiki search](./wiki-search/)
+- [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
 - [Perlin noise](./perlin-noise/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
@@ -53,6 +52,8 @@
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)
 - [Voxel intersection](./voxel-intersection/)
+- [Web Speech API](./web-speech-api/)
+- [Wiki search](./wiki-search/)
 
 ## Prompts
 
