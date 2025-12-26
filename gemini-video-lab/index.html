@@ -474,10 +474,18 @@
           // Paste & drop
           document.addEventListener("paste", (e) => this.handlePaste(e));
           document.body.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
+            // Only handle file dragover, not reordering
+            if (e.dataTransfer.types.includes("Files")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }
           });
-          document.body.addEventListener("drop", (e) => this.handleDrop(e));
+          document.body.addEventListener("drop", (e) => {
+            // Only handle file drops, not reordering
+            if (e.dataTransfer.files?.length) {
+              this.handleDrop(e);
+            }
+          });
 
           // Persistence on change
           this.dom.apiKey.oninput = () => set("apiKey", this.dom.apiKey.value, this.store);
@@ -652,10 +660,18 @@
             e.dataTransfer.effectAllowed = "move";
             el.classList.add("dragging");
             this.draggedId = id;
+            this.pendingReorder = false;
           };
           el.ondragend = () => {
             el.classList.remove("dragging");
             this.dom.inputList.querySelectorAll(".input-item").forEach((i) => i.classList.remove("drag-over-top", "drag-over-bottom"));
+
+            // Render after drag completes if reordering happened
+            if (this.pendingReorder) {
+              this.render();
+              this.saveInputs();
+              this.pendingReorder = false;
+            }
           };
           el.ondragover = (e) => {
             e.preventDefault();
@@ -680,8 +696,8 @@
             const newIdx = fromIdx < toIdx ? (isTop ? toIdx - 1 : toIdx) : isTop ? toIdx : toIdx + 1;
             this.inputs.splice(newIdx, 0, item);
 
-            this.render();
-            this.saveInputs();
+            // Mark that reordering happened, but defer render until dragend
+            this.pendingReorder = true;
           };
         }
 
