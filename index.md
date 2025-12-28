@@ -39,6 +39,7 @@
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [HumanGPT](https://chuanqisun.github.io/human-gpt/)
 - [Icosahedron](./icosahedron/)
+- [Infinite Canvas](./infinite-canvas/)
 - [InkForm](https://chuanqisun.github.io/ink-form/107-pipeline.html)
 - [Knowledge Chronicle](./design-fiction/knowledge-chronicle.html)
 - [Life clock](./life-clock/)

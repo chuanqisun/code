@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Infinite Canvas</title>
+    <style>
+      body, html { height: 100%; margin: 0; overflow: hidden; font-family: system-ui; }
+
+      canvas-element {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        background: #f8f8f8;
+        position: relative;
+        outline: none;
+        cursor: crosshair;
+        /* Fractal Dot Grid Background */
+        background-image: radial-gradient(#bbb 1px, transparent 1px);
+        background-size: var(--grid-size, 20px) var(--grid-size, 20px);
+        background-position: var(--pan-x, 0px) var(--pan-y, 0px);
+      }
+
+      canvas-element.panning-ready { cursor: grab; }
+      canvas-element.panning-active { cursor: grabbing; }
+
+      .stage {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 0;
+        transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) scale(var(--zoom, 1));
+        transform-origin: 0 0;
+        will-change: transform;
+      }
+
+      canvas-item {
+        position: absolute;
+        cursor: move;
+        font-size: 40px;
+        user-select: none;
+        text-align: center;
+        left: var(--x, 0);
+        top: var(--y, 0);
+        touch-action: none;
+        padding: 4px;
+        border: 2px solid transparent;
+        border-radius: 4px;
+        line-height: 1;
+        z-index: 1;
+        width: 60px;
+        height: 60px;
+        box-sizing: border-box;
+        transform: scale(calc(1 / var(--zoom, 1)));
+        transform-origin: 0 0;
+      }
+
+      canvas-item[selected] {
+        border-color: #007bff;
+        background: rgba(0, 123, 255, 0.1);
+        z-index: 2;
+      }
+
+      canvas-item.draft {
+        opacity: 0.6;
+        pointer-events: none;
+        z-index: 1000;
+      }
+
+      canvas-item small {
+        display: block;
+        font-size: 10px;
+        pointer-events: none;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #333;
+      }
+
+      marquee-box {
+        position: absolute;
+        border: 1px solid #007bff;
+        background: rgba(0, 123, 255, 0.15);
+        pointer-events: none;
+        z-index: 1000;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas-element id="world" tabindex="0">
+      <div class="stage"></div>
+    </canvas-element>
+
+    <script>
+      // --- DATA MODEL & COMMANDS ---
+
+      class WorldState {
+        constructor() {
+          this.items = new Map();
+          this.selection = new Set();
+          this.listeners = [];
+        }
+        subscribe(fn) {
+          this.listeners.push(fn);
+        }
+        notify() {
+          this.listeners.forEach((fn) => fn(this));
+        }
+        getItems() {
+          return Array.from(this.items.values());
+        }
+        getItem(id) {
+          return this.items.get(id);
+        }
+        getSelectedIds() {
+          return Array.from(this.selection);
+        }
+      }
+
+      class Command {
+        execute(state) {}
+        undo(state) {}
+      }
+
+      class CmdAddItems extends Command {
+        constructor(items) {
+          super();
+          this.items = items.map((i) => ({ ...i, id: i.id || crypto.randomUUID() }));
+          this.prevSelection = null;
+        }
+        execute(state) {
+          this.prevSelection = new Set(state.selection);
+          this.items.forEach((item) => state.items.set(item.id, item));
+          state.selection.clear();
+          this.items.forEach((i) => state.selection.add(i.id));
+        }
+        undo(state) {
+          this.items.forEach((item) => state.items.delete(item.id));
+          state.selection = new Set(this.prevSelection);
+        }
+      }
+
+      class CmdMoveItems extends Command {
+        constructor(ids, dx, dy) {
+          super();
+          this.ids = ids;
+          this.dx = dx;
+          this.dy = dy;
+        }
+        execute(state) {
+          this.ids.forEach((id) => {
+            const item = state.items.get(id);
+            if (item) {
+              item.x += this.dx;
+              item.y += this.dy;
+            }
+          });
+        }
+        undo(state) {
+          this.ids.forEach((id) => {
+            const item = state.items.get(id);
+            if (item) {
+              item.x -= this.dx;
+              item.y -= this.dy;
+            }
+          });
+        }
+      }
+
+      class CmdDeleteItems extends Command {
+        constructor(ids) {
+          super();
+          this.ids = ids;
+          this.deletedItems = [];
+          this.prevSelection = null;
+        }
+        execute(state) {
+          this.prevSelection = new Set(state.selection);
+          this.deletedItems = this.ids.map((id) => state.items.get(id)).filter(Boolean);
+          this.ids.forEach((id) => {
+            state.items.delete(id);
+            state.selection.delete(id);
+          });
+        }
+        undo(state) {
+          this.deletedItems.forEach((item) => state.items.set(item.id, item));
+          state.selection = new Set(this.prevSelection);
+        }
+      }
+
+      class CmdSetSelection extends Command {
+        constructor(ids, mode = "replace") {
+          super();
+          this.ids = ids;
+          this.mode = mode;
+          this.prevSelection = null;
+        }
+        execute(state) {
+          this.prevSelection = new Set(state.selection);
+          if (this.mode === "replace") state.selection.clear();
+          this.ids.forEach((id) => {
+            if (this.mode === "toggle") {
+              if (state.selection.has(id)) state.selection.delete(id);
+              else state.selection.add(id);
+            } else {
+              state.selection.add(id);
+            }
+          });
+        }
+        undo(state) {
+          state.selection = new Set(this.prevSelection);
+        }
+      }
+
+      class Editor {
+        constructor(state) {
+          this.state = state;
+          this.undoStack = [];
+          this.redoStack = [];
+        }
+        execute(command, saveToHistory = true) {
+          command.execute(this.state);
+          if (saveToHistory) {
+            this.undoStack.push(command);
+            this.redoStack = [];
+          }
+          this.state.notify();
+        }
+        undo() {
+          const cmd = this.undoStack.pop();
+          if (cmd) {
+            cmd.undo(this.state);
+            this.redoStack.push(cmd);
+            this.state.notify();
+          }
+        }
+        redo() {
+          const cmd = this.redoStack.pop();
+          if (cmd) {
+            cmd.execute(this.state);
+            this.undoStack.push(cmd);
+            this.state.notify();
+          }
+        }
+      }
+
+      // --- WEB COMPONENTS ---
+
+      class MarqueeBoxElement extends HTMLElement {
+        update(x1, y1, x2, y2) {
+          const left = Math.min(x1, x2);
+          const top = Math.min(y1, y2);
+          const width = Math.abs(x1 - x2);
+          const height = Math.abs(y1 - y2);
+          this.style.left = left + "px";
+          this.style.top = top + "px";
+          this.style.width = width + "px";
+          this.style.height = height + "px";
+        }
+        getRect() {
+          return this.getBoundingClientRect();
+        }
+      }
+
+      class CanvasItemElement extends HTMLElement {
+        static create(data) {
+          const el = document.createElement("canvas-item");
+          el.dataset.id = data.id;
+          el.innerHTML = `${data.emoji}<small>${data.label}</small>`;
+          el.updatePos(data.x, data.y);
+          return el;
+        }
+        updatePos(x, y) {
+          this.style.setProperty("--x", x + "px");
+          this.style.setProperty("--y", y + "px");
+        }
+        setSelected(bool) {
+          if (bool) this.setAttribute("selected", "");
+          else this.removeAttribute("selected");
+        }
+      }
+
+      class CanvasElement extends HTMLElement {
+        constructor() {
+          super();
+          this.state = new WorldState();
+          this.editor = new Editor(this.state);
+          this.draftItems = null;
+          this.lastMousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+
+          this.panX = 0;
+          this.panY = 0;
+          this.zoom = 1;
+          this.isSpacePressed = false;
+
+          this.state.subscribe(() => this.render());
+        }
+
+        connectedCallback() {
+          this.stage = this.querySelector(".stage");
+          this.addEventListener("dragover", (e) => e.preventDefault());
+          this.addEventListener("drop", (e) => this.handleExternalDrop(e));
+          this.addEventListener("pointerdown", (e) => this.handlePointerDown(e), true);
+          this.addEventListener("keydown", (e) => this.handleKeyDown(e));
+          this.addEventListener("keyup", (e) => this.handleKeyUp(e));
+          this.addEventListener("wheel", (e) => this.handleWheel(e), { passive: false });
+          window.addEventListener("paste", (e) => this.handlePaste(e));
+          window.addEventListener("copy", (e) => this.handleCopy(e));
+          window.addEventListener("cut", (e) => this.handleCut(e));
+          window.addEventListener("pointermove", (e) => {
+            this.lastMousePos = { x: e.clientX, y: e.clientY };
+            if (this.draftItems) this.updateDraftVisuals(e.clientX, e.clientY);
+          });
+          this.updatePan();
+          this.focus();
+        }
+
+        toWorld(clientX, clientY) {
+          return { x: (clientX - this.panX) / this.zoom, y: (clientY - this.panY) / this.zoom };
+        }
+
+        updatePan() {
+          // Fractal Grid Logic:
+          // We want the grid size to stay between 20px and 40px.
+          // As we zoom in, the grid grows. When it hits 40px, it snaps back to 20px.
+          // Because 40 is a multiple of 20, the dots align perfectly during the snap.
+          const logZ = Math.log2(this.zoom);
+          const level = Math.floor(logZ);
+          const normalizedZoom = Math.pow(2, logZ - level);
+          const gridSize = 20 * normalizedZoom;
+
+          this.style.setProperty("--pan-x", this.panX + "px");
+          this.style.setProperty("--pan-y", this.panY + "px");
+          this.style.setProperty("--zoom", this.zoom);
+          this.style.setProperty("--grid-size", gridSize + "px");
+        }
+
+        applyZoom(delta, centerX, centerY) {
+          const oldZoom = this.zoom;
+          this.zoom = Math.min(Math.max(this.zoom * (1 + delta), 0.01), 100);
+          const worldX = (centerX - this.panX) / oldZoom;
+          const worldY = (centerY - this.panY) / oldZoom;
+          this.panX = centerX - worldX * this.zoom;
+          this.panY = centerY - worldY * this.zoom;
+          this.updatePan();
+        }
+
+        resetView() {
+          const items = this.state.getItems();
+          if (items.length === 0) {
+            this.panX = 0;
+            this.panY = 0;
+            this.zoom = 1;
+            this.updatePan();
+            return;
+          }
+          let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
+          items.forEach((item) => {
+            minX = Math.min(minX, item.x);
+            minY = Math.min(minY, item.y);
+            maxX = Math.max(maxX, item.x + 60);
+            maxY = Math.max(maxY, item.y + 60);
+          });
+          const contentW = maxX - minX,
+            contentH = maxY - minY;
+          const viewportW = this.clientWidth,
+            viewportH = this.clientHeight;
+          const margin = 60;
+          this.zoom = Math.min((viewportW - margin * 2) / contentW, (viewportH - margin * 2) / contentH, 1.5);
+          this.panX = viewportW / 2 - this.zoom * (minX + contentW / 2);
+          this.panY = viewportH / 2 - this.zoom * (minY + contentH / 2);
+          this.updatePan();
+        }
+
+        handleWheel(e) {
+          e.preventDefault();
+          const delta = -e.deltaY * 0.001;
+          this.applyZoom(delta, e.clientX, e.clientY);
+        }
+
+        render() {
+          const items = this.state.getItems();
+          const selectedIds = this.state.selection;
+          const existingEls = new Map();
+          this.stage.querySelectorAll("canvas-item:not(.draft)").forEach((el) => existingEls.set(el.dataset.id, el));
+
+          items.forEach((item) => {
+            let el = existingEls.get(item.id);
+            if (!el) {
+              el = CanvasItemElement.create(item);
+              this.stage.appendChild(el);
+            } else {
+              if (!el.isDragging) el.updatePos(item.x, item.y);
+              existingEls.delete(item.id);
+            }
+            el.setSelected(selectedIds.has(item.id));
+          });
+          existingEls.forEach((el) => el.remove());
+        }
+
+        handlePointerDown(e) {
+          if (e.button !== 0) return;
+          if (this.isSpacePressed) {
+            this.startPan(e);
+            return;
+          }
+          if (this.draftItems) {
+            this.commitDrafts();
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+
+          const targetItem = e.target.closest("canvas-item");
+          const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
+
+          if (!targetItem) {
+            this.startMarquee(e, isMulti);
+            return;
+          }
+
+          const isSelected = this.state.selection.has(targetItem.dataset.id);
+          if (isMulti) {
+            this.editor.execute(new CmdSetSelection([targetItem.dataset.id], "toggle"));
+          } else if (!isSelected) {
+            this.editor.execute(new CmdSetSelection([targetItem.dataset.id], "replace"));
+          }
+
+          if (this.state.selection.has(targetItem.dataset.id)) this.startDrag(e);
+        }
+
+        startPan(e) {
+          this.classList.add("panning-active");
+          const startX = e.clientX,
+            startY = e.clientY;
+          const initialPanX = this.panX,
+            initialPanY = this.panY;
+          const onPointerMove = (ev) => {
+            this.panX = initialPanX + (ev.clientX - startX);
+            this.panY = initialPanY + (ev.clientY - startY);
+            this.updatePan();
+          };
+          const onPointerUp = () => {
+            this.classList.remove("panning-active");
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+          };
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+        }
+
+        startDrag(e) {
+          const startX = e.clientX,
+            startY = e.clientY;
+          const selectedIds = this.state.getSelectedIds();
+          const domSnapshots = selectedIds.map((id) => {
+            const el = this.stage.querySelector(`canvas-item[data-id="${id}"]`);
+            if (el) el.isDragging = true;
+            const itemData = this.state.getItem(id);
+            return { el, startX: itemData.x, startY: itemData.y };
+          });
+
+          const onPointerMove = (ev) => {
+            const dx = (ev.clientX - startX) / this.zoom;
+            const dy = (ev.clientY - startY) / this.zoom;
+            domSnapshots.forEach((snap) => {
+              if (snap.el) snap.el.updatePos(snap.startX + dx, snap.startY + dy);
+            });
+          };
+
+          const onPointerUp = (ev) => {
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+            const finalDx = (ev.clientX - startX) / this.zoom;
+            const finalDy = (ev.clientY - startY) / this.zoom;
+            domSnapshots.forEach((snap) => {
+              if (snap.el) snap.el.isDragging = false;
+            });
+            if (finalDx !== 0 || finalDy !== 0) this.editor.execute(new CmdMoveItems(selectedIds, finalDx, finalDy));
+          };
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+        }
+
+        startMarquee(e, isMulti) {
+          const startX = e.clientX,
+            startY = e.clientY;
+          const marquee = document.createElement("marquee-box");
+          this.appendChild(marquee);
+          const initialSelection = new Set(this.state.selection);
+          const allItems = Array.from(this.stage.querySelectorAll("canvas-item:not(.draft)"));
+
+          const onPointerMove = (ev) => {
+            marquee.update(startX, startY, ev.clientX, ev.clientY);
+            const rect = marquee.getRect();
+            const finalSet = new Set(isMulti ? initialSelection : []);
+            allItems.forEach((el) => {
+              const itemRect = el.getBoundingClientRect();
+              const isInside = !(itemRect.right < rect.left || itemRect.left > rect.right || itemRect.bottom < rect.top || itemRect.top > rect.bottom);
+              if (isInside) {
+                if (isMulti && initialSelection.has(el.dataset.id)) finalSet.delete(el.dataset.id);
+                else finalSet.add(el.dataset.id);
+              }
+            });
+            this.state.selection = finalSet;
+            this.state.notify();
+          };
+
+          const onPointerUp = () => {
+            marquee.remove();
+            window.removeEventListener("pointermove", onPointerMove);
+            window.removeEventListener("pointerup", onPointerUp);
+            this.editor.execute(new CmdSetSelection(Array.from(this.state.selection), "replace"));
+          };
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+        }
+
+        handleExternalDrop(e) {
+          e.preventDefault();
+          const world = this.toWorld(e.clientX, e.clientY);
+          const files = Array.from(e.dataTransfer.files);
+          const text = e.dataTransfer.getData("text");
+          const newItems = [];
+          if (files.length > 0) {
+            files.forEach((file, index) =>
+              newItems.push({
+                emoji: file.type.startsWith("image/") ? "🖼️" : "📄",
+                label: file.name,
+                x: world.x - 30 + index * 20,
+                y: world.y - 30 + index * 20,
+              })
+            );
+          } else if (text) {
+            newItems.push({ emoji: "📝", label: text.substring(0, 15) || "Text", x: world.x - 30, y: world.y - 30 });
+          }
+          if (newItems.length > 0) this.editor.execute(new CmdAddItems(newItems));
+        }
+
+        handlePaste(e) {
+          const files = Array.from(e.clipboardData.files);
+          const text = e.clipboardData.getData("text");
+          let rawData = [];
+          if (files.length > 0) {
+            rawData = files.map((f, i) => ({ emoji: f.type.startsWith("image/") ? "🖼️" : "📄", label: f.name, relX: i * 20, relY: i * 20 }));
+          } else if (text) {
+            try {
+              const json = JSON.parse(text);
+              if (json.type === "mugen-items") rawData = json.items;
+              else throw 1;
+            } catch {
+              rawData = [{ emoji: "📝", label: text.substring(0, 15), relX: 0, relY: 0 }];
+            }
+          }
+          if (rawData.length === 0) return;
+          const minX = Math.min(...rawData.map((i) => i.relX)),
+            maxX = Math.max(...rawData.map((i) => i.relX));
+          const minY = Math.min(...rawData.map((i) => i.relY)),
+            maxY = Math.max(...rawData.map((i) => i.relY));
+          const centerX = (minX + maxX + 60) / 2,
+            centerY = (minY + maxY + 60) / 2;
+          this.clearDrafts();
+          this.draftItems = rawData.map((d) => ({ ...d, offsetX: (d.relX || 0) - centerX, offsetY: (d.relY || 0) - centerY }));
+          this.draftItems.forEach((d) => {
+            const el = CanvasItemElement.create({ ...d, id: "draft", x: -999, y: -999 });
+            el.classList.add("draft");
+            this.stage.appendChild(el);
+            d.el = el;
+          });
+          this.updateDraftVisuals(this.lastMousePos.x, this.lastMousePos.y);
+        }
+
+        updateDraftVisuals(mx, my) {
+          if (this.draftItems) {
+            const world = this.toWorld(mx, my);
+            this.draftItems.forEach((d) => d.el.updatePos(world.x + d.offsetX, world.y + d.offsetY));
+          }
+        }
+
+        commitDrafts() {
+          if (!this.draftItems) return;
+          const world = this.toWorld(this.lastMousePos.x, this.lastMousePos.y);
+          const itemsToAdd = this.draftItems.map((d) => ({ emoji: d.emoji, label: d.label, x: world.x + d.offsetX, y: world.y + d.offsetY }));
+          this.editor.execute(new CmdAddItems(itemsToAdd));
+          this.clearDrafts();
+        }
+
+        clearDrafts() {
+          if (this.draftItems) {
+            this.draftItems.forEach((d) => d.el.remove());
+            this.draftItems = null;
+          }
+        }
+
+        handleCopy(e) {
+          const selectedIds = this.state.getSelectedIds();
+          if (selectedIds.length === 0) return;
+          const items = selectedIds.map((id) => this.state.getItem(id));
+          const minX = Math.min(...items.map((i) => i.x)),
+            minY = Math.min(...items.map((i) => i.y));
+          const data = {
+            type: "mugen-items",
+            items: items.map((item) => ({ emoji: item.emoji, label: item.label, relX: item.x - minX, relY: item.y - minY })),
+          };
+          e.clipboardData.setData("text/plain", JSON.stringify(data));
+          e.preventDefault();
+        }
+
+        handleCut(e) {
+          if (this.state.selection.size === 0) return;
+          this.handleCopy(e);
+          this.editor.execute(new CmdDeleteItems(this.state.getSelectedIds()));
+        }
+
+        handleKeyDown(e) {
+          if (e.code === "Space" && !this.isSpacePressed) {
+            this.isSpacePressed = true;
+            this.classList.add("panning-ready");
+            e.preventDefault();
+          }
+          const isMod = e.metaKey || e.ctrlKey;
+          if (isMod && (e.key === "=" || e.key === "+")) {
+            e.preventDefault();
+            this.applyZoom(0.2, this.lastMousePos.x, this.lastMousePos.y);
+          } else if (isMod && e.key === "-") {
+            e.preventDefault();
+            this.applyZoom(-0.2, this.lastMousePos.x, this.lastMousePos.y);
+          } else if (isMod && e.key === "0") {
+            e.preventDefault();
+            this.resetView();
+          } else if (isMod && e.key === "z") {
+            e.preventDefault();
+            if (e.shiftKey) this.editor.redo();
+            else this.editor.undo();
+          } else if (isMod && e.key === "y") {
+            e.preventDefault();
+            this.editor.redo();
+          } else if (e.key === "Backspace" || e.key === "Delete") {
+            const ids = this.state.getSelectedIds();
+            if (ids.length > 0) this.editor.execute(new CmdDeleteItems(ids));
+          }
+        }
+
+        handleKeyUp(e) {
+          if (e.code === "Space") {
+            this.isSpacePressed = false;
+            this.classList.remove("panning-ready");
+          }
+        }
+      }
+
+      customElements.define("marquee-box", MarqueeBoxElement);
+      customElements.define("canvas-item", CanvasItemElement);
+      customElements.define("canvas-element", CanvasElement);
+    </script>
+  </body>
+</html>
