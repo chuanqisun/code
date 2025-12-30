@@ -55,6 +55,7 @@
 - [Voxel intersection](./voxel-intersection/)
 - [Web Speech API](./web-speech-api/)
 - [Wiki search](./wiki-search/)
+- [Wiki spacetime search](./wiki-spacetime-search/)
 
 ## Prompts
 

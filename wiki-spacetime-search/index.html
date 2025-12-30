@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wiki Spacetime Search</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 1rem auto; padding: 0 1rem; line-height: 1.4; background: #f4f4f4; color: #333; }
+
+      header { background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 1rem; }
+      form { display: flex; gap: 10px; }
+      input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+      button { padding: 10px 20px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+      .layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+      section { background: white; padding: 1rem; border-radius: 8px; border: 1px solid #ddd; height: fit-content; }
+
+      h2 { font-size: 1rem; margin-top: 0; padding-bottom: 0.5rem; border-bottom: 2px solid #eee; display: flex; justify-content: space-between; }
+      .badge { font-size: 0.7rem; background: #eee; padding: 2px 6px; border-radius: 4px; color: #666; }
+
+      .item { border-bottom: 1px solid #f9f9f9; padding: 10px 0; }
+      .item:last-child { border-bottom: none; }
+      .title { display: block; font-weight: bold; color: #0066cc; text-decoration: none; margin-bottom: 2px; font-size: 0.95rem; }
+      .title:hover { text-decoration: underline; }
+
+      .meta { font-size: 0.8rem; color: #666; display: flex; gap: 8px; align-items: center; }
+      .date { background: #fff3cd; color: #856404; padding: 1px 5px; border-radius: 3px; font-weight: bold; border: 1px solid #ffeeba; }
+      .dist { color: #888; }
+
+      .loader { text-align: center; padding: 2rem; color: #666; font-style: italic; }
+      .error { color: #c00; padding: 1rem; background: #fee; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Wiki Spacetime Search</h1>
+      <form id="searchForm">
+        <input type="text" id="query" placeholder="Enter a city or landmark (e.g., Rome, Kyoto, Boston)" required />
+        <button type="submit">Search Area</button>
+      </form>
+      <div id="status" style="margin-top: 10px; font-size: 0.9rem;"></div>
+    </header>
+
+    <div class="layout">
+      <!-- Column 1: General Nearby -->
+      <section>
+        <h2>Nearby Locations <span class="badge">General</span></h2>
+        <div id="col-nearby"></div>
+      </section>
+
+      <!-- Column 2: Ancient (from the nearby pool) -->
+      <section>
+        <h2>10 Most Ancient <span class="badge">Dated Pool</span></h2>
+        <div id="col-ancient"></div>
+      </section>
+
+      <!-- Column 3: Recent (from the nearby pool) -->
+      <section>
+        <h2>10 Most Recent <span class="badge">Dated Pool</span></h2>
+        <div id="col-recent"></div>
+      </section>
+    </div>
+
+    <script>
+      const form = document.getElementById("searchForm");
+      const status = document.getElementById("status");
+
+      const containers = {
+        nearby: document.getElementById("col-nearby"),
+        ancient: document.getElementById("col-ancient"),
+        recent: document.getElementById("col-recent"),
+      };
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const query = document.getElementById("query").value;
+
+        // Reset UI
+        Object.values(containers).forEach((c) => (c.innerHTML = '<div class="loader">Searching...</div>'));
+        status.innerHTML = `Locating "${query}"...`;
+
+        try {
+          // 1. Get Coordinates for the search term
+          const geoUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=coordinates&titles=${encodeURIComponent(
+            query
+          )}&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=1&format=json&origin=*`;
+          const geoRes = await fetch(geoUrl).then((r) => r.json());
+          const page = Object.values(geoRes.query?.pages || {})[0];
+
+          if (!page || !page.coordinates) throw new Error("Location not found or has no coordinates.");
+
+          const { lat, lon } = page.coordinates[0];
+          status.innerHTML = `Exploring 20km around <strong>${page.title}</strong> (${lat.toFixed(3)}, ${lon.toFixed(3)})`;
+
+          // 2. Fetch General Nearby (Wikipedia API)
+          fetchGeneralNearby(lat, lon);
+
+          // 3. Fetch Dated Entities (Wikidata SPARQL)
+          fetchDatedEntities(lat, lon);
+        } catch (err) {
+          status.innerHTML = `<span class="error">${err.message}</span>`;
+          Object.values(containers).forEach((c) => (c.innerHTML = ""));
+        }
+      });
+
+      async function fetchGeneralNearby(lat, lon) {
+        const url = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=10&format=json&origin=*`;
+        try {
+          const res = await fetch(url).then((r) => r.json());
+          renderList(
+            containers.nearby,
+            res.query.geosearch.map((i) => ({
+              title: i.title,
+              url: `https://en.wikipedia.org/wiki/${encodeURIComponent(i.title)}`,
+              subtitle: `${i.dist}m away`,
+            }))
+          );
+        } catch (e) {
+          containers.nearby.innerHTML = "Error loading data.";
+        }
+      }
+
+      async function fetchDatedEntities(lat, lon) {
+        // Query for items with coordinates AND a date property
+        // We fetch 50 to have a "nearby pool" to sort from
+        const sparql = `
+            SELECT DISTINCT ?item ?itemLabel ?dist ?article ?date WHERE {
+              SERVICE wikibase:around {
+                ?item wdt:P625 ?location .
+                bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral .
+                bd:serviceParam wikibase:radius "20" .
+                bd:serviceParam wikibase:distance ?dist .
+              }
+              ?item wdt:P585|wdt:P571|wdt:P580 ?date . 
+              ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> .
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+            } ORDER BY ?dist LIMIT 50`;
+
+        try {
+          const url = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`;
+          const res = await fetch(url).then((r) => r.json());
+          const rawData = res.results.bindings.map((b) => ({
+            title: b.itemLabel.value,
+            url: b.article.value,
+            dist: parseFloat(b.dist.value),
+            // Extract year, handling BCE dates (negative years)
+            year: parseInt(b.date.value.match(/(-?\d{4})/)[0]),
+            dateRaw: b.date.value,
+          }));
+
+          if (rawData.length === 0) {
+            containers.ancient.innerHTML = containers.recent.innerHTML = "No dated items found.";
+            return;
+          }
+
+          // Process Ancient (Sort pool by year Ascending)
+          const ancient = [...rawData].sort((a, b) => a.year - b.year).slice(0, 10);
+          renderList(
+            containers.ancient,
+            ancient.map((i) => ({
+              ...i,
+              subtitle: `<span class="date">Est. ${formatYear(i.year)}</span> <span class="dist">${i.dist.toFixed(1)}km</span>`,
+            }))
+          );
+
+          // Process Recent (Sort pool by year Descending)
+          const recent = [...rawData].sort((a, b) => b.year - a.year).slice(0, 10);
+          renderList(
+            containers.recent,
+            recent.map((i) => ({
+              ...i,
+              subtitle: `<span class="date">Est. ${formatYear(i.year)}</span> <span class="dist">${i.dist.toFixed(1)}km</span>`,
+            }))
+          );
+        } catch (e) {
+          containers.ancient.innerHTML = containers.recent.innerHTML = "Query failed.";
+        }
+      }
+
+      function renderList(container, items) {
+        if (!items.length) {
+          container.innerHTML = "No results.";
+          return;
+        }
+        container.innerHTML = items
+          .map(
+            (i) => `
+            <div class="item">
+                <a class="title" href="${i.url}" target="_blank">${i.title}</a>
+                <div class="meta">${i.subtitle}</div>
+            </div>
+        `
+          )
+          .join("");
+      }
+
+      function formatYear(year) {
+        if (year < 0) return Math.abs(year) + " BCE";
+        return year;
+      }
+    </script>
+  </body>
+</html>
