@@ -57,7 +57,6 @@
           width: 100vw;
           height: 100vh;
           white-space: pre;
-          /* Force line-height to be exactly the same as font-size to prevent cumulative offset */
           font-size: 16px;
           line-height: 16px;
           letter-spacing: 0;
@@ -116,10 +115,8 @@
         canvas.appendChild(span);
         const rect = span.getBoundingClientRect();
         charW = rect.width;
-        // Force charH to match the CSS line-height exactly
         charH = 16;
         canvas.removeChild(span);
-
         cols = Math.floor(window.innerWidth / charW);
         rows = Math.floor(window.innerHeight / charH);
       }
@@ -148,13 +145,13 @@
         if (e.target.tagName === "BUTTON") return;
         initAudio();
 
-        // Calculate exact grid coordinates
         const clickX = Math.floor(e.clientX / charW);
         const clickY = Math.floor(e.clientY / charH);
+        const fixedDistance = 20; // d = 20ch
 
         raindrops.push({
           x: clickX,
-          y: -5,
+          y: clickY - fixedDistance, // Spawn exactly 20 units above target
           speed: 3.5,
           targetY: clickY,
           color: rainbowColors[Math.floor(Math.random() * rainbowColors.length)],
@@ -187,7 +184,7 @@
 
       const rippleFrames = [
         { char: "·", t: 1 },
-        { char: "°", t: 1 },
+        { char: "∘", t: 1 },
         { char: "o", t: 1 },
         { char: "O", t: 1 },
         { char: "( )", t: 1 },
@@ -200,6 +197,7 @@
           .fill()
           .map(() => Array(cols).fill({ char: " ", color: null }));
 
+        // Background rainfall logic (unchanged)
         if (intensity < 1 && Math.random() > intensity) {
           raindrops.push({
             x: Math.floor(Math.random() * cols),
