@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Digital Entropy: 2003 Reconstruction</title>
+    <style>
+      body {
+          margin: 0;
+          background-color: #050505;
+          color: #00ff00;
+          font-family: 'Courier New', Courier, monospace;
+          overflow: hidden;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+      }
+      canvas {
+          box-shadow: 0 0 20px rgba(0, 255, 0, 0.2);
+          border: 1px solid #333;
+      }
+      #ui {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          color: #00ff00;
+          text-shadow: 0 0 5px #00ff00;
+          pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div>SYSTEM: 0xB8000 EMULATION</div>
+      <div>STATUS: <span id="status">STABLE</span></div>
+      <div>ENTROPY: <span id="entropy-level">0%</span></div>
+    </div>
+
+    <canvas id="terminal"></canvas>
+
+    <script>
+      /**
+       * RECONSTRUCTION OF "DIGITAL ENTROPY" (2003)
+       * Author: Agent (Chengdu, 1989)
+       *
+       * Logic: Cellular Automaton with contagious decay.
+       */
+
+      const canvas = document.getElementById("terminal");
+      const ctx = canvas.getContext("2d");
+      const statusEl = document.getElementById("status");
+      const entropyEl = document.getElementById("entropy-level");
+
+      // The Decay Chain: From solid matter to void.
+      const CHARS = ["█", "▓", "▒", "░", ":", ".", " "];
+
+      // Configuration
+      const FONT_SIZE = 14;
+      const COLS = 80; // Standard terminal width
+      const ROWS = 40;
+
+      let grid = [];
+      let virus = { x: 0, y: 0 };
+      let totalCells = COLS * ROWS;
+      let decayedCells = 0;
+
+      function init() {
+        // Set canvas size
+        canvas.width = COLS * FONT_SIZE;
+        canvas.height = ROWS * FONT_SIZE;
+        ctx.font = `${FONT_SIZE}px monospace`;
+        ctx.textBaseline = "top";
+
+        // Initialize Grid: 0 represents '█' (Healthy)
+        grid = [];
+        for (let y = 0; y < ROWS; y++) {
+          let row = [];
+          for (let x = 0; x < COLS; x++) {
+            row.push(0);
+          }
+          grid.push(row);
+        }
+
+        // Start virus in the center
+        virus.x = Math.floor(COLS / 2);
+        virus.y = Math.floor(ROWS / 2);
+
+        requestAnimationFrame(loop);
+      }
+
+      function update() {
+        // 1. Move the Virus (Random Walk)
+        const directions = [
+          { x: 0, y: -1 },
+          { x: 0, y: 1 },
+          { x: -1, y: 0 },
+          { x: 1, y: 0 },
+        ];
+        let move = directions[Math.floor(Math.random() * directions.length)];
+        virus.x += move.x;
+        virus.y += move.y;
+
+        // Wrap around screen (Toroidal topology)
+        if (virus.x < 0) virus.x = COLS - 1;
+        if (virus.x >= COLS) virus.x = 0;
+        if (virus.y < 0) virus.y = ROWS - 1;
+        if (virus.y >= ROWS) virus.y = 0;
+
+        // Virus infects current cell immediately
+        if (grid[virus.y][virus.x] === 0) {
+          grid[virus.y][virus.x] = 1; // Start decay
+        }
+
+        // 2. Process Entropy (The "Melting" Effect)
+        decayedCells = 0;
+
+        // We use a temporary grid to avoid cascading updates too fast in one frame
+        // But for the "glitchy" feel of the original, modifying in place is actually better.
+
+        for (let y = 0; y < ROWS; y++) {
+          for (let x = 0; x < COLS; x++) {
+            let state = grid[y][x];
+
+            if (state === CHARS.length - 1) {
+              decayedCells++;
+              continue; // Already void
+            }
+
+            // If cell is decaying (state > 0), it gets worse over time
+            if (state > 0) {
+              // 10% chance to degrade further per frame
+              if (Math.random() < 0.1) {
+                grid[y][x]++;
+              }
+            }
+
+            // Contagion: If I am healthy (0), but a neighbor is decayed, I might get sick.
+            if (state === 0) {
+              let neighbors = 0;
+              // Check 4 neighbors
+              if (x > 0 && grid[y][x - 1] > 0) neighbors++;
+              if (x < COLS - 1 && grid[y][x + 1] > 0) neighbors++;
+              if (y > 0 && grid[y - 1][x] > 0) neighbors++;
+              if (y < ROWS - 1 && grid[y + 1][x] > 0) neighbors++;
+
+              // The more decayed neighbors, the higher chance of infection
+              if (neighbors > 0 && Math.random() < 0.02 * neighbors) {
+                grid[y][x] = 1;
+              }
+            }
+          }
+        }
+      }
+
+      function draw() {
+        // Clear screen with slight opacity for trail effect (optional, but nice)
+        ctx.fillStyle = "#050505";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (let y = 0; y < ROWS; y++) {
+          for (let x = 0; x < COLS; x++) {
+            let state = grid[y][x];
+            let char = CHARS[state];
+
+            // Default Green
+            ctx.fillStyle = "#00ff00";
+
+            // Visual Glitch: If decaying, sometimes flicker opacity
+            if (state > 0 && state < CHARS.length - 1) {
+              ctx.fillStyle = `rgba(0, 255, 0, ${1 - state * 0.15})`;
+            }
+
+            // The Virus Head is Red
+            if (x === virus.x && y === virus.y) {
+              ctx.fillStyle = "#ff0000";
+              char = "█"; // Virus always looks solid
+            }
+
+            ctx.fillText(char, x * FONT_SIZE, y * FONT_SIZE);
+          }
+        }
+
+        // Update UI
+        let percent = Math.floor((decayedCells / totalCells) * 100);
+        entropyEl.innerText = percent + "%";
+
+        if (percent > 5) statusEl.innerText = "DEGRADING";
+        if (percent > 50) {
+          statusEl.innerText = "CRITICAL FAILURE";
+          statusEl.style.color = "red";
+        }
+        if (percent > 95) statusEl.innerText = "SYSTEM TERMINATED";
+      }
+
+      function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      // Begin
+      init();
+    </script>
+  </body>
+</html>
