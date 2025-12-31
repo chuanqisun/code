@@ -32,6 +32,7 @@
 - [Clipboard++](./clipboard)
 - [Device Orientation API](./device-orientation-api/)
 - [Dialogica Times](./design-fiction/dialogica-times.html)
+- [Digital Entropy](./digital-entropy/)
 - [Dot grid field](./dot-grid-field/)
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
