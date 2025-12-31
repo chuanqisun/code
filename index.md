@@ -50,6 +50,7 @@
 - [Rain Analyzer](./rain-analyzer/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
 - [Shadowcast](./shadowcast/)
+- [Shanshui](./shanshui/)
 - [Spaceship](./spaceship/)
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)

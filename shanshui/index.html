@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Algorithmic Shanshui</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+      body {
+          margin: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          background-color: #f0efeb;
+          height: 100vh;
+          overflow: hidden;
+          font-family: 'Courier New', Courier, monospace;
+      }
+      #canvas-container {
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+          border: 10px solid #fff;
+      }
+      .ui {
+          position: absolute;
+          bottom: 20px;
+          left: 20px;
+          color: #555;
+          background: rgba(255,255,255,0.7);
+          padding: 10px;
+          border-radius: 5px;
+          pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+    <div class="ui">
+      <strong>Project: Algorithmic Shanshui v1.1</strong><br />
+      Logic: Recursive Perlin Noise + 2D Parallax<br />
+      Move Mouse to explore. Press 'SPACE' to re-generate.
+    </div>
+
+    <script>
+      let seed;
+
+      function setup() {
+        let canvas = createCanvas(800, 500);
+        canvas.parent("canvas-container");
+        seed = random(1000);
+      }
+
+      function draw() {
+        randomSeed(seed);
+        noiseSeed(seed);
+        background(245, 244, 240);
+
+        // Calculate mouse offset from center (normalized from -1 to 1)
+        let offsetX = (mouseX - width / 2) / (width / 2);
+        let offsetY = (mouseY - height / 2) / (height / 2);
+
+        // Draw Sun/Moon (Moves very slightly - furthest away)
+        noStroke();
+        fill(200, 50, 50, 150);
+        ellipse(600 - offsetX * 10, 100 - offsetY * 10, 60, 60);
+
+        // Generate 6 layers of mountains
+        for (let i = 0; i < 6; i++) {
+          drawMountainLayer(i, offsetX, offsetY);
+        }
+
+        // Add "Ink Wash" texture (Static overlay)
+        for (let i = 0; i < 1000; i++) {
+          stroke(0, 0, 0, 5);
+          point(random(width), random(height));
+        }
+      }
+
+      function drawMountainLayer(layerNum, offsetX, offsetY) {
+        // Parallax intensity: higher layers (foreground) move more
+        let parallaxFactor = map(layerNum, 0, 5, 5, 40);
+        let moveX = offsetX * parallaxFactor;
+        let moveY = offsetY * parallaxFactor;
+
+        let inkAlpha = map(layerNum, 0, 5, 40, 255);
+        let yBase = map(layerNum, 0, 5, 150, 350);
+        let noiseScale = map(layerNum, 0, 5, 0.002, 0.008);
+        let heightScale = map(layerNum, 0, 5, 100, 250);
+
+        fill(20, 20, 20, inkAlpha);
+        noStroke();
+
+        beginShape();
+        // Start below the screen
+        vertex(-100, height + 100);
+
+        // Draw the ridge, extending width to prevent gaps during horizontal parallax
+        for (let x = -100; x <= width + 100; x += 2) {
+          let n = noise(x * noiseScale, layerNum * 100);
+          let y = yBase - n * heightScale;
+
+          let jitter = map(noise(x * 0.1), 0, 1, -2, 2);
+
+          // Apply parallax movement to both X and Y
+          vertex(x - moveX, y - moveY + jitter);
+        }
+
+        vertex(width + 100, height + 100);
+        endShape(CLOSE);
+
+        // Add mist effect at the base (follows the mountain)
+        for (let j = 0; j < 15; j++) {
+          fill(245, 244, 240, 15);
+          rect(0, yBase - moveY + j * 5, width, 12);
+        }
+      }
+
+      function keyPressed() {
+        if (key === " ") {
+          seed = millis();
+        }
+      }
+    </script>
+  </body>
+</html>
