@@ -52,6 +52,7 @@
 - [Shadowcast](./shadowcast/)
 - [Shanshui](./shanshui/)
 - [Spaceship](./spaceship/)
+- [Text Rain](./text-rain/)
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)
 - [Voxel intersection](./voxel-intersection/)

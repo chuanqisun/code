@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Text Rain</title>
+    <style>
+      body {
+          background-color: #0a0b10;
+          color: #5d6d7e;
+          font-family: "Courier New", Courier, monospace;
+          margin: 0;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          cursor: crosshair;
+      }
+
+      /* Control Panel Styling */
+      #controls {
+          position: absolute;
+          top: 30px;
+          display: flex;
+          z-index: 20;
+          background: rgba(10, 11, 16, 0.8);
+      }
+
+      .btn {
+          background: transparent;
+          color: #aeb6bf;
+          border: 1px solid #34495e;
+          padding: 8px 20px;
+          font-family: sans-serif;
+          font-size: 11px;
+          letter-spacing: 1.5px;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: all 0.3s;
+          margin-left: -1px;
+      }
+
+      .btn:hover {
+          background: rgba(52, 73, 94, 0.3);
+          color: #fff;
+      }
+
+      .btn.active {
+          background: #34495e;
+          color: #fff;
+          border-color: #5d6d7e;
+          z-index: 2;
+      }
+
+      #canvas {
+          white-space: pre;
+          line-height: 0.85;
+          letter-spacing: 1px;
+          font-size: 14px;
+          text-shadow: 0 0 5px rgba(93, 109, 126, 0.2);
+          user-select: none;
+          margin-top: 40px;
+      }
+
+      #overlay {
+          position: absolute;
+          color: #aeb6bf;
+          font-family: sans-serif;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          font-size: 12px;
+          border: 1px solid #34495e;
+          padding: 15px 30px;
+          background: rgba(10, 11, 16, 0.9);
+          z-index: 10;
+          transition: opacity 0.5s;
+          pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <button class="btn" onclick="setIntensity(1, this)">None</button>
+      <button class="btn active" onclick="setIntensity(0.95, this)">Light</button>
+      <button class="btn" onclick="setIntensity(0.75, this)">Medium</button>
+      <button class="btn" onclick="setIntensity(0.20, this)">Heavy</button>
+    </div>
+
+    <div id="overlay">Listen</div>
+    <div id="canvas"></div>
+
+    <script>
+      const width = 110;
+      const height = 48;
+      const canvas = document.getElementById("canvas");
+      const overlay = document.getElementById("overlay");
+
+      let raindrops = [];
+      let ripples = [];
+      let audioCtx = null;
+      let intensity = 0.95;
+
+      // Muted rainbow palette for terminal aesthetic
+      const rainbowColors = ["#e67e22", "#f1c40f", "#2ecc71", "#3498db", "#9b59b6", "#e74c3c"];
+
+      function setIntensity(val, el) {
+        intensity = val;
+        document.querySelectorAll(".btn").forEach((b) => b.classList.remove("active"));
+        el.classList.add("active");
+        initAudio();
+      }
+
+      function initAudio() {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          overlay.style.opacity = "0";
+          setTimeout(() => overlay.remove(), 500);
+        }
+      }
+
+      document.body.addEventListener("mousedown", (e) => {
+        if (e.target.tagName === "BUTTON") return;
+        initAudio();
+
+        const rect = canvas.getBoundingClientRect();
+        const charWidth = rect.width / width;
+        const charHeight = rect.height / height;
+
+        const clickX = Math.floor((e.clientX - rect.left) / charWidth);
+        const clickY = Math.floor((e.clientY - rect.top) / charHeight);
+
+        if (clickX >= 0 && clickX < width && clickY >= 0 && clickY < height) {
+          raindrops.push({
+            x: clickX,
+            y: -10,
+            speed: 3.5,
+            targetY: clickY,
+            color: rainbowColors[Math.floor(Math.random() * rainbowColors.length)],
+          });
+        }
+      });
+
+      function playWindChimeSound(xPos) {
+        if (!audioCtx) return;
+        const panner = audioCtx.createStereoPanner();
+        panner.pan.value = (xPos / width) * 2 - 1;
+        const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
+        const rootFreq = scale[Math.floor(Math.random() * scale.length)];
+        const harmonics = [1, 2.52, 3.91];
+        const now = audioCtx.currentTime;
+        harmonics.forEach((multiplier, index) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(rootFreq * multiplier, now);
+          const volume = 0.08 / (index + 1);
+          gain.gain.setValueAtTime(volume, now);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.5 / (index + 1));
+          osc.connect(gain);
+          gain.connect(panner);
+          osc.start(now);
+          osc.stop(now + 2);
+        });
+        panner.connect(audioCtx.destination);
+      }
+
+      const rippleFrames = [
+        { char: "·", t: 1 },
+        { char: "°", t: 1 },
+        { char: "o", t: 1 },
+        { char: "O", t: 1 },
+        { char: "( )", t: 1 },
+        { char: "❨   ❩", t: 1 },
+        { char: "‹     ›", t: 1 },
+      ];
+
+      function update() {
+        // We use an array of objects to store char and color
+        let grid = Array(height)
+          .fill()
+          .map(() => Array(width).fill({ char: " ", color: null }));
+
+        if (intensity < 1 && Math.random() > intensity) {
+          raindrops.push({
+            x: Math.floor(Math.random() * width),
+            y: -10,
+            speed: 2 + Math.random() * 1.5,
+            targetY: Math.floor(height * 0.3 + Math.random() * (height * 0.65)),
+            color: null, // Natural rain has no color
+          });
+        }
+
+        for (let i = raindrops.length - 1; i >= 0; i--) {
+          let r = raindrops[i];
+          r.y += r.speed;
+          if (r.y >= r.targetY) {
+            playWindChimeSound(r.x);
+            ripples.push({ x: Math.floor(r.x), y: Math.floor(r.targetY), frame: 0, timer: 0, color: r.color });
+            raindrops.splice(i, 1);
+          } else {
+            let ix = Math.floor(r.x);
+            let iy = Math.floor(r.y);
+            const chars = ["┃", "│", "┆", "┊", "·"];
+            for (let j = 0; j < 5; j++) {
+              if (iy - j >= 0 && iy - j < height) grid[iy - j][ix] = { char: chars[j], color: r.color };
+            }
+          }
+        }
+
+        for (let i = ripples.length - 1; i >= 0; i--) {
+          let rip = ripples[i];
+          let sprite = rippleFrames[rip.frame];
+          let startX = rip.x - Math.floor(sprite.char.length / 2);
+          for (let c = 0; c < sprite.char.length; c++) {
+            let cx = startX + c;
+            if (rip.y >= 0 && rip.y < height && cx >= 0 && cx < width && sprite.char[c] !== " ") {
+              grid[rip.y][cx] = { char: sprite.char[c], color: rip.color };
+            }
+          }
+          rip.timer++;
+          if (rip.timer > sprite.t) {
+            rip.frame++;
+            rip.timer = 0;
+            if (rip.frame >= rippleFrames.length) ripples.splice(i, 1);
+          }
+        }
+
+        // Render grid to HTML with spans for colored characters
+        let htmlOutput = "";
+        for (let y = 0; y < height; y++) {
+          let rowStr = "";
+          let currentColor = null;
+          for (let x = 0; x < width; x++) {
+            let cell = grid[y][x];
+            if (cell.color !== currentColor) {
+              if (currentColor) rowStr += "</span>";
+              if (cell.color) rowStr += `<span style="color:${cell.color}">`;
+              currentColor = cell.color;
+            }
+            rowStr += cell.char;
+          }
+          if (currentColor) rowStr += "</span>";
+          htmlOutput += rowStr + "\n";
+        }
+        canvas.innerHTML = htmlOutput;
+      }
+
+      setInterval(update, 35);
+    </script>
+  </body>
+</html>
