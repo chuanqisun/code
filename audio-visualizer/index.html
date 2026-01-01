@@ -33,18 +33,37 @@
         width: 100%;
         height: auto;
         display: block;
-        background-color: #000;
         border: 1px solid #222;
       }
 
       .controls {
-        margin-top: 30px;
+        margin-top: 20px;
         z-index: 10;
         text-align: center;
         display: flex;
         flex-direction: column;
         gap: 15px;
         align-items: center;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        border-radius: 4px;
+      }
+
+      .settings-row {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        justify-content: center;
+        font-size: 11px;
+        border-bottom: 1px solid #222;
+        padding-bottom: 15px;
+        width: 100%;
+      }
+
+      .setting-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
       }
 
       .btn-group {
@@ -54,24 +73,17 @@
         justify-content: center;
       }
 
-      .mode-selector {
-        margin-bottom: 10px;
-        font-size: 12px;
-        display: flex;
-        gap: 20px;
-        border: 1px solid #333;
-        padding: 10px;
-      }
-
-      .mode-selector label {
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 5px;
-      }
-
       input[type="file"] {
         display: none;
+      }
+
+      input[type="color"] {
+        border: 1px solid #fff;
+        background: none;
+        width: 30px;
+        height: 20px;
+        cursor: pointer;
+        padding: 0;
       }
 
       .btn {
@@ -116,13 +128,19 @@
     </div>
 
     <div class="controls">
-      <div class="mode-selector">
-        <label>
-          <input type="radio" name="renderMode" value="full" checked /> FULL HEIGHT (720p)
-        </label>
-        <label>
-          <input type="radio" name="renderMode" value="half" /> HALF HEIGHT (360p)
-        </label>
+      <div class="settings-row">
+        <div class="setting-item">
+          <label><input type="radio" name="renderMode" value="full" checked /> FULL (720P)</label>
+          <label><input type="radio" name="renderMode" value="half" /> HALF (360P)</label>
+        </div>
+        <div class="setting-item">
+          <label>BARS:</label>
+          <input type="color" id="barColor" value="#FFFFFF" />
+        </div>
+        <div class="setting-item">
+          <label>BG:</label>
+          <input type="color" id="bgColor" value="#000000" />
+        </div>
       </div>
 
       <div class="btn-group">
@@ -130,11 +148,11 @@
           <input type="file" id="audioInput" accept="audio/*" />
           1. LOAD AUDIO
         </label>
-        
+
         <button id="recordBtn" class="btn" disabled>2. RECORD & PLAY</button>
         <a id="downloadBtn" class="btn">3. DOWNLOAD MP4</a>
       </div>
-      
+
       <div class="status" id="status">SYSTEM: READY</div>
     </div>
 
@@ -146,44 +164,38 @@
       const ctx = canvas.getContext("2d");
       const status = document.getElementById("status");
       const modeRadios = document.getElementsByName("renderMode");
+      const barColorInput = document.getElementById("barColor");
+      const bgColorInput = document.getElementById("bgColor");
 
-      let audioCtx;
-      let analyser;
-      let source;
-      let dataArray;
-      let animationId;
-      let mediaRecorder;
-      let recordedChunks = [];
-      let audioBuffer;
+      let audioCtx,
+        analyser,
+        source,
+        dataArray,
+        animationId,
+        mediaRecorder,
+        recordedChunks = [],
+        audioBuffer;
 
       function updateCanvasSize() {
-        const mode = Array.from(modeRadios).find(r => r.checked).value;
+        const mode = Array.from(modeRadios).find((r) => r.checked).value;
         canvas.width = 1280;
-        canvas.height = (mode === "full") ? 720 : 360;
+        canvas.height = mode === "full" ? 720 : 360;
+        // Immediate redraw of background
+        ctx.fillStyle = bgColorInput.value;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      // Initialize size
       updateCanvasSize();
-      
-      // Update size when radio changes
-      modeRadios.forEach(radio => {
-        radio.addEventListener('change', () => {
-          updateCanvasSize();
-          // Clear canvas to pure black immediately on resize
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        });
-      });
+
+      modeRadios.forEach((radio) => radio.addEventListener("change", updateCanvasSize));
+      bgColorInput.addEventListener("input", updateCanvasSize);
 
       audioInput.onchange = async function (e) {
         const file = e.target.files[0];
         if (!file) return;
-
         status.innerText = "DECODING AUDIO STREAM...";
         downloadBtn.style.display = "none";
-        
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
         try {
           const arrayBuffer = await file.arrayBuffer();
           audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -194,12 +206,7 @@
         }
       };
 
-      recordBtn.onclick = function() {
-        startRecording();
-      };
-
-      function startRecording() {
-        updateCanvasSize(); // Ensure we are at the correct resolution for the mode
+      recordBtn.onclick = function () {
         recordedChunks = [];
         status.innerText = "RECORDING... (KEEP TAB ACTIVE)";
         recordBtn.disabled = true;
@@ -208,7 +215,7 @@
         if (source) source.stop();
         source = audioCtx.createBufferSource();
         source.buffer = audioBuffer;
-        
+
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
         dataArray = new Uint8Array(analyser.frequencyBinCount);
@@ -219,23 +226,17 @@
         analyser.connect(audioCtx.destination);
 
         const canvasStream = canvas.captureStream(60);
-        const combinedStream = new MediaStream([
-          canvasStream.getVideoTracks()[0],
-          dest.stream.getAudioTracks()[0]
-        ]);
+        const combinedStream = new MediaStream([canvasStream.getVideoTracks()[0], dest.stream.getAudioTracks()[0]]);
 
-        const options = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 12000000 };
+        const options = { mimeType: "video/webm;codecs=vp9,opus", videoBitsPerSecond: 12000000 };
         mediaRecorder = new MediaRecorder(combinedStream, options);
-
         mediaRecorder.ondataavailable = (e) => {
           if (e.data.size > 0) recordedChunks.push(e.data);
         };
-
         mediaRecorder.onstop = () => {
           const blob = new Blob(recordedChunks, { type: "video/mp4" });
-          const url = URL.createObjectURL(blob);
-          downloadBtn.href = url;
-          downloadBtn.download = `comms_export_${canvas.height}p.mp4`;
+          downloadBtn.href = URL.createObjectURL(blob);
+          downloadBtn.download = `comms_export_${Date.now()}.mp4`;
           downloadBtn.style.display = "inline-block";
           status.innerText = "EXPORT COMPLETE.";
           recordBtn.disabled = false;
@@ -245,50 +246,43 @@
         source.start(0);
         mediaRecorder.start();
         draw();
-
         source.onended = () => {
-          if (mediaRecorder.state !== "inactive") {
-            mediaRecorder.stop();
-          }
+          if (mediaRecorder.state !== "inactive") mediaRecorder.stop();
         };
-      }
+      };
 
       function draw() {
         animationId = requestAnimationFrame(draw);
         analyser.getByteFrequencyData(dataArray);
 
-        // Pure Black Background
-        ctx.fillStyle = "#000000";
+        // Background
+        ctx.fillStyle = bgColorInput.value;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const mode = Array.from(modeRadios).find(r => r.checked).value;
+        const mode = Array.from(modeRadios).find((r) => r.checked).value;
         const barWidth = (canvas.width / dataArray.length) * 2.5;
         let x = 0;
 
-        ctx.fillStyle = "#FFFFFF";
+        ctx.fillStyle = barColorInput.value;
 
         for (let i = 0; i < dataArray.length; i++) {
           const intensity = dataArray[i] / 255;
-          
           if (mode === "full") {
-            // Full Height: Centered bars
             const barHeight = intensity * (canvas.height * 0.7);
             const y = (canvas.height - barHeight) / 2;
             ctx.fillRect(x, y, 4, barHeight);
           } else {
-            // Half Height: Render from bottom of the 360px canvas upwards
             const barHeight = intensity * (canvas.height * 0.8);
             const y = canvas.height - barHeight;
             ctx.fillRect(x, y, 4, barHeight);
           }
-          
           x += barWidth + 2;
         }
 
-        // Subtle scanline
-        ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
-        for(let i=0; i<canvas.height; i+=4) {
-            ctx.fillRect(0, i, canvas.width, 1);
+        // Subtle scanline (using bar color at very low opacity)
+        ctx.fillStyle = barColorInput.value + "05";
+        for (let i = 0; i < canvas.height; i += 4) {
+          ctx.fillRect(0, i, canvas.width, 1);
         }
       }
     </script>
