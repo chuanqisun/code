@@ -2,6 +2,7 @@
 
 ## Tools
 
+- [Audio visualizer](./audio-visualizer/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [CSV Visualizer](./csv-visualizer/)
 - [Emoji → Favicon](./emoji-to-favicon/)

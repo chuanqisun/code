@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>COMMS - Audio Visualizer & Export</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #000;
+        color: #fff;
+        font-family: "Courier New", Courier, monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        overflow: hidden;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      #container {
+        position: relative;
+        width: 90%;
+        max-width: 1000px;
+        background: #000;
+        transition: height 0.3s ease;
+      }
+
+      canvas {
+        width: 100%;
+        height: auto;
+        display: block;
+        background-color: #000;
+        border: 1px solid #222;
+      }
+
+      .controls {
+        margin-top: 30px;
+        z-index: 10;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        align-items: center;
+      }
+
+      .btn-group {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+
+      .mode-selector {
+        margin-bottom: 10px;
+        font-size: 12px;
+        display: flex;
+        gap: 20px;
+        border: 1px solid #333;
+        padding: 10px;
+      }
+
+      .mode-selector label {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      input[type="file"] {
+        display: none;
+      }
+
+      .btn {
+        border: 1px solid #fff;
+        padding: 12px 24px;
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.3s;
+        background: transparent;
+        color: white;
+        text-decoration: none;
+        display: inline-block;
+      }
+
+      .btn:hover:not(:disabled) {
+        background: #fff;
+        color: #000;
+      }
+
+      .btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+
+      #downloadBtn {
+        border-color: #00ff00;
+        color: #00ff00;
+        display: none;
+      }
+
+      .status {
+        font-size: 10px;
+        opacity: 0.6;
+        height: 14px;
+        letter-spacing: 1px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <canvas id="visualizer"></canvas>
+    </div>
+
+    <div class="controls">
+      <div class="mode-selector">
+        <label>
+          <input type="radio" name="renderMode" value="full" checked /> FULL HEIGHT (720p)
+        </label>
+        <label>
+          <input type="radio" name="renderMode" value="half" /> HALF HEIGHT (360p)
+        </label>
+      </div>
+
+      <div class="btn-group">
+        <label class="btn">
+          <input type="file" id="audioInput" accept="audio/*" />
+          1. LOAD AUDIO
+        </label>
+        
+        <button id="recordBtn" class="btn" disabled>2. RECORD & PLAY</button>
+        <a id="downloadBtn" class="btn">3. DOWNLOAD MP4</a>
+      </div>
+      
+      <div class="status" id="status">SYSTEM: READY</div>
+    </div>
+
+    <script>
+      const audioInput = document.getElementById("audioInput");
+      const recordBtn = document.getElementById("recordBtn");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const canvas = document.getElementById("visualizer");
+      const ctx = canvas.getContext("2d");
+      const status = document.getElementById("status");
+      const modeRadios = document.getElementsByName("renderMode");
+
+      let audioCtx;
+      let analyser;
+      let source;
+      let dataArray;
+      let animationId;
+      let mediaRecorder;
+      let recordedChunks = [];
+      let audioBuffer;
+
+      function updateCanvasSize() {
+        const mode = Array.from(modeRadios).find(r => r.checked).value;
+        canvas.width = 1280;
+        canvas.height = (mode === "full") ? 720 : 360;
+      }
+
+      // Initialize size
+      updateCanvasSize();
+      
+      // Update size when radio changes
+      modeRadios.forEach(radio => {
+        radio.addEventListener('change', () => {
+          updateCanvasSize();
+          // Clear canvas to pure black immediately on resize
+          ctx.fillStyle = "#000000";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        });
+      });
+
+      audioInput.onchange = async function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        status.innerText = "DECODING AUDIO STREAM...";
+        downloadBtn.style.display = "none";
+        
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          status.innerText = "SIGNAL DECODED. READY TO RECORD.";
+          recordBtn.disabled = false;
+        } catch (err) {
+          status.innerText = "ERROR DECODING FILE.";
+        }
+      };
+
+      recordBtn.onclick = function() {
+        startRecording();
+      };
+
+      function startRecording() {
+        updateCanvasSize(); // Ensure we are at the correct resolution for the mode
+        recordedChunks = [];
+        status.innerText = "RECORDING... (KEEP TAB ACTIVE)";
+        recordBtn.disabled = true;
+        downloadBtn.style.display = "none";
+
+        if (source) source.stop();
+        source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(analyser);
+        analyser.connect(dest);
+        analyser.connect(audioCtx.destination);
+
+        const canvasStream = canvas.captureStream(60);
+        const combinedStream = new MediaStream([
+          canvasStream.getVideoTracks()[0],
+          dest.stream.getAudioTracks()[0]
+        ]);
+
+        const options = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 12000000 };
+        mediaRecorder = new MediaRecorder(combinedStream, options);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: "video/mp4" });
+          const url = URL.createObjectURL(blob);
+          downloadBtn.href = url;
+          downloadBtn.download = `comms_export_${canvas.height}p.mp4`;
+          downloadBtn.style.display = "inline-block";
+          status.innerText = "EXPORT COMPLETE.";
+          recordBtn.disabled = false;
+          cancelAnimationFrame(animationId);
+        };
+
+        source.start(0);
+        mediaRecorder.start();
+        draw();
+
+        source.onended = () => {
+          if (mediaRecorder.state !== "inactive") {
+            mediaRecorder.stop();
+          }
+        };
+      }
+
+      function draw() {
+        animationId = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(dataArray);
+
+        // Pure Black Background
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const mode = Array.from(modeRadios).find(r => r.checked).value;
+        const barWidth = (canvas.width / dataArray.length) * 2.5;
+        let x = 0;
+
+        ctx.fillStyle = "#FFFFFF";
+
+        for (let i = 0; i < dataArray.length; i++) {
+          const intensity = dataArray[i] / 255;
+          
+          if (mode === "full") {
+            // Full Height: Centered bars
+            const barHeight = intensity * (canvas.height * 0.7);
+            const y = (canvas.height - barHeight) / 2;
+            ctx.fillRect(x, y, 4, barHeight);
+          } else {
+            // Half Height: Render from bottom of the 360px canvas upwards
+            const barHeight = intensity * (canvas.height * 0.8);
+            const y = canvas.height - barHeight;
+            ctx.fillRect(x, y, 4, barHeight);
+          }
+          
+          x += barWidth + 2;
+        }
+
+        // Subtle scanline
+        ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
+        for(let i=0; i<canvas.height; i+=4) {
+            ctx.fillRect(0, i, canvas.width, 1);
+        }
+      }
+    </script>
+  </body>
+</html>
