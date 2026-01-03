@@ -13,7 +13,7 @@
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview)
-- [Micro Mimulator](./micro-simulator/)
+- [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
 - [Pitch detector](./pitch-detector/)
 - [JSONL viewer](./jsonl-viewer)
