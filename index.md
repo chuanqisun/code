@@ -49,6 +49,7 @@
 - [Media Lab Game of Life](./media-lab-game-of-life)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
 - [Perlin noise](./perlin-noise/)
+- [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
 - [Shadowcast](./shadowcast/)
