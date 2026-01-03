@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini 3 Persistent Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      #log-container::-webkit-scrollbar { width: 8px; }
+      #log-container::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+      .event-entry { border-left: 2px solid #3b82f6; padding-left: 10px; margin-bottom: 8px; animation: fadeIn 0.2s ease-out; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+  </head>
+  <body class="bg-gray-900 text-gray-100 min-h-screen p-4">
+    <div class="max-w-4xl mx-auto space-y-4">
+      <header class="flex justify-between items-center border-b border-gray-700 pb-2">
+        <h1 class="text-xl font-bold text-blue-400">Life Simulator <span class="text-xs font-mono text-gray-500">PERSISTENT_IDB</span></h1>
+        <div id="worldStats" class="text-xs font-mono text-blue-300 bg-blue-900/30 px-3 py-1 rounded-full">Friction: 0.20 | Ticks: 0</div>
+      </header>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-800 p-4 rounded-lg shadow-lg">
+        <div class="md:col-span-1">
+          <label class="block text-xs font-semibold text-gray-400 uppercase">API Key</label>
+          <input
+            type="password"
+            id="apiKey"
+            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1.5 mt-1 text-sm outline-none focus:border-blue-500"
+          />
+        </div>
+        <div class="md:col-span-1">
+          <label class="block text-xs font-semibold text-gray-400 uppercase">World Seed</label>
+          <input
+            type="text"
+            id="worldSeed"
+            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-1.5 mt-1 text-sm outline-none focus:border-blue-500"
+          />
+        </div>
+        <div class="flex items-end gap-2">
+          <button id="startBtn" class="flex-1 bg-blue-600 hover:bg-blue-500 py-1.5 rounded font-bold text-sm transition">Start</button>
+          <button id="pauseBtn" class="flex-1 bg-yellow-600 hover:bg-yellow-500 py-1.5 rounded font-bold text-sm transition hidden">Pause</button>
+          <button id="resetBtn" class="bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded text-sm">Reset</button>
+        </div>
+      </div>
+
+      <div id="log-container" class="bg-black rounded-lg border border-gray-800 h-[70vh] overflow-y-auto p-4 font-mono text-sm">
+        <div class="text-gray-600 italic">Initializing storage...</div>
+      </div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.sh/@google/generative-ai",
+          "idb-keyval": "https://esm.sh/idb-keyval"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+      import { get, set, del } from "idb-keyval";
+
+      let isRunning = false;
+      let abortController = null;
+      let world = { friction: 0.2, tick: 0, chatSession: null, history: [] };
+
+      const el = {
+        apiKey: document.getElementById("apiKey"),
+        worldSeed: document.getElementById("worldSeed"),
+        startBtn: document.getElementById("startBtn"),
+        pauseBtn: document.getElementById("pauseBtn"),
+        resetBtn: document.getElementById("resetBtn"),
+        log: document.getElementById("log-container"),
+        stats: document.getElementById("worldStats"),
+      };
+
+      const schema = {
+        type: SchemaType.OBJECT,
+        properties: {
+          narrative: { type: SchemaType.STRING },
+        },
+        required: ["narrative"],
+      };
+
+      function getOrganicFriction(tick, seedStr) {
+        const seed = seedStr.split("").reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0);
+        const x = tick * 0.8 + seed;
+        const noise = (Math.sin(x) + Math.sin(x * 0.7) + Math.sin(x * 1.3)) / 3;
+        return (noise + 1) / 2;
+      }
+
+      async function saveState() {
+        const history = world.chatSession ? await world.chatSession.getHistory() : world.history;
+        await set("sim_state", {
+          friction: world.friction,
+          tick: world.tick,
+          history: history,
+          seed: el.worldSeed.value,
+          apiKey: el.apiKey.value,
+        });
+      }
+
+      async function loadState() {
+        const saved = await get("sim_state");
+        if (saved) {
+          el.apiKey.value = saved.apiKey || "";
+          el.worldSeed.value = saved.seed || "";
+          world.friction = saved.friction;
+          world.tick = saved.tick;
+          world.history = saved.history || [];
+
+          updateUI();
+          if (world.tick > 0) {
+            renderEvent(`[System] Recovered state at tick ${world.tick}.`, "text-blue-400", "SYS");
+            el.startBtn.innerText = "Resume Simulation";
+
+            let historyTick = 0;
+            world.history.forEach((msg) => {
+              if (msg.role === "model") {
+                historyTick++;
+                try {
+                  const data = JSON.parse(msg.parts[0].text);
+                  renderEvent(data.narrative, "text-gray-500", historyTick);
+                } catch (e) {}
+              }
+            });
+          } else {
+            el.log.innerHTML = `<div class="text-gray-600 italic">Ready to start.</div>`;
+          }
+        } else {
+          el.log.innerHTML = `<div class="text-gray-600 italic">No saved state found. Ready to start.</div>`;
+        }
+      }
+
+      async function runLoop() {
+        if (!isRunning) return;
+        world.tick++;
+        world.friction = getOrganicFriction(world.tick, el.worldSeed.value);
+        updateUI();
+
+        try {
+          abortController = new AbortController();
+          const prompt = `Tick ${world.tick}. Current World Friction: ${world.friction.toFixed(2)}. Describe the next event in the narrative.`;
+
+          const result = await world.chatSession.sendMessage(prompt, { signal: abortController.signal });
+          const data = JSON.parse(result.response.text());
+
+          renderEvent(data.narrative);
+
+          await saveState();
+          runLoop();
+        } catch (err) {
+          if (err.name === "AbortError" || err.message?.includes("aborted")) {
+            world.tick--;
+            updateUI();
+          } else {
+            renderEvent(`Error: ${err.message}`, "text-red-500");
+            pauseSimulation();
+          }
+        }
+      }
+
+      async function startSimulation() {
+        const key = el.apiKey.value.trim();
+        const seed = el.worldSeed.value.trim();
+        if (!key || !seed) return alert("Key and Seed required.");
+
+        const genAI = new GoogleGenerativeAI(key);
+        const model = genAI.getGenerativeModel({
+          model: "gemini-3-flash-preview",
+          generationConfig: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingLevel: "minimal" } },
+          systemInstruction: `You are a Causal Narrative Engine. Your task is to generate the next event in a simulation based on the current "World Friction" value (0.0 to 1.0).
+
+The Law of Friction:
+1. Low Friction (0.0 - 0.3): The world is predictable and stable. Events should be logical consequences of previous actions. Focus on routine, maintenance, slow growth, and expected outcomes.
+2. Medium Friction (0.3 - 0.7): The world is dynamic. Introduce minor setbacks, coincidences, and social or environmental tension. Actions have complicated but traceable results.
+3. High Friction (0.7 - 1.0): The world is volatile and chaotic. Events should be rare, improbable, or "Black Swan" occurrences. Focus on sudden reversals, catastrophic failures, miraculous breakthroughs, or surreal shifts in the environment.
+
+Guidelines:
+- Maintain strict narrative continuity based on the chat history.
+- Use the provided "Seed" to establish the initial setting and tone.
+- Keep descriptions concise and impactful.
+- Output only the JSON object as defined in the schema.`,
+        });
+
+        world.chatSession = model.startChat({ history: world.history });
+
+        isRunning = true;
+        el.startBtn.classList.add("hidden");
+        el.pauseBtn.classList.remove("hidden");
+
+        if (world.tick === 0) {
+          renderEvent("Initializing world...", "text-blue-300", "INIT");
+          try {
+            world.tick = 1;
+            world.friction = getOrganicFriction(world.tick, seed);
+            const init = await world.chatSession.sendMessage(
+              `Seed: ${seed}. The simulation begins. Current World Friction: ${world.friction.toFixed(2)}. Start.`
+            );
+            const data = JSON.parse(init.response.text());
+            renderEvent(data.narrative);
+            await saveState();
+            runLoop();
+          } catch (e) {
+            if (e.name !== "AbortError") renderEvent("Init failed: " + e.message, "text-red-500");
+            pauseSimulation();
+          }
+        } else {
+          runLoop();
+        }
+      }
+
+      function pauseSimulation() {
+        isRunning = false;
+        if (abortController) abortController.abort();
+        el.startBtn.classList.remove("hidden");
+        el.startBtn.innerText = "Resume Simulation";
+        el.pauseBtn.classList.add("hidden");
+        saveState();
+      }
+
+      async function resetSimulation() {
+        pauseSimulation();
+        world = { friction: 0.2, tick: 0, chatSession: null, history: [] };
+        await saveState();
+        el.log.innerHTML = `<div class="text-red-400 italic">Simulation events cleared. API Key and Seed preserved.</div>`;
+        el.startBtn.innerText = "Start Simulation";
+        updateUI();
+      }
+
+      function renderEvent(text, color = "text-gray-300", explicitTick = null) {
+        const displayTick = explicitTick !== null ? explicitTick : world.tick;
+        const div = document.createElement("div");
+        div.className = `event-entry ${color}`;
+        div.innerHTML = `<span class="text-gray-600 mr-2">${displayTick}</span>${text}`;
+        el.log.appendChild(div);
+        el.log.scrollTop = el.log.scrollHeight;
+      }
+
+      function updateUI() {
+        el.stats.innerText = `Friction: ${world.friction.toFixed(2)} | Ticks: ${world.tick}`;
+      }
+
+      el.startBtn.addEventListener("click", startSimulation);
+      el.pauseBtn.addEventListener("click", pauseSimulation);
+      el.resetBtn.addEventListener("click", resetSimulation);
+      el.apiKey.addEventListener("input", saveState);
+      el.worldSeed.addEventListener("input", saveState);
+
+      loadState();
+    </script>
+  </body>
+</html>
