@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vertical Kanji Renderer</title>
+
+    <!-- Zen Old Mincho for traditional serif aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@400;700&display=swap" rel="stylesheet" />
+
+    <style>
+      body {
+          font-family: sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 40px;
+          background-color: #fcfcfc;
+      }
+
+      .controls {
+          margin-bottom: 30px;
+          width: 100%;
+          max-width: 600px;
+      }
+
+      textarea {
+          width: 100%;
+          height: 100px;
+          font-size: 1rem;
+          padding: 10px;
+          font-family: sans-serif;
+      }
+
+      /* The vertical display area */
+      #output {
+          font-family: 'Zen Old Mincho', serif;
+          font-size: 3.5rem;
+
+          /* Vertical writing mode: lines flow Right to Left */
+          writing-mode: vertical-rl;
+          text-orientation: upright;
+
+          /* Presentation */
+          border: 1px solid #333;
+          padding: 40px;
+          background: white;
+          min-height: 500px;
+          line-height: 1.8;
+          white-space: pre-wrap; /* Preserves the line breaks from textarea */
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <p>Enter Kanji (Press Enter for new columns):</p>
+      <textarea id="kanjiInput" placeholder="Enter text..."></textarea>
+    </div>
+
+    <!-- Multi-line input will render as multi-column here -->
+    <div id="output"></div>
+
+    <script>
+      const input = document.getElementById("kanjiInput");
+      const output = document.getElementById("output");
+
+      input.addEventListener("input", (e) => {
+        output.textContent = e.target.value;
+      });
+
+      // Initial traditional example
+      const defaultValue = "一期一会\n温故知新";
+      input.value = defaultValue;
+      output.textContent = defaultValue;
+    </script>
+  </body>
+</html>

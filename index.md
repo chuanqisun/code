@@ -11,6 +11,7 @@
 - [Gemini Image Lab](./gemini-image-lab/)
 - [Gemini Video Lab](./gemini-video-lab/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
+- [Kanji Inscription](./kanji-inscription/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview)
 - [Micro Simulator](./micro-simulator/)
