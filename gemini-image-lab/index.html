@@ -567,9 +567,28 @@
         // --- Event Binding ---
 
         bindEvents() {
-          document.addEventListener("mousedown", (e) => {
-            this.lastMouseDownTarget = e.target;
-          });
+          // Track mousedown to restrict drag to handles & enable/disable draggable
+          window.addEventListener(
+            "mousedown",
+            (e) => {
+              this.lastMouseDownTarget = e.target;
+              const item = e.target.closest(".message-item");
+              const handle = e.target.closest(".drag-handle");
+              if (item) {
+                item.draggable = !!handle;
+              }
+            },
+            true
+          );
+
+          // Reset draggable state globally on mouseup
+          window.addEventListener(
+            "mouseup",
+            () => {
+              document.querySelectorAll(".message-item").forEach((i) => (i.draggable = false));
+            },
+            true
+          );
 
           this.elements.generateImageButton.addEventListener("click", () => this.handleGenerateImage());
           this.elements.generateTextButton.addEventListener("click", () => this.handleGenerateText());
@@ -702,7 +721,7 @@
             item.classList.add("has-image");
           }
           item.dataset.id = message.id;
-          item.draggable = true;
+          item.draggable = false;
 
           // Drag Handle
           const dragHandle = document.createElement("div");
@@ -853,6 +872,7 @@
         // --- Drag and Drop for Reordering ---
 
         handleDragStart(e, id) {
+          if (e.target !== e.currentTarget) return; // Allow internal element dragging (text)
           if (!this.lastMouseDownTarget || !this.lastMouseDownTarget.closest(".drag-handle")) {
             e.preventDefault();
             return;
@@ -866,6 +886,7 @@
 
         handleDragEnd(e) {
           e.currentTarget.classList.remove("dragging");
+          e.currentTarget.draggable = false;
           // Remove all drag-over classes
           document.querySelectorAll(".message-item").forEach((item) => {
             item.classList.remove("drag-over-top", "drag-over-bottom");
@@ -875,6 +896,7 @@
         }
 
         handleDragOver(e) {
+          if (!this.draggedId) return; // Don't block other drag operations
           if (e.preventDefault) {
             e.preventDefault();
           }
@@ -908,6 +930,7 @@
         }
 
         handleDrop(e, targetId) {
+          if (!this.draggedId) return; // Don't block other drop operations
           if (e.stopPropagation) {
             e.stopPropagation();
           }
