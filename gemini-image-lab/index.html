@@ -419,6 +419,7 @@
           // Drag state
           this.draggedElement = null;
           this.draggedId = null;
+          this.lastMouseDownTarget = null;
 
           // Persistence Store
           this.store = createStore(GeminiImageManipulator.DB_NAME, GeminiImageManipulator.STORE_NAME);
@@ -566,6 +567,10 @@
         // --- Event Binding ---
 
         bindEvents() {
+          document.addEventListener("mousedown", (e) => {
+            this.lastMouseDownTarget = e.target;
+          });
+
           this.elements.generateImageButton.addEventListener("click", () => this.handleGenerateImage());
           this.elements.generateTextButton.addEventListener("click", () => this.handleGenerateText());
           this.elements.addItemButton.addEventListener("click", () => this.addItem());
@@ -848,6 +853,10 @@
         // --- Drag and Drop for Reordering ---
 
         handleDragStart(e, id) {
+          if (!this.lastMouseDownTarget || !this.lastMouseDownTarget.closest(".drag-handle")) {
+            e.preventDefault();
+            return;
+          }
           this.draggedElement = e.currentTarget;
           this.draggedId = id;
           e.currentTarget.classList.add("dragging");
