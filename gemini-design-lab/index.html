@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Image Captioner</title>
+    <style>
+      /* Minimal layout styles */
+      #dropZone {
+        border: 2px dashed;
+        padding: 2rem;
+        text-align: center;
+        margin: 1rem 0;
+      }
+      #imagePreview {
+        max-width: 300px;
+        display: block;
+        margin: 1rem 0;
+      }
+      #output {
+        white-space: pre-wrap;
+        background: #eee;
+        padding: 1rem;
+        border: 1px solid;
+        min-height: 3em;
+      }
+      .hidden {
+        display: none;
+      }
+      section {
+        margin-bottom: 1.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Gemini Image Captioner</h1>
+
+    <section>
+      <label for="apiKey">1. Gemini API Key:</label>
+      <input type="password" id="apiKey" placeholder="AIza..." />
+      <small><a href="https://aistudio.google.com/app/apikey" target="_blank">Get Key</a></small>
+    </section>
+
+    <hr />
+
+    <section id="dropZone">
+      <p>2. Paste image, Drag & Drop, or Select file</p>
+      <input type="file" id="fileInput" accept="image/*" />
+    </section>
+
+    <div id="previewContainer" class="hidden">
+      <img id="imagePreview" alt="Preview" />
+      <button id="generateBtn">Generate Caption</button>
+    </div>
+
+    <hr />
+
+    <section>
+      <strong>Result:</strong>
+      <p id="output">Waiting for image...</p>
+    </section>
+
+    <script type="module">
+      import { GoogleGenAI } from "https://esm.run/@google/genai";
+
+      const apiKeyInput = document.getElementById("apiKey");
+      const fileInput = document.getElementById("fileInput");
+      const dropZone = document.getElementById("dropZone");
+      const imagePreview = document.getElementById("imagePreview");
+      const previewContainer = document.getElementById("previewContainer");
+      const generateBtn = document.getElementById("generateBtn");
+      const output = document.getElementById("output");
+
+      let selectedImageBase64 = null;
+      let selectedMimeType = null;
+
+      // --- Local Storage Persistence ---
+      const STORAGE_KEY = "gemini_api_key_persist";
+      apiKeyInput.value = localStorage.getItem(STORAGE_KEY) || "";
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem(STORAGE_KEY, apiKeyInput.value.trim());
+      });
+
+      // --- Image Handling ---
+      function handleImage(file) {
+        if (!file || !file.type.startsWith("image/")) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          selectedImageBase64 = e.target.result.split(",")[1];
+          selectedMimeType = file.type;
+          imagePreview.src = e.target.result;
+          previewContainer.classList.remove("hidden");
+          output.innerText = "Image loaded. Click generate.";
+        };
+        reader.readAsDataURL(file);
+      }
+
+      fileInput.addEventListener("change", (e) => handleImage(e.target.files[0]));
+      dropZone.addEventListener("dragover", (e) => e.preventDefault());
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        handleImage(e.dataTransfer.files[0]);
+      });
+      window.addEventListener("paste", (e) => {
+        const item = Array.from(e.clipboardData.items).find((x) => x.type.indexOf("image") !== -1);
+        if (item) handleImage(item.getAsFile());
+      });
+
+      // --- Gemini API Implementation ---
+      generateBtn.addEventListener("click", async () => {
+        const key = apiKeyInput.value.trim();
+        if (!key) return alert("Please enter an API key.");
+
+        output.innerText = "";
+        generateBtn.disabled = true;
+
+        try {
+          const ai = new GoogleGenAI({ apiKey: key });
+          const config = { responseModalities: ["TEXT"] };
+          const model = "gemini-2.5-flash-image";
+
+          const contents = [
+            {
+              role: "user",
+              parts: [
+                { text: "Analyze the spatial relationship between objects in the image. Respond with a xml tree describing the scene hierarchically" },
+                {
+                  inlineData: {
+                    mimeType: selectedMimeType,
+                    data: selectedImageBase64,
+                  },
+                },
+              ],
+            },
+          ];
+
+          const response = await ai.models.generateContentStream({
+            model,
+            config,
+            contents,
+          });
+
+          // --- Chunk Extraction Logic as per reference ---
+          for await (const chunk of response) {
+            if (!chunk.candidates || !chunk.candidates[0].content || !chunk.candidates[0].content.parts) {
+              continue;
+            }
+            if (chunk.text) {
+              output.innerText += chunk.text;
+            }
+          }
+        } catch (error) {
+          output.innerText = "Error: " + error.message;
+          console.error(error);
+        } finally {
+          generateBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
