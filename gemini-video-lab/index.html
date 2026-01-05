@@ -137,6 +137,7 @@
         border-radius: 8px;
         overflow: hidden;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        position: relative;
       }
 
       .input-item.has-media {
@@ -152,6 +153,7 @@
         cursor: grab;
         color: var(--color-drag-handle);
         border-right: 1px solid var(--color-border-light);
+        user-select: none;
       }
       .drag-handle:hover {
         color: var(--color-drag-handle-hover);
@@ -159,11 +161,24 @@
       .input-item.dragging {
         opacity: 0.5;
       }
-      .input-item.drag-over-top {
-        border-top: 2px solid var(--color-insert-indicator);
+
+      .input-item.drag-over-top::before,
+      .input-item.drag-over-bottom::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background-color: var(--color-insert-indicator);
+        z-index: 10;
       }
-      .input-item.drag-over-bottom {
-        border-bottom: 2px solid var(--color-insert-indicator);
+
+      .input-item.drag-over-top::before {
+        top: 0;
+      }
+
+      .input-item.drag-over-bottom::after {
+        bottom: 0;
       }
 
       /* Media Thumbnail */
@@ -352,6 +367,133 @@
       import { GoogleGenAI } from "https://esm.sh/@google/genai";
       import { get, set, createStore } from "https://esm.sh/idb-keyval";
 
+      /**
+       * Utility functions for the VeoApp.
+       */
+      class VeoUtils {
+        static blobToDataUrl(blob) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+
+        static dataUrlToBase64(dataUrl) {
+          return dataUrl.split(",")[1];
+        }
+      }
+
+      /**
+       * Manages drag-and-drop reordering for a list of elements.
+       */
+      class SortableManager {
+        constructor({ itemSelector, handleSelector, onReorder, onReorderComplete }) {
+          this.itemSelector = itemSelector;
+          this.handleSelector = handleSelector;
+          this.onReorder = onReorder;
+          this.onReorderComplete = onReorderComplete;
+
+          this.draggedId = null;
+          this.lastMouseDownTarget = null;
+          this.pendingReorder = false;
+
+          this._init();
+        }
+
+        _init() {
+          // Robust mousedown tracking to restrict drag to handles
+          window.addEventListener(
+            "mousedown",
+            (e) => {
+              this.lastMouseDownTarget = e.target;
+              const item = e.target.closest(this.itemSelector);
+              const handle = e.target.closest(this.handleSelector);
+              if (item) {
+                // Only make the item draggable if the handle was clicked
+                item.draggable = !!handle;
+              }
+            },
+            true
+          );
+
+          // Reset draggable state globally on mouseup
+          window.addEventListener(
+            "mouseup",
+            () => {
+              document.querySelectorAll(this.itemSelector).forEach((i) => (i.draggable = false));
+            },
+            true
+          );
+        }
+
+        /**
+         * Attaches drag events to a specific element.
+         * @param {HTMLElement} el The element to make sortable
+         * @param {string} id Unique identifier for the item
+         */
+        attach(el, id) {
+          el.ondragstart = (e) => {
+            // If the user is dragging something else inside the item (like selected text), allow it.
+            if (e.target !== el) return;
+
+            const handle = this.lastMouseDownTarget ? this.lastMouseDownTarget.closest(this.handleSelector) : null;
+
+            if (!handle) {
+              e.preventDefault();
+              return;
+            }
+
+            this.draggedId = id;
+            this.pendingReorder = false;
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", id);
+
+            // Delay adding class to ensure the ghost image is solid
+            setTimeout(() => el.classList.add("dragging"), 0);
+          };
+
+          el.ondragend = () => {
+            el.classList.remove("dragging");
+            el.draggable = false;
+            document.querySelectorAll(this.itemSelector).forEach((i) => {
+              i.classList.remove("drag-over-top", "drag-over-bottom");
+            });
+
+            if (this.pendingReorder) {
+              this.onReorderComplete();
+              this.pendingReorder = false;
+            }
+            this.draggedId = null;
+          };
+
+          el.ondragover = (e) => {
+            if (!this.draggedId || el.dataset.id === this.draggedId) return;
+            e.preventDefault();
+
+            const rect = el.getBoundingClientRect();
+            const isTop = e.clientY < rect.top + rect.height / 2;
+            el.classList.remove("drag-over-top", "drag-over-bottom");
+            el.classList.add(isTop ? "drag-over-top" : "drag-over-bottom");
+          };
+
+          el.ondragleave = () => el.classList.remove("drag-over-top", "drag-over-bottom");
+
+          el.ondrop = (e) => {
+            if (!this.draggedId || this.draggedId === id) return;
+            e.preventDefault();
+            el.classList.remove("drag-over-top", "drag-over-bottom");
+
+            const rect = el.getBoundingClientRect();
+            const isTop = e.clientY < rect.top + rect.height / 2;
+
+            this.onReorder(this.draggedId, id, isTop);
+            this.pendingReorder = true;
+          };
+        }
+      }
+
       class VeoApp {
         static DB_NAME = "veo-workbench";
         static STORE_NAME = "state";
@@ -390,6 +532,16 @@
               resolution: document.getElementById("cfg-resolution"),
             },
           };
+
+          this.sortable = new SortableManager({
+            itemSelector: ".input-item",
+            handleSelector: ".drag-handle",
+            onReorder: (fromId, toId, isTop) => this.handleReorder(fromId, toId, isTop),
+            onReorderComplete: () => {
+              this.render();
+              this.saveInputs();
+            },
+          });
 
           this.bindEvents();
           this.loadState();
@@ -596,7 +748,7 @@
         createInputElement(item) {
           const el = document.createElement("div");
           el.className = `input-item ${item.file ? "has-media" : ""}`;
-          el.draggable = true;
+          el.draggable = false;
           el.dataset.id = item.id;
 
           // Drag handle
@@ -649,56 +801,20 @@
           controls.appendChild(delBtn);
 
           el.appendChild(controls);
-          this.setupDragEvents(el, item.id);
+          this.sortable.attach(el, item.id);
           return el;
         }
 
         // --- Drag & Drop Reordering ---
 
-        setupDragEvents(el, id) {
-          el.ondragstart = (e) => {
-            e.dataTransfer.effectAllowed = "move";
-            el.classList.add("dragging");
-            this.draggedId = id;
-            this.pendingReorder = false;
-          };
-          el.ondragend = () => {
-            el.classList.remove("dragging");
-            this.dom.inputList.querySelectorAll(".input-item").forEach((i) => i.classList.remove("drag-over-top", "drag-over-bottom"));
+        handleReorder(fromId, toId, isTop) {
+          const fromIdx = this.inputs.findIndex((i) => i.id === fromId);
+          const toIdx = this.inputs.findIndex((i) => i.id === toId);
+          if (fromIdx === -1 || toIdx === -1) return;
 
-            // Render after drag completes if reordering happened
-            if (this.pendingReorder) {
-              this.render();
-              this.saveInputs();
-              this.pendingReorder = false;
-            }
-          };
-          el.ondragover = (e) => {
-            e.preventDefault();
-            if (el.dataset.id === this.draggedId) return;
-            const rect = el.getBoundingClientRect();
-            const isTop = e.clientY < rect.top + rect.height / 2;
-            el.classList.remove("drag-over-top", "drag-over-bottom");
-            el.classList.add(isTop ? "drag-over-top" : "drag-over-bottom");
-          };
-          el.ondragleave = () => el.classList.remove("drag-over-top", "drag-over-bottom");
-          el.ondrop = (e) => {
-            e.preventDefault();
-            el.classList.remove("drag-over-top", "drag-over-bottom");
-            if (this.draggedId === id) return;
-
-            const fromIdx = this.inputs.findIndex((i) => i.id === this.draggedId);
-            const toIdx = this.inputs.findIndex((i) => i.id === id);
-            const rect = el.getBoundingClientRect();
-            const isTop = e.clientY < rect.top + rect.height / 2;
-
-            const [item] = this.inputs.splice(fromIdx, 1);
-            const newIdx = fromIdx < toIdx ? (isTop ? toIdx - 1 : toIdx) : isTop ? toIdx : toIdx + 1;
-            this.inputs.splice(newIdx, 0, item);
-
-            // Mark that reordering happened, but defer render until dragend
-            this.pendingReorder = true;
-          };
+          const [item] = this.inputs.splice(fromIdx, 1);
+          const newIdx = fromIdx < toIdx ? (isTop ? toIdx - 1 : toIdx) : isTop ? toIdx : toIdx + 1;
+          this.inputs.splice(newIdx, 0, item);
         }
 
         // --- Generation ---
@@ -975,21 +1091,6 @@
           `;
           div.querySelector(".output-remove-btn").onclick = () => this.removeOutput(id);
           this.dom.outputList.prepend(div);
-        }
-      }
-
-      class VeoUtils {
-        static blobToDataUrl(blob) {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        }
-
-        static dataUrlToBase64(dataUrl) {
-          return dataUrl.split(",")[1];
         }
       }
 
