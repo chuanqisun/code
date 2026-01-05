@@ -66,5 +66,6 @@
 
 ## Prompts
 
-- [OpenAI](https://github.com/chuanqisun/code/blob/master/openai-prompt/index.md)
-- [OpenAI Agents SDK](https://github.com/chuanqisun/code/blob/master/openai-prompt/agents-sdk.md)
+- [Google AI](https://github.com/chuanqisun/code/blob/master/prompts/google-ai.md)
+- [OpenAI](https://github.com/chuanqisun/code/blob/master/prompts/openai.md)
+- [OpenAI Agents SDK](https://github.com/chuanqisun/code/blob/master/prompts/openai-agents-sdk.md)
