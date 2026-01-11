@@ -150,7 +150,7 @@
     </div>
 
     <script type="module">
-      import { createJSONEditor } from "https://esm.sh/vanilla-jsoneditor@3.11.0";
+      import { createJSONEditor } from "https://esm.sh/vanilla-jsoneditor";
 
       // --- Constants ---
       const ITEM_HEIGHT = 32; // px
@@ -190,8 +190,8 @@
           target: jsoneditorContainer,
           props: {
             content: { json: {} },
-            //        readOnly: true,
             mode: "tree",
+            readOnly: true,
             mainMenuBar: true,
             navigationBar: true,
             statusBar: true,
@@ -212,7 +212,7 @@
           pastedText = null; // Clear pasted text
           fileInfo.textContent = file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
           await scanFileForOffsets(file);
-          setupListSkeleton();
+          initializeList();
           leftPanel.focus();
         } catch (e) {
           // User cancelled or error
@@ -250,7 +250,7 @@
         fileInfo.textContent = "Pasted content (" + lineCountEstimate + " lines, " + (text.length / 1024).toFixed(1) + " KB)";
 
         await scanFileForOffsets(file);
-        setupListSkeleton();
+        initializeList();
         leftPanel.focus();
 
         pasteModal.classList.remove("show");
@@ -315,8 +315,8 @@
         lineCount = lineOffsets.length;
       }
 
-      // --- Virtualized List Skeleton ---
-      function setupListSkeleton() {
+      // --- Initialize List (called when new file/paste is loaded) ---
+      function initializeList() {
         listViewport.innerHTML = "";
         listViewport.style.height = lineCount * ITEM_HEIGHT + "px";
         renderedItems.clear();
@@ -326,35 +326,21 @@
         rightPanelPlaceholder.style.display = "flex";
         jsoneditorContainer.style.display = "none";
 
-        let viewportHeight = leftPanel.clientHeight || 400; // fallback
-        let visibleCount = Math.ceil(viewportHeight / ITEM_HEIGHT);
-
-        // Render items to fill viewport + buffer
-        for (let i = 0; i < Math.min(lineCount, visibleCount + 2 * SKELETON_BUFFER); ++i) {
-          let idx = i;
-          let item = document.createElement("div");
-          item.className = "list-item";
-          item.style.top = idx * ITEM_HEIGHT + "px";
-          item.dataset.idx = idx;
-          listViewport.appendChild(item);
-          renderedItems.set(idx, item);
-        }
-        observeVisibleItems();
+        setupVirtualization();
       }
 
-      // --- Intersection Observer for Virtualization ---
-      function observeVisibleItems() {
+      // --- Setup Virtualization (called on init and resize) ---
+      function setupVirtualization() {
         if (observer) observer.disconnect();
+
         observer = new IntersectionObserver(onIntersect, {
           root: leftPanel,
           rootMargin: "0px",
           threshold: 0.1,
         });
-        for (let item of renderedItems.values()) {
-          observer.observe(item);
-        }
+
         leftPanel.onscroll = onScroll;
-        onScroll();
+        onScroll(); // Initial render
       }
 
       function onScroll() {
@@ -372,11 +358,15 @@
             renderedItems.delete(idx);
           }
         }
+
         // Add missing items
         for (let idx = firstIdx; idx <= lastIdx; ++idx) {
           if (!renderedItems.has(idx)) {
             let item = document.createElement("div");
             item.className = "list-item";
+            if (idx === selectedIdx) {
+              item.classList.add("selected");
+            }
             item.style.top = idx * ITEM_HEIGHT + "px";
             item.dataset.idx = idx;
             listViewport.appendChild(item);
@@ -407,18 +397,23 @@
         if (preview.length > 120) preview = preview.slice(0, 120) + "...";
         el.textContent = preview;
         el.dataset.loaded = "1";
-        el.onclick = () => selectLine(idx, el);
-        if (selectedIdx === idx) el.classList.add("selected");
-        else el.classList.remove("selected");
+        el.onclick = () => selectLine(idx);
       }
 
       // --- Select and Show Detail (UTF-8 safe) ---
-      async function selectLine(idx, el) {
+      async function selectLine(idx) {
+        // Update selection state
         if (selectedIdx !== null && renderedItems.has(selectedIdx)) {
           renderedItems.get(selectedIdx).classList.remove("selected");
         }
+
         selectedIdx = idx;
-        el.classList.add("selected");
+
+        if (renderedItems.has(idx)) {
+          renderedItems.get(idx).classList.add("selected");
+        }
+
+        // Load and display JSON
         let { start, end } = lineOffsets[idx];
         let blob = file.slice(start, end);
         let arr = new Uint8Array(await blob.arrayBuffer());
@@ -453,14 +448,25 @@
       });
 
       async function navigateToIndex(idx) {
-        // Ensure the item is rendered
+        // Scroll to make item visible first
+        let itemTop = idx * ITEM_HEIGHT;
+        let itemBottom = itemTop + ITEM_HEIGHT;
+        let scrollTop = leftPanel.scrollTop;
+        let scrollBottom = scrollTop + leftPanel.clientHeight;
+
+        if (itemTop < scrollTop) {
+          leftPanel.scrollTop = itemTop;
+        } else if (itemBottom > scrollBottom) {
+          leftPanel.scrollTop = itemBottom - leftPanel.clientHeight;
+        }
+
+        // Trigger scroll handler to ensure item is rendered
+        onScroll();
+
+        // Wait a bit for rendering if needed
         if (!renderedItems.has(idx)) {
-          // Scroll to make it visible
-          let targetScrollTop = idx * ITEM_HEIGHT - leftPanel.clientHeight / 2 + ITEM_HEIGHT / 2;
-          leftPanel.scrollTop = Math.max(0, targetScrollTop);
-          onScroll();
-          // Wait a bit for rendering
           await new Promise((resolve) => setTimeout(resolve, 50));
+          onScroll();
         }
 
         let el = renderedItems.get(idx);
@@ -469,29 +475,25 @@
           if (!el.dataset.loaded) {
             await loadLinePreview(idx, el);
           }
-          await selectLine(idx, el);
-
-          // Scroll into view if needed
-          let itemTop = idx * ITEM_HEIGHT;
-          let itemBottom = itemTop + ITEM_HEIGHT;
-          let scrollTop = leftPanel.scrollTop;
-          let scrollBottom = scrollTop + leftPanel.clientHeight;
-
-          if (itemTop < scrollTop) {
-            leftPanel.scrollTop = itemTop;
-          } else if (itemBottom > scrollBottom) {
-            leftPanel.scrollTop = itemBottom - leftPanel.clientHeight;
-          }
+          await selectLine(idx);
         }
       }
 
-      // --- Preserve scroll position on resize ---
+      // --- Handle resize with debounce ---
+      let resizeTimeout = null;
       window.addEventListener("resize", () => {
-        if (lineCount > 0) {
-          const scrollTop = leftPanel.scrollTop;
-          setupListSkeleton();
-          leftPanel.scrollTop = scrollTop;
+        if (lineCount === 0) return;
+
+        // Clear previous timeout
+        if (resizeTimeout) {
+          clearTimeout(resizeTimeout);
         }
+
+        // Debounce resize handling
+        resizeTimeout = setTimeout(() => {
+          // Just update the visible items without resetting selection
+          onScroll();
+        }, 100);
       });
     </script>
   </body>
