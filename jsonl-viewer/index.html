@@ -1,5 +1,7 @@
-<html lang="en"><head>
-    <meta charset="UTF-8">
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
     <title>JSONL Viewer</title>
     <style>
       html, body { height: 100%; margin: 0; font-family: sans-serif; }
@@ -54,9 +56,22 @@
       .list-item.selected { background: #e0eaff; }
       #right-panel {
         grid-area: right-panel;
-        padding: 16px; overflow: auto; font-family: monospace;
-        font-size: 15px; white-space: pre-wrap; word-break: break-all;
+        overflow: hidden;
         background: #fafbfc;
+        display: flex;
+        flex-direction: column;
+      }
+      #right-panel-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #888;
+        font-size: 16px;
+      }
+      #jsoneditor-container {
+        flex: 1;
+        overflow: hidden;
       }
       #paste-modal {
         display: none;
@@ -117,7 +132,10 @@
       <div id="left-panel" tabindex="0">
         <div id="list-viewport"></div>
       </div>
-      <div id="right-panel">Select a line to view its JSON.</div>
+      <div id="right-panel">
+        <div id="right-panel-placeholder">Select a line to view its JSON.</div>
+        <div id="jsoneditor-container" style="display: none;"></div>
+      </div>
     </div>
 
     <div id="paste-modal">
@@ -131,7 +149,9 @@
       </div>
     </div>
 
-    <script>
+    <script type="module">
+      import { createJSONEditor } from "https://esm.sh/vanilla-jsoneditor";
+
       // --- Constants ---
       const ITEM_HEIGHT = 32; // px
       const SKELETON_BUFFER = 5;
@@ -143,6 +163,8 @@
       const leftPanel = document.getElementById("left-panel");
       const listViewport = document.getElementById("list-viewport");
       const rightPanel = document.getElementById("right-panel");
+      const rightPanelPlaceholder = document.getElementById("right-panel-placeholder");
+      const jsoneditorContainer = document.getElementById("jsoneditor-container");
       const pasteModal = document.getElementById("paste-modal");
       const pasteTextarea = document.getElementById("paste-textarea");
       const pasteCancelBtn = document.getElementById("paste-cancel-btn");
@@ -157,6 +179,28 @@
       let selectedIdx = null;
       let observer = null;
       let renderedItems = new Map();
+      let jsonEditor = null;
+
+      // --- Initialize JSON Editor ---
+      function initJsonEditor() {
+        if (jsonEditor) {
+          jsonEditor.destroy();
+        }
+        jsonEditor = createJSONEditor({
+          target: jsoneditorContainer,
+          props: {
+            content: { json: {} },
+            //        readOnly: true,
+            mode: "tree",
+            mainMenuBar: true,
+            navigationBar: true,
+            statusBar: true,
+          },
+        });
+      }
+
+      // Initialize editor on load
+      initJsonEditor();
 
       // --- File Open and Scan ---
       openBtn.onclick = async () => {
@@ -193,22 +237,22 @@
           pasteModal.classList.remove("show");
           return;
         }
-        
+
         pastedText = text;
         file = null; // Clear file
         fileHandle = null;
-        
+
         // Create a blob from the pasted text
         const blob = new Blob([text], { type: "application/jsonl" });
         file = new File([blob], "pasted.jsonl", { type: "application/jsonl" });
-        
-        const lineCountEstimate = text.split('\n').filter(l => l.trim()).length;
+
+        const lineCountEstimate = text.split("\n").filter((l) => l.trim()).length;
         fileInfo.textContent = "Pasted content (" + lineCountEstimate + " lines, " + (text.length / 1024).toFixed(1) + " KB)";
-        
+
         await scanFileForOffsets(file);
         setupListSkeleton();
         leftPanel.focus();
-        
+
         pasteModal.classList.remove("show");
       };
 
@@ -277,7 +321,10 @@
         listViewport.style.height = lineCount * ITEM_HEIGHT + "px";
         renderedItems.clear();
         selectedIdx = null;
-        rightPanel.textContent = "Select a line to view its JSON.";
+
+        // Reset right panel
+        rightPanelPlaceholder.style.display = "flex";
+        jsoneditorContainer.style.display = "none";
 
         let viewportHeight = leftPanel.clientHeight || 400; // fallback
         let visibleCount = Math.ceil(viewportHeight / ITEM_HEIGHT);
@@ -376,18 +423,24 @@
         let blob = file.slice(start, end);
         let arr = new Uint8Array(await blob.arrayBuffer());
         let text = new TextDecoder().decode(arr).replace(/\r?\n$/, "");
+
+        // Show the JSON editor
+        rightPanelPlaceholder.style.display = "none";
+        jsoneditorContainer.style.display = "block";
+
         try {
           let obj = JSON.parse(text);
-          rightPanel.textContent = JSON.stringify(obj, null, 2);
+          jsonEditor.set({ json: obj });
         } catch (e) {
-          rightPanel.textContent = "Invalid JSON:\n" + text;
+          // If invalid JSON, show as text
+          jsonEditor.set({ text: text });
         }
       }
 
       // --- Keyboard Navigation ---
       leftPanel.addEventListener("keydown", async (e) => {
         if (lineCount === 0) return;
-        
+
         if (e.key === "ArrowDown") {
           e.preventDefault();
           let newIdx = selectedIdx === null ? 0 : Math.min(selectedIdx + 1, lineCount - 1);
@@ -407,9 +460,9 @@
           leftPanel.scrollTop = Math.max(0, targetScrollTop);
           onScroll();
           // Wait a bit for rendering
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
-        
+
         let el = renderedItems.get(idx);
         if (el) {
           // Ensure it's loaded
@@ -417,13 +470,13 @@
             await loadLinePreview(idx, el);
           }
           await selectLine(idx, el);
-          
+
           // Scroll into view if needed
           let itemTop = idx * ITEM_HEIGHT;
           let itemBottom = itemTop + ITEM_HEIGHT;
           let scrollTop = leftPanel.scrollTop;
           let scrollBottom = scrollTop + leftPanel.clientHeight;
-          
+
           if (itemTop < scrollTop) {
             leftPanel.scrollTop = itemTop;
           } else if (itemBottom > scrollBottom) {
@@ -441,6 +494,5 @@
         }
       });
     </script>
-
-
-</body></html>
+  </body>
+</html>
