@@ -9,7 +9,7 @@
       #app-grid {
         display: grid;
         grid-template-rows: auto 1fr;
-        grid-template-columns: 350px 1fr;
+        grid-template-columns: var(--left-panel-width, 350px) 1fr;
         grid-template-areas:
           "header header"
           "left-panel right-panel";
@@ -26,9 +26,15 @@
         align-items: center;
         gap: 16px;
       }
-      #left-panel {
+      #left-panel-container {
         grid-area: left-panel;
-        border-right: 1px solid #ccc;
+        display: flex;
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+      }
+      #left-panel {
+        flex: 1;
         overflow: auto;
         position: relative;
         height: 100%;
@@ -37,6 +43,17 @@
       #left-panel:focus {
         outline: 2px solid #4a90e2;
         outline-offset: -2px;
+      }
+      #resize-handle {
+        width: 5px;
+        background: #e0e0e0;
+        cursor: col-resize;
+        flex-shrink: 0;
+        transition: background 0.2s;
+      }
+      #resize-handle:hover,
+      #resize-handle.dragging {
+        background: #4a90e2;
       }
       #list-viewport {
         position: relative;
@@ -120,6 +137,11 @@
         padding: 8px 16px;
         cursor: pointer;
       }
+      /* Prevent text selection while dragging */
+      body.resizing {
+        user-select: none;
+        cursor: col-resize;
+      }
     </style>
   </head>
   <body>
@@ -129,8 +151,11 @@
         <button id="paste-btn">Paste JSONL</button>
         <span id="file-info" style="color:#888"></span>
       </div>
-      <div id="left-panel" tabindex="0">
-        <div id="list-viewport"></div>
+      <div id="left-panel-container">
+        <div id="left-panel" tabindex="0">
+          <div id="list-viewport"></div>
+        </div>
+        <div id="resize-handle"></div>
       </div>
       <div id="right-panel">
         <div id="right-panel-placeholder">Select a line to view its JSON.</div>
@@ -150,17 +175,22 @@
     </div>
 
     <script type="module">
-      import { createJSONEditor } from "https://esm.sh/vanilla-jsoneditor";
+      import { createJSONEditor } from "https://esm.sh/vanilla-jsoneditor@3.11.0";
 
       // --- Constants ---
       const ITEM_HEIGHT = 32; // px
       const SKELETON_BUFFER = 5;
+      const MIN_LEFT_PANEL_WIDTH = 150;
+      const MAX_LEFT_PANEL_WIDTH = 800;
 
       // --- DOM Elements ---
+      const appGrid = document.getElementById("app-grid");
       const openBtn = document.getElementById("open-btn");
       const pasteBtn = document.getElementById("paste-btn");
       const fileInfo = document.getElementById("file-info");
+      const leftPanelContainer = document.getElementById("left-panel-container");
       const leftPanel = document.getElementById("left-panel");
+      const resizeHandle = document.getElementById("resize-handle");
       const listViewport = document.getElementById("list-viewport");
       const rightPanel = document.getElementById("right-panel");
       const rightPanelPlaceholder = document.getElementById("right-panel-placeholder");
@@ -173,13 +203,54 @@
       // --- State ---
       let fileHandle = null;
       let file = null;
-      let pastedText = null; // Store pasted text as alternative to file
-      let lineOffsets = []; // [{start, end}]
+      let pastedText = null;
+      let lineOffsets = [];
       let lineCount = 0;
       let selectedIdx = null;
       let observer = null;
       let renderedItems = new Map();
       let jsonEditor = null;
+      let leftPanelWidth = 350;
+
+      // --- Resize Handle Logic ---
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 0;
+
+      resizeHandle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = leftPanelWidth;
+        resizeHandle.classList.add("dragging");
+        document.body.classList.add("resizing");
+        e.preventDefault();
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+
+        const delta = e.clientX - startX;
+        let newWidth = startWidth + delta;
+
+        // Clamp width
+        newWidth = Math.max(MIN_LEFT_PANEL_WIDTH, Math.min(MAX_LEFT_PANEL_WIDTH, newWidth));
+
+        leftPanelWidth = newWidth;
+        appGrid.style.setProperty("--left-panel-width", `${newWidth}px`);
+
+        // Update virtualization
+        if (lineCount > 0) {
+          onScroll();
+        }
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (isResizing) {
+          isResizing = false;
+          resizeHandle.classList.remove("dragging");
+          document.body.classList.remove("resizing");
+        }
+      });
 
       // --- Initialize JSON Editor ---
       function initJsonEditor() {
@@ -209,14 +280,13 @@
             types: [{ description: "JSONL", accept: { "application/jsonl": [".jsonl", ".jsonl.txt", ".ndjson"] } }],
           });
           file = await fileHandle.getFile();
-          pastedText = null; // Clear pasted text
+          pastedText = null;
           fileInfo.textContent = file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
           await scanFileForOffsets(file);
           initializeList();
           leftPanel.focus();
         } catch (e) {
           // User cancelled or error
-          // No modal, no error message needed
         }
       };
 
@@ -239,10 +309,9 @@
         }
 
         pastedText = text;
-        file = null; // Clear file
+        file = null;
         fileHandle = null;
 
-        // Create a blob from the pasted text
         const blob = new Blob([text], { type: "application/jsonl" });
         file = new File([blob], "pasted.jsonl", { type: "application/jsonl" });
 
@@ -256,24 +325,22 @@
         pasteModal.classList.remove("show");
       };
 
-      // Close modal on background click
       pasteModal.onclick = (e) => {
         if (e.target === pasteModal) {
           pasteModal.classList.remove("show");
         }
       };
 
-      // Close modal on Escape key
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && pasteModal.classList.contains("show")) {
           pasteModal.classList.remove("show");
         }
       });
 
-      // Scan file for line offsets (byte positions, UTF-8 safe)
+      // Scan file for line offsets
       async function scanFileForOffsets(file) {
         lineOffsets = [];
-        const CHUNK_SIZE = 1024 * 1024; // 1MB
+        const CHUNK_SIZE = 1024 * 1024;
         let fileSize = file.size;
         let pos = 0;
         let start = 0;
@@ -282,7 +349,6 @@
         while (pos < fileSize) {
           let endPos = Math.min(pos + CHUNK_SIZE, fileSize);
           let chunk = new Uint8Array(await file.slice(pos, endPos).arrayBuffer());
-          // If leftover from previous chunk, prepend
           if (leftover.length > 0) {
             let combined = new Uint8Array(leftover.length + chunk.length);
             combined.set(leftover, 0);
@@ -292,7 +358,6 @@
           let lastNewlineIdx = 0;
           for (let i = 0; i < chunk.length; ++i) {
             if (chunk[i] === 0x0a) {
-              // '\n'
               let lineStart = start;
               let lineEnd = pos + i + 1 - leftover.length;
               lineOffsets.push({ start: lineStart, end: lineEnd });
@@ -300,7 +365,6 @@
               lastNewlineIdx = i + 1;
             }
           }
-          // Save leftover bytes (after last newline)
           if (lastNewlineIdx < chunk.length) {
             leftover = chunk.slice(lastNewlineIdx);
           } else {
@@ -308,28 +372,26 @@
           }
           pos = endPos;
         }
-        // Handle last line if file does not end with newline
         if (start < file.size) {
           lineOffsets.push({ start, end: file.size });
         }
         lineCount = lineOffsets.length;
       }
 
-      // --- Initialize List (called when new file/paste is loaded) ---
+      // --- Initialize List ---
       function initializeList() {
         listViewport.innerHTML = "";
         listViewport.style.height = lineCount * ITEM_HEIGHT + "px";
         renderedItems.clear();
         selectedIdx = null;
 
-        // Reset right panel
         rightPanelPlaceholder.style.display = "flex";
         jsoneditorContainer.style.display = "none";
 
         setupVirtualization();
       }
 
-      // --- Setup Virtualization (called on init and resize) ---
+      // --- Setup Virtualization ---
       function setupVirtualization() {
         if (observer) observer.disconnect();
 
@@ -340,7 +402,7 @@
         });
 
         leftPanel.onscroll = onScroll;
-        onScroll(); // Initial render
+        onScroll();
       }
 
       function onScroll() {
@@ -349,7 +411,6 @@
         let firstIdx = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - SKELETON_BUFFER);
         let lastIdx = Math.min(lineCount - 1, Math.ceil((scrollTop + viewportHeight) / ITEM_HEIGHT) + SKELETON_BUFFER);
 
-        // Remove items not in range
         for (let idx of Array.from(renderedItems.keys())) {
           if (idx < firstIdx || idx > lastIdx) {
             let el = renderedItems.get(idx);
@@ -359,7 +420,6 @@
           }
         }
 
-        // Add missing items
         for (let idx = firstIdx; idx <= lastIdx; ++idx) {
           if (!renderedItems.has(idx)) {
             let item = document.createElement("div");
@@ -387,7 +447,7 @@
         }
       }
 
-      // --- Load and Render Line Preview (UTF-8 safe) ---
+      // --- Load and Render Line Preview ---
       async function loadLinePreview(idx, el) {
         let { start, end } = lineOffsets[idx];
         let blob = file.slice(start, end);
@@ -400,9 +460,8 @@
         el.onclick = () => selectLine(idx);
       }
 
-      // --- Select and Show Detail (UTF-8 safe) ---
+      // --- Select and Show Detail ---
       async function selectLine(idx) {
-        // Update selection state
         if (selectedIdx !== null && renderedItems.has(selectedIdx)) {
           renderedItems.get(selectedIdx).classList.remove("selected");
         }
@@ -413,13 +472,11 @@
           renderedItems.get(idx).classList.add("selected");
         }
 
-        // Load and display JSON
         let { start, end } = lineOffsets[idx];
         let blob = file.slice(start, end);
         let arr = new Uint8Array(await blob.arrayBuffer());
         let text = new TextDecoder().decode(arr).replace(/\r?\n$/, "");
 
-        // Show the JSON editor
         rightPanelPlaceholder.style.display = "none";
         jsoneditorContainer.style.display = "block";
 
@@ -427,7 +484,6 @@
           let obj = JSON.parse(text);
           jsonEditor.set({ json: obj });
         } catch (e) {
-          // If invalid JSON, show as text
           jsonEditor.set({ text: text });
         }
       }
@@ -448,7 +504,6 @@
       });
 
       async function navigateToIndex(idx) {
-        // Scroll to make item visible first
         let itemTop = idx * ITEM_HEIGHT;
         let itemBottom = itemTop + ITEM_HEIGHT;
         let scrollTop = leftPanel.scrollTop;
@@ -460,10 +515,8 @@
           leftPanel.scrollTop = itemBottom - leftPanel.clientHeight;
         }
 
-        // Trigger scroll handler to ensure item is rendered
         onScroll();
 
-        // Wait a bit for rendering if needed
         if (!renderedItems.has(idx)) {
           await new Promise((resolve) => setTimeout(resolve, 50));
           onScroll();
@@ -471,7 +524,6 @@
 
         let el = renderedItems.get(idx);
         if (el) {
-          // Ensure it's loaded
           if (!el.dataset.loaded) {
             await loadLinePreview(idx, el);
           }
@@ -479,19 +531,16 @@
         }
       }
 
-      // --- Handle resize with debounce ---
+      // --- Handle window resize with debounce ---
       let resizeTimeout = null;
       window.addEventListener("resize", () => {
         if (lineCount === 0) return;
 
-        // Clear previous timeout
         if (resizeTimeout) {
           clearTimeout(resizeTimeout);
         }
 
-        // Debounce resize handling
         resizeTimeout = setTimeout(() => {
-          // Just update the visible items without resetting selection
           onScroll();
         }, 100);
       });
