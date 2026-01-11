@@ -1,7 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
+<html lang="en"><head>
+    <meta charset="UTF-8">
     <title>JSONL Viewer</title>
     <style>
       html, body { height: 100%; margin: 0; font-family: sans-serif; }
@@ -34,6 +32,10 @@
         height: 100%;
         background: #fff;
       }
+      #left-panel:focus {
+        outline: 2px solid #4a90e2;
+        outline-offset: -2px;
+      }
       #list-viewport {
         position: relative;
         width: 100%;
@@ -56,19 +58,79 @@
         font-size: 15px; white-space: pre-wrap; word-break: break-all;
         background: #fafbfc;
       }
+      #paste-modal {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+      #paste-modal.show {
+        display: flex;
+      }
+      #paste-dialog {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        width: 600px;
+        max-width: 90vw;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+      }
+      #paste-dialog h2 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+      }
+      #paste-textarea {
+        flex: 1;
+        min-height: 300px;
+        font-family: monospace;
+        font-size: 13px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        resize: vertical;
+      }
+      #paste-buttons {
+        margin-top: 16px;
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      #paste-buttons button {
+        padding: 8px 16px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
     <div id="app-grid">
       <div id="header">
         <button id="open-btn">Open JSONL File</button>
+        <button id="paste-btn">Paste JSONL</button>
         <span id="file-info" style="color:#888"></span>
       </div>
-      <div id="left-panel">
+      <div id="left-panel" tabindex="0">
         <div id="list-viewport"></div>
       </div>
       <div id="right-panel">Select a line to view its JSON.</div>
     </div>
+
+    <div id="paste-modal">
+      <div id="paste-dialog">
+        <h2>Paste JSONL Text</h2>
+        <textarea id="paste-textarea" placeholder="Paste your JSONL content here..."></textarea>
+        <div id="paste-buttons">
+          <button id="paste-cancel-btn">Cancel</button>
+          <button id="paste-process-btn">Process</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       // --- Constants ---
       const ITEM_HEIGHT = 32; // px
@@ -76,14 +138,20 @@
 
       // --- DOM Elements ---
       const openBtn = document.getElementById("open-btn");
+      const pasteBtn = document.getElementById("paste-btn");
       const fileInfo = document.getElementById("file-info");
       const leftPanel = document.getElementById("left-panel");
       const listViewport = document.getElementById("list-viewport");
       const rightPanel = document.getElementById("right-panel");
+      const pasteModal = document.getElementById("paste-modal");
+      const pasteTextarea = document.getElementById("paste-textarea");
+      const pasteCancelBtn = document.getElementById("paste-cancel-btn");
+      const pasteProcessBtn = document.getElementById("paste-process-btn");
 
       // --- State ---
       let fileHandle = null;
       let file = null;
+      let pastedText = null; // Store pasted text as alternative to file
       let lineOffsets = []; // [{start, end}]
       let lineCount = 0;
       let selectedIdx = null;
@@ -97,14 +165,66 @@
             types: [{ description: "JSONL", accept: { "application/jsonl": [".jsonl", ".jsonl.txt", ".ndjson"] } }],
           });
           file = await fileHandle.getFile();
+          pastedText = null; // Clear pasted text
           fileInfo.textContent = file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
           await scanFileForOffsets(file);
           setupListSkeleton();
+          leftPanel.focus();
         } catch (e) {
           // User cancelled or error
           // No modal, no error message needed
         }
       };
+
+      // --- Paste Modal ---
+      pasteBtn.onclick = () => {
+        pasteModal.classList.add("show");
+        pasteTextarea.value = "";
+        pasteTextarea.focus();
+      };
+
+      pasteCancelBtn.onclick = () => {
+        pasteModal.classList.remove("show");
+      };
+
+      pasteProcessBtn.onclick = async () => {
+        const text = pasteTextarea.value;
+        if (!text.trim()) {
+          pasteModal.classList.remove("show");
+          return;
+        }
+        
+        pastedText = text;
+        file = null; // Clear file
+        fileHandle = null;
+        
+        // Create a blob from the pasted text
+        const blob = new Blob([text], { type: "application/jsonl" });
+        file = new File([blob], "pasted.jsonl", { type: "application/jsonl" });
+        
+        const lineCountEstimate = text.split('\n').filter(l => l.trim()).length;
+        fileInfo.textContent = "Pasted content (" + lineCountEstimate + " lines, " + (text.length / 1024).toFixed(1) + " KB)";
+        
+        await scanFileForOffsets(file);
+        setupListSkeleton();
+        leftPanel.focus();
+        
+        pasteModal.classList.remove("show");
+      };
+
+      // Close modal on background click
+      pasteModal.onclick = (e) => {
+        if (e.target === pasteModal) {
+          pasteModal.classList.remove("show");
+        }
+      };
+
+      // Close modal on Escape key
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && pasteModal.classList.contains("show")) {
+          pasteModal.classList.remove("show");
+        }
+      });
 
       // Scan file for line offsets (byte positions, UTF-8 safe)
       async function scanFileForOffsets(file) {
@@ -264,6 +384,54 @@
         }
       }
 
+      // --- Keyboard Navigation ---
+      leftPanel.addEventListener("keydown", async (e) => {
+        if (lineCount === 0) return;
+        
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          let newIdx = selectedIdx === null ? 0 : Math.min(selectedIdx + 1, lineCount - 1);
+          await navigateToIndex(newIdx);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          let newIdx = selectedIdx === null ? 0 : Math.max(selectedIdx - 1, 0);
+          await navigateToIndex(newIdx);
+        }
+      });
+
+      async function navigateToIndex(idx) {
+        // Ensure the item is rendered
+        if (!renderedItems.has(idx)) {
+          // Scroll to make it visible
+          let targetScrollTop = idx * ITEM_HEIGHT - leftPanel.clientHeight / 2 + ITEM_HEIGHT / 2;
+          leftPanel.scrollTop = Math.max(0, targetScrollTop);
+          onScroll();
+          // Wait a bit for rendering
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        
+        let el = renderedItems.get(idx);
+        if (el) {
+          // Ensure it's loaded
+          if (!el.dataset.loaded) {
+            await loadLinePreview(idx, el);
+          }
+          await selectLine(idx, el);
+          
+          // Scroll into view if needed
+          let itemTop = idx * ITEM_HEIGHT;
+          let itemBottom = itemTop + ITEM_HEIGHT;
+          let scrollTop = leftPanel.scrollTop;
+          let scrollBottom = scrollTop + leftPanel.clientHeight;
+          
+          if (itemTop < scrollTop) {
+            leftPanel.scrollTop = itemTop;
+          } else if (itemBottom > scrollBottom) {
+            leftPanel.scrollTop = itemBottom - leftPanel.clientHeight;
+          }
+        }
+      }
+
       // --- Preserve scroll position on resize ---
       window.addEventListener("resize", () => {
         if (lineCount > 0) {
@@ -273,5 +441,6 @@
         }
       });
     </script>
-  </body>
-</html>
+
+
+</body></html>
