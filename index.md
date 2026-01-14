@@ -33,6 +33,7 @@
 
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
+- [Box It](./box-it/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
 - [Device Orientation API](./device-orientation-api/)
