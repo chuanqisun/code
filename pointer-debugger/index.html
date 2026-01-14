@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Pointer Debugger</title>
+    <style>
+      * { box-sizing: border-box; touch-action: none; } /* Prevent browser gestures */
+      body { font-family: monospace; margin: 0; height: 100vh; display: flex; flex-direction: column; background: #000; color: #ccc; overflow: hidden; }
+
+      /* Isolated Header */
+      #menu-area {
+          background: #222;
+          padding: 5px;
+          border-bottom: 2px solid #444;
+          font-size: 12px;
+          position: relative;
+          z-index: 100; /* Ensure it stays on top */
+      }
+      .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+      /* Log Area */
+      #log { flex-grow: 1; overflow-y: auto; font-size: 11px; background: #000; }
+      .entry { padding: 2px 8px; border-bottom: 1px solid #111; line-height: 1.2; }
+
+      /* Categories */
+      .cat-down { color: #00ff00; }
+      .cat-up { color: #ff4444; }
+      .cat-move { color: #888; }
+      .cat-cancel { color: #ffaa00; }
+      .cat-click { color: #00bbff; background: #002233; }
+
+      button { font-size: 11px; padding: 2px 6px; cursor: pointer; background: #444; color: #fff; border: 1px solid #666; }
+      label { display: flex; align-items: center; gap: 2px; cursor: pointer; white-space: nowrap; }
+      .adv { color: #ff79c6; font-size: 10px; margin-left: 5px; }
+      .meta { color: #666; font-size: 9px; }
+    </style>
+  </head>
+  <body>
+    <div id="menu-area">
+      <div class="row">
+        <button id="modeBtn">MODE: <b id="modeDisplay">TOUCH</b></button>
+        <button id="clearBtn">Clear</button>
+        <label><input type="checkbox" id="autoScroll" checked />Scroll</label>
+        <span style="color:#555">|</span>
+        <label><input type="checkbox" class="filter" value="down" checked />Down</label>
+        <label><input type="checkbox" class="filter" value="move" />Move</label>
+        <label><input type="checkbox" class="filter" value="up" checked />Up</label>
+        <label><input type="checkbox" class="filter" value="cancel" checked />Cancel</label>
+        <label><input type="checkbox" class="filter" value="click" checked />Click</label>
+      </div>
+      <div id="stats" style="font-size: 10px; color: #888; margin-top: 4px;">Active: 0 | Ready</div>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+      const logElement = document.getElementById("log");
+      const menuArea = document.getElementById("menu-area");
+      const modeDisplay = document.getElementById("modeDisplay");
+      const stats = document.getElementById("stats");
+
+      let currentModeIndex = 0;
+      const modes = ["touch", "pointer", "mouse", "all"];
+
+      const eventSchema = {
+        touchstart: "down",
+        mousedown: "down",
+        pointerdown: "down",
+        touchmove: "move",
+        mousemove: "move",
+        pointermove: "move",
+        touchend: "up",
+        mouseup: "up",
+        pointerup: "up",
+        touchcancel: "cancel",
+        pointercancel: "cancel",
+        click: "click",
+        dblclick: "click",
+        contextmenu: "click",
+      };
+
+      const filters = {};
+      document.querySelectorAll(".filter").forEach((cb) => {
+        filters[cb.value] = cb.checked;
+        cb.onchange = () => (filters[cb.value] = cb.checked);
+      });
+
+      // ISOLATION: Prevent menu interactions from triggering log events
+      const stopProp = (e) => e.stopPropagation();
+      ["touchstart", "touchend", "touchmove", "mousedown", "mouseup", "click", "pointerdown", "pointerup"].forEach((evt) => {
+        menuArea.addEventListener(evt, stopProp);
+      });
+
+      document.getElementById("modeBtn").onclick = cycleMode;
+      document.getElementById("clearBtn").onclick = clearLog;
+
+      function cycleMode() {
+        currentModeIndex = (currentModeIndex + 1) % modes.length;
+        initListeners();
+      }
+
+      function initListeners() {
+        const mode = modes[currentModeIndex];
+        modeDisplay.textContent = mode;
+
+        Object.keys(eventSchema).forEach((e) => window.removeEventListener(e, handleEvent));
+
+        const toAttach = Object.keys(eventSchema).filter((e) => {
+          if (mode === "all") return true;
+          if (mode === "touch") return e.startsWith("touch") || e === "click";
+          if (mode === "pointer") return e.startsWith("pointer") || e === "click";
+          if (mode === "mouse") return e.startsWith("mouse") || e === "click";
+        });
+
+        toAttach.forEach((e) => window.addEventListener(e, handleEvent, { passive: false }));
+        clearLog();
+      }
+
+      function handleEvent(e) {
+        const category = eventSchema[e.type];
+        if (!filters[category]) return;
+
+        // Prevent default browser actions (scrolling, zooming) during tests
+        if (e.cancelable) e.preventDefault();
+
+        const entry = document.createElement("div");
+        entry.className = `entry cat-${category}`;
+
+        const time = new Date().toISOString().slice(17, 23);
+        let data = `<span class="meta">${time}</span> <b>${e.type.toUpperCase()}</b> `;
+
+        const items = e.changedTouches ? Array.from(e.changedTouches) : [e];
+
+        items.forEach((item) => {
+          data += `(x:${Math.round(item.clientX)} y:${Math.round(item.clientY)})`;
+
+          let adv = [];
+          if (item.force > 0) adv.push(`f:${item.force.toFixed(2)}`);
+          if (item.pressure > 0 && item.pressure !== 0.5) adv.push(`p:${item.pressure.toFixed(2)}`);
+          if (item.radiusX > 1) adv.push(`rx:${Math.round(item.radiusX)}`);
+          if (item.radiusY > 1) adv.push(`ry:${Math.round(item.radiusY)}`);
+          if (item.rotationAngle) adv.push(`ang:${item.rotationAngle}`);
+
+          if (adv.length) data += `<span class="adv">${adv.join(" ")}</span>`;
+        });
+
+        entry.innerHTML = data;
+        logElement.appendChild(entry);
+
+        if (document.getElementById("autoScroll").checked) {
+          logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        if (logElement.childNodes.length > 200) logElement.removeChild(logElement.firstChild);
+
+        stats.textContent = `Mode: ${modes[currentModeIndex]} | Active: ${e.touches ? e.touches.length : category === "down" ? 1 : 0}`;
+      }
+
+      function clearLog() {
+        logElement.innerHTML = "";
+      }
+
+      initListeners();
+    </script>
+  </body>
+</html>

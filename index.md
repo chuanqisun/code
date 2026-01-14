@@ -17,6 +17,7 @@
 - [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
 - [Pitch detector](./pitch-detector/)
+- [Pointer Debugger](./pointer-debugger/)
 - [JSONL viewer](./jsonl-viewer)
 - [JSON → TypeScript](./json-to-typescript)
 - [JSON ↔ YAML](./json-to-yaml)
