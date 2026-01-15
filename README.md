@@ -1,4 +1,6 @@
-# Tools
+# Code
 
-Single purpose tools in a single HTML file
+> good vibe code  
+> better code vibe  
+> one html file at a time
 
