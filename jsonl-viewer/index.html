@@ -9,7 +9,7 @@
       #app-grid {
         display: grid;
         grid-template-rows: auto 1fr;
-        grid-template-columns: 350px 1fr;
+        grid-template-columns: var(--left-panel-width, 350px) 1fr;
         grid-template-areas:
           "header header"
           "left-panel right-panel";
@@ -26,13 +26,34 @@
         align-items: center;
         gap: 16px;
       }
-      #left-panel {
+      #left-panel-container {
         grid-area: left-panel;
-        border-right: 1px solid #ccc;
+        display: flex;
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+      }
+      #left-panel {
+        flex: 1;
         overflow: auto;
         position: relative;
         height: 100%;
         background: #fff;
+      }
+      #left-panel:focus {
+        outline: 2px solid #4a90e2;
+        outline-offset: -2px;
+      }
+      #resize-handle {
+        width: 5px;
+        background: #e0e0e0;
+        cursor: col-resize;
+        flex-shrink: 0;
+        transition: background 0.2s;
+      }
+      #resize-handle:hover,
+      #resize-handle.dragging {
+        background: #4a90e2;
       }
       #list-viewport {
         position: relative;
@@ -52,9 +73,74 @@
       .list-item.selected { background: #e0eaff; }
       #right-panel {
         grid-area: right-panel;
-        padding: 16px; overflow: auto; font-family: monospace;
-        font-size: 15px; white-space: pre-wrap; word-break: break-all;
+        overflow: hidden;
         background: #fafbfc;
+        display: flex;
+        flex-direction: column;
+      }
+      #right-panel-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #888;
+        font-size: 16px;
+      }
+      #jsoneditor-container {
+        flex: 1;
+        overflow: hidden;
+      }
+      #paste-modal {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+      #paste-modal.show {
+        display: flex;
+      }
+      #paste-dialog {
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        width: 600px;
+        max-width: 90vw;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+      }
+      #paste-dialog h2 {
+        margin: 0 0 16px 0;
+        font-size: 18px;
+      }
+      #paste-textarea {
+        flex: 1;
+        min-height: 300px;
+        font-family: monospace;
+        font-size: 13px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        resize: vertical;
+      }
+      #paste-buttons {
+        margin-top: 16px;
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      #paste-buttons button {
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+      /* Prevent text selection while dragging */
+      body.resizing {
+        user-select: none;
+        cursor: col-resize;
       }
     </style>
   </head>
@@ -62,33 +148,130 @@
     <div id="app-grid">
       <div id="header">
         <button id="open-btn">Open JSONL File</button>
+        <button id="paste-btn">Paste JSONL</button>
         <span id="file-info" style="color:#888"></span>
       </div>
-      <div id="left-panel">
-        <div id="list-viewport"></div>
+      <div id="left-panel-container">
+        <div id="left-panel" tabindex="0">
+          <div id="list-viewport"></div>
+        </div>
+        <div id="resize-handle"></div>
       </div>
-      <div id="right-panel">Select a line to view its JSON.</div>
+      <div id="right-panel">
+        <div id="right-panel-placeholder">Select a line to view its JSON.</div>
+        <div id="jsoneditor-container" style="display: none;"></div>
+      </div>
     </div>
-    <script>
+
+    <div id="paste-modal">
+      <div id="paste-dialog">
+        <h2>Paste JSONL Text</h2>
+        <textarea id="paste-textarea" placeholder="Paste your JSONL content here..."></textarea>
+        <div id="paste-buttons">
+          <button id="paste-cancel-btn">Cancel</button>
+          <button id="paste-process-btn">Process</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { createJSONEditor } from "https://esm.sh/vanilla-jsoneditor@3.11.0";
+
       // --- Constants ---
       const ITEM_HEIGHT = 32; // px
       const SKELETON_BUFFER = 5;
+      const MIN_LEFT_PANEL_WIDTH = 150;
+      const MAX_LEFT_PANEL_WIDTH = 800;
 
       // --- DOM Elements ---
+      const appGrid = document.getElementById("app-grid");
       const openBtn = document.getElementById("open-btn");
+      const pasteBtn = document.getElementById("paste-btn");
       const fileInfo = document.getElementById("file-info");
+      const leftPanelContainer = document.getElementById("left-panel-container");
       const leftPanel = document.getElementById("left-panel");
+      const resizeHandle = document.getElementById("resize-handle");
       const listViewport = document.getElementById("list-viewport");
       const rightPanel = document.getElementById("right-panel");
+      const rightPanelPlaceholder = document.getElementById("right-panel-placeholder");
+      const jsoneditorContainer = document.getElementById("jsoneditor-container");
+      const pasteModal = document.getElementById("paste-modal");
+      const pasteTextarea = document.getElementById("paste-textarea");
+      const pasteCancelBtn = document.getElementById("paste-cancel-btn");
+      const pasteProcessBtn = document.getElementById("paste-process-btn");
 
       // --- State ---
       let fileHandle = null;
       let file = null;
-      let lineOffsets = []; // [{start, end}]
+      let pastedText = null;
+      let lineOffsets = [];
       let lineCount = 0;
       let selectedIdx = null;
       let observer = null;
       let renderedItems = new Map();
+      let jsonEditor = null;
+      let leftPanelWidth = 350;
+
+      // --- Resize Handle Logic ---
+      let isResizing = false;
+      let startX = 0;
+      let startWidth = 0;
+
+      resizeHandle.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        startX = e.clientX;
+        startWidth = leftPanelWidth;
+        resizeHandle.classList.add("dragging");
+        document.body.classList.add("resizing");
+        e.preventDefault();
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+
+        const delta = e.clientX - startX;
+        let newWidth = startWidth + delta;
+
+        // Clamp width
+        newWidth = Math.max(MIN_LEFT_PANEL_WIDTH, Math.min(MAX_LEFT_PANEL_WIDTH, newWidth));
+
+        leftPanelWidth = newWidth;
+        appGrid.style.setProperty("--left-panel-width", `${newWidth}px`);
+
+        // Update virtualization
+        if (lineCount > 0) {
+          onScroll();
+        }
+      });
+
+      document.addEventListener("mouseup", () => {
+        if (isResizing) {
+          isResizing = false;
+          resizeHandle.classList.remove("dragging");
+          document.body.classList.remove("resizing");
+        }
+      });
+
+      // --- Initialize JSON Editor ---
+      function initJsonEditor() {
+        if (jsonEditor) {
+          jsonEditor.destroy();
+        }
+        jsonEditor = createJSONEditor({
+          target: jsoneditorContainer,
+          props: {
+            content: { json: {} },
+            mode: "tree",
+            readOnly: true,
+            mainMenuBar: true,
+            navigationBar: true,
+            statusBar: true,
+          },
+        });
+      }
+
+      // Initialize editor on load
+      initJsonEditor();
 
       // --- File Open and Scan ---
       openBtn.onclick = async () => {
@@ -97,19 +280,67 @@
             types: [{ description: "JSONL", accept: { "application/jsonl": [".jsonl", ".jsonl.txt", ".ndjson"] } }],
           });
           file = await fileHandle.getFile();
+          pastedText = null;
           fileInfo.textContent = file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
           await scanFileForOffsets(file);
-          setupListSkeleton();
+          initializeList();
+          leftPanel.focus();
         } catch (e) {
           // User cancelled or error
-          // No modal, no error message needed
         }
       };
 
-      // Scan file for line offsets (byte positions, UTF-8 safe)
+      // --- Paste Modal ---
+      pasteBtn.onclick = () => {
+        pasteModal.classList.add("show");
+        pasteTextarea.value = "";
+        pasteTextarea.focus();
+      };
+
+      pasteCancelBtn.onclick = () => {
+        pasteModal.classList.remove("show");
+      };
+
+      pasteProcessBtn.onclick = async () => {
+        const text = pasteTextarea.value;
+        if (!text.trim()) {
+          pasteModal.classList.remove("show");
+          return;
+        }
+
+        pastedText = text;
+        file = null;
+        fileHandle = null;
+
+        const blob = new Blob([text], { type: "application/jsonl" });
+        file = new File([blob], "pasted.jsonl", { type: "application/jsonl" });
+
+        const lineCountEstimate = text.split("\n").filter((l) => l.trim()).length;
+        fileInfo.textContent = "Pasted content (" + lineCountEstimate + " lines, " + (text.length / 1024).toFixed(1) + " KB)";
+
+        await scanFileForOffsets(file);
+        initializeList();
+        leftPanel.focus();
+
+        pasteModal.classList.remove("show");
+      };
+
+      pasteModal.onclick = (e) => {
+        if (e.target === pasteModal) {
+          pasteModal.classList.remove("show");
+        }
+      };
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && pasteModal.classList.contains("show")) {
+          pasteModal.classList.remove("show");
+        }
+      });
+
+      // Scan file for line offsets
       async function scanFileForOffsets(file) {
         lineOffsets = [];
-        const CHUNK_SIZE = 1024 * 1024; // 1MB
+        const CHUNK_SIZE = 1024 * 1024;
         let fileSize = file.size;
         let pos = 0;
         let start = 0;
@@ -118,7 +349,6 @@
         while (pos < fileSize) {
           let endPos = Math.min(pos + CHUNK_SIZE, fileSize);
           let chunk = new Uint8Array(await file.slice(pos, endPos).arrayBuffer());
-          // If leftover from previous chunk, prepend
           if (leftover.length > 0) {
             let combined = new Uint8Array(leftover.length + chunk.length);
             combined.set(leftover, 0);
@@ -128,7 +358,6 @@
           let lastNewlineIdx = 0;
           for (let i = 0; i < chunk.length; ++i) {
             if (chunk[i] === 0x0a) {
-              // '\n'
               let lineStart = start;
               let lineEnd = pos + i + 1 - leftover.length;
               lineOffsets.push({ start: lineStart, end: lineEnd });
@@ -136,7 +365,6 @@
               lastNewlineIdx = i + 1;
             }
           }
-          // Save leftover bytes (after last newline)
           if (lastNewlineIdx < chunk.length) {
             leftover = chunk.slice(lastNewlineIdx);
           } else {
@@ -144,48 +372,35 @@
           }
           pos = endPos;
         }
-        // Handle last line if file does not end with newline
         if (start < file.size) {
           lineOffsets.push({ start, end: file.size });
         }
         lineCount = lineOffsets.length;
       }
 
-      // --- Virtualized List Skeleton ---
-      function setupListSkeleton() {
+      // --- Initialize List ---
+      function initializeList() {
         listViewport.innerHTML = "";
         listViewport.style.height = lineCount * ITEM_HEIGHT + "px";
         renderedItems.clear();
         selectedIdx = null;
-        rightPanel.textContent = "Select a line to view its JSON.";
 
-        let viewportHeight = leftPanel.clientHeight || 400; // fallback
-        let visibleCount = Math.ceil(viewportHeight / ITEM_HEIGHT);
+        rightPanelPlaceholder.style.display = "flex";
+        jsoneditorContainer.style.display = "none";
 
-        // Render items to fill viewport + buffer
-        for (let i = 0; i < Math.min(lineCount, visibleCount + 2 * SKELETON_BUFFER); ++i) {
-          let idx = i;
-          let item = document.createElement("div");
-          item.className = "list-item";
-          item.style.top = idx * ITEM_HEIGHT + "px";
-          item.dataset.idx = idx;
-          listViewport.appendChild(item);
-          renderedItems.set(idx, item);
-        }
-        observeVisibleItems();
+        setupVirtualization();
       }
 
-      // --- Intersection Observer for Virtualization ---
-      function observeVisibleItems() {
+      // --- Setup Virtualization ---
+      function setupVirtualization() {
         if (observer) observer.disconnect();
+
         observer = new IntersectionObserver(onIntersect, {
           root: leftPanel,
           rootMargin: "0px",
           threshold: 0.1,
         });
-        for (let item of renderedItems.values()) {
-          observer.observe(item);
-        }
+
         leftPanel.onscroll = onScroll;
         onScroll();
       }
@@ -196,7 +411,6 @@
         let firstIdx = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - SKELETON_BUFFER);
         let lastIdx = Math.min(lineCount - 1, Math.ceil((scrollTop + viewportHeight) / ITEM_HEIGHT) + SKELETON_BUFFER);
 
-        // Remove items not in range
         for (let idx of Array.from(renderedItems.keys())) {
           if (idx < firstIdx || idx > lastIdx) {
             let el = renderedItems.get(idx);
@@ -205,11 +419,14 @@
             renderedItems.delete(idx);
           }
         }
-        // Add missing items
+
         for (let idx = firstIdx; idx <= lastIdx; ++idx) {
           if (!renderedItems.has(idx)) {
             let item = document.createElement("div");
             item.className = "list-item";
+            if (idx === selectedIdx) {
+              item.classList.add("selected");
+            }
             item.style.top = idx * ITEM_HEIGHT + "px";
             item.dataset.idx = idx;
             listViewport.appendChild(item);
@@ -230,7 +447,7 @@
         }
       }
 
-      // --- Load and Render Line Preview (UTF-8 safe) ---
+      // --- Load and Render Line Preview ---
       async function loadLinePreview(idx, el) {
         let { start, end } = lineOffsets[idx];
         let blob = file.slice(start, end);
@@ -240,37 +457,92 @@
         if (preview.length > 120) preview = preview.slice(0, 120) + "...";
         el.textContent = preview;
         el.dataset.loaded = "1";
-        el.onclick = () => selectLine(idx, el);
-        if (selectedIdx === idx) el.classList.add("selected");
-        else el.classList.remove("selected");
+        el.onclick = () => selectLine(idx);
       }
 
-      // --- Select and Show Detail (UTF-8 safe) ---
-      async function selectLine(idx, el) {
+      // --- Select and Show Detail ---
+      async function selectLine(idx) {
         if (selectedIdx !== null && renderedItems.has(selectedIdx)) {
           renderedItems.get(selectedIdx).classList.remove("selected");
         }
+
         selectedIdx = idx;
-        el.classList.add("selected");
+
+        if (renderedItems.has(idx)) {
+          renderedItems.get(idx).classList.add("selected");
+        }
+
         let { start, end } = lineOffsets[idx];
         let blob = file.slice(start, end);
         let arr = new Uint8Array(await blob.arrayBuffer());
         let text = new TextDecoder().decode(arr).replace(/\r?\n$/, "");
+
+        rightPanelPlaceholder.style.display = "none";
+        jsoneditorContainer.style.display = "block";
+
         try {
           let obj = JSON.parse(text);
-          rightPanel.textContent = JSON.stringify(obj, null, 2);
+          jsonEditor.set({ json: obj });
         } catch (e) {
-          rightPanel.textContent = "Invalid JSON:\n" + text;
+          jsonEditor.set({ text: text });
         }
       }
 
-      // --- Preserve scroll position on resize ---
-      window.addEventListener("resize", () => {
-        if (lineCount > 0) {
-          const scrollTop = leftPanel.scrollTop;
-          setupListSkeleton();
-          leftPanel.scrollTop = scrollTop;
+      // --- Keyboard Navigation ---
+      leftPanel.addEventListener("keydown", async (e) => {
+        if (lineCount === 0) return;
+
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          let newIdx = selectedIdx === null ? 0 : Math.min(selectedIdx + 1, lineCount - 1);
+          await navigateToIndex(newIdx);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          let newIdx = selectedIdx === null ? 0 : Math.max(selectedIdx - 1, 0);
+          await navigateToIndex(newIdx);
         }
+      });
+
+      async function navigateToIndex(idx) {
+        let itemTop = idx * ITEM_HEIGHT;
+        let itemBottom = itemTop + ITEM_HEIGHT;
+        let scrollTop = leftPanel.scrollTop;
+        let scrollBottom = scrollTop + leftPanel.clientHeight;
+
+        if (itemTop < scrollTop) {
+          leftPanel.scrollTop = itemTop;
+        } else if (itemBottom > scrollBottom) {
+          leftPanel.scrollTop = itemBottom - leftPanel.clientHeight;
+        }
+
+        onScroll();
+
+        if (!renderedItems.has(idx)) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          onScroll();
+        }
+
+        let el = renderedItems.get(idx);
+        if (el) {
+          if (!el.dataset.loaded) {
+            await loadLinePreview(idx, el);
+          }
+          await selectLine(idx);
+        }
+      }
+
+      // --- Handle window resize with debounce ---
+      let resizeTimeout = null;
+      window.addEventListener("resize", () => {
+        if (lineCount === 0) return;
+
+        if (resizeTimeout) {
+          clearTimeout(resizeTimeout);
+        }
+
+        resizeTimeout = setTimeout(() => {
+          onScroll();
+        }, 100);
       });
     </script>
   </body>

@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Emoji Pixel Tool</title>
+    <style>
+      :root {
+          color-scheme: light dark;
+          font-family: system-ui, -apple-system, sans-serif;
+          --accent: #3b82f6;
+          --bg: Canvas;
+          --fg: CanvasText;
+          --border: color-mix(in srgb, CanvasText, transparent 80%);
+          --panel: color-mix(in srgb, Canvas, CanvasText 3%);
+      }
+
+      body {
+          margin: 0;
+          height: 100vh;
+          display: flex;
+          overflow: hidden;
+          background-color: var(--bg);
+          color: var(--fg);
+      }
+
+      /* Sidebar */
+      aside {
+          width: 340px;
+          display: flex;
+          flex-direction: column;
+          border-right: 1px solid var(--border);
+          background-color: var(--panel);
+          z-index: 10;
+          flex-shrink: 0;
+      }
+
+      .picker-wrapper {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+      }
+
+      emoji-picker {
+          width: 100%;
+          height: 100%;
+          --border-size: 0;
+          --background: var(--panel);
+      }
+
+      .controls {
+          padding: 1.2rem;
+          border-top: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+          gap: 1.2rem;
+          background-color: var(--panel);
+          overflow-y: auto;
+          max-height: 50vh;
+      }
+
+      /* Main Canvas Area */
+      main {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-width: 0;
+      }
+
+      .canvas-wrapper {
+          flex: 1;
+          position: relative;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          background-image:
+              linear-gradient(45deg, #808080 25%, transparent 25%),
+              linear-gradient(-45deg, #808080 25%, transparent 25%),
+              linear-gradient(45deg, transparent 75%, #808080 75%),
+              linear-gradient(-45deg, transparent 75%, #808080 75%);
+          background-size: 20px 20px;
+          background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      }
+
+      .canvas-wrapper:first-child {
+          border-bottom: 1px solid var(--border);
+      }
+
+      .canvas-wrapper::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-color: var(--bg);
+          opacity: 0.92;
+          pointer-events: none;
+      }
+
+      .canvas-label {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          background: var(--bg);
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          opacity: 0.8;
+          pointer-events: none;
+          border: 1px solid var(--border);
+          z-index: 5;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      }
+
+      canvas {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          image-rendering: pixelated;
+      }
+
+      /* Controls UI */
+      .control-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+      }
+
+      .row {
+          display: flex;
+          align-items: center;
+          gap: 0.8rem;
+      }
+
+      label {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.85rem;
+          font-weight: 600;
+          align-items: center;
+          color: color-mix(in srgb, var(--fg), transparent 20%);
+      }
+
+      input[type="range"] {
+          width: 100%;
+          accent-color: var(--accent);
+          height: 4px;
+          border-radius: 2px;
+      }
+
+      select {
+          width: 100%;
+          padding: 0.6rem;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background-color: var(--bg);
+          color: var(--fg);
+          font-size: 0.9rem;
+          cursor: pointer;
+      }
+
+      input[type="color"] {
+          border: 1px solid var(--border);
+          width: 50px;
+          height: 30px;
+          padding: 0;
+          background: none;
+          cursor: pointer;
+          border-radius: 4px;
+      }
+
+      input[type="checkbox"] {
+          width: 18px;
+          height: 18px;
+          accent-color: var(--accent);
+          cursor: pointer;
+      }
+
+      .debug {
+          font-family: ui-monospace, monospace;
+          font-size: 0.7rem;
+          opacity: 0.5;
+          white-space: pre;
+          margin-top: auto;
+          padding-top: 1rem;
+      }
+
+      .hint {
+          font-size: 0.75rem;
+          color: var(--accent);
+          opacity: 0.8;
+          margin-top: -0.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <div class="picker-wrapper">
+        <emoji-picker></emoji-picker>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label>
+            <span>Preview Zoom</span>
+            <span id="sizeDisplay">128px</span>
+          </label>
+          <input type="range" id="sizeSlider" min="32" max="600" value="128" />
+        </div>
+
+        <div class="control-group">
+          <label>Grid Resolution</label>
+          <select id="gridSelect">
+            <option value="12">12 x 12 (Icon)</option>
+            <option value="16" selected>16 x 16 (Sprite)</option>
+            <option value="24">24 x 24 (RPG)</option>
+            <option value="32">32 x 32 (Detailed)</option>
+            <option value="48">48 x 48 (High Res)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label>
+            <span>Feature Detection</span>
+            <span id="contrastDisplay">1.1</span>
+          </label>
+          <input type="range" id="contrastSlider" min="0.5" max="2.0" step="0.1" value="1.1" />
+          <div class="hint">Boosts contrast to find eyes/mouths</div>
+        </div>
+
+        <div class="control-group">
+          <label>Color Palette</label>
+          <select id="paletteSelect">
+            <option value="original">Original Colors</option>
+            <option value="retro">Retro (Quantized)</option>
+            <option value="pico8">Pico-8 (Fantasy Console)</option>
+            <option value="gameboy">Gameboy (4 Shades)</option>
+            <option value="nes">NES (Classic)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label>
+            <span>Outline</span>
+            <div class="row">
+              <input type="checkbox" id="outlineToggle" checked />
+              <input type="color" id="outlineColor" value="#1a1a1a" />
+            </div>
+          </label>
+        </div>
+
+        <div id="debugInfo" class="debug">Select an emoji...</div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="canvas-wrapper" id="wrapperSource">
+        <span class="canvas-label">High-Res Source</span>
+        <canvas id="canvasSource"></canvas>
+      </div>
+      <div class="canvas-wrapper" id="wrapperPixel">
+        <span class="canvas-label">Game Asset Output</span>
+        <canvas id="canvasPixel"></canvas>
+      </div>
+    </main>
+
+    <script type="module">
+      import "https://esm.sh/emoji-picker-element";
+
+      const els = {
+        picker: document.querySelector("emoji-picker"),
+        canvasSource: document.getElementById("canvasSource"),
+        canvasPixel: document.getElementById("canvasPixel"),
+        wrapperSource: document.getElementById("wrapperSource"),
+        wrapperPixel: document.getElementById("wrapperPixel"),
+        slider: document.getElementById("sizeSlider"),
+        display: document.getElementById("sizeDisplay"),
+        gridSelect: document.getElementById("gridSelect"),
+        paletteSelect: document.getElementById("paletteSelect"),
+        outlineToggle: document.getElementById("outlineToggle"),
+        outlineColor: document.getElementById("outlineColor"),
+        contrastSlider: document.getElementById("contrastSlider"),
+        contrastDisplay: document.getElementById("contrastDisplay"),
+        debug: document.getElementById("debugInfo"),
+      };
+
+      const ctxSource = els.canvasSource.getContext("2d");
+      const ctxPixel = els.canvasPixel.getContext("2d");
+
+      // High-res processing canvas
+      const processCanvas = document.createElement("canvas");
+      const processCtx = processCanvas.getContext("2d", { willReadFrequently: true });
+
+      let state = {
+        emoji: null,
+        renderSize: 128,
+        gridSize: 16,
+        palette: "original",
+        outline: true,
+        outlineColor: "#1a1a1a",
+        contrast: 1.1,
+      };
+
+      // Palette Definitions
+      const PALETTES = {
+        pico8: [
+          [0, 0, 0],
+          [29, 43, 83],
+          [126, 37, 83],
+          [0, 135, 81],
+          [171, 82, 54],
+          [95, 87, 79],
+          [194, 195, 199],
+          [255, 241, 232],
+          [255, 0, 77],
+          [255, 163, 0],
+          [255, 236, 39],
+          [0, 228, 54],
+          [41, 173, 255],
+          [131, 118, 156],
+          [255, 119, 168],
+          [255, 204, 170],
+        ],
+        gameboy: [
+          [15, 56, 15],
+          [48, 98, 48],
+          [139, 172, 15],
+          [155, 188, 15],
+        ],
+        nes: [
+          [124, 124, 124],
+          [0, 0, 252],
+          [0, 0, 188],
+          [68, 40, 188],
+          [148, 0, 132],
+          [168, 0, 32],
+          [168, 16, 0],
+          [136, 20, 0],
+          [80, 48, 0],
+          [0, 120, 0],
+          [0, 104, 0],
+          [0, 88, 0],
+          [0, 64, 88],
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+          [188, 188, 188],
+          [0, 120, 248],
+          [0, 88, 248],
+          [104, 68, 252],
+          [216, 0, 204],
+          [228, 0, 88],
+          [248, 56, 0],
+          [228, 92, 16],
+          [172, 124, 0],
+          [0, 184, 0],
+          [0, 168, 0],
+          [0, 168, 68],
+          [0, 136, 136],
+          [0, 0, 0],
+          [0, 0, 0],
+          [0, 0, 0],
+          [248, 248, 248],
+          [60, 188, 252],
+          [104, 136, 252],
+          [152, 120, 248],
+          [248, 120, 248],
+          [248, 88, 152],
+          [248, 120, 88],
+          [252, 160, 68],
+          [248, 184, 0],
+          [184, 248, 24],
+          [88, 216, 84],
+          [88, 248, 152],
+          [0, 232, 216],
+          [120, 120, 120],
+          [0, 0, 0],
+          [0, 0, 0],
+          [252, 252, 252],
+          [164, 228, 252],
+          [184, 184, 248],
+          [216, 184, 248],
+          [248, 184, 248],
+          [248, 164, 192],
+          [240, 208, 176],
+          [252, 224, 168],
+          [248, 216, 120],
+          [216, 248, 120],
+          [184, 248, 184],
+          [184, 248, 216],
+          [0, 252, 252],
+          [248, 216, 248],
+          [0, 0, 0],
+          [0, 0, 0],
+        ],
+      };
+
+      // Resize Handling
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          const rect = entry.contentRect;
+          if (entry.target === els.wrapperSource) {
+            els.canvasSource.width = rect.width;
+            els.canvasSource.height = rect.height;
+          } else if (entry.target === els.wrapperPixel) {
+            els.canvasPixel.width = rect.width;
+            els.canvasPixel.height = rect.height;
+          }
+        }
+        render();
+      });
+
+      resizeObserver.observe(els.wrapperSource);
+      resizeObserver.observe(els.wrapperPixel);
+
+      function render() {
+        renderSource();
+        renderPixelated();
+        updateDebug();
+      }
+
+      function drawGuides(ctx, w, h) {
+        ctx.save();
+        ctx.strokeStyle = window.matchMedia("(prefers-color-scheme: dark)").matches ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)";
+        ctx.beginPath();
+        ctx.moveTo(w / 2, 0);
+        ctx.lineTo(w / 2, h);
+        ctx.moveTo(0, h / 2);
+        ctx.lineTo(w, h / 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function renderSource() {
+        const w = els.canvasSource.width;
+        const h = els.canvasSource.height;
+
+        ctxSource.clearRect(0, 0, w, h);
+        drawGuides(ctxSource, w, h);
+
+        if (!state.emoji) return;
+
+        ctxSource.save();
+        // Apply contrast filter for preview so user sees what the "detector" sees
+        // But we will use dual-pass in the pixelation logic
+        ctxSource.filter = `contrast(${state.contrast})`;
+
+        ctxSource.font = `${state.renderSize}px "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif`;
+        ctxSource.textAlign = "center";
+        ctxSource.textBaseline = "middle";
+
+        const yOffset = state.renderSize * 0.05;
+        ctxSource.fillText(state.emoji, w / 2, h / 2 + yOffset);
+        ctxSource.restore();
+      }
+
+      function findNearestColor(r, g, b, palette) {
+        let minDist = Infinity;
+        let bestColor = palette[0];
+
+        for (let color of palette) {
+          const dr = r - color[0];
+          const dg = g - color[1];
+          const db = b - color[2];
+          const dist = dr * dr + dg * dg + db * db;
+
+          if (dist < minDist) {
+            minDist = dist;
+            bestColor = color;
+          }
+        }
+        return bestColor;
+      }
+
+      function renderPixelated() {
+        const w = els.canvasPixel.width;
+        const h = els.canvasPixel.height;
+
+        ctxPixel.clearRect(0, 0, w, h);
+
+        if (!state.emoji) return;
+
+        // 1. Render High-Res Source for Sampling
+        const sampleSize = 128;
+        processCanvas.width = sampleSize;
+        processCanvas.height = sampleSize;
+
+        // Pass A: Original Colors (for final output)
+        processCtx.clearRect(0, 0, sampleSize, sampleSize);
+        processCtx.filter = "none";
+        processCtx.font = `${sampleSize * 0.9}px "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif`;
+        processCtx.textAlign = "center";
+        processCtx.textBaseline = "middle";
+        processCtx.fillText(state.emoji, sampleSize / 2, sampleSize / 2 + sampleSize * 0.05);
+        const pixelsOriginal = processCtx.getImageData(0, 0, sampleSize, sampleSize).data;
+
+        // Pass B: Contrast Map (for feature detection)
+        processCtx.clearRect(0, 0, sampleSize, sampleSize);
+        processCtx.filter = `contrast(${state.contrast})`;
+        processCtx.fillText(state.emoji, sampleSize / 2, sampleSize / 2 + sampleSize * 0.05);
+        const pixelsContrast = processCtx.getImageData(0, 0, sampleSize, sampleSize).data;
+
+        // 2. Smart Downsampling
+        const gridSize = state.gridSize;
+        const blockSize = sampleSize / gridSize;
+
+        // Generate Core Grid (Original Size)
+        const coreGrid = [];
+
+        for (let y = 0; y < gridSize; y++) {
+          coreGrid[y] = [];
+          for (let x = 0; x < gridSize; x++) {
+            const colorCounts = {};
+            let opaqueCount = 0;
+            let totalPixels = 0;
+
+            const startX = Math.floor(x * blockSize);
+            const startY = Math.floor(y * blockSize);
+            const endX = Math.floor((x + 1) * blockSize);
+            const endY = Math.floor((y + 1) * blockSize);
+
+            for (let py = startY; py < endY; py++) {
+              for (let px = startX; px < endX; px++) {
+                const i = (py * sampleSize + px) * 4;
+
+                // Use Contrast Alpha for shape detection
+                const a = pixelsContrast[i + 3];
+
+                if (a > 128) {
+                  opaqueCount++;
+
+                  // Use Contrast RGB for clustering (better separation of features)
+                  const cr = pixelsContrast[i];
+                  const cg = pixelsContrast[i + 1];
+                  const cb = pixelsContrast[i + 2];
+
+                  // Use Original RGB for final color accumulation
+                  const or = pixelsOriginal[i];
+                  const og = pixelsOriginal[i + 1];
+                  const ob = pixelsOriginal[i + 2];
+
+                  // Key based on Contrast (Detection)
+                  const key = `${Math.round(cr / 10) * 10},${Math.round(cg / 10) * 10},${Math.round(cb / 10) * 10}`;
+
+                  if (!colorCounts[key]) {
+                    colorCounts[key] = {
+                      count: 0,
+                      cr,
+                      cg,
+                      cb, // Contrast representative
+                      sumR: 0,
+                      sumG: 0,
+                      sumB: 0, // Original sums
+                    };
+                  }
+                  colorCounts[key].count++;
+                  colorCounts[key].sumR += or;
+                  colorCounts[key].sumG += og;
+                  colorCounts[key].sumB += ob;
+                }
+                totalPixels++;
+              }
+            }
+
+            if (opaqueCount < totalPixels * 0.25) {
+              coreGrid[y][x] = null;
+              continue;
+            }
+
+            // Find Dominant Color using Contrast Data
+            let bestColor = null;
+            let candidates = Object.values(colorCounts).sort((a, b) => b.count - a.count);
+
+            if (candidates.length > 0) {
+              bestColor = candidates[0];
+
+              // Feature Preservation (using Contrast values)
+              if (candidates.length > 1) {
+                const second = candidates[1];
+                const first = candidates[0];
+
+                if (second.count > totalPixels * 0.15) {
+                  const lum1 = 0.299 * first.cr + 0.587 * first.cg + 0.114 * first.cb;
+                  const lum2 = 0.299 * second.cr + 0.587 * second.cg + 0.114 * second.cb;
+
+                  // If second is significantly darker (e.g. eye on face), pick it
+                  if (lum1 - lum2 > 40) {
+                    bestColor = second;
+                  }
+                }
+              }
+            }
+
+            if (bestColor) {
+              // Resolve to Original Color (Average of accumulated original pixels)
+              let r = Math.round(bestColor.sumR / bestColor.count);
+              let g = Math.round(bestColor.sumG / bestColor.count);
+              let b = Math.round(bestColor.sumB / bestColor.count);
+
+              // Apply Palette
+              if (state.palette === "retro") {
+                r = Math.round(r / 32) * 32;
+                g = Math.round(g / 32) * 32;
+                b = Math.round(b / 32) * 32;
+              } else if (state.palette === "pico8") {
+                [r, g, b] = findNearestColor(r, g, b, PALETTES.pico8);
+              } else if (state.palette === "gameboy") {
+                const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+                let idx = Math.floor(brightness / 64);
+                if (idx > 3) idx = 3;
+                [r, g, b] = PALETTES.gameboy[idx];
+              } else if (state.palette === "nes") {
+                [r, g, b] = findNearestColor(r, g, b, PALETTES.nes);
+              }
+
+              coreGrid[y][x] = { r, g, b };
+            } else {
+              coreGrid[y][x] = null;
+            }
+          }
+        }
+
+        // 3. Handle Grid Expansion for Outline
+        let finalGrid = coreGrid;
+        let finalGridSize = gridSize;
+
+        if (state.outline) {
+          finalGridSize = gridSize + 2;
+          // Create larger grid filled with null
+          finalGrid = [];
+          for (let y = 0; y < finalGridSize; y++) {
+            finalGrid[y] = new Array(finalGridSize).fill(null);
+          }
+
+          // Copy core grid to center (offset by 1)
+          for (let y = 0; y < gridSize; y++) {
+            for (let x = 0; x < gridSize; x++) {
+              finalGrid[y + 1][x + 1] = coreGrid[y][x];
+            }
+          }
+        }
+
+        // 4. Render to Canvas
+        const pixelScale = state.renderSize / finalGridSize;
+        const startX = (w - finalGridSize * pixelScale) / 2;
+        const startY = (h - finalGridSize * pixelScale) / 2;
+
+        ctxPixel.save();
+        ctxPixel.imageSmoothingEnabled = false;
+
+        const isOpaque = (x, y) => {
+          if (x < 0 || x >= finalGridSize || y < 0 || y >= finalGridSize) return false;
+          return finalGrid[y][x] !== null;
+        };
+
+        // Pass 1: Outline
+        if (state.outline) {
+          ctxPixel.fillStyle = state.outlineColor;
+          for (let y = 0; y < finalGridSize; y++) {
+            for (let x = 0; x < finalGridSize; x++) {
+              if (!isOpaque(x, y)) {
+                // Check neighbors
+                if (isOpaque(x + 1, y) || isOpaque(x - 1, y) || isOpaque(x, y + 1) || isOpaque(x, y - 1)) {
+                  ctxPixel.fillRect(Math.floor(startX + x * pixelScale), Math.floor(startY + y * pixelScale), Math.ceil(pixelScale), Math.ceil(pixelScale));
+                }
+              }
+            }
+          }
+        }
+
+        // Pass 2: Colors
+        for (let y = 0; y < finalGridSize; y++) {
+          for (let x = 0; x < finalGridSize; x++) {
+            const p = finalGrid[y][x];
+            if (p) {
+              ctxPixel.fillStyle = `rgb(${p.r},${p.g},${p.b})`;
+              ctxPixel.fillRect(Math.floor(startX + x * pixelScale), Math.floor(startY + y * pixelScale), Math.ceil(pixelScale), Math.ceil(pixelScale));
+            }
+          }
+        }
+
+        ctxPixel.restore();
+      }
+
+      function updateDebug() {
+        if (!state.emoji) {
+          els.debug.textContent = "Select an emoji...";
+          return;
+        }
+        const effectiveGrid = state.outline ? state.gridSize + 2 : state.gridSize;
+        els.debug.textContent = `Code: U+${state.emoji.codePointAt(0).toString(16).toUpperCase()}\nGrid: ${effectiveGrid}x${effectiveGrid} (Base: ${
+          state.gridSize
+        })\nPalette: ${state.palette}`;
+      }
+
+      // Event Listeners
+      els.picker.addEventListener("emoji-click", (e) => {
+        state.emoji = e.detail.unicode;
+        render();
+      });
+
+      els.slider.addEventListener("input", (e) => {
+        state.renderSize = parseInt(e.target.value);
+        els.display.textContent = `${state.renderSize}px`;
+        render();
+      });
+
+      els.gridSelect.addEventListener("change", (e) => {
+        state.gridSize = parseInt(e.target.value);
+        render();
+      });
+
+      els.paletteSelect.addEventListener("change", (e) => {
+        state.palette = e.target.value;
+        render();
+      });
+
+      els.outlineToggle.addEventListener("change", (e) => {
+        state.outline = e.target.checked;
+        render();
+      });
+
+      els.outlineColor.addEventListener("input", (e) => {
+        state.outlineColor = e.target.value;
+        render();
+      });
+
+      els.contrastSlider.addEventListener("input", (e) => {
+        state.contrast = parseFloat(e.target.value);
+        els.contrastDisplay.textContent = state.contrast.toFixed(1);
+        render();
+      });
+
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fulfillment Center Tycoon</title>
+    <style>
+      body, html {
+          margin: 0;
+          padding: 0;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
+          background-color: #222;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          touch-action: none;
+          cursor: crosshair;
+      }
+      canvas {
+          display: block;
+      }
+      #ui-layer {
+          position: absolute;
+          top: 20px;
+          left: 20px;
+          color: #fff;
+          pointer-events: none;
+          background: rgba(0,0,0,0.8);
+          padding: 15px;
+          border-radius: 12px;
+          border: 1px solid #444;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+          z-index: 100;
+          min-width: 200px;
+      }
+      #score-display {
+          font-size: 36px;
+          font-weight: 800;
+          color: #f1c40f;
+          text-shadow: 2px 2px 0px #000;
+      }
+      .label {
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          color: #888;
+          margin-bottom: 2px;
+      }
+      .stat-row {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 5px;
+          font-size: 14px;
+          color: #ccc;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui-layer">
+      <div class="label">Current Funds</div>
+      <div id="score-display">$<span id="score">600</span></div>
+      <div class="stat-row">
+        <span>Box Cost:</span>
+        <span style="color: #ff6b6b">-$200</span>
+      </div>
+      <div class="stat-row">
+        <span>Item Value:</span>
+        <span style="color: #44ff44">+$100</span>
+      </div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const scoreEl = document.getElementById("score");
+
+      // Game State
+      let score = 600;
+      let lastTime = 0;
+      let items = [];
+      let packedItems = [];
+      let spawnTimer = 0;
+      let spawnInterval = 1000;
+      let feedbackEffects = [];
+
+      // Player State
+      let hasBox = true;
+      let mouseX = 0;
+      let mouseY = 0;
+
+      // Configuration
+      const FLOOR_COLOR = "#2a2a2a";
+      const CONVEYOR_COLOR = "#1a1a1a";
+      const CONVEYOR_BORDER_COLOR = "#f39c12";
+      const BOX_COLOR = "#d2b48c";
+      const BOX_SHADOW = "#8b5a2b";
+      const ZONE_SIZE = 200;
+
+      // Dimensions
+      let CONVEYOR_WIDTH = 300;
+      let CONVEYOR_LENGTH = 0;
+      let BOX_WIDTH = 180;
+      let BOX_HEIGHT = 130;
+      const ITEM_SPEED_BELT = 250;
+      const ITEM_SPEED_FALL = 450;
+      const ITEM_SIZE = 45;
+
+      const OBJECTS = ["🧸", "📱", "👟", "📚", "⌚", "🎮", "🧴", "🕶️", "📷", "🎁", "💊", "👕"];
+
+      const player = {
+        x: 0,
+        y: 0,
+        width: BOX_WIDTH,
+        height: BOX_HEIGHT,
+        targetX: 0,
+        targetY: 0,
+      };
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        CONVEYOR_WIDTH = Math.min(350, canvas.width * 0.4);
+        CONVEYOR_LENGTH = canvas.height * 0.55;
+
+        player.width = BOX_WIDTH;
+        player.height = BOX_HEIGHT;
+
+        if (player.x === 0) {
+          player.x = canvas.width / 2 - player.width / 2;
+          player.y = canvas.height - player.height - 50;
+          player.targetX = player.x;
+          player.targetY = player.y;
+        }
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      // Input Handling
+      function handleInput(clientX, clientY) {
+        mouseX = clientX;
+        mouseY = clientY;
+
+        let newX = clientX - player.width / 2;
+        let newY = clientY - player.height / 2;
+
+        // Clamp
+        if (newX < 0) newX = 0;
+        if (newX > canvas.width - player.width) newX = canvas.width - player.width;
+        if (newY < 0) newY = 0;
+        if (newY > canvas.height - player.height) newY = canvas.height - player.height;
+
+        player.targetX = newX;
+        player.targetY = newY;
+      }
+
+      canvas.addEventListener("mousemove", (e) => handleInput(e.clientX, e.clientY));
+      canvas.addEventListener(
+        "touchmove",
+        (e) => {
+          e.preventDefault();
+          handleInput(e.touches[0].clientX, e.touches[0].clientY);
+        },
+        { passive: false }
+      );
+
+      function spawnItem() {
+        const emoji = OBJECTS[Math.floor(Math.random() * OBJECTS.length)];
+        const beltLeft = (canvas.width - CONVEYOR_WIDTH) / 2;
+        const padding = 30;
+        const x = beltLeft + padding + Math.random() * (CONVEYOR_WIDTH - padding * 2);
+
+        items.push({
+          x: x,
+          y: -60,
+          emoji: emoji,
+          size: ITEM_SIZE,
+          rotation: (Math.random() - 0.5) * 0.5,
+          state: "belt",
+          fallScale: 1.0,
+        });
+
+        spawnInterval = Math.random() * 800 + 600;
+      }
+
+      function addFeedback(text, x, y, color, size = 36) {
+        feedbackEffects.push({ text, x, y, color, size, life: 1.0, velocityY: -1 });
+      }
+
+      function update(deltaTime) {
+        // Smooth player movement
+        player.x += (player.targetX - player.x) * 0.15;
+        player.y += (player.targetY - player.y) * 0.15;
+
+        // Zone Logic
+        checkZones();
+
+        spawnTimer += deltaTime;
+        if (spawnTimer > spawnInterval) {
+          spawnItem();
+          spawnTimer = 0;
+        }
+
+        // Feedback Effects
+        for (let i = feedbackEffects.length - 1; i >= 0; i--) {
+          let f = feedbackEffects[i];
+          f.life -= deltaTime / 800;
+          f.y += f.velocityY;
+          if (f.life <= 0) feedbackEffects.splice(i, 1);
+        }
+
+        // Update Items
+        for (let i = items.length - 1; i >= 0; i--) {
+          let item = items[i];
+
+          // State Transition: Belt -> Falling
+          if (item.state === "belt" && item.y > CONVEYOR_LENGTH) {
+            item.state = "falling";
+          }
+
+          // Movement Logic
+          if (item.state === "belt") {
+            item.y += (ITEM_SPEED_BELT * deltaTime) / 1000;
+          } else {
+            // Falling Logic
+            item.y += (ITEM_SPEED_FALL * deltaTime) / 1000;
+            if (item.fallScale > 0.7) {
+              item.fallScale -= (deltaTime / 1000) * 0.5;
+            }
+          }
+
+          // Collision Detection (Only if player has box)
+          if (hasBox && item.state === "falling") {
+            const itemCenterX = item.x;
+            const itemCenterY = item.y + item.size / 2;
+
+            // Box Hitbox
+            if (itemCenterY >= player.y + 10 && itemCenterY <= player.y + player.height - 10) {
+              if (itemCenterX >= player.x + 10 && itemCenterX <= player.x + player.width - 10) {
+                const relX = itemCenterX - player.x;
+                const relY = itemCenterY - player.y;
+
+                // Overlap Check
+                let overlap = false;
+                const safeDistance = ITEM_SIZE * 0.7;
+
+                for (let p of packedItems) {
+                  const dx = p.relX - relX;
+                  const dy = p.relY - relY;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  if (dist < safeDistance) {
+                    overlap = true;
+                    break;
+                  }
+                }
+
+                // Visual feedback only, score is calculated on ship
+                if (overlap) {
+                  addFeedback("⚠️", player.x + player.width / 2, player.y, "#ff4444");
+                }
+
+                packedItems.push({
+                  relX: relX,
+                  relY: relY,
+                  emoji: item.emoji,
+                  rotation: (Math.random() - 0.5) * 1.0,
+                  scale: 0,
+                  finalScale: item.fallScale,
+                  isBad: overlap,
+                });
+
+                items.splice(i, 1);
+                continue;
+              }
+            }
+          }
+
+          if (item.y > canvas.height) {
+            items.splice(i, 1);
+          }
+        }
+
+        packedItems.forEach((p) => {
+          if (p.scale < p.finalScale) p.scale += 0.15;
+        });
+      }
+
+      function checkZones() {
+        // 1. Shipping Zone (Bottom Right)
+        if (hasBox) {
+          if (mouseX > canvas.width - ZONE_SIZE && mouseY > canvas.height - ZONE_SIZE) {
+            shipBox();
+          }
+        }
+
+        // 2. Restock Zone (Bottom Left)
+        if (!hasBox) {
+          if (mouseX < ZONE_SIZE && mouseY > canvas.height - ZONE_SIZE) {
+            buyBox();
+          }
+        }
+      }
+
+      function shipBox() {
+        // Calculate Value
+        let boxValue = 0;
+        let validItems = 0;
+
+        packedItems.forEach((p) => {
+          if (!p.isBad) {
+            boxValue += 100;
+            validItems++;
+          } else {
+            boxValue -= 10; // Small penalty for broken items
+          }
+        });
+
+        if (packedItems.length === 0) return; // Don't ship empty air
+
+        score += boxValue;
+        scoreEl.innerText = score;
+
+        addFeedback(`SHIPPED! +$${boxValue}`, canvas.width - 150, canvas.height - 200, "#44ff44", 40);
+
+        // Reset
+        hasBox = false;
+        packedItems = [];
+      }
+
+      function buyBox() {
+        if (score >= 200) {
+          score -= 200;
+          scoreEl.innerText = score;
+          hasBox = true;
+          addFeedback("NEW BOX -$200", 150, canvas.height - 200, "#f1c40f", 40);
+
+          // Teleport box to mouse immediately so it doesn't slide from old position
+          player.x = mouseX - player.width / 2;
+          player.y = mouseY - player.height / 2;
+          player.targetX = player.x;
+          player.targetY = player.y;
+        } else {
+          addFeedback("INSUFFICIENT FUNDS", 150, canvas.height - 200, "#ff4444", 30);
+        }
+      }
+
+      function draw() {
+        // 1. Floor
+        ctx.fillStyle = FLOOR_COLOR;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 2. Draw Zones
+        drawZones();
+
+        // 3. Draw Player Box (BOTTOM LAYER)
+        if (hasBox) {
+          drawBox();
+        } else {
+          // Draw "Ghost" hand or indicator
+          ctx.fillStyle = "rgba(255,255,255,0.1)";
+          ctx.beginPath();
+          ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.3)";
+          ctx.stroke();
+        }
+
+        // 4. Draw Falling Items (MIDDLE LAYER)
+        items.forEach((item) => {
+          if (item.state === "falling") {
+            drawItem(item);
+          }
+        });
+
+        // 5. Draw Conveyor Belt (TOP LAYER)
+        drawConveyor();
+
+        // 6. Draw Items ON the belt (TOP TOP LAYER)
+        const beltX = (canvas.width - CONVEYOR_WIDTH) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(beltX, -100, CONVEYOR_WIDTH, CONVEYOR_LENGTH + 100);
+        ctx.clip();
+        items.forEach((item) => {
+          if (item.state === "belt") {
+            drawItem(item);
+          }
+        });
+        ctx.restore();
+
+        // 7. Feedback UI
+        drawFeedback();
+      }
+
+      function drawZones() {
+        // Restock Zone (Left)
+        ctx.fillStyle = "rgba(52, 152, 219, 0.2)";
+        ctx.fillRect(0, canvas.height - ZONE_SIZE, ZONE_SIZE, ZONE_SIZE);
+        ctx.strokeStyle = "#3498db";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, canvas.height - ZONE_SIZE, ZONE_SIZE, ZONE_SIZE);
+
+        ctx.save();
+        ctx.translate(ZONE_SIZE / 2, canvas.height - ZONE_SIZE / 2);
+        ctx.fillStyle = "#3498db";
+        ctx.font = "bold 20px Arial";
+        ctx.textAlign = "center";
+        if (!hasBox) {
+          ctx.fillText("GET BOX", 0, -15);
+          ctx.fillText("($200)", 0, 15);
+          // Pulse effect
+          ctx.globalAlpha = (Math.sin(Date.now() / 200) + 1) / 4;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(-ZONE_SIZE / 2, -ZONE_SIZE / 2, ZONE_SIZE, ZONE_SIZE);
+        } else {
+          ctx.globalAlpha = 0.5;
+          ctx.fillText("RESTOCK", 0, 0);
+        }
+        ctx.restore();
+
+        // Shipping Zone (Right)
+        ctx.fillStyle = "rgba(46, 204, 113, 0.2)";
+        ctx.fillRect(canvas.width - ZONE_SIZE, canvas.height - ZONE_SIZE, ZONE_SIZE, ZONE_SIZE);
+        ctx.strokeStyle = "#2ecc71";
+        ctx.strokeRect(canvas.width - ZONE_SIZE, canvas.height - ZONE_SIZE, ZONE_SIZE, ZONE_SIZE);
+
+        ctx.save();
+        ctx.translate(canvas.width - ZONE_SIZE / 2, canvas.height - ZONE_SIZE / 2);
+        ctx.fillStyle = "#2ecc71";
+        ctx.font = "bold 20px Arial";
+        ctx.textAlign = "center";
+        if (hasBox && packedItems.length > 0) {
+          ctx.fillText("SHIP IT", 0, -15);
+          ctx.fillText(">>>>>", 0, 15);
+          // Pulse effect
+          ctx.globalAlpha = (Math.sin(Date.now() / 200) + 1) / 4;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(-ZONE_SIZE / 2, -ZONE_SIZE / 2, ZONE_SIZE, ZONE_SIZE);
+        } else {
+          ctx.globalAlpha = 0.5;
+          ctx.fillText("SHIPPING", 0, 0);
+        }
+        ctx.restore();
+      }
+
+      function drawBox() {
+        // Shadow
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.beginPath();
+        ctx.ellipse(player.x + player.width / 2 + 15, player.y + player.height + 15, player.width / 2, 20, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Box Exterior
+        ctx.fillStyle = BOX_COLOR;
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+
+        // Box Interior
+        ctx.fillStyle = BOX_SHADOW;
+        const wall = 8;
+        ctx.fillRect(player.x + wall, player.y + wall, player.width - wall * 2, player.height - wall * 2);
+
+        // Packed Items (Clipped)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(player.x + wall, player.y + wall, player.width - wall * 2, player.height - wall * 2);
+        ctx.clip();
+
+        packedItems.forEach((p) => {
+          ctx.save();
+          ctx.translate(player.x + p.relX, player.y + p.relY);
+          ctx.rotate(p.rotation);
+          ctx.scale(p.scale, p.scale);
+
+          if (p.isBad) {
+            ctx.shadowColor = "red";
+            ctx.shadowBlur = 15;
+          } else {
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 2;
+          }
+
+          ctx.font = "30px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(p.emoji, 0, 0);
+
+          if (p.isBad) {
+            ctx.fillStyle = "rgba(255,0,0,0.8)";
+            ctx.font = "bold 24px Arial";
+            ctx.fillText("❌", 0, 0);
+          }
+          ctx.restore();
+        });
+        ctx.restore();
+
+        // Flaps
+        ctx.strokeStyle = "#a07040";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(player.x, player.y, player.width, player.height);
+
+        // Flap details
+        ctx.beginPath();
+        ctx.moveTo(player.x, player.y);
+        ctx.lineTo(player.x + 25, player.y + 25);
+        ctx.moveTo(player.x + player.width, player.y);
+        ctx.lineTo(player.x + player.width - 25, player.y + 25);
+        ctx.moveTo(player.x, player.y + player.height);
+        ctx.lineTo(player.x + 25, player.y + player.height - 25);
+        ctx.moveTo(player.x + player.width, player.y + player.height);
+        ctx.lineTo(player.x + player.width - 25, player.y + player.height - 25);
+        ctx.stroke();
+      }
+
+      function drawConveyor() {
+        const beltX = (canvas.width - CONVEYOR_WIDTH) / 2;
+
+        // Drop Shadow
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(beltX + 20, CONVEYOR_LENGTH, CONVEYOR_WIDTH - 40, 40);
+
+        // Belt Border
+        ctx.fillStyle = CONVEYOR_BORDER_COLOR;
+        ctx.fillRect(beltX - 15, -50, CONVEYOR_WIDTH + 30, CONVEYOR_LENGTH + 50);
+
+        // Belt Surface
+        ctx.fillStyle = CONVEYOR_COLOR;
+        ctx.fillRect(beltX, -50, CONVEYOR_WIDTH, CONVEYOR_LENGTH + 50);
+
+        // Moving Texture
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(beltX, -50, CONVEYOR_WIDTH, CONVEYOR_LENGTH + 50);
+        ctx.clip();
+
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 5;
+        const timeOffset = (Date.now() / 4) % 80;
+        for (let y = -100; y < CONVEYOR_LENGTH + 50; y += 80) {
+          let drawY = y + timeOffset;
+          ctx.beginPath();
+          ctx.moveTo(beltX, drawY - 20);
+          ctx.lineTo(beltX + CONVEYOR_WIDTH / 2, drawY + 20);
+          ctx.lineTo(beltX + CONVEYOR_WIDTH, drawY - 20);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // End Roller
+        const gradient = ctx.createLinearGradient(0, CONVEYOR_LENGTH - 15, 0, CONVEYOR_LENGTH + 15);
+        gradient.addColorStop(0, "#444");
+        gradient.addColorStop(0.5, "#777");
+        gradient.addColorStop(1, "#444");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(beltX - 20, CONVEYOR_LENGTH - 15, CONVEYOR_WIDTH + 40, 30);
+
+        // Side rails
+        ctx.fillStyle = "#d35400";
+        ctx.fillRect(beltX - 15, -50, 10, CONVEYOR_LENGTH + 50);
+        ctx.fillRect(beltX + CONVEYOR_WIDTH + 5, -50, 10, CONVEYOR_LENGTH + 50);
+      }
+
+      function drawItem(item) {
+        ctx.save();
+        ctx.translate(item.x, item.y);
+        ctx.rotate(item.rotation);
+
+        const scale = item.state === "falling" ? item.fallScale : 1.0;
+        ctx.scale(scale, scale);
+
+        let shadowY = 5;
+        let shadowBlur = 5;
+        let shadowAlpha = 0.3;
+
+        if (item.state === "falling") {
+          shadowY = 15 + (1 - item.fallScale) * 50;
+          shadowBlur = 10;
+          shadowAlpha = 0.3 * item.fallScale;
+        }
+
+        ctx.shadowColor = `rgba(0,0,0,${shadowAlpha})`;
+        ctx.shadowBlur = shadowBlur;
+        ctx.shadowOffsetY = shadowY;
+
+        ctx.font = `${item.size}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(item.emoji, 0, 0);
+        ctx.restore();
+      }
+
+      function drawFeedback() {
+        feedbackEffects.forEach((f) => {
+          ctx.save();
+          ctx.globalAlpha = f.life;
+          ctx.fillStyle = f.color;
+          ctx.font = `900 ${f.size}px Arial`;
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 4;
+          ctx.strokeText(f.text, f.x, f.y);
+          ctx.fillText(f.text, f.x, f.y);
+          ctx.restore();
+        });
+      }
+
+      function loop(timestamp) {
+        let deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+        update(deltaTime);
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

@@ -6,6 +6,7 @@
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [CSV Visualizer](./csv-visualizer/)
 - [Emoji → Favicon](./emoji-to-favicon/)
+- [Emoji → Pixel Art](./emoji-to-pixel-art/)
 - [Euler to Quaternion](./euler-to-quaternion/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [Gemini Image Lab](./gemini-image-lab/)
@@ -17,6 +18,7 @@
 - [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
 - [Pitch detector](./pitch-detector/)
+- [Pointer Debugger](./pointer-debugger/)
 - [JSONL viewer](./jsonl-viewer)
 - [JSON → TypeScript](./json-to-typescript)
 - [JSON ↔ YAML](./json-to-yaml)
@@ -31,6 +33,7 @@
 
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
+- [Box It](./box-it/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard)
 - [Device Orientation API](./device-orientation-api/)
