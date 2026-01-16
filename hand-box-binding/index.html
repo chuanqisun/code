@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediaPipe Hand + Three.js Brick Mesh (Fixed Size)</title>
+    <style>
+      body {
+          margin: 0;
+          padding: 0;
+          background-color: #1e1e1e;
+          font-family: 'Segoe UI', sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          color: white;
+      }
+
+      h1 { margin: 10px 0; font-size: 1.2rem; }
+
+      .container {
+          position: relative;
+          width: 640px;
+          height: 480px;
+          background: #000;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      }
+
+      video {
+          position: absolute;
+          top: 0; left: 0;
+          width: 100%; height: 100%;
+          transform: rotateY(180deg);
+          object-fit: cover;
+      }
+
+      canvas {
+          position: absolute;
+          top: 0; left: 0;
+          width: 100%; height: 100%;
+          transform: rotateY(180deg);
+          pointer-events: none;
+      }
+
+      #three-canvas {
+          position: absolute;
+          top: 0; left: 0;
+          width: 100%; height: 100%;
+          transform: rotateY(180deg);
+          pointer-events: none;
+      }
+
+      button {
+          margin-top: 15px;
+          padding: 10px 20px;
+          background-color: #007bff;
+          color: white;
+          border: none;
+          border-radius: 5px;
+          cursor: pointer;
+      }
+      button:disabled { background-color: #555; }
+
+      .loading { color: #ffc107; margin-top: 5px; font-size: 0.9rem; }
+
+      .controls {
+          margin-top: 10px;
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: center;
+      }
+
+      label { font-size: 0.9rem; }
+      input[type="range"] { width: 100px; }
+      .control-group {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+      }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <h1>Hand Skeleton Rig with Fixed-Size Brick</h1>
+
+    <div class="container">
+      <video id="webcam" autoplay playsinline></video>
+      <canvas id="output_canvas"></canvas>
+      <canvas id="three-canvas"></canvas>
+    </div>
+
+    <div id="loadingMsg" class="loading">Loading MediaPipe Model...</div>
+    <button id="webcamButton" disabled>ENABLE WEBCAM</button>
+
+    <div class="controls">
+      <label> <input type="checkbox" id="showDebug" checked /> Show Debug Skeleton </label>
+      <div class="control-group">
+        <label>Opacity:</label>
+        <input type="range" id="opacity" min="0" max="100" value="80" />
+        <span id="opacityValue">80%</span>
+      </div>
+      <div class="control-group">
+        <label>Size:</label>
+        <input type="range" id="brickSize" min="10" max="50" value="20" />
+        <span id="sizeValue">0.20</span>
+      </div>
+    </div>
+
+    <script type="module">
+      import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+      import * as THREE from "three";
+
+      const video = document.getElementById("webcam");
+      const canvasElement = document.getElementById("output_canvas");
+      const canvasCtx = canvasElement.getContext("2d");
+      const threeCanvas = document.getElementById("three-canvas");
+      const enableWebcamButton = document.getElementById("webcamButton");
+      const loadingMsg = document.getElementById("loadingMsg");
+      const showDebugCheckbox = document.getElementById("showDebug");
+      const opacitySlider = document.getElementById("opacity");
+      const opacityValue = document.getElementById("opacityValue");
+      const brickSizeSlider = document.getElementById("brickSize");
+      const sizeValue = document.getElementById("sizeValue");
+
+      let handLandmarker = undefined;
+      let webcamRunning = false;
+      let lastVideoTime = -1;
+
+      // Fixed brick size (adjustable via slider)
+      let BRICK_SIZE = 0.2;
+
+      // --- THREE.JS SETUP (ISOMETRIC/ORTHOGRAPHIC) ---
+      const scene = new THREE.Scene();
+
+      // Orthographic camera for isometric view
+      const frustumSize = 1;
+      const aspect = 640 / 480;
+      const camera = new THREE.OrthographicCamera((frustumSize * aspect) / -2, (frustumSize * aspect) / 2, frustumSize / 2, frustumSize / -2, 0.01, 100);
+      camera.position.set(0, 0, 1);
+      camera.lookAt(0, 0, 0);
+
+      const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, alpha: true });
+      renderer.setSize(640, 480);
+
+      // Create Brick Mesh with fixed size
+      const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+      const material = new THREE.MeshPhongMaterial({
+        color: 0xff6b35,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        flatShading: false,
+      });
+
+      const brickMesh = new THREE.Mesh(geometry, material);
+      scene.add(brickMesh);
+
+      // Add lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(1, 1, 1);
+      scene.add(directionalLight);
+
+      // --- MEDIAPIPE SETUP ---
+      const createHandLandmarker = async () => {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            delegate: "GPU",
+          },
+          runningMode: "VIDEO",
+          numHands: 1,
+          minHandDetectionConfidence: 0.5,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        loadingMsg.style.display = "none";
+        enableWebcamButton.disabled = false;
+      };
+      createHandLandmarker();
+
+      // --- COORDINATE CONVERSION ---
+      function convertMediaPipeToThreeJS(landmarks, worldLandmarks) {
+        const points = [];
+
+        for (let i = 0; i < landmarks.length; i++) {
+          const screenLm = landmarks[i];
+          const worldLm = worldLandmarks[i];
+
+          // Convert normalized screen coords to orthographic space
+          const x = (screenLm.x * 2 - 1) * ((frustumSize * aspect) / 2);
+          const y = -(screenLm.y * 2 - 1) * (frustumSize / 2);
+          const z = -worldLm.z;
+
+          points.push(new THREE.Vector3(x, y, z));
+        }
+
+        return points;
+      }
+
+      // --- POSITION AND ORIENT BRICK (FIXED SIZE) ---
+      function positionAndOrientBrick(mesh, handPoints) {
+        if (handPoints.length === 0) return;
+
+        // Calculate center of hand (using bounding box center)
+        const bbox = new THREE.Box3().setFromPoints(handPoints);
+        const center = new THREE.Vector3();
+        bbox.getCenter(center);
+
+        // Position mesh at hand center
+        mesh.position.copy(center);
+
+        // Set FIXED scale (uniform in all dimensions)
+        mesh.scale.set(BRICK_SIZE, BRICK_SIZE, BRICK_SIZE);
+
+        // Calculate orientation from hand landmarks
+        if (handPoints.length >= 18) {
+          const wrist = handPoints[0];
+          const indexMCP = handPoints[5];
+          const pinkyMCP = handPoints[17];
+
+          // Calculate hand basis vectors
+          const forward = new THREE.Vector3().subVectors(indexMCP, wrist).normalize();
+          const side = new THREE.Vector3().subVectors(pinkyMCP, wrist).normalize();
+          const up = new THREE.Vector3().crossVectors(forward, side).normalize();
+
+          // Recompute side to ensure orthogonality
+          side.crossVectors(up, forward).normalize();
+
+          // Create rotation matrix
+          const rotMatrix = new THREE.Matrix4();
+          rotMatrix.makeBasis(side, up, forward);
+
+          // Apply rotation
+          mesh.rotation.setFromRotationMatrix(rotMatrix);
+        }
+
+        mesh.visible = true;
+      }
+
+      // --- UI CONTROLS ---
+      opacitySlider.addEventListener("input", (e) => {
+        const value = e.target.value;
+        opacityValue.textContent = value + "%";
+        brickMesh.material.opacity = value / 100;
+      });
+
+      brickSizeSlider.addEventListener("input", (e) => {
+        BRICK_SIZE = e.target.value / 100;
+        sizeValue.textContent = BRICK_SIZE.toFixed(2);
+      });
+
+      // --- MAIN LOOP ---
+      async function predictWebcam() {
+        if (canvasElement.width !== video.videoWidth || canvasElement.height !== video.videoHeight) {
+          canvasElement.width = video.videoWidth;
+          canvasElement.height = video.videoHeight;
+          renderer.setSize(video.videoWidth, video.videoHeight);
+
+          // Update orthographic camera aspect
+          const newAspect = video.videoWidth / video.videoHeight;
+          camera.left = (frustumSize * newAspect) / -2;
+          camera.right = (frustumSize * newAspect) / 2;
+          camera.top = frustumSize / 2;
+          camera.bottom = frustumSize / -2;
+          camera.updateProjectionMatrix();
+        }
+
+        let startTimeMs = performance.now();
+
+        if (lastVideoTime !== video.currentTime) {
+          lastVideoTime = video.currentTime;
+          const results = handLandmarker.detectForVideo(video, startTimeMs);
+
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+          if (results.landmarks && results.landmarks.length > 0) {
+            const landmarks = results.landmarks[0];
+            const worldLandmarks = results.worldLandmarks[0];
+
+            // Draw Debug Skeleton (optional)
+            if (showDebugCheckbox.checked) {
+              drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                color: "#00FF00",
+                lineWidth: 2,
+              });
+              drawLandmarks(canvasCtx, landmarks, {
+                color: "#FF0000",
+                lineWidth: 1,
+                radius: 3,
+              });
+            }
+
+            // Convert landmarks to Three.js space
+            const handPoints = convertMediaPipeToThreeJS(landmarks, worldLandmarks);
+
+            // Position and orient brick with FIXED size
+            positionAndOrientBrick(brickMesh, handPoints);
+          } else {
+            brickMesh.visible = false;
+          }
+
+          renderer.render(scene, camera);
+        }
+
+        if (webcamRunning) {
+          window.requestAnimationFrame(predictWebcam);
+        }
+      }
+
+      // --- WEBCAM BUTTON ---
+      function enableCam(event) {
+        if (!handLandmarker) {
+          alert("Please wait for model to load");
+          return;
+        }
+
+        if (webcamRunning === true) {
+          webcamRunning = false;
+          enableWebcamButton.innerText = "ENABLE WEBCAM";
+          const stream = video.srcObject;
+          const tracks = stream.getTracks();
+          tracks.forEach((track) => track.stop());
+          video.srcObject = null;
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+          renderer.clear();
+        } else {
+          webcamRunning = true;
+          enableWebcamButton.innerText = "DISABLE WEBCAM";
+          const constraints = { video: { width: 640, height: 480 } };
+          navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+            video.srcObject = stream;
+            video.addEventListener("loadeddata", predictWebcam);
+          });
+        }
+      }
+
+      enableWebcamButton.addEventListener("click", enableCam);
+    </script>
+  </body>
+</html>
