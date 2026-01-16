@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinite Horizon Braille Scene</title>
+    <style>
+      body {
+          background-color: #05000a;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          margin: 0;
+          font-family: "Courier New", Courier, monospace;
+          overflow: hidden;
+      }
+      #canvas {
+          line-height: 1.0;
+          letter-spacing: 0;
+          white-space: pre;
+          background: #000;
+          padding: 20px;
+          border: 1px solid #333;
+          box-shadow: 0 0 60px rgba(188, 19, 254, 0.1);
+          font-weight: bold;
+      }
+      /* Color definitions */
+      .g { color: #bc13fe; opacity: 0.5; } /* Ground Purple */
+      .c { color: #00ff41; text-shadow: 0 0 8px rgba(0, 255, 65, 0.9); } /* Cube Green */
+
+      #ruler {
+          visibility: hidden;
+          position: absolute;
+          white-space: pre;
+          font-family: "Courier New", Courier, monospace;
+      }
+      .ui {
+          margin-top: 15px;
+          font-size: 10px;
+          letter-spacing: 2px;
+          color: #555;
+          text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ruler">⣿</div>
+    <div id="canvas"></div>
+    <div class="ui">Infinite Horizon // Vanishing Point Render</div>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ruler = document.getElementById("ruler");
+
+      const COLS = 80;
+      const ROWS = 45;
+
+      let aspectCorrection = 1.0;
+      let lastTime = 0;
+
+      let groundOffset = 0;
+      let cubeAngleX = 0;
+      let cubeAngleY = 0;
+
+      const dotMask = [
+        [0x1, 0x8],
+        [0x2, 0x10],
+        [0x4, 0x20],
+        [0x40, 0x80],
+      ];
+
+      const cubePoints = [
+        [-1, -1, 1],
+        [1, -1, 1],
+        [1, 1, 1],
+        [-1, 1, 1],
+        [-1, -1, -1],
+        [1, -1, -1],
+        [1, 1, -1],
+        [-1, 1, -1],
+      ];
+
+      const cubeFaces = [
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [2, 3, 7, 6],
+        [0, 3, 7, 4],
+        [1, 2, 6, 5],
+      ];
+
+      const cubeEdges = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 0],
+        [4, 5],
+        [5, 6],
+        [6, 7],
+        [7, 4],
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7],
+      ];
+
+      function calibrate() {
+        const rect = ruler.getBoundingClientRect();
+        aspectCorrection = rect.height / 4 / (rect.width / 2);
+      }
+
+      // --- PROJECTION 1: PERSPECTIVE (Ground) ---
+      function projectPerspective(x, y, z) {
+        const fov = 300;
+        const viewerDist = 2.5;
+        const horizonY = (ROWS * 4) / 2 - 40; // Shift horizon up slightly
+
+        // Prevent division by zero or negative Z behind camera
+        const depth = Math.max(0.1, z + viewerDist);
+        const scale = fov / depth;
+
+        const px = x * scale + (COLS * 2) / 2;
+        const py = (y * scale) / aspectCorrection + horizonY;
+
+        return [px, py, scale];
+      }
+
+      // --- PROJECTION 2: ISOMETRIC (Cube) ---
+      function projectIsometric(x, y, z) {
+        const scale = 32;
+        const cx = (COLS * 2) / 2;
+        const cy = (ROWS * 4) / 2;
+        const yOffset = -10;
+        const px = x * scale + cx;
+        const py = (y * scale) / aspectCorrection + cy + yOffset;
+        return [px, py];
+      }
+
+      function drawLine(grid, p1, p2, type, occlusionMask) {
+        // Clip lines that are behind the camera
+        if (type === 1 && (p1[2] < 0 || p2[2] < 0)) return;
+
+        let x0 = Math.round(p1[0]),
+          y0 = Math.round(p1[1]);
+        let x1 = Math.round(p2[0]),
+          y1 = Math.round(p2[1]);
+
+        let dx = Math.abs(x1 - x0),
+          sx = x0 < x1 ? 1 : -1;
+        let dy = -Math.abs(y1 - y0),
+          sy = y0 < y1 ? 1 : -1;
+        let err = dx + dy;
+
+        while (true) {
+          if (x0 >= 0 && x0 < COLS * 2 && y0 >= 0 && y0 < ROWS * 4) {
+            let isOccluded = false;
+            if (type === 1 && occlusionMask) {
+              if (occlusionMask[y0] && occlusionMask[y0][x0]) {
+                isOccluded = true;
+              }
+            }
+
+            if (!isOccluded) {
+              const charX = Math.floor(x0 / 2);
+              const charY = Math.floor(y0 / 4);
+              const mask = dotMask[y0 % 4][x0 % 2];
+
+              if (type === 1) grid[charY][charX].ground |= mask;
+              if (type === 2) grid[charY][charX].cube |= mask;
+            }
+          }
+          if (x0 === x1 && y0 === y1) break;
+          let e2 = 2 * err;
+          if (e2 >= dy) {
+            err += dy;
+            x0 += sx;
+          }
+          if (e2 <= dx) {
+            err += dx;
+            y0 += sy;
+          }
+        }
+      }
+
+      function fillPolygonMask(maskGrid, vertices) {
+        let minY = Infinity,
+          maxY = -Infinity;
+        vertices.forEach((v) => {
+          if (v[1] < minY) minY = Math.floor(v[1]);
+          if (v[1] > maxY) maxY = Math.floor(v[1]);
+        });
+        minY = Math.max(0, minY);
+        maxY = Math.min(ROWS * 4 - 1, maxY);
+
+        for (let y = minY; y <= maxY; y++) {
+          let nodes = [];
+          let j = vertices.length - 1;
+          for (let i = 0; i < vertices.length; i++) {
+            let yi = vertices[i][1],
+              yj = vertices[j][1];
+            let xi = vertices[i][0],
+              xj = vertices[j][0];
+            if ((yi < y && yj >= y) || (yj < y && yi >= y)) {
+              nodes.push(xi + ((y - yi) / (yj - yi)) * (xj - xi));
+            }
+            j = i;
+          }
+          nodes.sort((a, b) => a - b);
+          for (let i = 0; i < nodes.length; i += 2) {
+            if (nodes[i + 1] === undefined) break;
+            let startX = Math.ceil(nodes[i]);
+            let endX = Math.floor(nodes[i + 1]);
+            startX = Math.max(0, startX);
+            endX = Math.min(COLS * 2 - 1, endX);
+            for (let x = startX; x <= endX; x++) {
+              if (!maskGrid[y]) maskGrid[y] = [];
+              maskGrid[y][x] = 1;
+            }
+          }
+        }
+      }
+
+      function rotatePoint(x, y, z, angX, angY) {
+        let tx = x * Math.cos(angY) - z * Math.sin(angY);
+        let tz = z * Math.cos(angY) + x * Math.sin(angY);
+        x = tx;
+        z = tz;
+        let ty = y * Math.cos(angX) - z * Math.sin(angX);
+        tz = z * Math.cos(angX) + y * Math.sin(angX);
+        y = ty;
+        z = tz;
+        return [x, y, z];
+      }
+
+      function update(timestamp) {
+        const deltaTime = (timestamp - lastTime) / 1000;
+        lastTime = timestamp;
+
+        let grid = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => ({ ground: 0, cube: 0 })));
+        let occlusionMask = [];
+
+        // --- 1. CUBE & MASK ---
+        cubeAngleX += deltaTime * 1.0;
+        cubeAngleY += deltaTime * 1.6;
+        const size = 0.7;
+
+        const projectedVerts = cubePoints.map((p) => {
+          const r = rotatePoint(p[0] * size, p[1] * size, p[2] * size, cubeAngleX, cubeAngleY);
+          return projectIsometric(r[0], r[1], r[2]);
+        });
+
+        cubeFaces.forEach((faceIndices) => {
+          const poly = faceIndices.map((i) => projectedVerts[i]);
+          fillPolygonMask(occlusionMask, poly);
+        });
+
+        cubeEdges.forEach((edge) => {
+          drawLine(grid, projectedVerts[edge[0]], projectedVerts[edge[1]], 2, null);
+        });
+
+        // --- 2. GROUND (Infinite Horizon) ---
+        const speed = 8.0;
+        const spacing = 2.0;
+        groundOffset += deltaTime * speed;
+        if (groundOffset > spacing) groundOffset -= spacing;
+        const groundY = 2.0;
+        const maxDrawDistance = 80; // Draw much further back
+
+        // Longitudinal lines (Verticals converging)
+        // We draw them from Z=0 to Z=maxDrawDistance
+        for (let x = -40; x <= 40; x += spacing * 2) {
+          const p1 = projectPerspective(x, groundY, 0);
+          const p2 = projectPerspective(x, groundY, maxDrawDistance);
+          drawLine(grid, p1, p2, 1, occlusionMask);
+        }
+
+        // Latitudinal lines (Horizontals moving)
+        // We use a non-linear loop or just a high count to get density at horizon
+        for (let z = 0; z <= maxDrawDistance; z += spacing) {
+          const zPos = z - groundOffset;
+          if (zPos < 0) continue;
+
+          // Optimization: Don't draw lines that are too far and merge into a solid block
+          // or too wide off screen
+          const p1 = projectPerspective(-40, groundY, zPos);
+          const p2 = projectPerspective(40, groundY, zPos);
+          drawLine(grid, p1, p2, 1, occlusionMask);
+        }
+
+        // --- 3. OUTPUT ---
+        let html = "";
+        for (let y = 0; y < ROWS; y++) {
+          let currentSpanClass = "";
+          let lineBuffer = "";
+
+          for (let x = 0; x < COLS; x++) {
+            const cell = grid[y][x];
+            let spanClass = "";
+            if (cell.cube > 0) spanClass = "c";
+            else if (cell.ground > 0) spanClass = "g";
+
+            if (spanClass !== currentSpanClass) {
+              if (currentSpanClass !== "") lineBuffer += "</span>";
+              if (spanClass !== "") lineBuffer += `<span class="${spanClass}">`;
+              currentSpanClass = spanClass;
+            }
+            const combinedMask = cell.ground | cell.cube;
+            lineBuffer += String.fromCharCode(0x2800 + combinedMask);
+          }
+          if (currentSpanClass !== "") lineBuffer += "</span>";
+          html += lineBuffer + "\n";
+        }
+
+        canvas.innerHTML = html;
+        requestAnimationFrame(update);
+      }
+
+      window.addEventListener("resize", calibrate);
+      setTimeout(() => {
+        calibrate();
+        requestAnimationFrame(update);
+      }, 50);
+    </script>
+  </body>
+</html>
