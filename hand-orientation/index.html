@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stable Hand Orientation (Video Mode)</title>
+    <style>
+      body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background-color: #1e1e1e;
+          color: #f0f0f0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin: 0;
+          padding: 20px;
+      }
+
+      h1 { margin-bottom: 10px; font-size: 1.5rem; }
+
+      .container {
+          position: relative;
+          width: 640px;
+          height: 480px;
+          background: #000;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      }
+
+      /* Mirror the video for natural interaction */
+      video, canvas {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          transform: rotateY(180deg);
+      }
+
+      .hud {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          width: 640px;
+          margin-top: 15px;
+      }
+
+      .hud-item {
+          background: #2d2d2d;
+          padding: 10px;
+          border-radius: 8px;
+          text-align: center;
+          border: 1px solid #3d3d3d;
+      }
+
+      .hud-label { font-size: 0.8rem; color: #aaa; margin-bottom: 4px; }
+      .hud-value { font-size: 1.2rem; font-family: monospace; color: #4caf50; font-weight: bold; }
+
+      button {
+          margin-top: 20px;
+          padding: 12px 24px;
+          background-color: #007bff;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: background 0.2s;
+      }
+
+      button:disabled { background-color: #555; cursor: not-allowed; }
+      button:hover:not(:disabled) { background-color: #0056b3; }
+
+      .loading { color: #ffc107; font-size: 0.9rem; margin-top: 10px; display: none;}
+    </style>
+
+    <!-- Import MediaPipe Drawing Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  </head>
+  <body>
+    <h1>Hand Orientation (Quaternion)</h1>
+
+    <div class="container">
+      <video id="webcam" autoplay playsinline></video>
+      <canvas id="output_canvas"></canvas>
+    </div>
+
+    <div class="hud">
+      <div class="hud-item">
+        <div class="hud-label">X</div>
+        <div id="qx" class="hud-value">0.00</div>
+      </div>
+      <div class="hud-item">
+        <div class="hud-label">Y</div>
+        <div id="qy" class="hud-value">0.00</div>
+      </div>
+      <div class="hud-item">
+        <div class="hud-label">Z</div>
+        <div id="qz" class="hud-value">0.00</div>
+      </div>
+      <div class="hud-item">
+        <div class="hud-label">W</div>
+        <div id="qw" class="hud-value">1.00</div>
+      </div>
+    </div>
+
+    <div id="loadingMsg" class="loading">Loading MediaPipe Models...</div>
+    <button id="webcamButton" disabled>ENABLE WEBCAM</button>
+
+    <script type="module">
+      import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      const video = document.getElementById("webcam");
+      const canvasElement = document.getElementById("output_canvas");
+      const canvasCtx = canvasElement.getContext("2d");
+      const enableWebcamButton = document.getElementById("webcamButton");
+      const loadingMsg = document.getElementById("loadingMsg");
+
+      let handLandmarker = undefined;
+      let webcamRunning = false;
+      let lastVideoTime = -1;
+
+      // --- 1. Initialize MediaPipe (Video Mode) ---
+      const createHandLandmarker = async () => {
+        loadingMsg.style.display = "block";
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+            delegate: "GPU",
+          },
+          runningMode: "VIDEO", // Explicitly set to VIDEO for smooth tracking
+          numHands: 1,
+        });
+
+        loadingMsg.style.display = "none";
+        enableWebcamButton.disabled = false;
+      };
+      createHandLandmarker();
+
+      // --- 2. Math Helpers (Vector & Quaternion) ---
+      const sub = (v1, v2) => ({ x: v1.x - v2.x, y: v1.y - v2.y, z: v1.z - v2.z });
+      const normalize = (v) => {
+        const len = Math.sqrt(v.x ** 2 + v.y ** 2 + v.z ** 2);
+        return len === 0 ? { x: 0, y: 0, z: 0 } : { x: v.x / len, y: v.y / len, z: v.z / len };
+      };
+      const cross = (a, b) => ({
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+      });
+
+      // Convert 3x3 Rotation Matrix to Quaternion
+      function matrixToQuaternion(m) {
+        const trace = m[0][0] + m[1][1] + m[2][2];
+        let q = { x: 0, y: 0, z: 0, w: 1 };
+
+        if (trace > 0) {
+          const s = 0.5 / Math.sqrt(trace + 1.0);
+          q.w = 0.25 / s;
+          q.x = (m[2][1] - m[1][2]) * s;
+          q.y = (m[0][2] - m[2][0]) * s;
+          q.z = (m[1][0] - m[0][1]) * s;
+        } else {
+          if (m[0][0] > m[1][1] && m[0][0] > m[2][2]) {
+            const s = 2.0 * Math.sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]);
+            q.w = (m[2][1] - m[1][2]) / s;
+            q.x = 0.25 * s;
+            q.y = (m[0][1] + m[1][0]) / s;
+            q.z = (m[0][2] + m[2][0]) / s;
+          } else if (m[1][1] > m[2][2]) {
+            const s = 2.0 * Math.sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]);
+            q.w = (m[0][2] - m[2][0]) / s;
+            q.x = (m[0][1] + m[1][0]) / s;
+            q.y = 0.25 * s;
+            q.z = (m[1][2] + m[2][1]) / s;
+          } else {
+            const s = 2.0 * Math.sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]);
+            q.w = (m[1][0] - m[0][1]) / s;
+            q.x = (m[0][2] + m[2][0]) / s;
+            q.y = (m[1][2] + m[2][1]) / s;
+            q.z = 0.25 * s;
+          }
+        }
+        return q;
+      }
+
+      // --- 3. Calculate Orientation from Landmarks ---
+      function getHandOrientation(landmarks) {
+        const wrist = landmarks[0];
+        const indexMCP = landmarks[5];
+        const pinkyMCP = landmarks[17];
+
+        // Define local coordinate system for the hand
+        // Y-axis: Wrist to Index (approximate forward direction of hand)
+        let yAxis = normalize(sub(indexMCP, wrist));
+
+        // Temporary vector to find normal
+        let tempVec = normalize(sub(pinkyMCP, wrist));
+
+        // Z-axis: Normal to the palm (Cross product of Y and Temp)
+        let zAxis = normalize(cross(yAxis, tempVec));
+
+        // X-axis: Right vector (Cross product of Y and Z)
+        let xAxis = normalize(cross(yAxis, zAxis));
+
+        // Re-calculate Y to ensure orthogonality
+        yAxis = cross(zAxis, xAxis);
+
+        // Create Rotation Matrix
+        const matrix = [
+          [xAxis.x, yAxis.x, zAxis.x],
+          [xAxis.y, yAxis.y, zAxis.y],
+          [xAxis.z, yAxis.z, zAxis.z],
+        ];
+
+        return {
+          quaternion: matrixToQuaternion(matrix),
+          axes: { x: xAxis, y: yAxis, z: zAxis },
+        };
+      }
+
+      // --- 4. Drawing Helper ---
+      function drawAxis(ctx, origin, axis, color, length = 80) {
+        ctx.beginPath();
+        ctx.moveTo(origin.x, origin.y);
+        // Note: We invert Y for drawing because canvas Y grows downwards
+        ctx.lineTo(origin.x + axis.x * length, origin.y + axis.y * length);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
+
+      // --- 5. Main Loop ---
+      async function predictWebcam() {
+        // Resize canvas to match video stream
+        if (canvasElement.width !== video.videoWidth || canvasElement.height !== video.videoHeight) {
+          canvasElement.width = video.videoWidth;
+          canvasElement.height = video.videoHeight;
+        }
+
+        let startTimeMs = performance.now();
+
+        // Only detect if the video frame has changed
+        if (lastVideoTime !== video.currentTime) {
+          lastVideoTime = video.currentTime;
+
+          // Detect
+          const results = handLandmarker.detectForVideo(video, startTimeMs);
+
+          // Clear Canvas
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+          if (results.landmarks && results.landmarks.length > 0) {
+            // 1. Draw Skeleton
+            for (const landmarks of results.landmarks) {
+              drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                color: "#00FF00",
+                lineWidth: 3,
+              });
+              drawLandmarks(canvasCtx, landmarks, { color: "#FF0000", lineWidth: 1, radius: 3 });
+            }
+
+            // 2. Calculate & Draw Orientation
+            // We use worldLandmarks for better 3D math, but screen landmarks for drawing origin
+            const worldLms = results.worldLandmarks[0];
+            const screenLms = results.landmarks[0];
+
+            const { quaternion, axes } = getHandOrientation(worldLms);
+
+            // Update HUD
+            document.getElementById("qx").innerText = quaternion.x.toFixed(2);
+            document.getElementById("qy").innerText = quaternion.y.toFixed(2);
+            document.getElementById("qz").innerText = quaternion.z.toFixed(2);
+            document.getElementById("qw").innerText = quaternion.w.toFixed(2);
+
+            // Draw 3D Axis on Wrist
+            const wristScreen = {
+              x: screenLms[0].x * canvasElement.width,
+              y: screenLms[0].y * canvasElement.height,
+            };
+
+            // Project 3D axes to 2D (Simple orthographic projection for visualization)
+            // We negate Y here because 3D world Y is up, but Canvas Y is down
+            drawAxis(canvasCtx, wristScreen, { x: axes.x.x, y: -axes.x.y }, "red"); // X
+            drawAxis(canvasCtx, wristScreen, { x: axes.y.x, y: -axes.y.y }, "green"); // Y
+            drawAxis(canvasCtx, wristScreen, { x: axes.z.x, y: -axes.z.y }, "blue"); // Z
+          }
+        }
+
+        if (webcamRunning) {
+          window.requestAnimationFrame(predictWebcam);
+        }
+      }
+
+      // --- 6. Button Logic ---
+      function enableCam(event) {
+        if (!handLandmarker) {
+          alert("Please wait for model to load");
+          return;
+        }
+
+        if (webcamRunning === true) {
+          webcamRunning = false;
+          enableWebcamButton.innerText = "ENABLE WEBCAM";
+          const stream = video.srcObject;
+          const tracks = stream.getTracks();
+          tracks.forEach((track) => track.stop());
+          video.srcObject = null;
+          canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        } else {
+          webcamRunning = true;
+          enableWebcamButton.innerText = "DISABLE WEBCAM";
+
+          const constraints = { video: { width: 640, height: 480 } };
+
+          navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+            video.srcObject = stream;
+            video.addEventListener("loadeddata", predictWebcam);
+          });
+        }
+      }
+
+      enableWebcamButton.addEventListener("click", enableCam);
+    </script>
+  </body>
+</html>

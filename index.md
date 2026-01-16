@@ -43,6 +43,7 @@
 - [Dot grid field](./dot-grid-field/)
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
+- [Hand orientation](./hand-orientation/)
 - [Head tracking](./head-tracking/)
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [HumanGPT](https://chuanqisun.github.io/human-gpt/)
