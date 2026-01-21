@@ -17,6 +17,7 @@
 - [Markdown preview](./markdown-preview)
 - [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
+- [PDF → Markdown](./pdf-to-md/)
 - [Pitch detector](./pitch-detector/)
 - [Pointer Debugger](./pointer-debugger/)
 - [JSONL viewer](./jsonl-viewer)
