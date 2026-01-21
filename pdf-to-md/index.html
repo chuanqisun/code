@@ -1,21 +1,130 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF→MD</title>
     <style>
-      body { max-width: 900px; margin: 0 auto; padding: 10px; font-family: monospace; }
-      #drop-zone { border: 2px dashed #999; padding: 20px; text-align: center; cursor: pointer; margin: 10px 0; }
-      #drop-zone.dragover { background: #eee; }
-      .result-card { border: 1px solid #ccc; margin: 5px 0; padding: 5px; }
-      .result-header { display: flex; justify-content: space-between; align-items: center; }
-      .result-content { max-height: 400px; overflow: auto; border-top: 1px solid #eee; padding: 5px; margin-top: 5px; }
-      .result-content.collapsed { display: none; }
-      pre { margin: 0; white-space: pre-wrap; font-size: 12px; }
-      .hidden { display: none; }
-      input[type="password"] { width: 400px; }
-      button { font-size: 11px; }
+        :root {
+            color-scheme: light dark;
+        }
+        
+        body { 
+            max-width: 900px; 
+            margin: 0 auto; 
+            padding: 10px; 
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        h3 { 
+            margin: 10px 0;
+            font-weight: normal;
+        }
+        
+        .header-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        input[type="password"] { 
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 4px;
+            width: 350px;
+        }
+        
+        button {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            padding: 4px 8px;
+            cursor: pointer;
+            border: 1px solid;
+        }
+        
+        #drop-zone { 
+            border: 2px dashed;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            margin: 10px 0;
+            background: canvas;
+        }
+        
+        #drop-zone.dragover { 
+            opacity: 0.7;
+        }
+        
+        .result-card { 
+            border: 1px solid;
+            margin: 8px 0;
+            padding: 8px;
+            background: canvas;
+        }
+        
+        .result-header { 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .result-title {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .result-title b {
+            font-weight: normal;
+        }
+        
+        .status {
+            opacity: 0.7;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+        }
+        
+        .result-content { 
+            max-height: 400px;
+            overflow: auto;
+            border-top: 1px solid;
+            padding: 8px;
+            margin-top: 8px;
+            background: canvas;
+        }
+        
+        .result-content.collapsed { 
+            display: none;
+        }
+        
+        pre { 
+            margin: 0;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .hidden { 
+            display: none;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            #drop-zone:hover {
+                opacity: 0.9;
+            }
+        }
     </style>
     <script type="importmap">
       {
@@ -24,205 +133,211 @@
         }
       }
     </script>
-  </head>
-  <body>
-    <h3>PDF→MD</h3>
+</head>
+<body>
 
-    <div>
-      <label>API Key: <input type="password" id="api-key" placeholder="AIza..." /></label>
-      <button id="bulk-download" style="display:none;">Download All</button>
+    <h3>[ PDF → MARKDOWN CONVERTER ]</h3>
+
+    <div class="header-row">
+        <label>
+            api_key:
+            <input type="password" id="api-key" placeholder="AIza...">
+        </label>
+        <button id="bulk-download" style="display:none;">download_all</button>
     </div>
 
     <div id="drop-zone">
-      Drop PDFs or click to select
-      <input type="file" id="file-input" multiple accept="application/pdf" class="hidden" />
+        [ drop pdf files here or click to select ]
+        <input type="file" id="file-input" multiple accept="application/pdf" class="hidden">
     </div>
 
     <div id="results-container"></div>
 
     <script type="module">
-      import { GoogleGenAI } from "@google/genai";
+        import { GoogleGenAI } from "@google/genai";
 
-      const dropZone = document.getElementById("drop-zone");
-      const fileInput = document.getElementById("file-input");
-      const apiKeyInput = document.getElementById("api-key");
-      const resultsContainer = document.getElementById("results-container");
-      const bulkDownloadBtn = document.getElementById("bulk-download");
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const apiKeyInput = document.getElementById('api-key');
+        const resultsContainer = document.getElementById('results-container');
+        const bulkDownloadBtn = document.getElementById('bulk-download');
 
-      const results = new Map(); // filename -> markdown content
+        const results = new Map();
 
-      // Load API key
-      apiKeyInput.value = localStorage.getItem("gemini-api-key") || "";
-      apiKeyInput.addEventListener("change", () => {
-        localStorage.setItem("gemini-api-key", apiKeyInput.value.trim());
-      });
-
-      // Drag and Drop
-      dropZone.addEventListener("click", () => fileInput.click());
-      dropZone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZone.classList.add("dragover");
-      });
-      dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
-      dropZone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropZone.classList.remove("dragover");
-        handleFiles(e.dataTransfer.files);
-      });
-      fileInput.addEventListener("change", (e) => {
-        handleFiles(e.target.files);
-        fileInput.value = "";
-      });
-
-      // Bulk Download
-      bulkDownloadBtn.addEventListener("click", () => {
-        if (results.size === 0) return;
-
-        results.forEach((content, filename) => {
-          const blob = new Blob([content], { type: "text/markdown" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = filename.replace(".pdf", ".md");
-          a.click();
-          URL.revokeObjectURL(url);
+        // Load API key
+        apiKeyInput.value = localStorage.getItem('gemini-api-key') || '';
+        apiKeyInput.addEventListener('change', () => {
+            localStorage.setItem('gemini-api-key', apiKeyInput.value.trim());
         });
-      });
 
-      function handleFiles(files) {
-        const apiKey = apiKeyInput.value.trim();
-        if (!apiKey) {
-          alert("Enter API Key");
-          return;
+        // Drag and Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+            fileInput.value = '';
+        });
+
+        // Bulk Download
+        bulkDownloadBtn.addEventListener('click', () => {
+            if (results.size === 0) return;
+            
+            results.forEach((content, filename) => {
+                const blob = new Blob([content], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename.replace('.pdf', '.md');
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        });
+
+        function handleFiles(files) {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                alert("[ error: api key required ]");
+                return;
+            }
+
+            Array.from(files).forEach(file => {
+                if (file.type !== 'application/pdf') return;
+                processFile(file, apiKey);
+            });
         }
 
-        Array.from(files).forEach((file) => {
-          if (file.type !== "application/pdf") return;
-          processFile(file, apiKey);
-        });
-      }
+        async function processFile(file, apiKey) {
+            const ui = createResultCard(file.name);
+            resultsContainer.prepend(ui.card);
 
-      async function processFile(file, apiKey) {
-        const ui = createResultCard(file.name);
-        resultsContainer.prepend(ui.card);
+            try {
+                ui.setStatus('processing...');
+                const base64Data = await fileToBase64(file);
 
-        try {
-          ui.setStatus("...");
-          const base64Data = await fileToBase64(file);
+                const ai = new GoogleGenAI({ apiKey: apiKey });
+                
+                const systemInstruction = "Convert the entire pdf to markdown in its entirety. Omit header, cover, footer. But preserve tables and formatted text. Replace image with captions.";
 
-          const ai = new GoogleGenAI({ apiKey: apiKey });
+                const contents = [
+                    {
+                        role: "user",
+                        parts: [
+                            {
+                                inlineData: {
+                                    mimeType: 'application/pdf',
+                                    data: base64Data
+                                }
+                            }
+                        ]
+                    }
+                ];
 
-          const systemInstruction =
-            "Convert the entire pdf to markdown in its entirety. Omit header, cover, footer. But preserve tables and formatted text. Replace image with captions.";
+                const response = await ai.models.generateContent({
+                    model: "gemini-3-flash-preview",
+                    contents: contents,
+                    config: {
+                        thinkingConfig: {
+                          thinkingBudget: 0,
+                        },
+                        systemInstruction: systemInstruction,
+                    }
+                });
 
-          const contents = [
-            {
-              role: "user",
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: "application/pdf",
-                    data: base64Data,
-                  },
+                const markdown = response.text;
+                ui.setContent(markdown);
+                ui.setStatus('complete');
+                
+                results.set(file.name, markdown);
+                bulkDownloadBtn.style.display = 'inline';
+
+            } catch (error) {
+                console.error(error);
+                ui.setContent(`error: ${error.message}`);
+                ui.setStatus('failed');
+            }
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function createResultCard(filename) {
+            const card = document.createElement('div');
+            card.className = 'result-card';
+
+            const header = document.createElement('div');
+            header.className = 'result-header';
+            
+            const title = document.createElement('div');
+            title.className = 'result-title';
+            title.innerHTML = `<b>${filename}</b> <span class="status">pending</span>`;
+            
+            const btnGroup = document.createElement('div');
+            btnGroup.className = 'btn-group';
+            
+            const toggleBtn = document.createElement('button');
+            toggleBtn.innerText = 'expand';
+            toggleBtn.style.display = 'none';
+            
+            const downloadBtn = document.createElement('button');
+            downloadBtn.innerText = 'download';
+            downloadBtn.style.display = 'none';
+
+            btnGroup.appendChild(toggleBtn);
+            btnGroup.appendChild(downloadBtn);
+            
+            header.appendChild(title);
+            header.appendChild(btnGroup);
+
+            const contentArea = document.createElement('div');
+            contentArea.className = 'result-content collapsed';
+            const pre = document.createElement('pre');
+            contentArea.appendChild(pre);
+
+            card.appendChild(header);
+            card.appendChild(contentArea);
+
+            toggleBtn.addEventListener('click', () => {
+                contentArea.classList.toggle('collapsed');
+                toggleBtn.innerText = contentArea.classList.contains('collapsed') ? 'expand' : 'collapse';
+            });
+
+            downloadBtn.addEventListener('click', () => {
+                const blob = new Blob([pre.innerText], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename.replace('.pdf', '.md');
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+
+            return {
+                card,
+                setStatus: (text) => {
+                    title.querySelector('.status').innerText = text;
                 },
-              ],
-            },
-          ];
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: contents,
-            config: {
-              thinkingConfig: {
-                thinkingBudget: 0,
-              },
-              systemInstruction: systemInstruction,
-            },
-          });
-
-          const markdown = response.text;
-          ui.setContent(markdown);
-          ui.setStatus("✓");
-
-          results.set(file.name, markdown);
-          bulkDownloadBtn.style.display = "inline";
-        } catch (error) {
-          console.error(error);
-          ui.setContent(`Error: ${error.message}`);
-          ui.setStatus("✗");
+                setContent: (text) => {
+                    pre.innerText = text;
+                    toggleBtn.style.display = 'inline';
+                    downloadBtn.style.display = 'inline';
+                }
+            };
         }
-      }
-
-      function fileToBase64(file) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(",")[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      }
-
-      function createResultCard(filename) {
-        const card = document.createElement("div");
-        card.className = "result-card";
-
-        const header = document.createElement("div");
-        header.className = "result-header";
-
-        const title = document.createElement("span");
-        title.innerHTML = `<b>${filename}</b> <small class="status"></small>`;
-
-        const btnGroup = document.createElement("span");
-
-        const toggleBtn = document.createElement("button");
-        toggleBtn.innerText = "▼";
-        toggleBtn.style.display = "none";
-
-        const downloadBtn = document.createElement("button");
-        downloadBtn.innerText = "↓";
-        downloadBtn.style.display = "none";
-
-        btnGroup.appendChild(toggleBtn);
-        btnGroup.appendChild(downloadBtn);
-
-        header.appendChild(title);
-        header.appendChild(btnGroup);
-
-        const contentArea = document.createElement("div");
-        contentArea.className = "result-content collapsed";
-        const pre = document.createElement("pre");
-        contentArea.appendChild(pre);
-
-        card.appendChild(header);
-        card.appendChild(contentArea);
-
-        toggleBtn.addEventListener("click", () => {
-          contentArea.classList.toggle("collapsed");
-          toggleBtn.innerText = contentArea.classList.contains("collapsed") ? "▼" : "▲";
-        });
-
-        downloadBtn.addEventListener("click", () => {
-          const blob = new Blob([pre.innerText], { type: "text/markdown" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = filename.replace(".pdf", ".md");
-          a.click();
-          URL.revokeObjectURL(url);
-        });
-
-        return {
-          card,
-          setStatus: (text) => {
-            title.querySelector(".status").innerText = text;
-          },
-          setContent: (text) => {
-            pre.innerText = text;
-            toggleBtn.style.display = "inline";
-            downloadBtn.style.display = "inline";
-          },
-        };
-      }
     </script>
-  </body>
+</body>
 </html>
