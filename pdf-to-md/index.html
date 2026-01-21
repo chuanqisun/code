@@ -162,7 +162,8 @@
         const resultsContainer = document.getElementById('results-container');
         const bulkDownloadBtn = document.getElementById('bulk-download');
 
-        const results = new Map();
+        // Store markdown content separately from UI
+        const results = new Map(); // filename -> markdown string
 
         // Load API key
         apiKeyInput.value = localStorage.getItem('gemini-api-key') || '';
@@ -192,15 +193,19 @@
             if (results.size === 0) return;
             
             results.forEach((content, filename) => {
-                const blob = new Blob([content], { type: 'text/markdown' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename.replace('.pdf', '.md');
-                a.click();
-                URL.revokeObjectURL(url);
+                downloadMarkdown(filename, content);
             });
         });
+
+        function downloadMarkdown(filename, content) {
+            const blob = new Blob([content], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename.replace('.pdf', '.md');
+            a.click();
+            URL.revokeObjectURL(url);
+        }
 
         function handleFiles(files) {
             const apiKey = apiKeyInput.value.trim();
@@ -253,10 +258,15 @@
                 });
 
                 const markdown = response.text;
+                
+                // Store the raw markdown content
+                results.set(file.name, markdown);
+                
+                // Update UI
                 ui.setContent(markdown);
                 ui.setStatus('complete');
+                ui.enableDownload(file.name, markdown);
                 
-                results.set(file.name, markdown);
                 bulkDownloadBtn.style.display = 'inline';
 
             } catch (error) {
@@ -311,19 +321,10 @@
             card.appendChild(header);
             card.appendChild(contentArea);
 
+            // Toggle expand/collapse
             toggleBtn.addEventListener('click', () => {
                 contentArea.classList.toggle('collapsed');
                 toggleBtn.innerText = contentArea.classList.contains('collapsed') ? 'expand' : 'collapse';
-            });
-
-            downloadBtn.addEventListener('click', () => {
-                const blob = new Blob([pre.innerText], { type: 'text/markdown' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename.replace('.pdf', '.md');
-                a.click();
-                URL.revokeObjectURL(url);
             });
 
             return {
@@ -334,7 +335,11 @@
                 setContent: (text) => {
                     pre.innerText = text;
                     toggleBtn.style.display = 'inline';
+                },
+                enableDownload: (filename, markdownContent) => {
                     downloadBtn.style.display = 'inline';
+                    // Store reference to the actual content, not the DOM
+                    downloadBtn.onclick = () => downloadMarkdown(filename, markdownContent);
                 }
             };
         }
