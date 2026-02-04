@@ -4,6 +4,7 @@
 
 - [Audio visualizer](./audio-visualizer/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
+- [Color Isolator](./color-isolator/)
 - [CSV Visualizer](./csv-visualizer/)
 - [Emoji → Favicon](./emoji-to-favicon/)
 - [Emoji → Pixel Art](./emoji-to-pixel-art/)
