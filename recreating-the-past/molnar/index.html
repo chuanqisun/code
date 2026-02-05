@@ -166,11 +166,9 @@
       const ctx = canvas.getContext("2d");
       const p = new Uint8Array(512);
 
-      // Lock canvas to 1600x800
       canvas.width = 1600;
       canvas.height = 800;
 
-      // --- Math Helpers ---
       const lerp = (a, b, t) => a + t * (b - a);
       const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
       const grad = (hash, x) => (hash & 1 ? -x : x);
@@ -188,7 +186,6 @@
         return lerp(grad(p[X], x), grad(p[X + 1], x - 1), u) * 2;
       };
 
-      // Better hash function for column randomness
       const hash = (y, col, layerOffset) => {
         let h = (Math.floor(y) + layerOffset) & 255;
         h = p[h];
@@ -217,11 +214,9 @@
           const layerSeedOffset = layerIdx * 1337; // Ensure layers don't overlap noise perfectly
 
           for (let y = layer.brushWidth / 2; y < canvas.height; y += step) {
-            // Row selection
             const rowHash = p[(Math.floor(y) + layerSeedOffset) % 256] / 255;
             if (rowHash > layer.density) continue;
 
-            // Noise for width and shift
             const nWidth = (noise1D(y * layer.freq, layerSeedOffset) + 1) / 2;
             const nShift = noise1D(y * layer.freq, layerSeedOffset + 5000);
 
@@ -230,7 +225,6 @@
             const currentShift = nShift * layer.shift;
 
             baseCenters.forEach((baseX, i) => {
-              // Use proper hash mixing for unbiased column selection
               const segHash = hash(y, i, layerSeedOffset);
 
               if (segHash <= layer.colDensity) {
