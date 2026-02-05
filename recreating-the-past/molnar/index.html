@@ -3,14 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Generative Multi-Layer Line Art</title>
+    <title>Vera Molnár</title>
     <style>
-      body, html { margin: 0; padding: 0; overflow: hidden; background: #E1D3C7; }
+      body, html {
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          background: #E1D3C7;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+      }
+      .canvas-wrapper {
+          padding: 4rem;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+      }
       canvas {
           display: block;
           cursor: crosshair;
-          position: absolute;
-          transform: scale(0.65);
+          width: 1600px;
+          height: 800px;
+          transform: scale(0.5);
+          transform-origin: center;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+      }
+      @media (max-width: 900px), (max-height: 500px) {
+          canvas {
+              width: 100%;
+              height: auto;
+              transform: none;
+          }
       }
       .info {
           position: absolute;
@@ -24,8 +53,10 @@
     </style>
   </head>
   <body>
+    <div class="canvas-wrapper">
+      <canvas id="canvas"></canvas>
+    </div>
     <div class="info">CLICK TO REGENERATE SEED</div>
-    <canvas id="canvas"></canvas>
 
     <script>
       /**
@@ -135,6 +166,10 @@
       const ctx = canvas.getContext("2d");
       const p = new Uint8Array(512);
 
+      // Lock canvas to 1600x800
+      canvas.width = 1600;
+      canvas.height = 800;
+
       // --- Math Helpers ---
       const lerp = (a, b, t) => a + t * (b - a);
       const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
@@ -213,44 +248,12 @@
         });
       }
 
-      function resize() {
-        const remInPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
-        const padding = 4 * remInPx;
-
-        // Available space after padding
-        const availableWidth = window.innerWidth - padding * 2;
-        const availableHeight = window.innerHeight - padding * 2;
-
-        // Calculate canvas size maintaining 2:1 aspect ratio
-        let canvasWidth, canvasHeight;
-
-        if (availableWidth / availableHeight > 2) {
-          // Height is the limiting factor
-          canvasHeight = availableHeight;
-          canvasWidth = canvasHeight * 2;
-        } else {
-          // Width is the limiting factor
-          canvasWidth = availableWidth;
-          canvasHeight = canvasWidth / 2;
-        }
-
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-
-        // Center the canvas
-        canvas.style.left = padding + (availableWidth - canvasWidth) / 2 + "px";
-        canvas.style.top = padding + (availableHeight - canvasHeight) / 2 + "px";
-
-        draw();
-      }
-
       seed();
-      window.addEventListener("resize", resize);
       window.addEventListener("click", () => {
         seed();
         draw();
       });
-      resize();
+      draw();
     </script>
   </body>
 </html>
