@@ -3,7 +3,7 @@
 ## Read
 
 > It may take a life-time to develop a computer program to make one new communicating pen line which is meaningful for us.  
-> -- [Computer Grass is Natural Grass](https://www.atariarchives.org/artist/sec5.php) by Colette S. Bangert and Charles J. Bangert
+> — [Computer Grass is Natural Grass](https://www.atariarchives.org/artist/sec5.php) by Colette S. Bangert and Charles J. Bangert
 
 ## Practice
 
