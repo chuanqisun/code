@@ -26,3 +26,7 @@
   - Perlin noise applied to the length varition as we render from top to bottom
   - A lot of manual parameter tweaking until the dense-sparse-dense-empty-dense-sparse-dense rhythm felt right
   - Vibe coded [a tool](https://code.chuanqisun.com/color-analyzer/) to extract color palette from any image
+ 
+ ### Extra
+
+ - [Hi(gh) Squre](./molnar/square.html)
