@@ -61,6 +61,7 @@
 - [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
+- [Recreate The Past](./recreating-the-past/)
 - [Shadowcast](./shadowcast/)
 - [Shanshui](./shanshui/)
 - [Spaceship](./spaceship/)
