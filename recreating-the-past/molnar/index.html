@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generative Multi-Layer Line Art</title>
+    <style>
+      body, html { margin: 0; padding: 0; overflow: hidden; background: #E1D3C7; }
+      canvas {
+          display: block;
+          cursor: crosshair;
+          position: absolute;
+          transform: scale(0.65);
+      }
+      .info {
+          position: absolute;
+          bottom: calc(4rem + 10px);
+          right: calc(4rem + 10px);
+          font-family: monospace;
+          font-size: 10px;
+          color: #ccc;
+          pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="info">CLICK TO REGENERATE SEED</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+      /**
+       * CONFIGURATION: EDIT LAYERS HERE
+       * Each object in the array represents one drawing pass.
+       */
+      const LAYERS = [
+        {
+          columns: 4, // 1, 2, or 4
+          density: 0.85, // Row probability (0 to 1)
+          colDensity: 0.95, // Column probability (0 to 1)
+          brushWidth: 3, // Line thickness in px
+          gapWidth: 1.75, // Vertical space between lines
+          freq: 0.9, // Noise frequency (smoothness)
+          minWidth: 0.1, // Min line width (% of screen)
+          maxWidth: 0.2, // Max line width (% of screen)
+          shift: 100, // Max horizontal random shift
+          color: "rgba(144,78,66,0.9)",
+        },
+        {
+          columns: 2,
+          density: 0.65,
+          colDensity: 0.65,
+          brushWidth: 3.25,
+          gapWidth: 2.25,
+          freq: 0.5,
+          minWidth: 0.2,
+          maxWidth: 0.6,
+          shift: 100,
+          color: "rgba(155,25,25,0.75)", // Red layer
+        },
+        {
+          columns: 2,
+          density: 0.55,
+          colDensity: 0.5,
+          brushWidth: 2.5,
+          gapWidth: 2.25,
+          freq: 0.5,
+          minWidth: 0.2,
+          maxWidth: 0.4,
+          shift: 100,
+          color: "rgba(255,85,23,0.75)", // Orange layer
+        },
+        {
+          columns: 2,
+          density: 0.7,
+          colDensity: 0.5,
+          brushWidth: 1.75,
+          gapWidth: 1.5,
+          freq: 0.5,
+          minWidth: 0.2,
+          maxWidth: 0.3,
+          shift: 200,
+          color: "rgba(195,60,158,0.75)", // Magenta layer
+        },
+        {
+          columns: 4,
+          density: 0.5,
+          colDensity: 0.5,
+          brushWidth: 4,
+          gapWidth: 3.25,
+          freq: 0.55,
+          minWidth: 0.1,
+          maxWidth: 0.2,
+          shift: 200,
+          color: "rgba(115,33,20,0.75)", // Maroon layer
+        },
+        {
+          columns: 1,
+          density: 0.35,
+          colDensity: 0.55,
+          brushWidth: 2.5,
+          gapWidth: 1.5,
+          freq: 0.35,
+          minWidth: 0.1,
+          maxWidth: 0.25,
+          shift: 700,
+          color: "rgba(50,150,255,0.75)", // Blue layer
+        },
+        {
+          columns: 2,
+          density: 0.35,
+          colDensity: 1,
+          brushWidth: 2.5,
+          gapWidth: 3.25,
+          freq: 0.35,
+          minWidth: 0.1,
+          maxWidth: 0.25,
+          shift: 300,
+          color: "rgba(50,150,255,0.75)", // Blue layer
+        },
+        {
+          columns: 2,
+          density: 0.3,
+          colDensity: 0.8,
+          brushWidth: 4.5,
+          gapWidth: 3.5,
+          freq: 0.1,
+          minWidth: 0.14,
+          maxWidth: 0.3,
+          shift: 300,
+          color: "rgba(184,124,151,0.75)", // Pink Layer
+        },
+      ];
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const p = new Uint8Array(512);
+
+      // --- Math Helpers ---
+      const lerp = (a, b, t) => a + t * (b - a);
+      const fade = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+      const grad = (hash, x) => (hash & 1 ? -x : x);
+
+      const seed = () => {
+        const permutation = Array.from({ length: 256 }, (_, i) => i).sort(() => Math.random() - 0.5);
+        for (let i = 0; i < 512; i++) p[i] = permutation[i % 256];
+      };
+
+      const noise1D = (x, offset = 0) => {
+        x += offset;
+        const X = Math.floor(x) & 255;
+        x -= Math.floor(x);
+        const u = fade(x);
+        return lerp(grad(p[X], x), grad(p[X + 1], x - 1), u) * 2;
+      };
+
+      // Better hash function for column randomness
+      const hash = (y, col, layerOffset) => {
+        let h = (Math.floor(y) + layerOffset) & 255;
+        h = p[h];
+        h = (h + col * 73) & 255;
+        h = p[h];
+        return h / 255;
+      };
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        LAYERS.forEach((layer, layerIdx) => {
+          ctx.strokeStyle = layer.color;
+          ctx.lineWidth = layer.brushWidth;
+
+          let baseCenters = [];
+          if (layer.columns == 1) {
+            baseCenters = [canvas.width / 2];
+          } else if (layer.columns == 2) {
+            baseCenters = [canvas.width / 4, (canvas.width / 4) * 3];
+          } else {
+            baseCenters = [0, canvas.width / 3, (canvas.width / 3) * 2, canvas.width];
+          }
+
+          const step = layer.brushWidth + layer.gapWidth;
+          const layerSeedOffset = layerIdx * 1337; // Ensure layers don't overlap noise perfectly
+
+          for (let y = layer.brushWidth / 2; y < canvas.height; y += step) {
+            // Row selection
+            const rowHash = p[(Math.floor(y) + layerSeedOffset) % 256] / 255;
+            if (rowHash > layer.density) continue;
+
+            // Noise for width and shift
+            const nWidth = (noise1D(y * layer.freq, layerSeedOffset) + 1) / 2;
+            const nShift = noise1D(y * layer.freq, layerSeedOffset + 5000);
+
+            const widthRange = (layer.maxWidth - layer.minWidth) * canvas.width;
+            const currentWidth = layer.minWidth * canvas.width + nWidth * widthRange;
+            const currentShift = nShift * layer.shift;
+
+            baseCenters.forEach((baseX, i) => {
+              // Use proper hash mixing for unbiased column selection
+              const segHash = hash(y, i, layerSeedOffset);
+
+              if (segHash <= layer.colDensity) {
+                const centerX = baseX + currentShift;
+                const xStart = centerX - currentWidth / 2;
+                const xEnd = centerX + currentWidth / 2;
+
+                ctx.beginPath();
+                ctx.moveTo(xStart, y);
+                ctx.lineTo(xEnd, y);
+                ctx.stroke();
+              }
+            });
+          }
+        });
+      }
+
+      function resize() {
+        const remInPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+        const padding = 4 * remInPx;
+
+        // Available space after padding
+        const availableWidth = window.innerWidth - padding * 2;
+        const availableHeight = window.innerHeight - padding * 2;
+
+        // Calculate canvas size maintaining 2:1 aspect ratio
+        let canvasWidth, canvasHeight;
+
+        if (availableWidth / availableHeight > 2) {
+          // Height is the limiting factor
+          canvasHeight = availableHeight;
+          canvasWidth = canvasHeight * 2;
+        } else {
+          // Width is the limiting factor
+          canvasWidth = availableWidth;
+          canvasHeight = canvasWidth / 2;
+        }
+
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+
+        // Center the canvas
+        canvas.style.left = padding + (availableWidth - canvasWidth) / 2 + "px";
+        canvas.style.top = padding + (availableHeight - canvasHeight) / 2 + "px";
+
+        draw();
+      }
+
+      seed();
+      window.addEventListener("resize", resize);
+      window.addEventListener("click", () => {
+        seed();
+        draw();
+      });
+      resize();
+    </script>
+  </body>
+</html>
