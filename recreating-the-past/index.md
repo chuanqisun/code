@@ -13,7 +13,6 @@
 
 ### Practice
 
-
 | [Original](https://observer.com/2025/07/auctions-sothebys-algorithmic-art-computer-art-grace-hertlein-collection/) | [Recreated](./molnar/) |
 |----------|-----------|
 | ![Original artwork by Vera Molnár](./molnar/original.webp) | ![Recreated artwork by Vera Molnár](./molnar/recreated.webp) |
@@ -27,6 +26,6 @@
   - A lot of manual parameter tweaking until the dense-sparse-dense-empty-dense-sparse-dense rhythm felt right
   - Vibe coded [a tool](https://code.chuanqisun.com/color-analyzer/) to extract color palette from any image
  
- ### Extra
+### Extra
 
  - [Hi(gh) Squre](./molnar/square.html)
