@@ -45,6 +45,7 @@
 - [Dot grid field](./dot-grid-field/)
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
+- [Groq transcription](./groq-transcription/)
 - [Hand-box binding](./hand-box-binding/)
 - [Hand orientation](./hand-orientation/)
 - [Head tracking](./head-tracking/)

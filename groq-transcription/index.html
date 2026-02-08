@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Groq Streaming STT</title>
+    <style>
+      body{font-family:sans-serif;margin:0;padding:8px;display:grid;grid-template-rows:auto auto auto auto 1fr;gap:4px;height:100vh;box-sizing:border-box}
+      header{display:grid;grid-template-columns:1fr auto;gap:4px;align-items:center}
+      input[type=password]{width:300px}
+      section{display:grid;grid-template-columns:auto auto auto auto auto;gap:4px;align-items:center;align-content:start}
+      button{cursor:pointer}
+      textarea{width:100%;height:100%;box-sizing:border-box;resize:none}
+      #status{font-size:12px;color:#666}
+      button:disabled{opacity:0.5}
+      #recording-indicator{color:red;font-weight:bold;display:none}
+      #metrics{font-family:monospace;font-size:12px;background:#f4f4f4;padding:4px;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px 12px}
+      #metrics span{white-space:nowrap}
+      #metrics .label{color:#666}
+      #mode-select{display:flex;gap:8px;align-items:center;font-size:13px}
+      #mode-select label{cursor:pointer}
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <label>API Key: <input type="password" id="apikey" placeholder="gsk_..." /></label>
+      </div>
+      <div><strong>Groq Whisper STT</strong></div>
+    </header>
+    <div id="mode-select">
+      <strong>Mode:</strong>
+      <label><input type="radio" name="mode" value="stream" checked /> Stream (half-duplex)</label>
+      <label><input type="radio" name="mode" value="rest" /> REST (record then submit)</label>
+    </div>
+    <section>
+      <button id="recordBtn">⏺ Record</button>
+      <button id="stopBtn" disabled>⏹ Stop</button>
+      <button id="submitBtn" style="display:none" disabled>▶ Transcribe</button>
+      <span id="recording-indicator">● REC</span>
+      <span id="status"></span>
+    </section>
+    <div id="metrics">
+      <span><span class="label">Chunks:</span> <span id="m-chunks">0</span></span>
+      <span><span class="label">Audio queued:</span> <span id="m-queued">0 KB</span></span>
+      <span><span class="label">Transmitted:</span> <span id="m-transmitted">0 KB</span></span>
+      <span><span class="label">Elapsed:</span> <span id="m-elapsed">0.0s</span></span>
+      <span><span class="label">Upload rate:</span> <span id="m-rate">0 KB/s</span></span>
+      <span><span class="label">Stop→Result:</span> <span id="m-latency">—</span></span>
+      <span><span class="label">State:</span> <span id="m-state">idle</span></span>
+    </div>
+    <textarea id="output" readonly placeholder="Transcription will appear here..."></textarea>
+
+    <script>
+      const apiKeyInput = document.getElementById("apikey");
+      const recordBtn = document.getElementById("recordBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const submitBtn = document.getElementById("submitBtn");
+      const output = document.getElementById("output");
+      const status = document.getElementById("status");
+      const recIndicator = document.getElementById("recording-indicator");
+
+      const mChunks = document.getElementById("m-chunks");
+      const mQueued = document.getElementById("m-queued");
+      const mTransmitted = document.getElementById("m-transmitted");
+      const mElapsed = document.getElementById("m-elapsed");
+      const mRate = document.getElementById("m-rate");
+      const mLatency = document.getElementById("m-latency");
+      const mState = document.getElementById("m-state");
+
+      let mediaRecorder = null;
+      let abortController = null;
+      let metricsInterval = null;
+      let audioBlob = null;
+      let audioChunks = [];
+
+      apiKeyInput.value = localStorage.getItem("groq_api_key") || "";
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem("groq_api_key", apiKeyInput.value);
+      });
+
+      function getMode() {
+        return document.querySelector('input[name="mode"]:checked').value;
+      }
+
+      // Update UI when mode changes
+      document.querySelectorAll('input[name="mode"]').forEach((r) => {
+        r.addEventListener("change", () => {
+          const isRest = getMode() === "rest";
+          submitBtn.style.display = isRest ? "" : "none";
+          recordBtn.textContent = isRest ? "⏺ Record" : "⏺ Record & Stream";
+          // Reset state
+          submitBtn.disabled = true;
+          audioBlob = null;
+          audioChunks = [];
+        });
+      });
+
+      function fmtKB(bytes) {
+        return (bytes / 1024).toFixed(1) + " KB";
+      }
+
+      function createMetrics() {
+        const m = {
+          chunks: 0,
+          queued: 0,
+          transmitted: 0,
+          startTime: Date.now(),
+          stopTime: null,
+          resultTime: null,
+          state: "idle",
+        };
+        return m;
+      }
+
+      let metrics = createMetrics();
+
+      function updateMetricsUI() {
+        const elapsed = (Date.now() - metrics.startTime) / 1000;
+        mChunks.textContent = metrics.chunks;
+        mQueued.textContent = fmtKB(metrics.queued);
+        mTransmitted.textContent = fmtKB(metrics.transmitted);
+        mElapsed.textContent = elapsed.toFixed(1) + "s";
+        const txElapsed = metrics.transmitStartTime ? (Date.now() - metrics.transmitStartTime) / 1000 : elapsed;
+        mRate.textContent = txElapsed > 0 && metrics.transmitted > 0 ? fmtKB(metrics.transmitted / txElapsed) + "/s" : "0 KB/s";
+        mState.textContent = metrics.state;
+
+        if (metrics.stopTime && metrics.resultTime) {
+          mLatency.textContent = metrics.resultTime - metrics.stopTime + " ms";
+        } else if (metrics.stopTime && !metrics.resultTime) {
+          mLatency.textContent = Date.now() - metrics.stopTime + " ms …";
+        } else {
+          mLatency.textContent = "—";
+        }
+      }
+
+      function startMetricsInterval() {
+        clearInterval(metricsInterval);
+        metricsInterval = setInterval(updateMetricsUI, 100);
+        updateMetricsUI();
+      }
+
+      function stopMetricsInterval() {
+        setTimeout(() => {
+          updateMetricsUI();
+          clearInterval(metricsInterval);
+        }, 200);
+      }
+
+      // ─── RECORD BUTTON ───
+      recordBtn.addEventListener("click", async () => {
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          status.textContent = "Enter API key first";
+          return;
+        }
+
+        const mode = getMode();
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+            ? "audio/webm;codecs=opus"
+            : MediaRecorder.isTypeSupported("audio/webm")
+            ? "audio/webm"
+            : "";
+
+          mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+          abortController = new AbortController();
+          recordBtn.disabled = true;
+          stopBtn.disabled = false;
+          submitBtn.disabled = true;
+          recIndicator.style.display = "inline";
+          output.value = "";
+          audioBlob = null;
+          audioChunks = [];
+
+          metrics = createMetrics();
+          metrics.state = "recording";
+          startMetricsInterval();
+
+          if (mode === "stream") {
+            status.textContent = "Recording & streaming to Groq...";
+            mediaRecorder.start(250);
+
+            transcribeGroqStreaming({
+              mediaRecorder,
+              apiKey,
+              model: "whisper-large-v3-turbo",
+              signal: abortController.signal,
+              metrics,
+              micStream: stream,
+            })
+              .then((text) => {
+                metrics.resultTime = Date.now();
+                metrics.state = "done";
+                output.value = text;
+                const latency = metrics.stopTime ? metrics.resultTime - metrics.stopTime : null;
+                status.textContent = `Done. ${text.length} chars.` + (latency != null ? ` Latency: ${latency}ms` : "");
+              })
+              .catch((err) => {
+                if (err.name === "AbortError") {
+                  metrics.state = "aborted";
+                  status.textContent = "Aborted";
+                } else {
+                  metrics.state = "error";
+                  output.value = "Error: " + err.message;
+                  status.textContent = "Failed";
+                }
+              })
+              .finally(() => {
+                recIndicator.style.display = "none";
+                recordBtn.disabled = false;
+                stopBtn.disabled = true;
+                stream.getTracks().forEach((t) => t.stop());
+                stopMetricsInterval();
+              });
+          } else {
+            // REST mode: just record locally
+            status.textContent = "Recording locally...";
+
+            mediaRecorder.ondataavailable = (ev) => {
+              if (ev.data && ev.data.size > 0) {
+                metrics.chunks++;
+                metrics.queued += ev.data.size;
+                audioChunks.push(ev.data);
+              }
+            };
+
+            mediaRecorder.onstop = () => {
+              stream.getTracks().forEach((t) => t.stop());
+              const ext = mediaRecorder.mimeType.includes("webm") ? "webm" : mediaRecorder.mimeType.includes("mp4") ? "mp4" : "ogg";
+              audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+              metrics.state = "recorded, ready to submit";
+              status.textContent = `Recorded ${fmtKB(audioBlob.size)} (${ext}). Click Transcribe.`;
+              recIndicator.style.display = "none";
+              recordBtn.disabled = false;
+              stopBtn.disabled = true;
+              submitBtn.disabled = false;
+              stopMetricsInterval();
+            };
+
+            mediaRecorder.start(250);
+          }
+        } catch (err) {
+          status.textContent = "Mic error: " + err.message;
+        }
+      });
+
+      // ─── STOP BUTTON ───
+      stopBtn.addEventListener("click", () => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          if (getMode() === "stream") {
+            status.textContent = "Stopping... flushing upload & waiting for response...";
+          }
+        }
+      });
+
+      // ─── SUBMIT BUTTON (REST only) ───
+      submitBtn.addEventListener("click", async () => {
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          status.textContent = "Enter API key first";
+          return;
+        }
+        if (!audioBlob) {
+          status.textContent = "Record audio first";
+          return;
+        }
+
+        submitBtn.disabled = true;
+        recordBtn.disabled = true;
+        status.textContent = "Uploading & transcribing...";
+        output.value = "";
+
+        // Reset transmission metrics for the upload phase
+        metrics.transmitted = 0;
+        metrics.stopTime = Date.now();
+        metrics.resultTime = null;
+        metrics.transmitStartTime = Date.now();
+        metrics.state = "uploading (REST)";
+        startMetricsInterval();
+
+        const ext = audioBlob.type.includes("webm") ? "webm" : audioBlob.type.includes("mp4") ? "mp4" : "ogg";
+
+        try {
+          // Build multipart manually so we can meter transmitted bytes
+          const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
+          const CRLF = "\r\n";
+          const contentType = audioBlob.type || "audio/webm";
+          const encoder = new TextEncoder();
+
+          const preamble =
+            `--${boundary}${CRLF}` +
+            `Content-Disposition: form-data; name="model"${CRLF}${CRLF}` +
+            `whisper-large-v3-turbo${CRLF}` +
+            `--${boundary}${CRLF}` +
+            `Content-Disposition: form-data; name="response_format"${CRLF}${CRLF}` +
+            `verbose_json${CRLF}` +
+            `--${boundary}${CRLF}` +
+            `Content-Disposition: form-data; name="temperature"${CRLF}${CRLF}` +
+            `0${CRLF}` +
+            `--${boundary}${CRLF}` +
+            `Content-Disposition: form-data; name="file"; filename="audio.${ext}"${CRLF}` +
+            `Content-Type: ${contentType}${CRLF}${CRLF}`;
+
+          const epilogue = `${CRLF}--${boundary}--${CRLF}`;
+
+          const preambleBytes = encoder.encode(preamble);
+          const epilogueBytes = encoder.encode(epilogue);
+          const audioBytes = new Uint8Array(await audioBlob.arrayBuffer());
+
+          // Chunk the audio into ~16KB pieces so the meter transform fires incrementally
+          const CHUNK_SIZE = 16384;
+          const audioChunksList = [];
+          for (let i = 0; i < audioBytes.length; i += CHUNK_SIZE) {
+            audioChunksList.push(audioBytes.slice(i, i + CHUNK_SIZE));
+          }
+
+          const bodyStream = new ReadableStream({
+            start(ctrl) {
+              ctrl.enqueue(preambleBytes);
+              for (const chunk of audioChunksList) {
+                ctrl.enqueue(chunk);
+              }
+              ctrl.enqueue(epilogueBytes);
+              ctrl.close();
+            },
+          });
+
+          const meterTransform = new TransformStream({
+            transform(chunk, controller) {
+              metrics.transmitted += chunk.byteLength;
+              controller.enqueue(chunk);
+            },
+            flush() {
+              metrics.state = "upload complete, awaiting response";
+            },
+          });
+
+          const meteredStream = bodyStream.pipeThrough(meterTransform);
+
+          const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": `multipart/form-data; boundary=${boundary}`,
+            },
+            body: meteredStream,
+            duplex: "half",
+          });
+
+          metrics.state = "reading response";
+
+          if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`HTTP ${resp.status}: ${errText}`);
+          }
+
+          const data = await resp.json();
+          metrics.resultTime = Date.now();
+          metrics.state = "done";
+          const text = data.text || JSON.stringify(data, null, 2);
+          output.value = text;
+          const latency = metrics.resultTime - metrics.stopTime;
+          status.textContent = `Done. ${text.length} chars. Latency: ${latency}ms`;
+        } catch (err) {
+          metrics.state = "error";
+          output.value = "Error: " + err.message;
+          status.textContent = "Failed";
+        } finally {
+          submitBtn.disabled = false;
+          recordBtn.disabled = false;
+          stopMetricsInterval();
+        }
+      });
+
+      // ─── STREAM MODE TRANSCRIPTION ───
+      async function transcribeGroqStreaming({ mediaRecorder, apiKey, model, signal, metrics, micStream }) {
+        let audioStreamController;
+        const audioStream = new ReadableStream({
+          start(ctrl) {
+            audioStreamController = ctrl;
+          },
+        });
+
+        mediaRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) {
+            metrics.chunks++;
+            metrics.queued += ev.data.size;
+            audioStreamController.enqueue(ev.data);
+          }
+        };
+        mediaRecorder.onstop = () => {
+          metrics.stopTime = Date.now();
+          metrics.state = "flushing upload";
+          audioStreamController.close();
+        };
+
+        const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
+        const CRLF = "\r\n";
+
+        const ext = mediaRecorder.mimeType.includes("webm") ? "webm" : mediaRecorder.mimeType.includes("mp4") ? "mp4" : "ogg";
+        const contentType = mediaRecorder.mimeType || "audio/webm";
+
+        const preamble =
+          `--${boundary}${CRLF}` +
+          `Content-Disposition: form-data; name="model"${CRLF}${CRLF}` +
+          `${model}${CRLF}` +
+          `--${boundary}${CRLF}` +
+          `Content-Disposition: form-data; name="response_format"${CRLF}${CRLF}` +
+          `verbose_json${CRLF}` +
+          `--${boundary}${CRLF}` +
+          `Content-Disposition: form-data; name="temperature"${CRLF}${CRLF}` +
+          `0${CRLF}` +
+          `--${boundary}${CRLF}` +
+          `Content-Disposition: form-data; name="file"; filename="audio.${ext}"${CRLF}` +
+          `Content-Type: ${contentType}${CRLF}${CRLF}`;
+
+        const epilogue = `${CRLF}--${boundary}--${CRLF}`;
+
+        const encoder = new TextEncoder();
+        const preambleBytes = encoder.encode(preamble);
+        const epilogueBytes = encoder.encode(epilogue);
+
+        metrics.transmitStartTime = Date.now();
+
+        const multipartSource = new ReadableStream({
+          async start(ctrl) {
+            ctrl.enqueue(preambleBytes);
+
+            const reader = audioStream.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const buf = await value.arrayBuffer();
+              ctrl.enqueue(new Uint8Array(buf));
+            }
+
+            ctrl.enqueue(epilogueBytes);
+            ctrl.close();
+          },
+        });
+
+        const meterTransform = new TransformStream({
+          transform(chunk, controller) {
+            metrics.transmitted += chunk.byteLength;
+            controller.enqueue(chunk);
+          },
+          flush() {
+            metrics.state = "upload complete, awaiting response";
+          },
+        });
+
+        const meteredStream = multipartSource.pipeThrough(meterTransform);
+
+        metrics.state = "uploading";
+
+        const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          },
+          body: meteredStream,
+          duplex: "half",
+          signal,
+        });
+
+        metrics.state = "reading response";
+
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          throw new Error(`HTTP ${resp.status}: ${errorText}`);
+        }
+
+        const data = await resp.json();
+        return data.text || JSON.stringify(data, null, 2);
+      }
+    </script>
+  </body>
+</html>
