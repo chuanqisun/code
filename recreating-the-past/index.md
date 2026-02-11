@@ -1,5 +1,17 @@
 # Recreating The Past
 
+## Week 2: John Whitney
+
+### Read
+
+> Art is a question of 'you be me'... My excitement in life is to discover something that's significant to me... and not to think, 'Well, I wonder if so-an-so's
+> going to like this.'"
+> — [Len Lye](https://www.dropbox.com/s/7tmeb0cki0biyit/Articulated%286013%29.pdf?dl=0), by Cecile Starr
+
+### Watch
+
+- [Tutorial on trigonometry](https://www.dropbox.com/s/eadyb0vfsubmzn5/async_5_21.mp4?dl=0)
+
 ## Week 1: Vera Molnár
 
 ### Read
@@ -9,7 +21,7 @@
 
 ### Watch
 
-- [Tutorial](https://www.dropbox.com/scl/fi/ny6pbyy4z7ww1sqs0seqr/async_5_21.mp4?rlkey=o29twftvovd6k6f692q2kyy5d&e=1&dl=0)
+- [Tutorial on noise](https://www.dropbox.com/scl/fi/ny6pbyy4z7ww1sqs0seqr/async_5_21.mp4?rlkey=o29twftvovd6k6f692q2kyy5d&e=1&dl=0)
 
 ### Practice
 
