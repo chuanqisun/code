@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenAI Code Interpreter</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: monospace;
+        font-size: 14px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 8px;
+        height: 100vh;
+      }
+      h1 {
+        font-size: 16px;
+        padding-block: 0.5rem;
+      }
+      label {
+        font-weight: bold;
+      }
+      input,
+      textarea,
+      button {
+        font: inherit;
+      }
+      textarea,
+      input {
+        padding: 0.25rem;
+      }
+      textarea {
+        field-sizing: content;
+        resize: none;
+      }
+      .controls {
+        display: grid;
+        gap: 1rem;
+        padding: 1rem;
+      }
+      .row {
+        display: grid;
+        gap: 4px;
+      }
+      textarea {
+        resize: vertical;
+        min-height: 48px;
+      }
+      button {
+        cursor: pointer;
+        padding: 2px 8px;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #output {
+        overflow: auto;
+        padding: 1rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: monospace;
+        font-size: 14px;
+        min-height: 0;
+      }
+      .actions {
+        margin-top: 1rem;
+      }
+      .section-label {
+        font-weight: bold;
+        color: GrayText;
+        border-bottom: 1px solid ButtonBorder;
+        margin: 4px 0 2px;
+      }
+      .code-block {
+        padding: 4px;
+        margin: 2px 0;
+        border-left: 1px solid ButtonBorder;
+      }
+      .result-block {
+        padding: 4px;
+        margin: 2px 0;
+        border-left: 1px solid rgb(108, 144, 206);
+      }
+      .error-block {
+        padding: 4px;
+        margin: 2px 0;
+        border-left: 1px solid rgb(240, 171, 171);
+        color: rgb(199, 124, 124);
+      }
+      .download-link {
+        display: inline-block;
+        margin: 2px 0;
+        color: rgb(88, 147, 206);
+      }
+      .text-block {
+        margin: 2px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <h1>OpenAI Code Interpreter</h1>
+      <div class="row"><label for="apiKey">API Key</label><input type="password" id="apiKey" placeholder="sk-..." /></div>
+      <div class="row"><label for="files">Files</label><input type="file" id="files" multiple /></div>
+      <div class="row">
+        <label for="instruction">Task</label><textarea id="instruction" placeholder="e.g. Convert these CSV files to a single Excel workbook"></textarea>
+      </div>
+      <div class="actions"><button id="run" onclick="handleRun()">Run</button><button id="clear" onclick="clearOutput()">Clear</button></div>
+    </div>
+    <div id="output"></div>
+
+    <script type="module">
+      import OpenAI from "https://esm.sh/openai";
+
+      const outputEl = document.getElementById("output");
+      const apiKeyInput = document.getElementById("apiKey");
+      const instructionInput = document.getElementById("instruction");
+
+      // Load API key from localStorage on page load
+      const savedApiKey = localStorage.getItem("openai_api_key");
+      if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+      }
+
+      // Load instruction from localStorage on page load
+      const savedInstruction = localStorage.getItem("openai_instruction");
+      if (savedInstruction) {
+        instructionInput.value = savedInstruction;
+      }
+
+      // Save API key to localStorage when it changes
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem("openai_api_key", apiKeyInput.value);
+      });
+
+      // Save instruction to localStorage when it changes
+      instructionInput.addEventListener("input", () => {
+        localStorage.setItem("openai_instruction", instructionInput.value);
+      });
+
+      function appendBlock(text, cls = "text-block") {
+        const div = document.createElement("div");
+        div.className = cls;
+        div.textContent = text;
+        outputEl.appendChild(div);
+        outputEl.scrollTop = outputEl.scrollHeight;
+      }
+
+      async function handleRun() {
+        const apiKey = document.getElementById("apiKey").value.trim();
+        const filesInput = document.getElementById("files");
+        const instruction = document.getElementById("instruction").value.trim();
+        const runBtn = document.getElementById("run");
+
+        if (!apiKey) {
+          alert("Please enter your API key.");
+          return;
+        }
+        if (!instruction) {
+          alert("Please enter an instruction.");
+          return;
+        }
+
+        runBtn.disabled = true;
+        outputEl.innerHTML = "";
+
+        const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true, timeout: 10 * 60 * 1000 });
+
+        try {
+          // Upload files
+          const uploadedFileIds = [];
+          if (filesInput.files.length > 0) {
+            appendBlock("--- Uploading files ---", "section-label");
+            for (const file of filesInput.files) {
+              appendBlock(`Uploading: ${file.name} (${(file.size / 1024).toFixed(1)} KB)...`);
+              const uploaded = await client.files.create({ file, purpose: "user_data" });
+              uploadedFileIds.push(uploaded.id);
+              appendBlock(`  ✓ Uploaded as ${uploaded.id}`);
+            }
+          }
+
+          // Build input with file references
+          const inputParts = [];
+
+          appendBlock("--- Running code interpreter ---", "section-label");
+
+          const stream = await client.responses.create({
+            model: "gpt-5.2",
+            input: instruction,
+            tools: [{ type: "code_interpreter", container: { type: "auto", file_ids: uploadedFileIds } }],
+            tool_choice: "required",
+            stream: true,
+          });
+
+          let containerId = null;
+          let currentCodeDiv = null;
+          let currentTextDiv = null;
+
+          for await (const event of stream) {
+            switch (event.type) {
+              // New output item added (code_interpreter_call or message)
+              case "response.output_item.added": {
+                if (event.item?.type === "code_interpreter_call" && event.item.container_id) {
+                  containerId = event.item.container_id;
+                }
+                break;
+              }
+
+              // Code interpreter: starting
+              case "response.code_interpreter_call.in_progress": {
+                appendBlock("Code:", "section-label");
+                currentCodeDiv = document.createElement("div");
+                currentCodeDiv.className = "code-block";
+                outputEl.appendChild(currentCodeDiv);
+                break;
+              }
+
+              // Code interpreter: code streaming (note: underscore between call_code)
+              case "response.code_interpreter_call_code.delta": {
+                if (!currentCodeDiv) {
+                  currentCodeDiv = document.createElement("div");
+                  currentCodeDiv.className = "code-block";
+                  outputEl.appendChild(currentCodeDiv);
+                }
+                currentCodeDiv.textContent += event.delta;
+                break;
+              }
+              case "response.code_interpreter_call_code.done": {
+                currentCodeDiv = null;
+                break;
+              }
+
+              // Code interpreter: executing
+              case "response.code_interpreter_call.interpreting": {
+                appendBlock("⏳ Interpreting...", "text-block");
+                break;
+              }
+
+              // Code interpreter: execution completed
+              case "response.code_interpreter_call.completed": {
+                break;
+              }
+
+              // Output item done — extract outputs (logs) and container_id
+              case "response.output_item.done": {
+                const item = event.item;
+                if (item?.type === "code_interpreter_call") {
+                  if (item.container_id) containerId = item.container_id;
+                  if (item.outputs && item.outputs.length > 0) {
+                    appendBlock("Output:", "section-label");
+                    for (const output of item.outputs) {
+                      if (output.type === "logs" && output.logs) {
+                        const div = document.createElement("div");
+                        div.className = "result-block";
+                        div.textContent = output.logs;
+                        outputEl.appendChild(div);
+                      }
+                    }
+                  }
+                }
+                break;
+              }
+
+              // Text output streaming
+              case "response.output_text.delta": {
+                if (!currentTextDiv) {
+                  currentTextDiv = document.createElement("div");
+                  currentTextDiv.className = "text-block";
+                  outputEl.appendChild(currentTextDiv);
+                }
+                currentTextDiv.textContent += event.delta;
+                break;
+              }
+              case "response.output_text.done": {
+                currentTextDiv = null;
+                break;
+              }
+
+              case "error": {
+                appendBlock(`Stream error: ${JSON.stringify(event.error)}`, "error-block");
+                break;
+              }
+            }
+            outputEl.scrollTop = outputEl.scrollHeight;
+          }
+
+          // Download output files from the container
+          if (containerId) {
+            try {
+              appendBlock("--- Fetching output files ---", "section-label");
+              const containerFiles = [];
+              for await (const file of client.containers.files.list(containerId)) {
+                containerFiles.push(file);
+              }
+              // Filter out originally uploaded files by path — uploaded files are in /mnt/user/
+              const outputFiles = containerFiles.filter((f) => !f.path.startsWith("/mnt/user/"));
+              if (outputFiles.length > 0) {
+                appendBlock("--- Output Files ---", "section-label");
+                for (const file of outputFiles) {
+                  try {
+                    const content = await client.containers.files.content.retrieve(file.id, { container_id: containerId });
+                    const blob = await content.blob();
+                    const url = URL.createObjectURL(blob);
+                    const filename = file.path.split("/").pop() || file.id;
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = filename;
+                    a.className = "download-link";
+                    a.textContent = `Download ${filename}`;
+                    outputEl.appendChild(a);
+                    outputEl.appendChild(document.createElement("br"));
+                  } catch (e) {
+                    appendBlock(`Could not fetch file ${file.path}: ${e.message}`, "error-block");
+                  }
+                }
+              } else {
+                appendBlock("No output files generated.", "text-block");
+              }
+            } catch (e) {
+              appendBlock(`Could not list container files: ${e.message}`, "error-block");
+            }
+          }
+
+          appendBlock("--- Done ---", "section-label");
+        } catch (err) {
+          appendBlock(`Error: ${err.message}`, "error-block");
+          console.error(err);
+        } finally {
+          runBtn.disabled = false;
+        }
+      }
+
+      function clearOutput() {
+        outputEl.innerHTML = "";
+      }
+
+      window.handleRun = handleRun;
+      window.clearOutput = clearOutput;
+    </script>
+  </body>
+</html>
