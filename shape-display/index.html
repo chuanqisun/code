@@ -3,20 +3,54 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shape Display</title>
+    <title>Shape Display REPL</title>
     <style>
-      * { margin: 0; padding: 0; }
-      body { overflow: hidden; background: #fff; }
-      #start {
-          position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-          background: #fff; padding: 16px 32px; border: 1px solid #ccc; cursor: pointer;
-          font: 13px/1 'Segoe UI', sans-serif; letter-spacing: 2px; text-transform: uppercase; z-index: 1;
-      }
-      #start:hover { background: #000; color: #fff; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { overflow: hidden; background: #fff; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; display: flex; height: 100vh; }
+      #left { width: 420px; min-width: 420px; display: flex; flex-direction: column; border-right: 1px solid #e0e0e0; }
+      #header { padding: 12px 16px 8px; border-bottom: 1px solid #e0e0e0; }
+      #header h1 { font-size: 11px; font-weight: 400; letter-spacing: 3px; text-transform: uppercase; color: #999; }
+      #editor-wrap { flex: 1; position: relative; overflow: hidden; }
+      #editor { width: 100%; height: 100%; resize: none; border: none; outline: none; padding: 16px; font: 12px/1.6 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; color: #222; background: #fff; tab-size: 2; }
+      #footer { padding: 8px 16px; border-top: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
+      #footer span { font-size: 10px; color: #aaa; letter-spacing: 1px; }
+      #run-btn { background: #000; color: #fff; border: none; padding: 5px 14px; font: 10px/1 monospace; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; }
+      #run-btn:hover { background: #333; }
+      #console { max-height: 80px; overflow-y: auto; padding: 8px 16px; border-top: 1px solid #e0e0e0; font-size: 10px; color: #c00; }
+      #console:empty { display: none; }
+      #right { flex: 1; position: relative; }
+      #start-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #fff; display: flex; align-items: center; justify-content: center; z-index: 10; cursor: pointer; }
+      #start-overlay span { font: 11px/1 monospace; letter-spacing: 3px; text-transform: uppercase; color: #999; border: 1px solid #ddd; padding: 12px 24px; }
+      #start-overlay:hover span { background: #000; color: #fff; border-color: #000; }
+      #api-ref { padding: 8px 16px; border-top: 1px solid #e0e0e0; max-height: 140px; overflow-y: auto; font-size: 9px; color: #aaa; line-height: 1.7; }
+      #api-ref code { color: #666; }
     </style>
   </head>
   <body>
-    <div id="start">Start</div>
+    <div id="left">
+      <div id="header"><h1>Shape Display</h1></div>
+      <div id="editor-wrap">
+        <textarea id="editor" spellcheck="false"></textarea>
+      </div>
+      <div id="console"></div>
+      <div id="api-ref">
+        <code>s.wave(freqX, freqZ)</code> · <code>s.ripple(cx, cz, freq)</code> · <code>s.checker(size)</code> · <code>s.grid(spacing)</code> ·
+        <code>s.pyramid()</code> · <code>s.flat(h)</code><br />
+        <code>s.map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
+        <code>s.blend(a, b, mix)</code> · <code>s.add(a,b)</code> · <code>s.mul(a,b)</code> · <code>s.inv(a)</code><br />
+        <code>s.seq(dur, ...patterns)</code> sequence with pause<br />
+        <code>s.ease(pattern)</code> smoothstep · <code>s.noise(scale)</code><br />
+        <code>s.sin(x)</code> · <code>s.cos(x)</code> · <code>s.lerp(a,b,t)</code> · <code>s.clamp(v)</code>
+      </div>
+      <div id="footer">
+        <span>ctrl+enter to run</span>
+        <button id="run-btn">Run</button>
+      </div>
+    </div>
+    <div id="right">
+      <div id="start-overlay"><span>Click to start</span></div>
+    </div>
+
     <script type="importmap">
       { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }
     </script>
@@ -33,59 +67,47 @@
       const HALF = ((GRID - 1) * STEP) / 2;
       const BASE_H = 200;
       const BASE_TOP = 0;
-      const TRANSITION = 0.8;
-      const PAUSE = 1.0;
+      const MAX_P = 180;
       const VOICES = 16;
-      const MAX_PROTRUSION = 180;
 
+      // ─── 3D Setup ───
+      const container = document.getElementById("right");
       const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(innerWidth, innerHeight);
       renderer.setPixelRatio(devicePixelRatio);
-      renderer.toneMapping = THREE.NoToneMapping;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      document.body.appendChild(renderer.domElement);
+      container.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0xffffff);
-
-      const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 5000);
+      const camera = new THREE.PerspectiveCamera(40, 1, 1, 5000);
       camera.position.set(500, 600, 500);
-
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
 
-      // Strong ambient + multiple directional lights for very white look
-      scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-
-      const d1 = new THREE.DirectionalLight(0xffffff, 1.5);
-      d1.position.set(300, 600, 400);
+      scene.add(new THREE.AmbientLight(0xffffff, 1));
+      const d1 = new THREE.DirectionalLight(0xffffff, 2.0);
+      d1.position.set(-300, 600, -400);
       scene.add(d1);
-
       const d2 = new THREE.DirectionalLight(0xffffff, 1.0);
-      d2.position.set(-300, 400, -200);
+      d2.position.set(300, 400, 200);
       scene.add(d2);
 
-      // Materials
-      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.0 });
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.0 });
       const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06 });
 
-      // Pins (instanced)
       const pinGeom = new THREE.BoxGeometry(PIN_W, PIN_H, PIN_W);
       const pins = new THREE.InstancedMesh(pinGeom, whiteMat, TOTAL);
       scene.add(pins);
 
-      // Pin edges (instanced via merged buffer)
       const edgeGeom = new THREE.EdgesGeometry(pinGeom);
       const edgePositions = edgeGeom.attributes.position.array;
       const edgeVertCount = edgePositions.length / 3;
       const mergedPos = new Float32Array(TOTAL * edgePositions.length);
       const pinIndex = new Float32Array(TOTAL * edgeVertCount);
-
       for (let i = 0; i < TOTAL; i++) {
         mergedPos.set(edgePositions, i * edgePositions.length);
         pinIndex.fill(i, i * edgeVertCount, (i + 1) * edgeVertCount);
       }
-
       const mergedEdgeGeom = new THREE.BufferGeometry();
       mergedEdgeGeom.setAttribute("position", new THREE.BufferAttribute(mergedPos, 3));
       mergedEdgeGeom.setAttribute("pinIdx", new THREE.BufferAttribute(pinIndex, 1));
@@ -123,82 +145,26 @@
             gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
         }
     `,
-        fragmentShader: `
-        uniform float opacity;
-        void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, opacity); }
-    `,
+        fragmentShader: `uniform float opacity; void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, opacity); }`,
       });
-
       const edgeLines = new THREE.LineSegments(mergedEdgeGeom, edgeShaderMat);
       scene.add(edgeLines);
 
-      // Base
       const baseW = GRID * STEP + 20;
       const baseGeom2 = new THREE.BoxGeometry(baseW, BASE_H, baseW);
       const base = new THREE.Mesh(baseGeom2, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.0 }));
       base.position.y = BASE_TOP - BASE_H / 2;
       scene.add(base);
-
       const baseEdge = new THREE.LineSegments(new THREE.EdgesGeometry(baseGeom2), edgeMat);
       baseEdge.position.y = BASE_TOP - BASE_H / 2;
       scene.add(baseEdge);
 
-      // Pin data
-      const ixArr = new Float32Array(TOTAL);
-      const izArr = new Float32Array(TOTAL);
+      // ─── Pin data ───
       const current = new Float32Array(TOTAL);
-      const prev = new Float32Array(TOTAL);
-      const target = new Float32Array(TOTAL);
+      const prevFrame = new Float32Array(TOTAL);
+      const dummy = new THREE.Object3D();
 
-      for (let i = 0; i < TOTAL; i++) {
-        ixArr[i] = i % GRID;
-        izArr[i] = (i / GRID) | 0;
-      }
-
-      // Patterns: return protrusion 0..MAX_PROTRUSION (how far above base top)
-      const patterns = [
-        // Wave
-        (x, z) => (Math.sin(x * 0.25) * 0.5 + 0.5) * (Math.cos(z * 0.25) * 0.5 + 0.5) * MAX_PROTRUSION,
-        // Radial ripple
-        (x, z) => {
-          const d = Math.sqrt((x - 14.5) ** 2 + (z - 14.5) ** 2);
-          return (Math.sin(d * 0.5) * 0.5 + 0.5) * MAX_PROTRUSION;
-        },
-        // Checkerboard
-        (x, z) => ((Math.floor(x / 5) + Math.floor(z / 5)) % 2 === 0 ? MAX_PROTRUSION * 0.9 : MAX_PROTRUSION * 0.1),
-        // Grid lines
-        (x, z) => (x % 5 === 0 || z % 5 === 0 ? MAX_PROTRUSION : MAX_PROTRUSION * 0.05),
-        // Pyramid
-        (x, z) => {
-          const dx = Math.abs(x - 14.5) / 14.5;
-          const dz = Math.abs(z - 14.5) / 14.5;
-          return (1 - Math.max(dx, dz)) * MAX_PROTRUSION;
-        },
-        // Diagonal wave
-        (x, z) => (Math.sin((x + z) * 0.3) * 0.5 + 0.5) * MAX_PROTRUSION,
-        // All flat low
-        () => MAX_PROTRUSION * 0.05,
-        // All flat high
-        () => MAX_PROTRUSION * 0.95,
-      ];
-
-      let patIdx = 0;
-      let phase = "paused";
-      let timer = 0;
-
-      function applyPattern(idx, out) {
-        const fn = patterns[idx];
-        for (let i = 0; i < TOTAL; i++) {
-          out[i] = Math.max(0, Math.min(MAX_PROTRUSION, fn(ixArr[i], izArr[i])));
-        }
-      }
-
-      // Initialize
-      applyPattern(0, current);
-      prev.set(current);
-      target.set(current);
-
-      // Audio
+      // ─── Audio ───
       let audioCtx, masterGain;
       const voices = [];
 
@@ -207,106 +173,321 @@
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.12;
         masterGain.connect(audioCtx.destination);
-
         const bufLen = audioCtx.sampleRate * 2;
         const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
         const ch = buf.getChannelData(0);
         for (let i = 0; i < bufLen; i++) ch[i] = Math.random() * 2 - 1;
-
         for (let i = 0; i < VOICES; i++) {
           const osc = audioCtx.createOscillator();
           osc.type = "triangle";
           const baseFreq = 120 + Math.random() * 280;
           osc.frequency.value = baseFreq;
-
           const noise = audioCtx.createBufferSource();
           noise.buffer = buf;
           noise.loop = true;
           noise.playbackRate.value = 0.2 + Math.random() * 0.4;
-
           const filter = audioCtx.createBiquadFilter();
           filter.type = "lowpass";
           filter.frequency.value = 150;
           filter.Q.value = 0.5;
-
           const gain = audioCtx.createGain();
           gain.gain.value = 0;
-
           const lfo = audioCtx.createOscillator();
           lfo.frequency.value = 0.3 + Math.random() * 2.5;
           const lfoG = audioCtx.createGain();
           lfoG.gain.value = 0.15;
           lfo.connect(lfoG);
           lfoG.connect(osc.frequency);
-
           osc.connect(gain);
           noise.connect(filter);
           filter.connect(gain);
           gain.connect(masterGain);
-
           osc.start();
           noise.start();
           lfo.start();
-
           voices.push({ gain, filter, osc, baseFreq, vary: 0.5 + Math.random() * 0.8 });
         }
       }
 
-      document.getElementById("start").addEventListener("click", () => {
-        if (!audioCtx) initAudio();
-        document.getElementById("start").style.display = "none";
+      // ─── Pattern API ───
+      // Perlin-ish noise
+      const _perm = new Uint8Array(512);
+      {
+        const p = [];
+        for (let i = 0; i < 256; i++) p[i] = i;
+        for (let i = 255; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [p[i], p[j]] = [p[j], p[i]];
+        }
+        for (let i = 0; i < 512; i++) _perm[i] = p[i & 255];
+      }
+      function _fade(t) {
+        return t * t * t * (t * (t * 6 - 15) + 10);
+      }
+      function _grad(h, x, y) {
+        const v = h & 3;
+        return v === 0 ? x + y : v === 1 ? -x + y : v === 2 ? x - y : -x - y;
+      }
+      function _perlin2(x, y) {
+        const X = Math.floor(x) & 255,
+          Y = Math.floor(y) & 255;
+        const xf = x - Math.floor(x),
+          yf = y - Math.floor(y);
+        const u = _fade(xf),
+          v = _fade(yf);
+        const aa = _perm[_perm[X] + Y],
+          ab = _perm[_perm[X] + Y + 1],
+          ba = _perm[_perm[X + 1] + Y],
+          bb = _perm[_perm[X + 1] + Y + 1];
+        const x1 = _grad(aa, xf, yf) * (1 - u) + _grad(ba, xf - 1, yf) * u;
+        const x2 = _grad(ab, xf, yf - 1) * (1 - u) + _grad(bb, xf - 1, yf - 1) * u;
+        return (x1 * (1 - v) + x2 * v) * 0.5 + 0.5;
+      }
+
+      function createAPI() {
+        const s = {};
+        const sin = Math.sin,
+          cos = Math.cos,
+          abs = Math.abs,
+          sqrt = Math.sqrt,
+          floor = Math.floor,
+          PI = Math.PI;
+
+        s.sin = sin;
+        s.cos = cos;
+        s.abs = abs;
+        s.sqrt = sqrt;
+        s.floor = floor;
+        s.PI = PI;
+        s.clamp = (v) => Math.max(0, Math.min(1, v));
+        s.lerp = (a, b, t) => a + (b - a) * t;
+        s.smoothstep = (t) => {
+          t = Math.max(0, Math.min(1, t));
+          return t * t * (3 - 2 * t);
+        };
+
+        // Core: map returns a pattern function (x,z,t,n) => h
+        // x,z in [0,1], t = time in seconds, n = grid size
+        s.map = (fn) => fn;
+
+        s.wave =
+          (fx = 1, fz = 1) =>
+          (x, z, t) =>
+            (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5);
+
+        s.ripple =
+          (cx = 0.5, cz = 0.5, freq = 3) =>
+          (x, z, t) => {
+            const d = sqrt((x - cx) ** 2 + (z - cz) ** 2);
+            return sin(d * freq * PI * 2) * 0.5 + 0.5;
+          };
+
+        s.checker =
+          (sz = 5) =>
+          (x, z) =>
+            (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1;
+
+        s.grid =
+          (sp = 5) =>
+          (x, z, t, n) => {
+            const ix = Math.round(x * (n - 1)),
+              iz = Math.round(z * (n - 1));
+            return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05;
+          };
+
+        s.pyramid = () => (x, z) => 1 - Math.max(abs(x - 0.5), abs(z - 0.5)) * 2;
+
+        s.flat =
+          (h = 0.5) =>
+          () =>
+            h;
+
+        s.noise =
+          (scale = 4) =>
+          (x, z, t) =>
+            _perlin2(x * scale + t * 0.3, z * scale + t * 0.2);
+
+        s.blend =
+          (a, b, mix = 0.5) =>
+          (x, z, t, n) => {
+            const m = typeof mix === "function" ? mix(x, z, t, n) : mix;
+            return a(x, z, t, n) * (1 - m) + b(x, z, t, n) * m;
+          };
+
+        s.add = (a, b) => (x, z, t, n) => s.clamp(a(x, z, t, n) + b(x, z, t, n));
+        s.mul = (a, b) => (x, z, t, n) => a(x, z, t, n) * b(x, z, t, n);
+        s.inv = (a) => (x, z, t, n) => 1 - a(x, z, t, n);
+
+        s.ease = (pat) => (x, z, t, n) => s.smoothstep(pat(x, z, t, n));
+
+        s.rotate = (pat, angle) => (x, z, t, n) => {
+          const a = typeof angle === "function" ? angle(x, z, t, n) : angle;
+          const cx = x - 0.5,
+            cz = z - 0.5;
+          const rx = cx * cos(a) - cz * sin(a) + 0.5;
+          const rz = cx * sin(a) + cz * cos(a) + 0.5;
+          return pat(rx, rz, t, n);
+        };
+
+        s.scale = (pat, sx, sz) => (x, z, t, n) => {
+          const nx = (x - 0.5) / sx + 0.5;
+          const nz = (z - 0.5) / (sz || sx) + 0.5;
+          return pat(nx, nz, t, n);
+        };
+
+        s.offset = (pat, ox, oz) => (x, z, t, n) => {
+          const fx = typeof ox === "function" ? ox(x, z, t, n) : ox;
+          const fz = typeof oz === "function" ? oz(x, z, t, n) : oz || 0;
+          return pat(x - fx, z - fz, t, n);
+        };
+
+        // Sequence: cycles through patterns with smooth transitions
+        s.seq = (dur, ...pats) => {
+          const transTime = 0.8;
+          const totalPerPat = dur + transTime;
+          return (x, z, t, n) => {
+            const cycle = t % (pats.length * totalPerPat);
+            const idx = floor(cycle / totalPerPat);
+            const local = cycle - idx * totalPerPat;
+            const curPat = pats[idx % pats.length];
+            const nextPat = pats[(idx + 1) % pats.length];
+            if (local < dur) {
+              return curPat(x, z, t, n);
+            } else {
+              const blend = s.smoothstep((local - dur) / transTime);
+              return curPat(x, z, t, n) * (1 - blend) + nextPat(x, z, t, n) * blend;
+            }
+          };
+        };
+
+        // Time modifiers
+        s.slow = (pat, factor) => (x, z, t, n) => pat(x, z, t / factor, n);
+        s.fast = (pat, factor) => (x, z, t, n) => pat(x, z, t * factor, n);
+
+        return s;
+      }
+
+      // ─── Program execution ───
+      let activePattern = null;
+      let globalTime = 0;
+
+      function runProgram(code) {
+        const consoleEl = document.getElementById("console");
+        consoleEl.textContent = "";
+        try {
+          const s = createAPI();
+          const fn = new Function("s", `"use strict";\n${code}`);
+          const result = fn(s);
+          if (typeof result === "function") {
+            activePattern = result;
+          } else {
+            consoleEl.textContent = "⚠ Program must return a pattern function";
+          }
+        } catch (e) {
+          consoleEl.textContent = `✗ ${e.message}`;
+        }
+      }
+
+      // ─── Default program ───
+      const defaultCode = `// Shape Display — return a pattern function
+// x, z ∈ [0,1]  t = time  n = grid size
+// output: height ∈ [0,1]
+
+return s.seq(1.5,
+  s.wave(1, 1),
+  s.ripple(0.5, 0.5, 3),
+  s.checker(5),
+  s.grid(5),
+  s.pyramid(),
+  s.map((x, z, t) =>
+    (s.sin((x + z) * 6) * 0.5 + 0.5)
+  ),
+  s.noise(5),
+  s.flat(0.05),
+  s.blend(
+    s.wave(2, 0),
+    s.ripple(0.3, 0.7, 4),
+    s.map((x, z, t) =>
+      s.sin(t * 0.5) * 0.5 + 0.5
+    )
+  )
+)`;
+
+      const editor = document.getElementById("editor");
+      editor.value = defaultCode;
+
+      // Tab support
+      editor.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const start = editor.selectionStart;
+          editor.value = editor.value.substring(0, start) + "  " + editor.value.substring(editor.selectionEnd);
+          editor.selectionStart = editor.selectionEnd = start + 2;
+        }
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          runProgram(editor.value);
+        }
       });
 
-      // Update
-      const dummy = new THREE.Object3D();
+      document.getElementById("run-btn").addEventListener("click", () => runProgram(editor.value));
 
-      function update(dt) {
-        timer += dt;
-        let intensity = 0;
+      // ─── Resize ───
+      function resize() {
+        const w = container.clientWidth,
+          h = container.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+      resize();
+      addEventListener("resize", resize);
 
-        if (phase === "paused" && timer >= PAUSE) {
-          prev.set(current);
-          patIdx = (patIdx + 1) % patterns.length;
-          applyPattern(patIdx, target);
-          phase = "moving";
-          timer = 0;
-        }
+      // ─── Start ───
+      document.getElementById("start-overlay").addEventListener("click", () => {
+        if (!audioCtx) initAudio();
+        document.getElementById("start-overlay").style.display = "none";
+        runProgram(editor.value);
+      });
 
-        if (phase === "moving") {
-          const t = Math.min(timer / TRANSITION, 1);
-          const e = t * t * (3 - 2 * t); // smoothstep
-          let totalDelta = 0;
+      // ─── Loop ───
+      const clock = new THREE.Clock();
+
+      function loop() {
+        requestAnimationFrame(loop);
+        const dt = Math.min(clock.getDelta(), 0.1);
+        globalTime += dt;
+        controls.update();
+
+        prevFrame.set(current);
+
+        if (activePattern) {
           for (let i = 0; i < TOTAL; i++) {
-            const h = prev[i] + (target[i] - prev[i]) * e;
-            totalDelta += Math.abs(h - current[i]);
-            current[i] = h;
-          }
-          intensity = totalDelta / TOTAL;
-          if (t >= 1) {
-            phase = "paused";
-            timer = 0;
+            const ix = i % GRID;
+            const iz = (i / GRID) | 0;
+            const x = ix / (GRID - 1);
+            const z = iz / (GRID - 1);
+            let h = activePattern(x, z, globalTime, GRID);
+            h = Math.max(0, Math.min(1, h || 0));
+            current[i] = h * MAX_P;
           }
         }
 
-        // Update instances
-        // Pin center Y: bottom of pin at BASE_TOP, so center = BASE_TOP + PIN_H/2
-        // But pin protrudes by current[i] above base top
-        // Bottom of pin = BASE_TOP - (PIN_H - current[i])
-        // Center of pin = bottom + PIN_H/2 = BASE_TOP - PIN_H + current[i] + PIN_H/2
-        //               = BASE_TOP + current[i] - PIN_H/2
+        let intensity = 0;
         for (let i = 0; i < TOTAL; i++) {
-          const x = -HALF + ixArr[i] * STEP;
-          const z = -HALF + izArr[i] * STEP;
+          const x = -HALF + (i % GRID) * STEP;
+          const zz = -HALF + ((i / GRID) | 0) * STEP;
           const centerY = BASE_TOP + current[i] - PIN_H / 2;
-          dummy.position.set(x, centerY, z);
+          dummy.position.set(x, centerY, zz);
           dummy.updateMatrix();
           pins.setMatrixAt(i, dummy.matrix);
           heightData[i * 4] = centerY;
+          intensity += Math.abs(current[i] - prevFrame[i]);
         }
+        intensity /= TOTAL;
         pins.instanceMatrix.needsUpdate = true;
         heightTex.needsUpdate = true;
 
-        // Audio
         if (audioCtx) {
           const now = audioCtx.currentTime;
           for (const v of voices) {
@@ -316,21 +497,10 @@
             v.filter.frequency.setTargetAtTime(150 + intensity * 1500, now, 0.1);
           }
         }
-      }
 
-      const clock = new THREE.Clock();
-      (function loop() {
-        requestAnimationFrame(loop);
-        update(clock.getDelta());
-        controls.update();
         renderer.render(scene, camera);
-      })();
-
-      addEventListener("resize", () => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
-      });
+      }
+      loop();
     </script>
   </body>
 </html>
