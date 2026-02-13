@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shape Display</title>
+    <style>
+      * { margin: 0; padding: 0; }
+      body { overflow: hidden; background: #fff; }
+      #start {
+          position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+          background: #fff; padding: 16px 32px; border: 1px solid #ccc; cursor: pointer;
+          font: 13px/1 'Segoe UI', sans-serif; letter-spacing: 2px; text-transform: uppercase; z-index: 1;
+      }
+      #start:hover { background: #000; color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div id="start">Start</div>
+    <script type="importmap">
+      { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      const GRID = 30;
+      const PIN_W = 10;
+      const PIN_H = 200;
+      const GAP = 2;
+      const STEP = PIN_W + GAP;
+      const TOTAL = GRID * GRID;
+      const HALF = ((GRID - 1) * STEP) / 2;
+      const BASE_H = 200;
+      const BASE_TOP = 0;
+      const TRANSITION = 0.8;
+      const PAUSE = 1.0;
+      const VOICES = 16;
+      const MAX_PROTRUSION = 180;
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(devicePixelRatio);
+      renderer.toneMapping = THREE.NoToneMapping;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 5000);
+      camera.position.set(500, 600, 500);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      // Strong ambient + multiple directional lights for very white look
+      scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+
+      const d1 = new THREE.DirectionalLight(0xffffff, 1.5);
+      d1.position.set(300, 600, 400);
+      scene.add(d1);
+
+      const d2 = new THREE.DirectionalLight(0xffffff, 1.0);
+      d2.position.set(-300, 400, -200);
+      scene.add(d2);
+
+      // Materials
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.0 });
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06 });
+
+      // Pins (instanced)
+      const pinGeom = new THREE.BoxGeometry(PIN_W, PIN_H, PIN_W);
+      const pins = new THREE.InstancedMesh(pinGeom, whiteMat, TOTAL);
+      scene.add(pins);
+
+      // Pin edges (instanced via merged buffer)
+      const edgeGeom = new THREE.EdgesGeometry(pinGeom);
+      const edgePositions = edgeGeom.attributes.position.array;
+      const edgeVertCount = edgePositions.length / 3;
+      const mergedPos = new Float32Array(TOTAL * edgePositions.length);
+      const pinIndex = new Float32Array(TOTAL * edgeVertCount);
+
+      for (let i = 0; i < TOTAL; i++) {
+        mergedPos.set(edgePositions, i * edgePositions.length);
+        pinIndex.fill(i, i * edgeVertCount, (i + 1) * edgeVertCount);
+      }
+
+      const mergedEdgeGeom = new THREE.BufferGeometry();
+      mergedEdgeGeom.setAttribute("position", new THREE.BufferAttribute(mergedPos, 3));
+      mergedEdgeGeom.setAttribute("pinIdx", new THREE.BufferAttribute(pinIndex, 1));
+
+      const texW = 1024;
+      const texH = Math.ceil(TOTAL / texW);
+      const heightData = new Float32Array(texW * texH * 4);
+      const heightTex = new THREE.DataTexture(heightData, texW, texH, THREE.RGBAFormat, THREE.FloatType);
+
+      const edgeShaderMat = new THREE.ShaderMaterial({
+        transparent: true,
+        uniforms: {
+          offsets: { value: heightTex },
+          opacity: { value: 0.06 },
+          gridSize: { value: GRID },
+          step: { value: STEP },
+          half: { value: HALF },
+          pinH: { value: PIN_H },
+          texW: { value: texW },
+        },
+        vertexShader: `
+        attribute float pinIdx;
+        uniform sampler2D offsets;
+        uniform float gridSize, step, half, pinH, texW;
+        void main() {
+            int idx = int(pinIdx);
+            float ix = mod(pinIdx, gridSize);
+            float iz = floor(pinIdx / gridSize);
+            ivec2 tc = ivec2(idx % int(texW), idx / int(texW));
+            float h = texelFetch(offsets, tc, 0).r;
+            vec3 p = position;
+            p.x += -half + ix * step;
+            p.z += -half + iz * step;
+            p.y += h;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+    `,
+        fragmentShader: `
+        uniform float opacity;
+        void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, opacity); }
+    `,
+      });
+
+      const edgeLines = new THREE.LineSegments(mergedEdgeGeom, edgeShaderMat);
+      scene.add(edgeLines);
+
+      // Base
+      const baseW = GRID * STEP + 20;
+      const baseGeom2 = new THREE.BoxGeometry(baseW, BASE_H, baseW);
+      const base = new THREE.Mesh(baseGeom2, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.0 }));
+      base.position.y = BASE_TOP - BASE_H / 2;
+      scene.add(base);
+
+      const baseEdge = new THREE.LineSegments(new THREE.EdgesGeometry(baseGeom2), edgeMat);
+      baseEdge.position.y = BASE_TOP - BASE_H / 2;
+      scene.add(baseEdge);
+
+      // Pin data
+      const ixArr = new Float32Array(TOTAL);
+      const izArr = new Float32Array(TOTAL);
+      const current = new Float32Array(TOTAL);
+      const prev = new Float32Array(TOTAL);
+      const target = new Float32Array(TOTAL);
+
+      for (let i = 0; i < TOTAL; i++) {
+        ixArr[i] = i % GRID;
+        izArr[i] = (i / GRID) | 0;
+      }
+
+      // Patterns: return protrusion 0..MAX_PROTRUSION (how far above base top)
+      const patterns = [
+        // Wave
+        (x, z) => (Math.sin(x * 0.25) * 0.5 + 0.5) * (Math.cos(z * 0.25) * 0.5 + 0.5) * MAX_PROTRUSION,
+        // Radial ripple
+        (x, z) => {
+          const d = Math.sqrt((x - 14.5) ** 2 + (z - 14.5) ** 2);
+          return (Math.sin(d * 0.5) * 0.5 + 0.5) * MAX_PROTRUSION;
+        },
+        // Checkerboard
+        (x, z) => ((Math.floor(x / 5) + Math.floor(z / 5)) % 2 === 0 ? MAX_PROTRUSION * 0.9 : MAX_PROTRUSION * 0.1),
+        // Grid lines
+        (x, z) => (x % 5 === 0 || z % 5 === 0 ? MAX_PROTRUSION : MAX_PROTRUSION * 0.05),
+        // Pyramid
+        (x, z) => {
+          const dx = Math.abs(x - 14.5) / 14.5;
+          const dz = Math.abs(z - 14.5) / 14.5;
+          return (1 - Math.max(dx, dz)) * MAX_PROTRUSION;
+        },
+        // Diagonal wave
+        (x, z) => (Math.sin((x + z) * 0.3) * 0.5 + 0.5) * MAX_PROTRUSION,
+        // All flat low
+        () => MAX_PROTRUSION * 0.05,
+        // All flat high
+        () => MAX_PROTRUSION * 0.95,
+      ];
+
+      let patIdx = 0;
+      let phase = "paused";
+      let timer = 0;
+
+      function applyPattern(idx, out) {
+        const fn = patterns[idx];
+        for (let i = 0; i < TOTAL; i++) {
+          out[i] = Math.max(0, Math.min(MAX_PROTRUSION, fn(ixArr[i], izArr[i])));
+        }
+      }
+
+      // Initialize
+      applyPattern(0, current);
+      prev.set(current);
+      target.set(current);
+
+      // Audio
+      let audioCtx, masterGain;
+      const voices = [];
+
+      function initAudio() {
+        audioCtx = new AudioContext();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.12;
+        masterGain.connect(audioCtx.destination);
+
+        const bufLen = audioCtx.sampleRate * 2;
+        const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+        const ch = buf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) ch[i] = Math.random() * 2 - 1;
+
+        for (let i = 0; i < VOICES; i++) {
+          const osc = audioCtx.createOscillator();
+          osc.type = "triangle";
+          const baseFreq = 120 + Math.random() * 280;
+          osc.frequency.value = baseFreq;
+
+          const noise = audioCtx.createBufferSource();
+          noise.buffer = buf;
+          noise.loop = true;
+          noise.playbackRate.value = 0.2 + Math.random() * 0.4;
+
+          const filter = audioCtx.createBiquadFilter();
+          filter.type = "lowpass";
+          filter.frequency.value = 150;
+          filter.Q.value = 0.5;
+
+          const gain = audioCtx.createGain();
+          gain.gain.value = 0;
+
+          const lfo = audioCtx.createOscillator();
+          lfo.frequency.value = 0.3 + Math.random() * 2.5;
+          const lfoG = audioCtx.createGain();
+          lfoG.gain.value = 0.15;
+          lfo.connect(lfoG);
+          lfoG.connect(osc.frequency);
+
+          osc.connect(gain);
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(masterGain);
+
+          osc.start();
+          noise.start();
+          lfo.start();
+
+          voices.push({ gain, filter, osc, baseFreq, vary: 0.5 + Math.random() * 0.8 });
+        }
+      }
+
+      document.getElementById("start").addEventListener("click", () => {
+        if (!audioCtx) initAudio();
+        document.getElementById("start").style.display = "none";
+      });
+
+      // Update
+      const dummy = new THREE.Object3D();
+
+      function update(dt) {
+        timer += dt;
+        let intensity = 0;
+
+        if (phase === "paused" && timer >= PAUSE) {
+          prev.set(current);
+          patIdx = (patIdx + 1) % patterns.length;
+          applyPattern(patIdx, target);
+          phase = "moving";
+          timer = 0;
+        }
+
+        if (phase === "moving") {
+          const t = Math.min(timer / TRANSITION, 1);
+          const e = t * t * (3 - 2 * t); // smoothstep
+          let totalDelta = 0;
+          for (let i = 0; i < TOTAL; i++) {
+            const h = prev[i] + (target[i] - prev[i]) * e;
+            totalDelta += Math.abs(h - current[i]);
+            current[i] = h;
+          }
+          intensity = totalDelta / TOTAL;
+          if (t >= 1) {
+            phase = "paused";
+            timer = 0;
+          }
+        }
+
+        // Update instances
+        // Pin center Y: bottom of pin at BASE_TOP, so center = BASE_TOP + PIN_H/2
+        // But pin protrudes by current[i] above base top
+        // Bottom of pin = BASE_TOP - (PIN_H - current[i])
+        // Center of pin = bottom + PIN_H/2 = BASE_TOP - PIN_H + current[i] + PIN_H/2
+        //               = BASE_TOP + current[i] - PIN_H/2
+        for (let i = 0; i < TOTAL; i++) {
+          const x = -HALF + ixArr[i] * STEP;
+          const z = -HALF + izArr[i] * STEP;
+          const centerY = BASE_TOP + current[i] - PIN_H / 2;
+          dummy.position.set(x, centerY, z);
+          dummy.updateMatrix();
+          pins.setMatrixAt(i, dummy.matrix);
+          heightData[i * 4] = centerY;
+        }
+        pins.instanceMatrix.needsUpdate = true;
+        heightTex.needsUpdate = true;
+
+        // Audio
+        if (audioCtx) {
+          const now = audioCtx.currentTime;
+          for (const v of voices) {
+            const g = Math.min(intensity * 0.6 * v.vary, 0.35);
+            v.gain.gain.setTargetAtTime(g, now, 0.04);
+            v.osc.frequency.setTargetAtTime(v.baseFreq + intensity * 180, now, 0.1);
+            v.filter.frequency.setTargetAtTime(150 + intensity * 1500, now, 0.1);
+          }
+        }
+      }
+
+      const clock = new THREE.Clock();
+      (function loop() {
+        requestAnimationFrame(loop);
+        update(clock.getDelta());
+        controls.update();
+        renderer.render(scene, camera);
+      })();
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+    </script>
+  </body>
+</html>

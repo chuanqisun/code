@@ -66,6 +66,7 @@
 - [Recreate The Past](./recreating-the-past/)
 - [Shadowcast](./shadowcast/)
 - [Shanshui](./shanshui/)
+- [Shape display](./shape-display/)
 - [Spaceship](./spaceship/)
 - [Text Rain](./text-rain/)
 - [Tree of Lives](./tree-of-lives/)
