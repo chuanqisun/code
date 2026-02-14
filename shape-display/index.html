@@ -18,72 +18,185 @@
         --error: #e06c75;
       }
 
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { overflow: hidden; background: #000; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; height: 100vh; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        background: #000;
+        font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+        height: 100vh;
+      }
 
-      #menu-toggle { position: fixed; top: 12px; left: 12px; z-index: 200; }
-      #menu-toggle.hidden { display: none; }
+      #menu-toggle {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 200;
+      }
+      #menu-toggle.hidden {
+        display: none;
+      }
 
       #left {
-        position: fixed; top: 0; left: 0; bottom: 0;
-        width: 420px; max-width: 100vw;
-        display: none; flex-direction: column;
-        background: var(--bg-dark); z-index: 300;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 420px;
+        max-width: 100vw;
+        display: none;
+        flex-direction: column;
+        background: var(--bg-dark);
+        z-index: 300;
       }
-      #left.open { display: flex; }
+      #left.open {
+        display: flex;
+      }
 
       #header {
         padding: 12px 16px 8px;
-        display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
         gap: 8px;
         flex-shrink: 0;
         border-bottom: 1px solid var(--border);
       }
-      #header h1 { font-size: 11px; font-weight: 400; letter-spacing: 3px; text-transform: uppercase; color: var(--text-secondary); }
-      #header-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+      #header h1 {
+        font-size: 11px;
+        font-weight: 400;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+      }
+      #header-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
       .header-btn {
-        background: var(--bg-lighter); border: 1px solid var(--border); padding: 4px 10px;
-        font: 10px/1 monospace; letter-spacing: 1px; text-transform: uppercase;
-        color: var(--text-primary); cursor: pointer;
+        background: var(--bg-lighter);
+        border: 1px solid var(--border);
+        padding: 6px 10px 4px 10px; /* account for uppercase no descender */
+        font: 10px/1 monospace;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--text-primary);
+        cursor: pointer;
         text-decoration: none;
       }
-      .header-btn:hover { background: var(--bg-darker); color: var(--text-bright); border-color: var(--accent); }
-      .header-btn.active { background: var(--accent); color: var(--bg-darker); border-color: var(--accent); }
-      .header-btn.primary { background: var(--accent); color: var(--bg-darker); border-color: var(--accent); }
-      .header-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+      .header-btn:hover {
+        background: var(--bg-darker);
+        color: var(--text-bright);
+        border-color: var(--accent);
+      }
+      .header-btn.active {
+        background: var(--accent);
+        color: var(--bg-darker);
+        border-color: var(--accent);
+      }
+      .header-btn.primary {
+        background: var(--accent);
+        color: var(--bg-darker);
+        border-color: var(--accent);
+      }
+      .header-btn.primary:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
 
       #api-ref {
-        padding: 10px 16px; border-bottom: 1px solid var(--border);
-        font-size: 12px; color: var(--text-secondary); line-height: 1.7;
-        flex-shrink: 0; overflow-y: auto;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.7;
+        flex-shrink: 0;
+        overflow-y: auto;
         display: none;
       }
-      #api-ref.visible { display: block; }
-      #api-ref code { color: var(--text-primary); }
+      #api-ref.visible {
+        display: block;
+      }
+      #api-ref code {
+        color: var(--text-primary);
+      }
 
-      #editor-wrap { flex: 1; position: relative; overflow: hidden; min-height: 0; }
-      .cm-editor { height: 100%; }
-      .cm-editor .cm-scroller { overflow: auto; }
-      .cm-editor.cm-focused { outline: none; }
+      #editor-wrap {
+        flex: 1;
+        position: relative;
+        overflow: hidden;
+        min-height: 0;
+      }
+      .cm-editor {
+        height: 100%;
+      }
+      .cm-editor .cm-scroller {
+        overflow: auto;
+      }
+      .cm-editor.cm-focused {
+        outline: none;
+      }
 
-      #console { max-height: 80px; overflow-y: auto; padding: 8px 16px; border-top: 1px solid var(--border); font-size: 10px; color: var(--error); flex-shrink: 0; }
-      #console:empty { display: none; }
+      #console {
+        max-height: 80px;
+        overflow-y: auto;
+        padding: 8px 16px;
+        border-top: 1px solid var(--border);
+        font-size: 10px;
+        color: var(--error);
+        flex-shrink: 0;
+      }
+      #console:empty {
+        display: none;
+      }
 
-      #right { position: fixed; top: 0; left: 0; right: 0; bottom: 0; }
+      #right {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+      }
 
       #start-overlay {
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        display: flex; align-items: center; justify-content: center;
-        z-index: 50; pointer-events: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 50;
+        pointer-events: none;
       }
       #start-overlay span {
-        font: 11px/1 monospace; letter-spacing: 3px; text-transform: uppercase;
-        color: var(--text-primary); border: 1px solid var(--border); padding: 12px 24px;
-        background: var(--bg-darker); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-        pointer-events: auto; cursor: pointer;
+        font: 11px/1 monospace;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+        padding: 12px 24px;
+        background: var(--bg-darker);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        pointer-events: auto;
+        cursor: pointer;
       }
-      #start-overlay:hover span { background: var(--accent); color: var(--bg-darker); border-color: var(--accent); }
-      #start-overlay.hidden { display: none; }
+      #start-overlay:hover span {
+        background: var(--accent);
+        color: var(--bg-darker);
+        border-color: var(--accent);
+      }
+      #start-overlay.hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -96,14 +209,14 @@
           <button class="header-btn primary" id="run-btn" title="Ctrl+Enter">Run</button>
           <button class="header-btn" id="ref-btn">Ref</button>
           <a class="header-btn" id="help-link" href="https://code.chuanqisun.com/shape-display/programming-manual" target="_blank" rel="noopener noreferrer"
-            >Help</a
+            >Learn</a
           >
           <button class="header-btn" id="hide-btn">Hide</button>
         </div>
       </div>
       <div id="api-ref">
-        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> ·
-        <code>pyramid()</code> · <code>flat(h)</code> · <code>noise(scale)</code><br />
+        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> · <code>pyramid()</code> ·
+        <code>flat(h)</code> · <code>noise(scale)</code><br />
         <code>map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
         <code>.blend(b, mix)</code> · <code>.add(b)</code> · <code>.mul(b)</code> · <code>.inv()</code> · <code>.ease()</code><br />
         <code>seq(dur, ...patterns)</code> sequence with crossfade<br />
@@ -462,34 +575,62 @@
           for (const val of Object.values(args)) {
             if (val instanceof Pattern) Pattern._registry.delete(val);
             else if (Array.isArray(val)) {
-              for (const v of val) { if (v instanceof Pattern) Pattern._registry.delete(v); }
+              for (const v of val) {
+                if (v instanceof Pattern) Pattern._registry.delete(v);
+              }
             }
           }
         }
 
         // --- Spatial transforms ---
-        rotate(angle) { return new Pattern("rotate", { source: this, angle }); }
-        scale(sx, sz) { return new Pattern("scale", { source: this, sx, sz }); }
-        offset(ox, oz) { return new Pattern("offset", { source: this, ox, oz }); }
+        rotate(angle) {
+          return new Pattern("rotate", { source: this, angle });
+        }
+        scale(sx, sz) {
+          return new Pattern("scale", { source: this, sx, sz });
+        }
+        offset(ox, oz) {
+          return new Pattern("offset", { source: this, ox, oz });
+        }
 
         // --- Time transforms ---
-        slow(factor) { return new Pattern("slow", { source: this, factor }); }
-        fast(factor) { return new Pattern("fast", { source: this, factor }); }
+        slow(factor) {
+          return new Pattern("slow", { source: this, factor });
+        }
+        fast(factor) {
+          return new Pattern("fast", { source: this, factor });
+        }
 
         // --- Value transforms ---
-        ease() { return new Pattern("ease", { source: this }); }
-        inv() { return new Pattern("inv", { source: this }); }
+        ease() {
+          return new Pattern("ease", { source: this });
+        }
+        inv() {
+          return new Pattern("inv", { source: this });
+        }
 
         // --- Combinators ---
-        blend(other, mix = 0.5) { return new Pattern("blend", { a: this, b: other, mix }); }
-        add(other) { return new Pattern("add", { a: this, b: other }); }
-        mul(other) { return new Pattern("mul", { a: this, b: other }); }
+        blend(other, mix = 0.5) {
+          return new Pattern("blend", { a: this, b: other, mix });
+        }
+        add(other) {
+          return new Pattern("add", { a: this, b: other });
+        }
+        mul(other) {
+          return new Pattern("mul", { a: this, b: other });
+        }
 
         // --- Compile AST to executable function ---
-        _compile() { return _compileNode(this); }
+        _compile() {
+          return _compileNode(this);
+        }
 
-        static _getRoots() { return [...Pattern._registry]; }
-        static _clear() { Pattern._registry = new Set(); }
+        static _getRoots() {
+          return [...Pattern._registry];
+        }
+        static _clear() {
+          Pattern._registry = new Set();
+        }
       }
 
       function _resolveArg(v) {
@@ -499,7 +640,10 @@
         return () => c;
       }
 
-      const _smoothstep = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+      const _smoothstep = (t) => {
+        t = Math.max(0, Math.min(1, t));
+        return t * t * (3 - 2 * t);
+      };
       const _clamp01 = (v) => Math.max(0, Math.min(1, v));
 
       function _compileNode(pat) {
@@ -507,32 +651,49 @@
         const { sin, cos, abs, sqrt, floor, PI, max, min, round } = Math;
 
         switch (type) {
-          case "flat": { const h = a.h; return () => h; }
+          case "flat": {
+            const h = a.h;
+            return () => h;
+          }
           case "wave": {
-            const fx = a.fx ?? 1, fz = a.fz ?? 1;
+            const fx = a.fx ?? 1,
+              fz = a.fz ?? 1;
             return (x, z) => (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5);
           }
           case "ripple": {
-            const cx = a.cx ?? 0.5, cz = a.cz ?? 0.5, freq = a.freq ?? 3;
-            return (x, z) => { const d = sqrt((x - cx) ** 2 + (z - cz) ** 2); return sin(d * freq * PI * 2) * 0.5 + 0.5; };
+            const cx = a.cx ?? 0.5,
+              cz = a.cz ?? 0.5,
+              freq = a.freq ?? 3;
+            return (x, z) => {
+              const d = sqrt((x - cx) ** 2 + (z - cz) ** 2);
+              return sin(d * freq * PI * 2) * 0.5 + 0.5;
+            };
           }
           case "checker": {
             const sz = a.size ?? 5;
-            return (x, z) => (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1;
+            return (x, z) => ((floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1);
           }
           case "grid": {
             const sp = a.spacing ?? 5;
-            return (x, z, t, n) => { const ix = round(x * (n - 1)), iz = round(z * (n - 1)); return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05; };
+            return (x, z, t, n) => {
+              const ix = round(x * (n - 1)),
+                iz = round(z * (n - 1));
+              return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05;
+            };
           }
-          case "pyramid": return (x, z) => 1 - max(abs(x - 0.5), abs(z - 0.5)) * 2;
+          case "pyramid":
+            return (x, z) => 1 - max(abs(x - 0.5), abs(z - 0.5)) * 2;
           case "noise": {
             const sc = a.scale ?? 4;
             return (x, z, t) => _perlin2(x * sc + t * 0.3, z * sc + t * 0.2);
           }
-          case "map": return a.fn;
+          case "map":
+            return a.fn;
           case "seq": {
-            const dur = a.dur, patFns = a.patterns.map((p) => p._compile());
-            const transTime = 0.8, totalPerPat = dur + transTime;
+            const dur = a.dur,
+              patFns = a.patterns.map((p) => p._compile());
+            const transTime = 0.8,
+              totalPerPat = dur + transTime;
             return (x, z, t, n) => {
               const cycle = t % (patFns.length * totalPerPat);
               const idx = floor(cycle / totalPerPat);
@@ -549,56 +710,109 @@
             const angFn = _resolveArg(a.angle);
             return (x, z, t, n) => {
               const ang = angFn(x, z, t, n);
-              const cx2 = x - 0.5, cz2 = z - 0.5;
+              const cx2 = x - 0.5,
+                cz2 = z - 0.5;
               return srcFn(cx2 * cos(ang) - cz2 * sin(ang) + 0.5, cx2 * sin(ang) + cz2 * cos(ang) + 0.5, t, n);
             };
           }
           case "scale": {
             const srcFn = a.source._compile();
-            const sx = a.sx, sz = a.sz ?? sx;
+            const sx = a.sx,
+              sz = a.sz ?? sx;
             return (x, z, t, n) => srcFn((x - 0.5) / sx + 0.5, (z - 0.5) / sz + 0.5, t, n);
           }
           case "offset": {
             const srcFn = a.source._compile();
-            const oxFn = _resolveArg(a.ox ?? 0), ozFn = _resolveArg(a.oz ?? 0);
+            const oxFn = _resolveArg(a.ox ?? 0),
+              ozFn = _resolveArg(a.oz ?? 0);
             return (x, z, t, n) => srcFn(x - oxFn(x, z, t, n), z - ozFn(x, z, t, n), t, n);
           }
-          case "slow": { const srcFn = a.source._compile(), f = a.factor; return (x, z, t, n) => srcFn(x, z, t / f, n); }
-          case "fast": { const srcFn = a.source._compile(), f = a.factor; return (x, z, t, n) => srcFn(x, z, t * f, n); }
-          case "ease": { const srcFn = a.source._compile(); return (x, z, t, n) => _smoothstep(srcFn(x, z, t, n)); }
-          case "inv": { const srcFn = a.source._compile(); return (x, z, t, n) => 1 - srcFn(x, z, t, n); }
+          case "slow": {
+            const srcFn = a.source._compile(),
+              f = a.factor;
+            return (x, z, t, n) => srcFn(x, z, t / f, n);
+          }
+          case "fast": {
+            const srcFn = a.source._compile(),
+              f = a.factor;
+            return (x, z, t, n) => srcFn(x, z, t * f, n);
+          }
+          case "ease": {
+            const srcFn = a.source._compile();
+            return (x, z, t, n) => _smoothstep(srcFn(x, z, t, n));
+          }
+          case "inv": {
+            const srcFn = a.source._compile();
+            return (x, z, t, n) => 1 - srcFn(x, z, t, n);
+          }
           case "blend": {
-            const aFn = a.a._compile(), bFn = a.b._compile(), mFn = _resolveArg(a.mix);
-            return (x, z, t, n) => { const m = mFn(x, z, t, n); return aFn(x, z, t, n) * (1 - m) + bFn(x, z, t, n) * m; };
+            const aFn = a.a._compile(),
+              bFn = a.b._compile(),
+              mFn = _resolveArg(a.mix);
+            return (x, z, t, n) => {
+              const m = mFn(x, z, t, n);
+              return aFn(x, z, t, n) * (1 - m) + bFn(x, z, t, n) * m;
+            };
           }
           case "add": {
-            const aFn = a.a._compile(), bFn = a.b._compile();
+            const aFn = a.a._compile(),
+              bFn = a.b._compile();
             return (x, z, t, n) => _clamp01(aFn(x, z, t, n) + bFn(x, z, t, n));
           }
           case "mul": {
-            const aFn = a.a._compile(), bFn = a.b._compile();
+            const aFn = a.a._compile(),
+              bFn = a.b._compile();
             return (x, z, t, n) => aFn(x, z, t, n) * bFn(x, z, t, n);
           }
-          default: return () => 0;
+          default:
+            return () => 0;
         }
       }
 
       // --- Factory functions (injected into user scope) ---
-      function _wave(fx = 1, fz = 1) { return new Pattern("wave", { fx, fz }); }
-      function _ripple(cx = 0.5, cz = 0.5, freq = 3) { return new Pattern("ripple", { cx, cz, freq }); }
-      function _checker(size = 5) { return new Pattern("checker", { size }); }
-      function _grid(spacing = 5) { return new Pattern("grid", { spacing }); }
-      function _pyramid() { return new Pattern("pyramid", {}); }
-      function _flat(h = 0.5) { return new Pattern("flat", { h }); }
-      function _noise(scale = 4) { return new Pattern("noise", { scale }); }
-      function _map(fn) { return new Pattern("map", { fn }); }
-      function _seq(dur, ...patterns) { return new Pattern("seq", { dur, patterns }); }
+      function _wave(fx = 1, fz = 1) {
+        return new Pattern("wave", { fx, fz });
+      }
+      function _ripple(cx = 0.5, cz = 0.5, freq = 3) {
+        return new Pattern("ripple", { cx, cz, freq });
+      }
+      function _checker(size = 5) {
+        return new Pattern("checker", { size });
+      }
+      function _grid(spacing = 5) {
+        return new Pattern("grid", { spacing });
+      }
+      function _pyramid() {
+        return new Pattern("pyramid", {});
+      }
+      function _flat(h = 0.5) {
+        return new Pattern("flat", { h });
+      }
+      function _noise(scale = 4) {
+        return new Pattern("noise", { scale });
+      }
+      function _map(fn) {
+        return new Pattern("map", { fn });
+      }
+      function _seq(dur, ...patterns) {
+        return new Pattern("seq", { dur, patterns });
+      }
       // Standalone combinators
-      function _blend(a, b, mix = 0.5) { return new Pattern("blend", { a, b, mix }); }
-      function _add(a, b) { return new Pattern("add", { a, b }); }
-      function _mul(a, b) { return new Pattern("mul", { a, b }); }
-      function _inv(a) { return new Pattern("inv", { source: a }); }
-      function _ease(a) { return new Pattern("ease", { source: a }); }
+      function _blend(a, b, mix = 0.5) {
+        return new Pattern("blend", { a, b, mix });
+      }
+      function _add(a, b) {
+        return new Pattern("add", { a, b });
+      }
+      function _mul(a, b) {
+        return new Pattern("mul", { a, b });
+      }
+      function _inv(a) {
+        return new Pattern("inv", { source: a });
+      }
+      function _ease(a) {
+        return new Pattern("ease", { source: a });
+      }
 
       const _userClamp = (v) => Math.max(0, Math.min(1, v));
       const _userLerp = (a, b, t) => a + (b - a) * t;
@@ -606,16 +820,54 @@
 
       // Names injected into the user script scope
       const _scopeNames = [
-        "wave", "ripple", "checker", "grid", "pyramid", "flat", "noise", "map", "seq",
-        "blend", "add", "mul", "inv", "ease",
-        "sin", "cos", "abs", "sqrt", "floor", "PI",
-        "clamp", "lerp", "smoothstep",
+        "wave",
+        "ripple",
+        "checker",
+        "grid",
+        "pyramid",
+        "flat",
+        "noise",
+        "map",
+        "seq",
+        "blend",
+        "add",
+        "mul",
+        "inv",
+        "ease",
+        "sin",
+        "cos",
+        "abs",
+        "sqrt",
+        "floor",
+        "PI",
+        "clamp",
+        "lerp",
+        "smoothstep",
       ];
       const _scopeValues = [
-        _wave, _ripple, _checker, _grid, _pyramid, _flat, _noise, _map, _seq,
-        _blend, _add, _mul, _inv, _ease,
-        Math.sin, Math.cos, Math.abs, Math.sqrt, Math.floor, Math.PI,
-        _userClamp, _userLerp, _userSmoothstep,
+        _wave,
+        _ripple,
+        _checker,
+        _grid,
+        _pyramid,
+        _flat,
+        _noise,
+        _map,
+        _seq,
+        _blend,
+        _add,
+        _mul,
+        _inv,
+        _ease,
+        Math.sin,
+        Math.cos,
+        Math.abs,
+        Math.sqrt,
+        Math.floor,
+        Math.PI,
+        _userClamp,
+        _userLerp,
+        _userSmoothstep,
       ];
 
       let activePattern = null;
@@ -671,22 +923,22 @@ seq(0.5,
       let editorView;
 
       // Custom keybinding for Ctrl/Cmd+Enter to run
-      const runKeymap = keymap.of([
+      const runKeymap = [
         {
-          key: "Ctrl-Enter",
-          mac: "Cmd-Enter",
+          key: "Mod-Enter",
           run: () => {
             runProgram(editorView.state.doc.toString());
             return true;
           },
         },
-      ]);
+      ];
 
       const commonExtensions = [
         highlightActiveLine(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        keymap.of([...defaultKeymap, indentWithTab]),
+        keymap.of([...runKeymap, ...defaultKeymap, indentWithTab]),
         oneDark,
+        javascript(),
         indentOnInput(),
         bracketMatching(),
         closeBrackets(),
@@ -708,7 +960,7 @@ seq(0.5,
         editorView = new EditorView({
           state: EditorState.create({
             doc: initialCode,
-            extensions: [...commonExtensions, javascript(), runKeymap],
+            extensions: commonExtensions,
           }),
           parent: document.getElementById("editor-wrap"),
         });
