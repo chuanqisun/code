@@ -12,11 +12,11 @@ The Shape Display is a programmable 30×30 grid of motorized pins. Each pin's he
 | -------------- | ----- | ------------------------------------------ |
 | `x`            | 0–1   | Horizontal position (left to right)        |
 | `z`            | 0–1   | Depth position (front to back)             |
-| `t`            | 0–∞   | Time in seconds (continuous)               |
-| `n`            | 30    | Grid resolution                            |
+| `t`            | 0–∞   | Time in seconds (resets on each run)       |
+| `n`            | 32    | Grid resolution (configurable via `grid(n)`) |
 | **output** `h` | 0–1   | Pin height (0 = flush, 1 = fully extended) |
 
-Write your pattern, then press **Ctrl+Enter** (Cmd+Enter on Mac) to run. The clock never resets — editing and re-running smoothly transitions to the new pattern.
+Write your pattern, then press **Ctrl+Enter** (Cmd+Enter on Mac) to run. Time resets to 0 on each run, so animations and sequences always start fresh.
 
 ---
 
@@ -90,13 +90,13 @@ checker(2); // large squares
 checker(6); // small squares
 ```
 
-### `grid(spacing)`
+### `gridlines(spacing)`
 
 Raised grid lines. `spacing` is in pin units.
 
 ```js
-grid(5); // lines every 5 pins
-grid(10); // lines every 10 pins
+gridlines(5); // lines every 5 pins
+gridlines(10); // lines every 10 pins
 ```
 
 ### `pyramid()`
@@ -214,10 +214,93 @@ Cycle through patterns with smooth transitions. Each pattern holds for `duration
 seq(2, flat(0), pyramid(), wave(2, 2), ripple(0.5, 0.5, 4), checker(5));
 ```
 
-The sequence loops indefinitely. Transition easing is automatic. You can chain transforms on a sequence:
+By default the sequence loops indefinitely. You can chain transforms on a sequence:
 
 ```js
 seq(1, wave(1, 0), wave(0, 1)).slow(2);
+```
+
+### `sleep(duration)`
+
+Used inside `seq()` to hold the current pattern for a duration. `sleep(Infinity)` stops the sequence permanently (no looping).
+
+```js
+// Play once and hold on the last pattern forever
+seq(2, flat(0), wave(1, 1), pyramid(), sleep(Infinity));
+
+// Pause between patterns
+seq(1, wave(1, 1), sleep(3), ripple(0.5, 0.5, 3));
+```
+
+When you re-run the code (Ctrl+Enter), time resets to 0 and the sequence starts from the beginning.
+
+---
+
+## Animation Signals
+
+Animation signals are time-varying values that can be used anywhere a static number is accepted — in `.rotate()`, `.blend()`, `.offset()`, `.scale()`, etc. They replace the need for `map()` in many common animation patterns.
+
+### `tween(from, to, duration, ease?)`
+
+Smoothly ramp from one value to another over `duration` seconds. Stays at `to` after completion. Optional `ease` function (defaults to smoothstep).
+
+```js
+// Rotate from 0 to π over 5 seconds
+wave(1, 1).rotate(tween(0, PI, 5));
+
+// Scale up over 3 seconds
+pyramid().scale(tween(0.5, 2, 3));
+
+// Animated blend
+checker(5).blend(ripple(0.5, 0.5, 3), tween(0, 1, 4));
+```
+
+### `osc(freq, lo?, hi?)`
+
+Sine wave oscillation between `lo` (default 0) and `hi` (default 1).
+
+```js
+// Oscillating rotation
+checker(4).rotate(osc(0.2, -PI / 4, PI / 4));
+
+// Pulsing blend
+wave(2, 2).blend(pyramid(), osc(0.5));
+```
+
+### `saw(freq, lo?, hi?)`
+
+Sawtooth wave — linear ramp from `lo` to `hi`, then snaps back.
+
+```js
+// Continuously scrolling offset
+wave(3, 0).offset(saw(0.2), 0);
+```
+
+### `pulse(freq, duty?)`
+
+Square wave alternating between 0 and 1. `duty` (default 0.5) controls the on-fraction.
+
+```js
+// Blinking between two patterns
+wave(1, 1).blend(pyramid(), pulse(0.5));
+```
+
+---
+
+## Grid Configuration
+
+### `grid(n)`
+
+Set the grid resolution to `n × n` pins. Default is 32. Range: 2–64. Call at the top of your program.
+
+```js
+grid(16); // 16×16 pins (coarser)
+wave(1, 1);
+```
+
+```js
+grid(48); // 48×48 pins (finer)
+noise(5);
 ```
 
 ---
@@ -313,7 +396,7 @@ map((x, z, t) => sin(t * 2) * 0.4 + 0.5);
 **Rotating ripple:**
 
 ```js
-ripple(0.5, 0.5, 4).rotate(map((x, z, t) => t * 0.3));
+ripple(0.5, 0.5, 4).rotate(osc(0.1, 0, PI * 2));
 ```
 
 **Terrain with moving spotlight:**
@@ -334,12 +417,13 @@ noise(6).mul(
 ```js
 seq(
   2,
-  wave(1, 1),
+  wave(1, 1).rotate(tween(0, PI, 3)),
   checker(6).ease(),
-  wave(3, 0).rotate(map((x, z, t) => t)),
-  noise(4).blend(pyramid(), 0.5),
+  wave(3, 0).rotate(osc(0.5, 0, PI)),
+  noise(4).blend(pyramid(), osc(0.3)),
   ripple(0.5, 0.5, 5).mul(pyramid().inv()),
-  flat(0.02)
+  flat(0.02),
+  sleep(Infinity)
 );
 ```
 

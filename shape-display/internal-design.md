@@ -71,10 +71,11 @@ Compilation happens **once** when the user triggers a run (Ctrl+Enter). The comp
 
 The render loop runs via `requestAnimationFrame` and performs:
 
-1. **Time advance** — `globalTime += dt`. This clock **never resets**, even when the user changes the pattern. This is the key mechanism that prevents visual/audio jumps on code change. Inspired by [Strudel's scheduling](https://loophole-letters.vercel.app/web-audio-scheduling): "when the pattern is changed from outside, the next scheduling callback will work with the new pattern, keeping its clock running."
-2. **Pattern evaluation** — For each pin `(x, z)`, call `activePattern(x, z, globalTime, GRID)` to get a height in `[0, 1]`.
-3. **3D update** — Set pin positions and update the instanced mesh and edge shader texture.
-4. **Audio update** — Compute movement intensity (sum of height deltas) and drive the synthesizer voices proportionally. This keeps audio tightly coupled to the visual motion.
+1. **Time advance** — `globalTime += dt`. The underlying clock never resets.
+2. **Program-relative time** — The pattern receives `t = globalTime - programStartTime`, so `t` starts from 0 on each re-run. This ensures animation signals (`tween`, etc.) and sequences replay from the start.
+3. **Pattern evaluation** — For each pin `(x, z)`, call `activePattern(x, z, t, GRID)` to get a height in `[0, 1]`.
+4. **3D update** — Set pin positions and update the instanced mesh and edge shader texture.
+5. **Audio update** — Compute movement intensity (sum of height deltas) and drive the synthesizer voices proportionally.
 
 ### Audio-Visual Sync
 
@@ -91,13 +92,70 @@ Because both audio parameters and pin positions are computed from `activePattern
 The user code runs inside `new Function(...)` with injected parameter names:
 
 ```
-wave, ripple, checker, grid, pyramid, flat, noise, map, seq,
+wave, ripple, checker, gridlines, pyramid, flat, noise, map, seq, sleep,
 blend, add, mul, inv, ease,
+tween, osc, saw, pulse,
+grid,
 sin, cos, abs, sqrt, floor, PI,
 clamp, lerp, smoothstep
 ```
 
 All factory functions create `Pattern` instances. Math utilities (`sin`, `cos`, etc.) are standard `Math.*` functions. The `map()` callback captures these through closure, so `sin(x)` works inside `map((x) => sin(x))`.
+
+## Animation Signals
+
+Animation signals are plain functions `(x, z, t, n) => number` that can be used anywhere a static value is accepted. Because `_resolveArg()` already normalises functions, signals compose naturally with transforms:
+
+```js
+wave(1, 1).rotate(tween(0, PI, 5))    // animate rotation over 5 s
+checker(4).blend(pyramid(), osc(0.3))  // oscillating blend
+```
+
+| Signal | Signature | Description |
+|--------|-----------|-------------|
+| `tween(from, to, dur, ease?)` | Ramp from → to over dur seconds, clamp at to | One-shot ramp |
+| `osc(freq, lo?, hi?)` | Sine oscillation between lo and hi | Continuous |
+| `saw(freq, lo?, hi?)` | Sawtooth ramp between lo and hi | Continuous |
+| `pulse(freq, duty?)` | Square wave (0 or 1) | Continuous |
+
+Signals depend on `t`, which is **program-relative time** (see below), so `tween` starts from 0 on each re-run.
+
+## Sleep & Non-Looping Sequences
+
+`sleep(duration)` creates a special `Pattern` of type `"sleep"`. It is meaningful only inside `seq()`:
+
+- **`sleep(t)`** — holds the previous pattern for `t` seconds (the pattern keeps animating, just no transition to the next one)
+- **`sleep(Infinity)`** — halts the sequence permanently (no looping)
+
+### Seq Compilation (Timeline Model)
+
+The `seq` compiler builds a flat list of **timeline segments**:
+
+| Segment type | Key | Description |
+|-------------|-----|-------------|
+| `"p"` (pattern) | `fn` | Show a pattern for `dur` seconds |
+| `"x"` (crossfade) | `from`, `to` | Smoothstep crossfade over 0.8 s |
+| `"h"` (hold) | `fn` | Hold a pattern for `sleep(t)` seconds |
+
+If the sequence contains `sleep(Infinity)`, `totalDur` is set to `Infinity` and the sequence does **not loop**. Otherwise `totalDur` is finite and time wraps via modulo for looping. A crossfade back to the first pattern is appended automatically when looping.
+
+## Program-Relative Time
+
+When the user runs the code (Ctrl+Enter), `programStartTime` is captured from `globalTime`. The render loop passes `globalTime - programStartTime` to the pattern, so `t` always starts from 0 on each re-run. This ensures:
+
+- `tween()` animations play from the beginning
+- `seq()` sequences restart from the first pattern
+- `sleep(Infinity)` holds indefinitely until the user re-evaluates
+
+## Dynamic Grid Size
+
+`grid(n)` (injected as `_setGrid`) allows the user to set the pin grid resolution from 2 to 64 (default 32). It works via a **deferred rebuild** pattern:
+
+1. During script execution, `grid(n)` stores the requested size in `_pendingGridSize`.
+2. After the script finishes, `runProgram()` checks `_pendingGridSize` and calls `rebuildGrid(n)` if changed.
+3. `rebuildGrid(n)` tears down the old instanced mesh, edge geometry, shell, and data arrays, then creates new ones sized to `n × n`.
+
+The old pattern factory `grid(spacing)` was renamed to `gridlines(spacing)` to free the `grid` name for the size API.
 
 ## Adding a New Pattern Type
 

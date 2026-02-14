@@ -215,13 +215,16 @@
         </div>
       </div>
       <div id="api-ref">
-        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> · <code>pyramid()</code> ·
+        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>gridlines(spacing)</code> · <code>pyramid()</code> ·
         <code>flat(h)</code> · <code>noise(scale)</code><br />
         <code>map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
         <code>.blend(b, mix)</code> · <code>.add(b)</code> · <code>.mul(b)</code> · <code>.inv()</code> · <code>.ease()</code><br />
-        <code>seq(dur, ...patterns)</code> sequence with crossfade<br />
+        <code>seq(dur, ...patterns)</code> · <code>sleep(t)</code> hold / stop<br />
         <code>.rotate(angle)</code> · <code>.scale(sx, sz)</code> · <code>.offset(ox, oz)</code><br />
         <code>.slow(factor)</code> · <code>.fast(factor)</code><br />
+        <code>tween(from, to, dur)</code> · <code>osc(freq, lo, hi)</code><br />
+        <code>saw(freq, lo, hi)</code> · <code>pulse(freq, duty)</code><br />
+        <code>grid(n)</code> set grid size (2–64, default 32)<br />
         <code>sin</code> · <code>cos</code> · <code>PI</code> · <code>clamp(v)</code> · <code>lerp(a,b,t)</code>
       </div>
       <div id="editor-wrap"></div>
@@ -328,23 +331,23 @@
       });
 
       // --- Three.js setup ---
-      const GRID = 30;
       const PIN_W = 10;
       const PIN_H = 200;
       const GAP = 2;
       const STEP = PIN_W + GAP;
-      const TOTAL = GRID * GRID;
-      const HALF = ((GRID - 1) * STEP) / 2;
       const MAX_P = 180;
       const VOICES = 16;
-
       const WALL = 10;
       const SHELL_GAP = GAP;
-      const PIN_FIELD = (GRID - 1) * STEP + PIN_W;
-      const INNER = PIN_FIELD + 2 * SHELL_GAP;
-      const OUTER = INNER + 2 * WALL;
       const BASE_H = 200;
       const BASE_TOP = 0;
+
+      let GRID = 32;
+      let TOTAL = GRID * GRID;
+      let HALF = ((GRID - 1) * STEP) / 2;
+      let PIN_FIELD = (GRID - 1) * STEP + PIN_W;
+      let INNER = PIN_FIELD + 2 * SHELL_GAP;
+      let OUTER = INNER + 2 * WALL;
 
       const container = document.getElementById("right");
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -380,31 +383,19 @@
       const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0 });
 
       const pinGeom = new THREE.BoxGeometry(PIN_W, PIN_H, PIN_W);
-      const pins = new THREE.InstancedMesh(pinGeom, whiteMat, TOTAL);
-      scene.add(pins);
-
       const edgeGeom = new THREE.EdgesGeometry(pinGeom);
       const edgePositions = edgeGeom.attributes.position.array;
       const edgeVertCount = edgePositions.length / 3;
-      const mergedPos = new Float32Array(TOTAL * edgePositions.length);
-      const pinIndex = new Float32Array(TOTAL * edgeVertCount);
-      for (let i = 0; i < TOTAL; i++) {
-        mergedPos.set(edgePositions, i * edgePositions.length);
-        pinIndex.fill(i, i * edgeVertCount, (i + 1) * edgeVertCount);
-      }
-      const mergedEdgeGeom = new THREE.BufferGeometry();
-      mergedEdgeGeom.setAttribute("position", new THREE.BufferAttribute(mergedPos, 3));
-      mergedEdgeGeom.setAttribute("pinIdx", new THREE.BufferAttribute(pinIndex, 1));
-
       const texW = 1024;
-      const texH = Math.ceil(TOTAL / texW);
-      const heightData = new Float32Array(texW * texH * 4);
-      const heightTex = new THREE.DataTexture(heightData, texW, texH, THREE.RGBAFormat, THREE.FloatType);
+      const dummy = new THREE.Object3D();
+
+      let pins, edgeLines, shellGroup;
+      let current, prevFrame, heightData, heightTex;
 
       const edgeShaderMat = new THREE.ShaderMaterial({
         transparent: true,
         uniforms: {
-          offsets: { value: heightTex },
+          offsets: { value: null },
           opacity: { value: 0.06 },
           gridSize: { value: GRID },
           step: { value: STEP },
@@ -431,54 +422,97 @@
         `,
         fragmentShader: `uniform float opacity; void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, opacity); }`,
       });
-      const edgeLines = new THREE.LineSegments(mergedEdgeGeom, edgeShaderMat);
-      scene.add(edgeLines);
 
-      // Shell
-      const shellGroup = new THREE.Group();
-      const bottomGeom = new THREE.BoxGeometry(OUTER, WALL, OUTER);
-      const bottom = new THREE.Mesh(bottomGeom, shellMat);
-      bottom.position.y = BASE_TOP - BASE_H + WALL / 2;
-      shellGroup.add(bottom);
-      const bottomEdge = new THREE.LineSegments(new THREE.EdgesGeometry(bottomGeom), edgeMat);
-      bottomEdge.position.copy(bottom.position);
-      shellGroup.add(bottomEdge);
+      function rebuildGrid(n) {
+        GRID = n;
+        TOTAL = GRID * GRID;
+        HALF = ((GRID - 1) * STEP) / 2;
+        PIN_FIELD = (GRID - 1) * STEP + PIN_W;
+        INNER = PIN_FIELD + 2 * SHELL_GAP;
+        OUTER = INNER + 2 * WALL;
 
-      function addWall(w, h, d, px, py, pz) {
-        const g = new THREE.BoxGeometry(w, h, d);
-        const m = new THREE.Mesh(g, shellMat);
-        m.position.set(px, py, pz);
-        shellGroup.add(m);
-        const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat);
-        e.position.set(px, py, pz);
-        shellGroup.add(e);
+        // Dispose old objects
+        if (pins) { scene.remove(pins); pins.dispose(); }
+        if (edgeLines) { scene.remove(edgeLines); edgeLines.geometry.dispose(); }
+        if (shellGroup) {
+          shellGroup.traverse((c) => { if (c.geometry) c.geometry.dispose(); });
+          scene.remove(shellGroup);
+        }
+
+        // Pins
+        pins = new THREE.InstancedMesh(pinGeom, whiteMat, TOTAL);
+        scene.add(pins);
+
+        // Edge geometry
+        const mergedPos = new Float32Array(TOTAL * edgePositions.length);
+        const pinIndex = new Float32Array(TOTAL * edgeVertCount);
+        for (let i = 0; i < TOTAL; i++) {
+          mergedPos.set(edgePositions, i * edgePositions.length);
+          pinIndex.fill(i, i * edgeVertCount, (i + 1) * edgeVertCount);
+        }
+        const mergedEdgeGeom = new THREE.BufferGeometry();
+        mergedEdgeGeom.setAttribute("position", new THREE.BufferAttribute(mergedPos, 3));
+        mergedEdgeGeom.setAttribute("pinIdx", new THREE.BufferAttribute(pinIndex, 1));
+
+        // Height texture
+        const texH = Math.ceil(TOTAL / texW);
+        heightData = new Float32Array(texW * texH * 4);
+        heightTex = new THREE.DataTexture(heightData, texW, texH, THREE.RGBAFormat, THREE.FloatType);
+
+        // Update shader uniforms
+        edgeShaderMat.uniforms.offsets.value = heightTex;
+        edgeShaderMat.uniforms.gridSize.value = GRID;
+        edgeShaderMat.uniforms.half.value = HALF;
+
+        edgeLines = new THREE.LineSegments(mergedEdgeGeom, edgeShaderMat);
+        scene.add(edgeLines);
+
+        // Shell
+        shellGroup = new THREE.Group();
+        function addWall(w, h, d, px, py, pz) {
+          const g = new THREE.BoxGeometry(w, h, d);
+          const m = new THREE.Mesh(g, shellMat);
+          m.position.set(px, py, pz);
+          shellGroup.add(m);
+          const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat);
+          e.position.set(px, py, pz);
+          shellGroup.add(e);
+        }
+        const bottomGeom = new THREE.BoxGeometry(OUTER, WALL, OUTER);
+        const bottom = new THREE.Mesh(bottomGeom, shellMat);
+        bottom.position.y = BASE_TOP - BASE_H + WALL / 2;
+        shellGroup.add(bottom);
+        const bottomEdge = new THREE.LineSegments(new THREE.EdgesGeometry(bottomGeom), edgeMat);
+        bottomEdge.position.copy(bottom.position);
+        shellGroup.add(bottomEdge);
+        const wallH = BASE_H - WALL;
+        const wallCenterY = BASE_TOP - BASE_H + WALL + wallH / 2;
+        addWall(OUTER, wallH, WALL, 0, wallCenterY, INNER / 2 + WALL / 2);
+        addWall(OUTER, wallH, WALL, 0, wallCenterY, -(INNER / 2 + WALL / 2));
+        addWall(WALL, wallH, INNER, -(INNER / 2 + WALL / 2), wallCenterY, 0);
+        addWall(WALL, wallH, INNER, INNER / 2 + WALL / 2, wallCenterY, 0);
+        scene.add(shellGroup);
+
+        // Arrays
+        current = new Float32Array(TOTAL);
+        prevFrame = new Float32Array(TOTAL);
+
+        // Initialize pins at bottom
+        for (let i = 0; i < TOTAL; i++) {
+          const x = -HALF + (i % GRID) * STEP;
+          const zz = -HALF + ((i / GRID) | 0) * STEP;
+          const centerY = BASE_TOP + 0 - PIN_H / 2;
+          dummy.position.set(x, centerY, zz);
+          dummy.updateMatrix();
+          pins.setMatrixAt(i, dummy.matrix);
+          heightData[i * 4] = centerY;
+        }
+        pins.instanceMatrix.needsUpdate = true;
+        heightTex.needsUpdate = true;
       }
 
-      const wallH = BASE_H - WALL;
-      const wallCenterY = BASE_TOP - BASE_H + WALL + wallH / 2;
-      addWall(OUTER, wallH, WALL, 0, wallCenterY, INNER / 2 + WALL / 2);
-      addWall(OUTER, wallH, WALL, 0, wallCenterY, -(INNER / 2 + WALL / 2));
-      addWall(WALL, wallH, INNER, -(INNER / 2 + WALL / 2), wallCenterY, 0);
-      addWall(WALL, wallH, INNER, INNER / 2 + WALL / 2, wallCenterY, 0);
-      scene.add(shellGroup);
-
-      // Pin data
-      const current = new Float32Array(TOTAL);
-      const prevFrame = new Float32Array(TOTAL);
-      const dummy = new THREE.Object3D();
-
-      // Initialize pins at bottom (height 0)
-      for (let i = 0; i < TOTAL; i++) {
-        const x = -HALF + (i % GRID) * STEP;
-        const zz = -HALF + ((i / GRID) | 0) * STEP;
-        const centerY = BASE_TOP + 0 - PIN_H / 2;
-        dummy.position.set(x, centerY, zz);
-        dummy.updateMatrix();
-        pins.setMatrixAt(i, dummy.matrix);
-        heightData[i * 4] = centerY;
-      }
-      pins.instanceMatrix.needsUpdate = true;
-      heightTex.needsUpdate = true;
+      // Initial build
+      rebuildGrid(GRID);
 
       // Audio
       let audioCtx, masterGain;
@@ -673,7 +707,7 @@
             const sz = a.size ?? 5;
             return (x, z) => ((floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1);
           }
-          case "grid": {
+          case "gridlines": {
             const sp = a.spacing ?? 5;
             return (x, z, t, n) => {
               const ix = round(x * (n - 1)),
@@ -689,20 +723,63 @@
           }
           case "map":
             return a.fn;
+          case "sleep": {
+            return () => 0;
+          }
           case "seq": {
-            const dur = a.dur,
-              patFns = a.patterns.map((p) => p._compile());
-            const transTime = 0.8,
-              totalPerPat = dur + transTime;
+            const dur = a.dur;
+            const items = a.patterns;
+            const transTime = 0.8;
+            // Build timeline segments
+            const segs = [];
+            let cursor = 0;
+            let lastFn = null;
+            let hasInfHold = false;
+            for (let i = 0; i < items.length; i++) {
+              const item = items[i];
+              if (item._type === "sleep") {
+                const sd = item._args.duration;
+                if (!isFinite(sd)) {
+                  segs.push({ s: cursor, e: Infinity, type: "h", fn: lastFn });
+                  hasInfHold = true;
+                  break;
+                }
+                if (lastFn) {
+                  segs.push({ s: cursor, e: cursor + sd, type: "h", fn: lastFn });
+                  cursor += sd;
+                }
+              } else {
+                const fn = item._compile();
+                if (lastFn !== null) {
+                  segs.push({ s: cursor, e: cursor + transTime, type: "x", from: lastFn, to: fn });
+                  cursor += transTime;
+                }
+                segs.push({ s: cursor, e: cursor + dur, type: "p", fn });
+                cursor += dur;
+                lastFn = fn;
+              }
+            }
+            // If not infinite, add crossfade back to first for looping
+            if (!hasInfHold && segs.length > 0) {
+              const firstFn = segs.find((s) => s.type === "p")?.fn;
+              if (firstFn && lastFn && firstFn !== lastFn) {
+                segs.push({ s: cursor, e: cursor + transTime, type: "x", from: lastFn, to: firstFn });
+                cursor += transTime;
+              }
+            }
+            const totalDur = hasInfHold ? Infinity : cursor;
             return (x, z, t, n) => {
-              const cycle = t % (patFns.length * totalPerPat);
-              const idx = floor(cycle / totalPerPat);
-              const local = cycle - idx * totalPerPat;
-              const curFn = patFns[idx % patFns.length];
-              const nextFn = patFns[(idx + 1) % patFns.length];
-              if (local < dur) return curFn(x, z, t, n);
-              const bl = _smoothstep((local - dur) / transTime);
-              return curFn(x, z, t, n) * (1 - bl) + nextFn(x, z, t, n) * bl;
+              let lt = isFinite(totalDur) ? t % totalDur : t;
+              for (const seg of segs) {
+                if (lt < seg.e || !isFinite(seg.e)) {
+                  if (seg.type === "p" || seg.type === "h") return seg.fn ? seg.fn(x, z, t, n) : 0;
+                  if (seg.type === "x") {
+                    const bl = _smoothstep((lt - seg.s) / (seg.e - seg.s));
+                    return seg.from(x, z, t, n) * (1 - bl) + seg.to(x, z, t, n) * bl;
+                  }
+                }
+              }
+              return lastFn ? lastFn(x, z, t, n) : 0;
             };
           }
           case "rotate": {
@@ -779,8 +856,8 @@
       function _checker(size = 5) {
         return new Pattern("checker", { size });
       }
-      function _grid(spacing = 5) {
-        return new Pattern("grid", { spacing });
+      function _gridlines(spacing = 5) {
+        return new Pattern("gridlines", { spacing });
       }
       function _pyramid() {
         return new Pattern("pyramid", {});
@@ -796,6 +873,9 @@
       }
       function _seq(dur, ...patterns) {
         return new Pattern("seq", { dur, patterns });
+      }
+      function _sleep(duration = Infinity) {
+        return new Pattern("sleep", { duration });
       }
       // Standalone combinators
       function _blend(a, b, mix = 0.5) {
@@ -814,6 +894,40 @@
         return new Pattern("ease", { source: a });
       }
 
+      // --- Animation signal functions ---
+      // These return (x, z, t, n) => number and can be used anywhere a
+      // static value is accepted: .rotate(tween(0, PI, 5)), .blend(b, osc(0.5))
+      function _tween(from, to, duration, easeFn) {
+        const eFn = easeFn || _smoothstep;
+        return (x, z, t) => {
+          if (duration <= 0) return to;
+          const p = Math.min(t / duration, 1);
+          return from + (to - from) * eFn(p);
+        };
+      }
+      function _osc(freq = 1, lo = 0, hi = 1) {
+        return (x, z, t) => {
+          const v = Math.sin(t * freq * Math.PI * 2) * 0.5 + 0.5;
+          return lo + (hi - lo) * v;
+        };
+      }
+      function _saw(freq = 1, lo = 0, hi = 1) {
+        return (x, z, t) => {
+          const v = (t * freq) % 1;
+          return lo + (hi - lo) * v;
+        };
+      }
+      function _pulse(freq = 1, duty = 0.5) {
+        return (x, z, t) => ((t * freq) % 1 < duty ? 1 : 0);
+      }
+
+      // --- Grid size API ---
+      let _pendingGridSize = null;
+      function _setGrid(n) {
+        n = Math.max(2, Math.min(64, Math.round(n)));
+        _pendingGridSize = n;
+      }
+
       const _userClamp = (v) => Math.max(0, Math.min(1, v));
       const _userLerp = (a, b, t) => a + (b - a) * t;
       const _userSmoothstep = _smoothstep;
@@ -823,17 +937,23 @@
         "wave",
         "ripple",
         "checker",
-        "grid",
+        "gridlines",
         "pyramid",
         "flat",
         "noise",
         "map",
         "seq",
+        "sleep",
         "blend",
         "add",
         "mul",
         "inv",
         "ease",
+        "tween",
+        "osc",
+        "saw",
+        "pulse",
+        "grid",
         "sin",
         "cos",
         "abs",
@@ -848,17 +968,23 @@
         _wave,
         _ripple,
         _checker,
-        _grid,
+        _gridlines,
         _pyramid,
         _flat,
         _noise,
         _map,
         _seq,
+        _sleep,
         _blend,
         _add,
         _mul,
         _inv,
         _ease,
+        _tween,
+        _osc,
+        _saw,
+        _pulse,
+        _setGrid,
         Math.sin,
         Math.cos,
         Math.abs,
@@ -872,6 +998,7 @@
 
       let activePattern = null;
       let globalTime = 0;
+      let programStartTime = 0;
       let started = false;
 
       function runProgram(code) {
@@ -879,11 +1006,19 @@
         consoleEl.textContent = "";
         try {
           Pattern._clear();
+          _pendingGridSize = null;
           const fn = new Function(..._scopeNames, `"use strict";\n${code}`);
           fn(..._scopeValues);
+
+          // Apply grid resize if requested
+          if (_pendingGridSize !== null && _pendingGridSize !== GRID) {
+            rebuildGrid(_pendingGridSize);
+          }
+
           const roots = Pattern._getRoots();
           if (roots.length > 0) {
             activePattern = roots[roots.length - 1]._compile();
+            programStartTime = globalTime;
             compressToURL(code).then((encoded) => {
               history.replaceState(null, "", "#" + encoded);
             });
@@ -899,24 +1034,18 @@
 // x, z ∈ [0,1]  t = time  n = grid size
 // Ctrl/Cmd + Enter to run
 
-seq(0.5,
+seq(2,
   flat(0),
-  wave(1, 1),
+  wave(1, 1).rotate(tween(0, PI, 4)),
   ripple(0.5, 0.5, 3),
-  checker(5),
-  grid(5),
-  pyramid(),
-  map((x, z, t) =>
-    sin((x + z) * 6) * 0.5 + 0.5
+  checker(5).rotate(osc(0.2, -PI/4, PI/4)),
+  gridlines(5),
+  pyramid().blend(
+    noise(5),
+    osc(0.3)
   ),
-  noise(5),
-  flat(0.05),
-  wave(2, 0).blend(
-    ripple(0.3, 0.7, 4),
-    map((x, z, t) =>
-      sin(t * 0.5) * 0.5 + 0.5
-    )
-  )
+  flat(0.02),
+  sleep(Infinity)
 )`;
 
       // --- CodeMirror Editor Setup ---
@@ -1004,12 +1133,13 @@ seq(0.5,
         prevFrame.set(current);
 
         if (activePattern && started) {
+          const t = globalTime - programStartTime;
           for (let i = 0; i < TOTAL; i++) {
             const ix = i % GRID;
             const iz = (i / GRID) | 0;
             const x = ix / (GRID - 1);
             const z = iz / (GRID - 1);
-            let h = activePattern(x, z, globalTime, GRID);
+            let h = activePattern(x, z, t, GRID);
             h = Math.max(0, Math.min(1, h || 0));
             current[i] = h * MAX_P;
           }
