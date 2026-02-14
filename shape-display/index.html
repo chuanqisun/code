@@ -224,6 +224,7 @@
       const HALF = ((GRID - 1) * STEP) / 2;
       const MAX_P = 180;
       const VOICES = 16;
+      const AUTO_EVAL_MS = 500;
 
       const WALL = 10;
       const SHELL_GAP = GAP;
@@ -630,7 +631,7 @@ seq(0.5,
       const autoRunListener = EditorView.updateListener.of((update) => {
         if (update.docChanged && started) {
           clearTimeout(autoRunTimer);
-          autoRunTimer = setTimeout(() => runProgram(editorView.state.doc.toString()), 500);
+          autoRunTimer = setTimeout(() => runProgram(editorView.state.doc.toString()), AUTO_EVAL_MS);
         }
       });
 

@@ -6,8 +6,8 @@ The Shape Display is a programmable 30×30 grid of motorized pins. Each pin's he
 
 **Core concept:** Everything is a *Pattern* — an object that maps coordinates and time to a height value:
 
-```
-(x, z, t, n) → h
+```js
+(x, z, t, n) => h
 ```
 
 | Parameter | Range | Description |
