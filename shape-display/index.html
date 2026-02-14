@@ -102,15 +102,14 @@
         </div>
       </div>
       <div id="api-ref">
-        <code>s.wave(freqX, freqZ)</code> · <code>s.ripple(cx, cz, freq)</code> · <code>s.checker(size)</code> · <code>s.grid(spacing)</code> ·
-        <code>s.pyramid()</code> · <code>s.flat(h)</code><br />
-        <code>s.map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
-        <code>s.blend(a, b, mix)</code> · <code>s.add(a,b)</code> · <code>s.mul(a,b)</code> · <code>s.inv(a)</code><br />
-        <code>s.seq(dur, ...patterns)</code> sequence with pause<br />
-        <code>s.ease(pattern)</code> smoothstep · <code>s.noise(scale)</code><br />
-        <code>s.sin(x)</code> · <code>s.cos(x)</code> · <code>s.lerp(a,b,t)</code> · <code>s.clamp(v)</code><br />
-        <code>s.rotate(pat, angle)</code> · <code>s.scale(pat, sx, sz)</code> · <code>s.offset(pat, ox, oz)</code><br />
-        <code>s.slow(pat, factor)</code> · <code>s.fast(pat, factor)</code>
+        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> ·
+        <code>pyramid()</code> · <code>flat(h)</code> · <code>noise(scale)</code><br />
+        <code>map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
+        <code>.blend(b, mix)</code> · <code>.add(b)</code> · <code>.mul(b)</code> · <code>.inv()</code> · <code>.ease()</code><br />
+        <code>seq(dur, ...patterns)</code> sequence with crossfade<br />
+        <code>.rotate(angle)</code> · <code>.scale(sx, sz)</code> · <code>.offset(ox, oz)</code><br />
+        <code>.slow(factor)</code> · <code>.fast(factor)</code><br />
+        <code>sin</code> · <code>cos</code> · <code>PI</code> · <code>clamp(v)</code> · <code>lerp(a,b,t)</code>
       </div>
       <div id="editor-wrap"></div>
       <div id="console"></div>
@@ -447,97 +446,175 @@
         return (x1 * (1 - v) + x2 * v) * 0.5 + 0.5;
       }
 
-      function createAPI() {
-        const s = {};
-        const sin = Math.sin,
-          cos = Math.cos,
-          abs = Math.abs,
-          sqrt = Math.sqrt,
-          floor = Math.floor,
-          PI = Math.PI;
-        s.sin = sin;
-        s.cos = cos;
-        s.abs = abs;
-        s.sqrt = sqrt;
-        s.floor = floor;
-        s.PI = PI;
-        s.clamp = (v) => Math.max(0, Math.min(1, v));
-        s.lerp = (a, b, t) => a + (b - a) * t;
-        s.smoothstep = (t) => {
-          t = Math.max(0, Math.min(1, t));
-          return t * t * (3 - 2 * t);
-        };
-        s.map = (fn) => fn;
-        s.wave =
-          (fx = 1, fz = 1) =>
-          (x, z, t) =>
-            (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5);
-        s.ripple =
-          (cx = 0.5, cz = 0.5, freq = 3) =>
-          (x, z, t) => {
-            const d = sqrt((x - cx) ** 2 + (z - cz) ** 2);
-            return sin(d * freq * PI * 2) * 0.5 + 0.5;
-          };
-        s.checker =
-          (sz = 5) =>
-          (x, z) =>
-            (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1;
-        s.grid =
-          (sp = 5) =>
-          (x, z, t, n) => {
-            const ix = Math.round(x * (n - 1)),
-              iz = Math.round(z * (n - 1));
-            return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05;
-          };
-        s.pyramid = () => (x, z) => 1 - Math.max(abs(x - 0.5), abs(z - 0.5)) * 2;
-        s.flat =
-          (h = 0.5) =>
-          () =>
-            h;
-        s.noise =
-          (scale = 4) =>
-          (x, z, t) =>
-            _perlin2(x * scale + t * 0.3, z * scale + t * 0.2);
-        s.blend =
-          (a, b, mix = 0.5) =>
-          (x, z, t, n) => {
-            const m = typeof mix === "function" ? mix(x, z, t, n) : mix;
-            return a(x, z, t, n) * (1 - m) + b(x, z, t, n) * m;
-          };
-        s.add = (a, b) => (x, z, t, n) => s.clamp(a(x, z, t, n) + b(x, z, t, n));
-        s.mul = (a, b) => (x, z, t, n) => a(x, z, t, n) * b(x, z, t, n);
-        s.inv = (a) => (x, z, t, n) => 1 - a(x, z, t, n);
-        s.ease = (pat) => (x, z, t, n) => s.smoothstep(pat(x, z, t, n));
-        s.rotate = (pat, angle) => (x, z, t, n) => {
-          const a = typeof angle === "function" ? angle(x, z, t, n) : angle;
-          const cx2 = x - 0.5,
-            cz2 = z - 0.5;
-          return pat(cx2 * cos(a) - cz2 * sin(a) + 0.5, cx2 * sin(a) + cz2 * cos(a) + 0.5, t, n);
-        };
-        s.scale = (pat, sx, sz) => (x, z, t, n) => pat((x - 0.5) / sx + 0.5, (z - 0.5) / (sz || sx) + 0.5, t, n);
-        s.offset = (pat, ox, oz) => (x, z, t, n) => {
-          const fx2 = typeof ox === "function" ? ox(x, z, t, n) : ox;
-          const fz2 = typeof oz === "function" ? oz(x, z, t, n) : oz || 0;
-          return pat(x - fx2, z - fz2, t, n);
-        };
-        s.seq = (dur, ...pats) => {
-          const transTime = 0.8;
-          const totalPerPat = dur + transTime;
-          return (x, z, t, n) => {
-            const cycle = t % (pats.length * totalPerPat);
-            const idx = floor(cycle / totalPerPat);
-            const local = cycle - idx * totalPerPat;
-            const curPat = pats[idx % pats.length];
-            const nextPat = pats[(idx + 1) % pats.length];
-            if (local < dur) return curPat(x, z, t, n);
-            const blend = s.smoothstep((local - dur) / transTime);
-            return curPat(x, z, t, n) * (1 - blend) + nextPat(x, z, t, n) * blend;
-          };
-        };
-        s.slow = (pat, factor) => (x, z, t, n) => pat(x, z, t / factor, n);
-        s.fast = (pat, factor) => (x, z, t, n) => pat(x, z, t * factor, n);
-        return s;
+      // --- Pattern AST class ---
+      // Each Pattern stores an AST node. Chaining methods create new Pattern
+      // nodes that reference their source, building a tree. A separate compile
+      // step converts the AST into an executable (x, z, t, n) => h function.
+      // The registry tracks which patterns are "roots" (not consumed by others).
+
+      class Pattern {
+        static _registry = new Set();
+
+        constructor(type, args) {
+          this._type = type;
+          this._args = args;
+          Pattern._registry.add(this);
+          for (const val of Object.values(args)) {
+            if (val instanceof Pattern) Pattern._registry.delete(val);
+            if (Array.isArray(val)) val.forEach((v) => { if (v instanceof Pattern) Pattern._registry.delete(v); });
+          }
+        }
+
+        // --- Spatial transforms ---
+        rotate(angle) { return new Pattern("rotate", { source: this, angle }); }
+        scale(sx, sz) { return new Pattern("scale", { source: this, sx, sz }); }
+        offset(ox, oz) { return new Pattern("offset", { source: this, ox, oz }); }
+
+        // --- Time transforms ---
+        slow(factor) { return new Pattern("slow", { source: this, factor }); }
+        fast(factor) { return new Pattern("fast", { source: this, factor }); }
+
+        // --- Value transforms ---
+        ease() { return new Pattern("ease", { source: this }); }
+        inv() { return new Pattern("inv", { source: this }); }
+
+        // --- Combinators ---
+        blend(other, mix = 0.5) { return new Pattern("blend", { a: this, b: other, mix }); }
+        add(other) { return new Pattern("add", { a: this, b: other }); }
+        mul(other) { return new Pattern("mul", { a: this, b: other }); }
+
+        // --- Compile AST to executable function ---
+        _compile() { return _compileNode(this); }
+
+        static _getRoots() { return [...Pattern._registry]; }
+        static _clear() { Pattern._registry = new Set(); }
       }
+
+      function _resolveArg(v) {
+        if (v instanceof Pattern) return v._compile();
+        if (typeof v === "function") return v;
+        const c = v;
+        return () => c;
+      }
+
+      const _smoothstep = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+      const _clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+      function _compileNode(pat) {
+        const { _type: type, _args: a } = pat;
+        const { sin, cos, abs, sqrt, floor, PI, max, min, round } = Math;
+
+        switch (type) {
+          case "flat": { const h = a.h; return () => h; }
+          case "wave": {
+            const fx = a.fx ?? 1, fz = a.fz ?? 1;
+            return (x, z) => (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5);
+          }
+          case "ripple": {
+            const cx = a.cx ?? 0.5, cz = a.cz ?? 0.5, freq = a.freq ?? 3;
+            return (x, z) => { const d = sqrt((x - cx) ** 2 + (z - cz) ** 2); return sin(d * freq * PI * 2) * 0.5 + 0.5; };
+          }
+          case "checker": {
+            const sz = a.size ?? 5;
+            return (x, z) => (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1;
+          }
+          case "grid": {
+            const sp = a.spacing ?? 5;
+            return (x, z, t, n) => { const ix = round(x * (n - 1)), iz = round(z * (n - 1)); return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05; };
+          }
+          case "pyramid": return (x, z) => 1 - max(abs(x - 0.5), abs(z - 0.5)) * 2;
+          case "noise": {
+            const sc = a.scale ?? 4;
+            return (x, z, t) => _perlin2(x * sc + t * 0.3, z * sc + t * 0.2);
+          }
+          case "map": return a.fn;
+          case "seq": {
+            const dur = a.dur, patFns = a.patterns.map((p) => p._compile());
+            const transTime = 0.8, totalPerPat = dur + transTime;
+            return (x, z, t, n) => {
+              const cycle = t % (patFns.length * totalPerPat);
+              const idx = floor(cycle / totalPerPat);
+              const local = cycle - idx * totalPerPat;
+              const curFn = patFns[idx % patFns.length];
+              const nextFn = patFns[(idx + 1) % patFns.length];
+              if (local < dur) return curFn(x, z, t, n);
+              const bl = _smoothstep((local - dur) / transTime);
+              return curFn(x, z, t, n) * (1 - bl) + nextFn(x, z, t, n) * bl;
+            };
+          }
+          case "rotate": {
+            const srcFn = a.source._compile();
+            const angFn = _resolveArg(a.angle);
+            return (x, z, t, n) => {
+              const ang = angFn(x, z, t, n);
+              const cx2 = x - 0.5, cz2 = z - 0.5;
+              return srcFn(cx2 * cos(ang) - cz2 * sin(ang) + 0.5, cx2 * sin(ang) + cz2 * cos(ang) + 0.5, t, n);
+            };
+          }
+          case "scale": {
+            const srcFn = a.source._compile();
+            const sx = a.sx, sz = a.sz ?? sx;
+            return (x, z, t, n) => srcFn((x - 0.5) / sx + 0.5, (z - 0.5) / sz + 0.5, t, n);
+          }
+          case "offset": {
+            const srcFn = a.source._compile();
+            const oxFn = _resolveArg(a.ox ?? 0), ozFn = _resolveArg(a.oz ?? 0);
+            return (x, z, t, n) => srcFn(x - oxFn(x, z, t, n), z - ozFn(x, z, t, n), t, n);
+          }
+          case "slow": { const srcFn = a.source._compile(), f = a.factor; return (x, z, t, n) => srcFn(x, z, t / f, n); }
+          case "fast": { const srcFn = a.source._compile(), f = a.factor; return (x, z, t, n) => srcFn(x, z, t * f, n); }
+          case "ease": { const srcFn = a.source._compile(); return (x, z, t, n) => _smoothstep(srcFn(x, z, t, n)); }
+          case "inv": { const srcFn = a.source._compile(); return (x, z, t, n) => 1 - srcFn(x, z, t, n); }
+          case "blend": {
+            const aFn = a.a._compile(), bFn = a.b._compile(), mFn = _resolveArg(a.mix);
+            return (x, z, t, n) => { const m = mFn(x, z, t, n); return aFn(x, z, t, n) * (1 - m) + bFn(x, z, t, n) * m; };
+          }
+          case "add": {
+            const aFn = a.a._compile(), bFn = a.b._compile();
+            return (x, z, t, n) => _clamp01(aFn(x, z, t, n) + bFn(x, z, t, n));
+          }
+          case "mul": {
+            const aFn = a.a._compile(), bFn = a.b._compile();
+            return (x, z, t, n) => aFn(x, z, t, n) * bFn(x, z, t, n);
+          }
+          default: return () => 0;
+        }
+      }
+
+      // --- Factory functions (injected into user scope) ---
+      function _wave(fx = 1, fz = 1) { return new Pattern("wave", { fx, fz }); }
+      function _ripple(cx = 0.5, cz = 0.5, freq = 3) { return new Pattern("ripple", { cx, cz, freq }); }
+      function _checker(size = 5) { return new Pattern("checker", { size }); }
+      function _grid(spacing = 5) { return new Pattern("grid", { spacing }); }
+      function _pyramid() { return new Pattern("pyramid", {}); }
+      function _flat(h = 0.5) { return new Pattern("flat", { h }); }
+      function _noise(scale = 4) { return new Pattern("noise", { scale }); }
+      function _map(fn) { return new Pattern("map", { fn }); }
+      function _seq(dur, ...patterns) { return new Pattern("seq", { dur, patterns }); }
+      // Standalone combinators
+      function _blend(a, b, mix = 0.5) { return new Pattern("blend", { a, b, mix }); }
+      function _add(a, b) { return new Pattern("add", { a, b }); }
+      function _mul(a, b) { return new Pattern("mul", { a, b }); }
+      function _inv(a) { return new Pattern("inv", { source: a }); }
+      function _ease(a) { return new Pattern("ease", { source: a }); }
+
+      const _userClamp = (v) => Math.max(0, Math.min(1, v));
+      const _userLerp = (a, b, t) => a + (b - a) * t;
+      const _userSmoothstep = _smoothstep;
+
+      // Names injected into the user script scope
+      const _scopeNames = [
+        "wave", "ripple", "checker", "grid", "pyramid", "flat", "noise", "map", "seq",
+        "blend", "add", "mul", "inv", "ease",
+        "sin", "cos", "abs", "sqrt", "floor", "PI",
+        "clamp", "lerp", "smoothstep",
+      ];
+      const _scopeValues = [
+        _wave, _ripple, _checker, _grid, _pyramid, _flat, _noise, _map, _seq,
+        _blend, _add, _mul, _inv, _ease,
+        Math.sin, Math.cos, Math.abs, Math.sqrt, Math.floor, Math.PI,
+        _userClamp, _userLerp, _userSmoothstep,
+      ];
 
       let activePattern = null;
       let globalTime = 0;
@@ -547,44 +624,43 @@
         const consoleEl = document.getElementById("console");
         consoleEl.textContent = "";
         try {
-          const s = createAPI();
-          const fn = new Function("s", `"use strict";\n${code}`);
-          const result = fn(s);
-          if (typeof result === "function") {
-            activePattern = result;
+          Pattern._clear();
+          const fn = new Function(..._scopeNames, `"use strict";\n${code}`);
+          fn(..._scopeValues);
+          const roots = Pattern._getRoots();
+          if (roots.length > 0) {
+            activePattern = roots[roots.length - 1]._compile();
             compressToURL(code).then((encoded) => {
               history.replaceState(null, "", "#" + encoded);
             });
           } else {
-            consoleEl.textContent = "⚠ Program must return a pattern function";
+            consoleEl.textContent = "⚠ No pattern created";
           }
         } catch (e) {
           consoleEl.textContent = `✗ ${e.message}`;
         }
       }
 
-      const defaultCode = `// Shape Display — return a pattern function
+      const defaultCode = `// Shape Display — chain patterns with methods
 // x, z ∈ [0,1]  t = time  n = grid size
-// output: height ∈ [0,1]
 // Ctrl/Cmd + Enter to run
 
-return s.seq(0.5,
-  s.flat(0),
-  s.wave(1, 1),
-  s.ripple(0.5, 0.5, 3),
-  s.checker(5),
-  s.grid(5),
-  s.pyramid(),
-  s.map((x, z, t) =>
-    (s.sin((x + z) * 6) * 0.5 + 0.5)
+seq(0.5,
+  flat(0),
+  wave(1, 1),
+  ripple(0.5, 0.5, 3),
+  checker(5),
+  grid(5),
+  pyramid(),
+  map((x, z, t) =>
+    sin((x + z) * 6) * 0.5 + 0.5
   ),
-  s.noise(5),
-  s.flat(0.05),
-  s.blend(
-    s.wave(2, 0),
-    s.ripple(0.3, 0.7, 4),
-    s.map((x, z, t) =>
-      s.sin(t * 0.5) * 0.5 + 0.5
+  noise(5),
+  flat(0.05),
+  wave(2, 0).blend(
+    ripple(0.3, 0.7, 4),
+    map((x, z, t) =>
+      sin(t * 0.5) * 0.5 + 0.5
     )
   )
 )`;
