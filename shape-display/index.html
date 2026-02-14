@@ -102,7 +102,6 @@
         </div>
       </div>
       <div id="api-ref">
-        <code>display(pattern)</code> declare the pattern to show<br />
         <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> ·
         <code>pyramid()</code> · <code>flat(h)</code> · <code>noise(scale)</code><br />
         <code>pat((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
@@ -466,8 +465,15 @@
         return flat(0);
       }
 
+      // Side-effect tracking: last Pattern created while _tracking is on becomes active
+      let _tracking = false;
+      let _lastCreated = null;
+
       class Pattern {
-        constructor(fn) { this._fn = fn; }
+        constructor(fn) {
+          this._fn = fn;
+          if (_tracking) _lastCreated = this;
+        }
         query(x, z, t, n) { return Math.max(0, Math.min(1, this._fn(x, z, t, n) || 0)); }
         slow(factor) { return new Pattern((x, z, t, n) => this._fn(x, z, t / factor, n)); }
         fast(factor) { return new Pattern((x, z, t, n) => this._fn(x, z, t * factor, n)); }
@@ -533,46 +539,45 @@
       let globalTime = 0;
       let started = false;
 
-      // Pattern registry — display() declares the active pattern
-      let _pendingPattern = null;
-      function _display(p) { _pendingPattern = _pat(p); }
-
       // All names exposed to user code
       const _apiNames = [
         "Pattern", "wave", "ripple", "checker", "grid", "pyramid", "flat", "noise", "pat", "seq",
-        "blend", "add", "mul", "inv", "display",
+        "blend", "add", "mul", "inv",
         "sin", "cos", "abs", "sqrt", "floor", "PI", "clamp", "lerp", "smoothstep",
       ];
       const _apiValues = [
         Pattern, wave, ripple, checker, grid, pyramid, flat, noise, pat, seq,
-        blend, add, mul, inv, _display,
+        blend, add, mul, inv,
         sin, cos, abs, sqrt, floor, PI, clamp, lerp, smoothstep,
       ];
 
       function runProgram(code) {
         const consoleEl = document.getElementById("console");
         consoleEl.textContent = "";
-        _pendingPattern = null;
+        _lastCreated = null;
+        _tracking = true;
         try {
           const fn = new Function(..._apiNames, `"use strict";\n${code}`);
           fn(..._apiValues);
-          if (_pendingPattern) {
-            activePattern = _pendingPattern;
-            compressToURL(code).then((encoded) => {
-              history.replaceState(null, "", "#" + encoded);
-            });
-          } else {
-            consoleEl.textContent = "⚠ Call display(pattern) to show a pattern";
-          }
         } catch (e) {
           consoleEl.textContent = `✗ ${e.message}`;
+        } finally {
+          _tracking = false;
+        }
+        if (_lastCreated) {
+          activePattern = _lastCreated;
+          compressToURL(code).then((encoded) => {
+            history.replaceState(null, "", "#" + encoded);
+          });
+        } else {
+          document.getElementById("console").textContent = "⚠ No pattern created";
         }
       }
 
       const defaultCode = `// Shape Display — Ctrl/Cmd + Enter to run
 // x, z ∈ [0,1]  t = time  n = grid  height ∈ [0,1]
 
-display(seq(0.5,
+seq(0.5,
   flat(0),
   wave(1, 1),
   ripple(0.5, 0.5, 3),
@@ -588,7 +593,7 @@ display(seq(0.5,
     ripple(0.3, 0.7, 4),
     pat((x, z, t) => sin(t * 0.5) * 0.5 + 0.5)
   )
-))`;
+)`;
 
       // --- CodeMirror Editor Setup ---
       let editorView;
