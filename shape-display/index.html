@@ -102,15 +102,14 @@
         </div>
       </div>
       <div id="api-ref">
-        <code>s.wave(freqX, freqZ)</code> · <code>s.ripple(cx, cz, freq)</code> · <code>s.checker(size)</code> · <code>s.grid(spacing)</code> ·
-        <code>s.pyramid()</code> · <code>s.flat(h)</code><br />
-        <code>s.map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
-        <code>s.blend(a, b, mix)</code> · <code>s.add(a,b)</code> · <code>s.mul(a,b)</code> · <code>s.inv(a)</code><br />
-        <code>s.seq(dur, ...patterns)</code> sequence with pause<br />
-        <code>s.ease(pattern)</code> smoothstep · <code>s.noise(scale)</code><br />
-        <code>s.sin(x)</code> · <code>s.cos(x)</code> · <code>s.lerp(a,b,t)</code> · <code>s.clamp(v)</code><br />
-        <code>s.rotate(pat, angle)</code> · <code>s.scale(pat, sx, sz)</code> · <code>s.offset(pat, ox, oz)</code><br />
-        <code>s.slow(pat, factor)</code> · <code>s.fast(pat, factor)</code>
+        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> ·
+        <code>pyramid()</code> · <code>flat(h)</code> · <code>noise(scale)</code><br />
+        <code>pat((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
+        <code>.blend(b, mix)</code> · <code>.add(b)</code> · <code>.mul(b)</code> · <code>.inv()</code> · <code>.ease()</code><br />
+        <code>seq(dur, ...patterns)</code> sequence with crossfade<br />
+        <code>.slow(factor)</code> · <code>.fast(factor)</code><br />
+        <code>.rotate(angle)</code> · <code>.scale(sx, sz)</code> · <code>.offset(ox, oz)</code><br />
+        <code>sin cos abs sqrt floor PI clamp lerp smoothstep</code>
       </div>
       <div id="editor-wrap"></div>
       <div id="console"></div>
@@ -447,145 +446,168 @@
         return (x1 * (1 - v) + x2 * v) * 0.5 + 0.5;
       }
 
-      function createAPI() {
-        const s = {};
-        const sin = Math.sin,
-          cos = Math.cos,
-          abs = Math.abs,
-          sqrt = Math.sqrt,
-          floor = Math.floor,
-          PI = Math.PI;
-        s.sin = sin;
-        s.cos = cos;
-        s.abs = abs;
-        s.sqrt = sqrt;
-        s.floor = floor;
-        s.PI = PI;
-        s.clamp = (v) => Math.max(0, Math.min(1, v));
-        s.lerp = (a, b, t) => a + (b - a) * t;
-        s.smoothstep = (t) => {
-          t = Math.max(0, Math.min(1, t));
-          return t * t * (3 - 2 * t);
-        };
-        s.map = (fn) => fn;
-        s.wave =
-          (fx = 1, fz = 1) =>
-          (x, z, t) =>
-            (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5);
-        s.ripple =
-          (cx = 0.5, cz = 0.5, freq = 3) =>
-          (x, z, t) => {
-            const d = sqrt((x - cx) ** 2 + (z - cz) ** 2);
-            return sin(d * freq * PI * 2) * 0.5 + 0.5;
-          };
-        s.checker =
-          (sz = 5) =>
-          (x, z) =>
-            (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1;
-        s.grid =
-          (sp = 5) =>
-          (x, z, t, n) => {
-            const ix = Math.round(x * (n - 1)),
-              iz = Math.round(z * (n - 1));
-            return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05;
-          };
-        s.pyramid = () => (x, z) => 1 - Math.max(abs(x - 0.5), abs(z - 0.5)) * 2;
-        s.flat =
-          (h = 0.5) =>
-          () =>
-            h;
-        s.noise =
-          (scale = 4) =>
-          (x, z, t) =>
-            _perlin2(x * scale + t * 0.3, z * scale + t * 0.2);
-        s.blend =
-          (a, b, mix = 0.5) =>
-          (x, z, t, n) => {
-            const m = typeof mix === "function" ? mix(x, z, t, n) : mix;
-            return a(x, z, t, n) * (1 - m) + b(x, z, t, n) * m;
-          };
-        s.add = (a, b) => (x, z, t, n) => s.clamp(a(x, z, t, n) + b(x, z, t, n));
-        s.mul = (a, b) => (x, z, t, n) => a(x, z, t, n) * b(x, z, t, n);
-        s.inv = (a) => (x, z, t, n) => 1 - a(x, z, t, n);
-        s.ease = (pat) => (x, z, t, n) => s.smoothstep(pat(x, z, t, n));
-        s.rotate = (pat, angle) => (x, z, t, n) => {
-          const a = typeof angle === "function" ? angle(x, z, t, n) : angle;
-          const cx2 = x - 0.5,
-            cz2 = z - 0.5;
-          return pat(cx2 * cos(a) - cz2 * sin(a) + 0.5, cx2 * sin(a) + cz2 * cos(a) + 0.5, t, n);
-        };
-        s.scale = (pat, sx, sz) => (x, z, t, n) => pat((x - 0.5) / sx + 0.5, (z - 0.5) / (sz || sx) + 0.5, t, n);
-        s.offset = (pat, ox, oz) => (x, z, t, n) => {
-          const fx2 = typeof ox === "function" ? ox(x, z, t, n) : ox;
-          const fz2 = typeof oz === "function" ? oz(x, z, t, n) : oz || 0;
-          return pat(x - fx2, z - fz2, t, n);
-        };
-        s.seq = (dur, ...pats) => {
-          const transTime = 0.8;
-          const totalPerPat = dur + transTime;
-          return (x, z, t, n) => {
-            const cycle = t % (pats.length * totalPerPat);
-            const idx = floor(cycle / totalPerPat);
-            const local = cycle - idx * totalPerPat;
-            const curPat = pats[idx % pats.length];
-            const nextPat = pats[(idx + 1) % pats.length];
-            if (local < dur) return curPat(x, z, t, n);
-            const blend = s.smoothstep((local - dur) / transTime);
-            return curPat(x, z, t, n) * (1 - blend) + nextPat(x, z, t, n) * blend;
-          };
-        };
-        s.slow = (pat, factor) => (x, z, t, n) => pat(x, z, t / factor, n);
-        s.fast = (pat, factor) => (x, z, t, n) => pat(x, z, t * factor, n);
-        return s;
+      // --- Pattern class (chainable AST) ---
+      const { sin, cos, abs, sqrt, floor, PI } = Math;
+      const clamp = (v) => Math.max(0, Math.min(1, v));
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const smoothstep = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+
+      function _val(v, x, z, t, n) {
+        if (typeof v === "number") return v;
+        if (v instanceof Pattern) return v._fn(x, z, t, n);
+        if (typeof v === "function") return v(x, z, t, n);
+        return 0;
       }
+      function _pat(v) {
+        if (v instanceof Pattern) return v;
+        if (typeof v === "number") return flat(v);
+        if (typeof v === "function") return new Pattern(v);
+        return flat(0);
+      }
+
+      class Pattern {
+        constructor(fn) { this._fn = fn; }
+        query(x, z, t, n) { return Math.max(0, Math.min(1, this._fn(x, z, t, n) || 0)); }
+        slow(factor) { return new Pattern((x, z, t, n) => this._fn(x, z, t / factor, n)); }
+        fast(factor) { return new Pattern((x, z, t, n) => this._fn(x, z, t * factor, n)); }
+        rotate(angle) {
+          return new Pattern((x, z, t, n) => {
+            const a = _val(angle, x, z, t, n), cx2 = x - 0.5, cz2 = z - 0.5;
+            const ca = cos(a), sa = sin(a);
+            return this._fn(cx2 * ca - cz2 * sa + 0.5, cx2 * sa + cz2 * ca + 0.5, t, n);
+          });
+        }
+        scale(sx, sz) {
+          const szz = sz !== undefined ? sz : sx;
+          return new Pattern((x, z, t, n) => this._fn((x - 0.5) / sx + 0.5, (z - 0.5) / szz + 0.5, t, n));
+        }
+        offset(ox, oz) {
+          return new Pattern((x, z, t, n) => {
+            const fx2 = _val(ox, x, z, t, n), fz2 = _val(oz === undefined ? 0 : oz, x, z, t, n);
+            return this._fn(x - fx2, z - fz2, t, n);
+          });
+        }
+        ease() { return new Pattern((x, z, t, n) => smoothstep(this._fn(x, z, t, n))); }
+        inv() { return new Pattern((x, z, t, n) => 1 - this._fn(x, z, t, n)); }
+        add(other) { const o = _pat(other); return new Pattern((x, z, t, n) => clamp(this._fn(x, z, t, n) + o._fn(x, z, t, n))); }
+        mul(other) { const o = _pat(other); return new Pattern((x, z, t, n) => this._fn(x, z, t, n) * o._fn(x, z, t, n)); }
+        blend(other, mix = 0.5) {
+          const o = _pat(other);
+          return new Pattern((x, z, t, n) => {
+            const m = _val(mix, x, z, t, n);
+            return this._fn(x, z, t, n) * (1 - m) + o._fn(x, z, t, n) * m;
+          });
+        }
+      }
+
+      // --- Factory functions ---
+      function wave(fx = 1, fz = 1) { return new Pattern((x, z, t) => (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5)); }
+      function ripple(cx = 0.5, cz = 0.5, freq = 3) { return new Pattern((x, z, t) => { const d = sqrt((x - cx) ** 2 + (z - cz) ** 2); return sin(d * freq * PI * 2) * 0.5 + 0.5; }); }
+      function checker(sz = 5) { return new Pattern((x, z) => (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1); }
+      function grid(sp = 5) { return new Pattern((x, z, t, n) => { const ix = Math.round(x * (n - 1)), iz = Math.round(z * (n - 1)); return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05; }); }
+      function pyramid() { return new Pattern((x, z) => 1 - Math.max(abs(x - 0.5), abs(z - 0.5)) * 2); }
+      function flat(h = 0.5) { return new Pattern(() => h); }
+      function noise(scale = 4) { return new Pattern((x, z, t) => _perlin2(x * scale + t * 0.3, z * scale + t * 0.2)); }
+      function pat(fn) { return new Pattern(fn); }
+      function seq(dur, ...rawPats) {
+        const pats = rawPats.map((p) => _pat(p));
+        const transTime = 0.8;
+        const totalPerPat = dur + transTime;
+        return new Pattern((x, z, t, n) => {
+          const cycle = t % (pats.length * totalPerPat);
+          const idx = floor(cycle / totalPerPat);
+          const local = cycle - idx * totalPerPat;
+          const cur = pats[idx % pats.length], nxt = pats[(idx + 1) % pats.length];
+          if (local < dur) return cur._fn(x, z, t, n);
+          const bl = smoothstep((local - dur) / transTime);
+          return cur._fn(x, z, t, n) * (1 - bl) + nxt._fn(x, z, t, n) * bl;
+        });
+      }
+      function blend(a, b, mix = 0.5) { return _pat(a).blend(b, mix); }
+      function add(a, b) { return _pat(a).add(b); }
+      function mul(a, b) { return _pat(a).mul(b); }
+      function inv(a) { return _pat(a).inv(); }
 
       let activePattern = null;
       let globalTime = 0;
       let started = false;
+      let autoRunTimer = null;
+
+      // Auto-return: if no `return` keyword, prepend return before the last top-level expression
+      function autoReturn(code) {
+        if (/\breturn\b/.test(code)) return code;
+        const lines = code.split("\n");
+        let insertIdx = -1, parenDepth = 0, bracketDepth = 0, braceDepth = 0;
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const trimmed = lines[i].trim();
+          if (!trimmed || trimmed.startsWith("//")) continue;
+          for (const ch of trimmed) {
+            if (ch === "(") parenDepth--; else if (ch === ")") parenDepth++;
+            else if (ch === "[") bracketDepth--; else if (ch === "]") bracketDepth++;
+            else if (ch === "{") braceDepth--; else if (ch === "}") braceDepth++;
+          }
+          insertIdx = i;
+          if (parenDepth <= 0 && bracketDepth <= 0 && braceDepth <= 0) break;
+        }
+        if (insertIdx >= 0) {
+          const trimmed = lines[insertIdx].trim();
+          if (/^(const |let |var |function )/.test(trimmed)) return code;
+          const ws = lines[insertIdx].match(/^(\s*)/)[1];
+          lines[insertIdx] = ws + "return " + trimmed;
+        }
+        return lines.join("\n");
+      }
+
+      // All names exposed to user code
+      const _apiNames = [
+        "Pattern", "wave", "ripple", "checker", "grid", "pyramid", "flat", "noise", "pat", "seq",
+        "blend", "add", "mul", "inv",
+        "sin", "cos", "abs", "sqrt", "floor", "PI", "clamp", "lerp", "smoothstep",
+      ];
+      const _apiValues = [
+        Pattern, wave, ripple, checker, grid, pyramid, flat, noise, pat, seq,
+        blend, add, mul, inv,
+        sin, cos, abs, sqrt, floor, PI, clamp, lerp, smoothstep,
+      ];
 
       function runProgram(code) {
         const consoleEl = document.getElementById("console");
         consoleEl.textContent = "";
         try {
-          const s = createAPI();
-          const fn = new Function("s", `"use strict";\n${code}`);
-          const result = fn(s);
-          if (typeof result === "function") {
+          const wrapped = autoReturn(code);
+          const fn = new Function(..._apiNames, `"use strict";\n${wrapped}`);
+          const result = fn(..._apiValues);
+          if (result instanceof Pattern) {
             activePattern = result;
             compressToURL(code).then((encoded) => {
               history.replaceState(null, "", "#" + encoded);
             });
           } else {
-            consoleEl.textContent = "⚠ Program must return a pattern function";
+            consoleEl.textContent = "⚠ Last expression must be a Pattern";
           }
         } catch (e) {
           consoleEl.textContent = `✗ ${e.message}`;
         }
       }
 
-      const defaultCode = `// Shape Display — return a pattern function
-// x, z ∈ [0,1]  t = time  n = grid size
-// output: height ∈ [0,1]
-// Ctrl/Cmd + Enter to run
+      const defaultCode = `// Shape Display — x, z ∈ [0,1]  t = time  n = grid
+// height ∈ [0,1] — Ctrl/Cmd + Enter to run
 
-return s.seq(0.5,
-  s.flat(0),
-  s.wave(1, 1),
-  s.ripple(0.5, 0.5, 3),
-  s.checker(5),
-  s.grid(5),
-  s.pyramid(),
-  s.map((x, z, t) =>
-    (s.sin((x + z) * 6) * 0.5 + 0.5)
+seq(0.5,
+  flat(0),
+  wave(1, 1),
+  ripple(0.5, 0.5, 3),
+  checker(5),
+  grid(5),
+  pyramid(),
+  pat((x, z, t) =>
+    sin((x + z) * 6) * 0.5 + 0.5
   ),
-  s.noise(5),
-  s.flat(0.05),
-  s.blend(
-    s.wave(2, 0),
-    s.ripple(0.3, 0.7, 4),
-    s.map((x, z, t) =>
-      s.sin(t * 0.5) * 0.5 + 0.5
-    )
+  noise(5),
+  flat(0.05),
+  wave(2, 0).blend(
+    ripple(0.3, 0.7, 4),
+    pat((x, z, t) => sin(t * 0.5) * 0.5 + 0.5)
   )
 )`;
 
@@ -603,6 +625,14 @@ return s.seq(0.5,
           },
         },
       ]);
+
+      // Debounced auto-run: evaluate pattern on code change (keeps clock running)
+      const autoRunListener = EditorView.updateListener.of((update) => {
+        if (update.docChanged && started) {
+          clearTimeout(autoRunTimer);
+          autoRunTimer = setTimeout(() => runProgram(editorView.state.doc.toString()), 500);
+        }
+      });
 
       const commonExtensions = [
         highlightActiveLine(),
@@ -630,7 +660,7 @@ return s.seq(0.5,
         editorView = new EditorView({
           state: EditorState.create({
             doc: initialCode,
-            extensions: [...commonExtensions, javascript(), runKeymap],
+            extensions: [...commonExtensions, javascript(), runKeymap, autoRunListener],
           }),
           parent: document.getElementById("editor-wrap"),
         });
@@ -679,8 +709,7 @@ return s.seq(0.5,
             const iz = (i / GRID) | 0;
             const x = ix / (GRID - 1);
             const z = iz / (GRID - 1);
-            let h = activePattern(x, z, globalTime, GRID);
-            h = Math.max(0, Math.min(1, h || 0));
+            let h = activePattern.query(x, z, globalTime, GRID);
             current[i] = h * MAX_P;
           }
         }
