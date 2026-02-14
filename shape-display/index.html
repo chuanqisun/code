@@ -461,7 +461,9 @@
           Pattern._registry.add(this);
           for (const val of Object.values(args)) {
             if (val instanceof Pattern) Pattern._registry.delete(val);
-            if (Array.isArray(val)) val.forEach((v) => { if (v instanceof Pattern) Pattern._registry.delete(v); });
+            else if (Array.isArray(val)) {
+              for (const v of val) { if (v instanceof Pattern) Pattern._registry.delete(v); }
+            }
           }
         }
 
