@@ -8,14 +8,17 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { overflow: hidden; background: #fff; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; display: flex; height: 100vh; }
       #left { width: 420px; min-width: 420px; display: flex; flex-direction: column; border-right: 1px solid #e0e0e0; }
-      #header { padding: 12px 16px 8px; border-bottom: 1px solid #e0e0e0; }
+      #header { padding: 12px 16px 8px; border-bottom: 1px solid #e0e0e0; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline }
       #header h1 { font-size: 11px; font-weight: 400; letter-spacing: 3px; text-transform: uppercase; color: #999; }
       #editor-wrap { flex: 1; position: relative; overflow: hidden; }
       #editor { width: 100%; height: 100%; resize: none; border: none; outline: none; padding: 16px; font: 12px/1.6 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; color: #222; background: #fff; tab-size: 2; }
       #footer { padding: 8px 16px; border-top: 1px solid #e0e0e0; display: flex; justify-content: space-between; align-items: center; }
       #footer span { font-size: 10px; color: #aaa; letter-spacing: 1px; }
+      #footer-right { display: flex; align-items: center; gap: 12px; }
       #run-btn { background: #000; color: #fff; border: none; padding: 5px 14px; font: 10px/1 monospace; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; }
       #run-btn:hover { background: #333; }
+      #help-link { font: 10px/1 monospace; letter-spacing: 1px; color: #999; text-decoration: none; }
+      #help-link:hover { color: #000; text-decoration: underline; }
       #console { max-height: 80px; overflow-y: auto; padding: 8px 16px; border-top: 1px solid #e0e0e0; font-size: 10px; color: #c00; }
       #console:empty { display: none; }
       #right { flex: 1; position: relative; }
@@ -28,7 +31,10 @@
   </head>
   <body>
     <div id="left">
-      <div id="header"><h1>Shape Display</h1></div>
+      <div id="header">
+        <h1>Shape Display</h1>
+        <a id="help-link" href="https://code.chuanqisun.com/shape-display/programming-manual" target="_blank" rel="noopener noreferrer">Help</a>
+      </div>
       <div id="editor-wrap">
         <textarea id="editor" spellcheck="false"></textarea>
       </div>
@@ -44,7 +50,9 @@
       </div>
       <div id="footer">
         <span>ctrl+enter to run</span>
-        <button id="run-btn">Run</button>
+        <div id="footer-right">
+          <button id="run-btn">Run</button>
+        </div>
       </div>
     </div>
     <div id="right">
@@ -65,12 +73,17 @@
       const STEP = PIN_W + GAP;
       const TOTAL = GRID * GRID;
       const HALF = ((GRID - 1) * STEP) / 2;
-      const BASE_H = 200;
-      const BASE_TOP = 0;
       const MAX_P = 180;
       const VOICES = 16;
 
-      // ─── 3D Setup ───
+      const WALL = 10;
+      const SHELL_GAP = GAP;
+      const PIN_FIELD = (GRID - 1) * STEP + PIN_W;
+      const INNER = PIN_FIELD + 2 * SHELL_GAP;
+      const OUTER = INNER + 2 * WALL;
+      const BASE_H = 200;
+      const BASE_TOP = 0;
+
       const container = document.getElementById("right");
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setPixelRatio(devicePixelRatio);
@@ -78,11 +91,20 @@
       container.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xffffff);
+      scene.background = new THREE.Color(0x000000);
       const camera = new THREE.PerspectiveCamera(40, 1, 1, 5000);
-      camera.position.set(500, 600, 500);
+      camera.position.set(600, 900, 600);
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
+      controls.autoRotate = true;
+
+      // Stop auto-rotation on user interaction
+      renderer.domElement.addEventListener("pointerdown", () => {
+        controls.autoRotate = false;
+      });
+      renderer.domElement.addEventListener("wheel", () => {
+        controls.autoRotate = false;
+      });
 
       scene.add(new THREE.AmbientLight(0xffffff, 1));
       const d1 = new THREE.DirectionalLight(0xffffff, 2.0);
@@ -93,7 +115,8 @@
       scene.add(d2);
 
       const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0.0 });
-      const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06 });
+      const shellMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.0 });
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0 });
 
       const pinGeom = new THREE.BoxGeometry(PIN_W, PIN_H, PIN_W);
       const pins = new THREE.InstancedMesh(pinGeom, whiteMat, TOTAL);
@@ -129,10 +152,10 @@
           texW: { value: texW },
         },
         vertexShader: `
-        attribute float pinIdx;
-        uniform sampler2D offsets;
-        uniform float gridSize, step, half, pinH, texW;
-        void main() {
+          attribute float pinIdx;
+          uniform sampler2D offsets;
+          uniform float gridSize, step, half, pinH, texW;
+          void main() {
             int idx = int(pinIdx);
             float ix = mod(pinIdx, gridSize);
             float iz = floor(pinIdx / gridSize);
@@ -143,28 +166,50 @@
             p.z += -half + iz * step;
             p.y += h;
             gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-        }
-    `,
+          }
+        `,
         fragmentShader: `uniform float opacity; void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, opacity); }`,
       });
       const edgeLines = new THREE.LineSegments(mergedEdgeGeom, edgeShaderMat);
       scene.add(edgeLines);
 
-      const baseW = GRID * STEP + 20;
-      const baseGeom2 = new THREE.BoxGeometry(baseW, BASE_H, baseW);
-      const base = new THREE.Mesh(baseGeom2, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.05, metalness: 0.0 }));
-      base.position.y = BASE_TOP - BASE_H / 2;
-      scene.add(base);
-      const baseEdge = new THREE.LineSegments(new THREE.EdgesGeometry(baseGeom2), edgeMat);
-      baseEdge.position.y = BASE_TOP - BASE_H / 2;
-      scene.add(baseEdge);
+      // Shell
+      const shellGroup = new THREE.Group();
 
-      // ─── Pin data ───
+      const bottomGeom = new THREE.BoxGeometry(OUTER, WALL, OUTER);
+      const bottom = new THREE.Mesh(bottomGeom, shellMat);
+      bottom.position.y = BASE_TOP - BASE_H + WALL / 2;
+      shellGroup.add(bottom);
+      const bottomEdge = new THREE.LineSegments(new THREE.EdgesGeometry(bottomGeom), edgeMat);
+      bottomEdge.position.copy(bottom.position);
+      shellGroup.add(bottomEdge);
+
+      function addWall(w, h, d, px, py, pz) {
+        const g = new THREE.BoxGeometry(w, h, d);
+        const m = new THREE.Mesh(g, shellMat);
+        m.position.set(px, py, pz);
+        shellGroup.add(m);
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat);
+        e.position.set(px, py, pz);
+        shellGroup.add(e);
+      }
+
+      const wallH = BASE_H - WALL;
+      const wallCenterY = BASE_TOP - BASE_H + WALL + wallH / 2;
+
+      addWall(OUTER, wallH, WALL, 0, wallCenterY, INNER / 2 + WALL / 2);
+      addWall(OUTER, wallH, WALL, 0, wallCenterY, -(INNER / 2 + WALL / 2));
+      addWall(WALL, wallH, INNER, -(INNER / 2 + WALL / 2), wallCenterY, 0);
+      addWall(WALL, wallH, INNER, INNER / 2 + WALL / 2, wallCenterY, 0);
+
+      scene.add(shellGroup);
+
+      // Pin data
       const current = new Float32Array(TOTAL);
       const prevFrame = new Float32Array(TOTAL);
       const dummy = new THREE.Object3D();
 
-      // ─── Audio ───
+      // Audio
       let audioCtx, masterGain;
       const voices = [];
 
@@ -209,8 +254,7 @@
         }
       }
 
-      // ─── Pattern API ───
-      // Perlin-ish noise
+      // Pattern API
       const _perm = new Uint8Array(512);
       {
         const p = [];
@@ -252,7 +296,6 @@
           sqrt = Math.sqrt,
           floor = Math.floor,
           PI = Math.PI;
-
         s.sin = sin;
         s.cos = cos;
         s.abs = abs;
@@ -265,28 +308,21 @@
           t = Math.max(0, Math.min(1, t));
           return t * t * (3 - 2 * t);
         };
-
-        // Core: map returns a pattern function (x,z,t,n) => h
-        // x,z in [0,1], t = time in seconds, n = grid size
         s.map = (fn) => fn;
-
         s.wave =
           (fx = 1, fz = 1) =>
           (x, z, t) =>
             (sin(x * fx * PI * 2) * 0.5 + 0.5) * (cos(z * fz * PI * 2) * 0.5 + 0.5);
-
         s.ripple =
           (cx = 0.5, cz = 0.5, freq = 3) =>
           (x, z, t) => {
             const d = sqrt((x - cx) ** 2 + (z - cz) ** 2);
             return sin(d * freq * PI * 2) * 0.5 + 0.5;
           };
-
         s.checker =
           (sz = 5) =>
           (x, z) =>
             (floor(x * sz) + floor(z * sz)) % 2 === 0 ? 0.9 : 0.1;
-
         s.grid =
           (sp = 5) =>
           (x, z, t, n) => {
@@ -294,54 +330,37 @@
               iz = Math.round(z * (n - 1));
             return ix % sp === 0 || iz % sp === 0 ? 1 : 0.05;
           };
-
         s.pyramid = () => (x, z) => 1 - Math.max(abs(x - 0.5), abs(z - 0.5)) * 2;
-
         s.flat =
           (h = 0.5) =>
           () =>
             h;
-
         s.noise =
           (scale = 4) =>
           (x, z, t) =>
             _perlin2(x * scale + t * 0.3, z * scale + t * 0.2);
-
         s.blend =
           (a, b, mix = 0.5) =>
           (x, z, t, n) => {
             const m = typeof mix === "function" ? mix(x, z, t, n) : mix;
             return a(x, z, t, n) * (1 - m) + b(x, z, t, n) * m;
           };
-
         s.add = (a, b) => (x, z, t, n) => s.clamp(a(x, z, t, n) + b(x, z, t, n));
         s.mul = (a, b) => (x, z, t, n) => a(x, z, t, n) * b(x, z, t, n);
         s.inv = (a) => (x, z, t, n) => 1 - a(x, z, t, n);
-
         s.ease = (pat) => (x, z, t, n) => s.smoothstep(pat(x, z, t, n));
-
         s.rotate = (pat, angle) => (x, z, t, n) => {
           const a = typeof angle === "function" ? angle(x, z, t, n) : angle;
-          const cx = x - 0.5,
-            cz = z - 0.5;
-          const rx = cx * cos(a) - cz * sin(a) + 0.5;
-          const rz = cx * sin(a) + cz * cos(a) + 0.5;
-          return pat(rx, rz, t, n);
+          const cx2 = x - 0.5,
+            cz2 = z - 0.5;
+          return pat(cx2 * cos(a) - cz2 * sin(a) + 0.5, cx2 * sin(a) + cz2 * cos(a) + 0.5, t, n);
         };
-
-        s.scale = (pat, sx, sz) => (x, z, t, n) => {
-          const nx = (x - 0.5) / sx + 0.5;
-          const nz = (z - 0.5) / (sz || sx) + 0.5;
-          return pat(nx, nz, t, n);
-        };
-
+        s.scale = (pat, sx, sz) => (x, z, t, n) => pat((x - 0.5) / sx + 0.5, (z - 0.5) / (sz || sx) + 0.5, t, n);
         s.offset = (pat, ox, oz) => (x, z, t, n) => {
-          const fx = typeof ox === "function" ? ox(x, z, t, n) : ox;
-          const fz = typeof oz === "function" ? oz(x, z, t, n) : oz || 0;
-          return pat(x - fx, z - fz, t, n);
+          const fx2 = typeof ox === "function" ? ox(x, z, t, n) : ox;
+          const fz2 = typeof oz === "function" ? oz(x, z, t, n) : oz || 0;
+          return pat(x - fx2, z - fz2, t, n);
         };
-
-        // Sequence: cycles through patterns with smooth transitions
         s.seq = (dur, ...pats) => {
           const transTime = 0.8;
           const totalPerPat = dur + transTime;
@@ -351,23 +370,16 @@
             const local = cycle - idx * totalPerPat;
             const curPat = pats[idx % pats.length];
             const nextPat = pats[(idx + 1) % pats.length];
-            if (local < dur) {
-              return curPat(x, z, t, n);
-            } else {
-              const blend = s.smoothstep((local - dur) / transTime);
-              return curPat(x, z, t, n) * (1 - blend) + nextPat(x, z, t, n) * blend;
-            }
+            if (local < dur) return curPat(x, z, t, n);
+            const blend = s.smoothstep((local - dur) / transTime);
+            return curPat(x, z, t, n) * (1 - blend) + nextPat(x, z, t, n) * blend;
           };
         };
-
-        // Time modifiers
         s.slow = (pat, factor) => (x, z, t, n) => pat(x, z, t / factor, n);
         s.fast = (pat, factor) => (x, z, t, n) => pat(x, z, t * factor, n);
-
         return s;
       }
 
-      // ─── Program execution ───
       let activePattern = null;
       let globalTime = 0;
 
@@ -388,7 +400,6 @@
         }
       }
 
-      // ─── Default program ───
       const defaultCode = `// Shape Display — return a pattern function
 // x, z ∈ [0,1]  t = time  n = grid size
 // output: height ∈ [0,1]
@@ -416,7 +427,6 @@ return s.seq(1.5,
       const editor = document.getElementById("editor");
       editor.value = defaultCode;
 
-      // Tab support
       editor.addEventListener("keydown", (e) => {
         if (e.key === "Tab") {
           e.preventDefault();
@@ -432,7 +442,6 @@ return s.seq(1.5,
 
       document.getElementById("run-btn").addEventListener("click", () => runProgram(editor.value));
 
-      // ─── Resize ───
       function resize() {
         const w = container.clientWidth,
           h = container.clientHeight;
@@ -443,14 +452,12 @@ return s.seq(1.5,
       resize();
       addEventListener("resize", resize);
 
-      // ─── Start ───
       document.getElementById("start-overlay").addEventListener("click", () => {
         if (!audioCtx) initAudio();
         document.getElementById("start-overlay").style.display = "none";
         runProgram(editor.value);
       });
 
-      // ─── Loop ───
       const clock = new THREE.Clock();
 
       function loop() {
