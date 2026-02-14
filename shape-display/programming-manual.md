@@ -18,7 +18,7 @@ The Shape Display is a programmable 30×30 grid of motorized pins. Each pin's he
 | `n` | 30 | Grid resolution |
 | **output** `h` | 0–1 | Pin height (0 = flush, 1 = fully extended) |
 
-Your program's **last expression** should be a Pattern. No `return` is needed — the system auto-detects it. Code is auto-evaluated as you type (after a short debounce), and the clock keeps running so transitions are seamless.
+Your script is **declarative**: you build patterns and call `display(pattern)` to declare which one the scheduler should show. The scheduler runs independently and always samples the latest declared pattern. Press **Ctrl/Cmd + Enter** to run.
 
 ---
 
@@ -27,32 +27,54 @@ Your program's **last expression** should be a Pattern. No `return` is needed �
 The simplest program — a static flat surface:
 
 ```js
-flat(0.5)
+display(flat(0.5))
 ```
 
 A custom pattern using `pat`:
 
 ```js
-pat((x, z, t) =>
+display(pat((x, z, t) =>
   sin(x * 10 + t) * 0.5 + 0.5
-)
+))
 ```
 
 A sequence of built-in patterns:
 
 ```js
-seq(2,
+display(seq(2,
   wave(1, 1),
   ripple(0.5, 0.5, 3),
   pyramid()
-)
+))
 ```
 
 Chaining transforms:
 
 ```js
-wave(2, 0).slow(2).rotate(PI / 4).ease()
+display(wave(2, 0).slow(2).rotate(PI / 4).ease())
 ```
+
+---
+
+## Declaring Patterns
+
+### `display(pattern)`
+
+Declare which pattern the scheduler should show on the display. This is the entry point — your script builds a pattern and passes it to `display()`.
+
+```js
+display(wave(1, 1))
+
+// with transforms
+display(wave(2, 0).slow(2).rotate(PI / 4))
+
+// with variables
+const bg = noise(5)
+const fg = ripple(0.5, 0.5, 3)
+display(fg.mul(bg))
+```
+
+If `display()` is called multiple times, the last call wins.
 
 ---
 
@@ -220,13 +242,13 @@ checker(4).ease()   // rounded checkerboard
 Cycle through patterns with smooth crossfade transitions. Each pattern holds for `duration` seconds, then crossfades to the next over 0.8 seconds.
 
 ```js
-seq(2,
+display(seq(2,
   flat(0),
   pyramid(),
   wave(2, 2),
   ripple(0.5, 0.5, 4),
   checker(5)
-)
+))
 ```
 
 The sequence loops indefinitely. Transition easing is automatic.
@@ -312,17 +334,17 @@ These are available as top-level names for use inside `pat()` and other function
 
 ## Live Coding
 
-The Shape Display REPL supports live coding: edits to your code are automatically evaluated after a short pause (500ms). The internal clock **never resets** — when your pattern changes, the new pattern picks up at the current time, creating seamless transitions.
+Your script is **declarative** — it builds patterns and calls `display()` to register them with the scheduler. The internal clock **never resets** — when you re-run your code, the new pattern picks up at the current time, creating seamless transitions.
 
 This is inspired by Strudel/Tidal Cycles' approach of decoupling pattern creation from scheduling:
 
-1. **You write code** → creates a Pattern instance (an AST of transforms)
+1. **You write code** → declares patterns via `display()` (no `return` needed)
 2. **The scheduler runs independently** → queries the active Pattern every frame at the current time
-3. **When you edit** → a new Pattern replaces the old one, but the clock continues
+3. **When you re-run** → the new Pattern replaces the old one, but the clock continues
 
-This means you can live-edit sequences, change transforms, or swap patterns without any jarring jumps.
+This means you can edit sequences, change transforms, or swap patterns without any jarring jumps.
 
-You can also press **Ctrl/Cmd + Enter** to manually run the code at any time.
+Press **Ctrl/Cmd + Enter** to run the code.
 
 ---
 
@@ -331,51 +353,51 @@ You can also press **Ctrl/Cmd + Enter** to manually run the code at any time.
 **Breathing pulse:**
 
 ```js
-pat((x, z, t) => sin(t * 2) * 0.4 + 0.5)
+display(pat((x, z, t) => sin(t * 2) * 0.4 + 0.5))
 ```
 
 **Rotating ripple:**
 
 ```js
-ripple(0.5, 0.5, 4).rotate(
+display(ripple(0.5, 0.5, 4).rotate(
   pat((x, z, t) => t * 0.3)
-)
+))
 ```
 
 **Terrain with moving spotlight:**
 
 ```js
-noise(6).mul(
+display(noise(6).mul(
   pat((x, z, t) => {
     const cx = sin(t * 0.5) * 0.3 + 0.5
     const cz = cos(t * 0.7) * 0.3 + 0.5
     const d = sqrt((x - cx) ** 2 + (z - cz) ** 2)
     return clamp(1 - d * 3)
   })
-)
+))
 ```
 
 **Sequenced show with variety:**
 
 ```js
-seq(2,
+display(seq(2,
   wave(1, 1),
   checker(6).ease(),
   wave(3, 0).rotate(pat((x,z,t) => t)),
   noise(4).blend(pyramid(), 0.5),
   ripple(0.5, 0.5, 5).mul(pyramid().inv()),
   flat(0.02)
-)
+))
 ```
 
 **Conway-style cellular (using grid snapping):**
 
 ```js
-pat((x, z, t, n) => {
+display(pat((x, z, t, n) => {
   const ix = Math.round(x * (n - 1))
   const iz = Math.round(z * (n - 1))
   const phase = floor(t / 0.5)
   const v = sin(ix * 0.7 + phase) * cos(iz * 0.9 + phase * 1.3)
   return v > 0 ? 0.95 : 0.05
-})
+}))
 ```

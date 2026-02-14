@@ -102,6 +102,7 @@
         </div>
       </div>
       <div id="api-ref">
+        <code>display(pattern)</code> declare the pattern to show<br />
         <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>grid(spacing)</code> ·
         <code>pyramid()</code> · <code>flat(h)</code> · <code>noise(scale)</code><br />
         <code>pat((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
@@ -224,7 +225,6 @@
       const HALF = ((GRID - 1) * STEP) / 2;
       const MAX_P = 180;
       const VOICES = 16;
-      const AUTO_EVAL_MS = 500;
 
       const WALL = 10;
       const SHELL_GAP = GAP;
@@ -532,69 +532,47 @@
       let activePattern = null;
       let globalTime = 0;
       let started = false;
-      let autoRunTimer = null;
 
-      // Auto-return: if no `return` keyword, prepend return before the last top-level expression
-      function autoReturn(code) {
-        if (/\breturn\b/.test(code)) return code;
-        const lines = code.split("\n");
-        let insertIdx = -1, parenDepth = 0, bracketDepth = 0, braceDepth = 0;
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const trimmed = lines[i].trim();
-          if (!trimmed || trimmed.startsWith("//")) continue;
-          for (const ch of trimmed) {
-            if (ch === "(") parenDepth--; else if (ch === ")") parenDepth++;
-            else if (ch === "[") bracketDepth--; else if (ch === "]") bracketDepth++;
-            else if (ch === "{") braceDepth--; else if (ch === "}") braceDepth++;
-          }
-          insertIdx = i;
-          if (parenDepth <= 0 && bracketDepth <= 0 && braceDepth <= 0) break;
-        }
-        if (insertIdx >= 0) {
-          const trimmed = lines[insertIdx].trim();
-          if (/^(const |let |var |function )/.test(trimmed)) return code;
-          const ws = lines[insertIdx].match(/^(\s*)/)[1];
-          lines[insertIdx] = ws + "return " + trimmed;
-        }
-        return lines.join("\n");
-      }
+      // Pattern registry — display() declares the active pattern
+      let _pendingPattern = null;
+      function _display(p) { _pendingPattern = _pat(p); }
 
       // All names exposed to user code
       const _apiNames = [
         "Pattern", "wave", "ripple", "checker", "grid", "pyramid", "flat", "noise", "pat", "seq",
-        "blend", "add", "mul", "inv",
+        "blend", "add", "mul", "inv", "display",
         "sin", "cos", "abs", "sqrt", "floor", "PI", "clamp", "lerp", "smoothstep",
       ];
       const _apiValues = [
         Pattern, wave, ripple, checker, grid, pyramid, flat, noise, pat, seq,
-        blend, add, mul, inv,
+        blend, add, mul, inv, _display,
         sin, cos, abs, sqrt, floor, PI, clamp, lerp, smoothstep,
       ];
 
       function runProgram(code) {
         const consoleEl = document.getElementById("console");
         consoleEl.textContent = "";
+        _pendingPattern = null;
         try {
-          const wrapped = autoReturn(code);
-          const fn = new Function(..._apiNames, `"use strict";\n${wrapped}`);
-          const result = fn(..._apiValues);
-          if (result instanceof Pattern) {
-            activePattern = result;
+          const fn = new Function(..._apiNames, `"use strict";\n${code}`);
+          fn(..._apiValues);
+          if (_pendingPattern) {
+            activePattern = _pendingPattern;
             compressToURL(code).then((encoded) => {
               history.replaceState(null, "", "#" + encoded);
             });
           } else {
-            consoleEl.textContent = "⚠ Last expression must be a Pattern";
+            consoleEl.textContent = "⚠ Call display(pattern) to show a pattern";
           }
         } catch (e) {
           consoleEl.textContent = `✗ ${e.message}`;
         }
       }
 
-      const defaultCode = `// Shape Display — x, z ∈ [0,1]  t = time  n = grid
-// height ∈ [0,1] — Ctrl/Cmd + Enter to run
+      const defaultCode = `// Shape Display — Ctrl/Cmd + Enter to run
+// x, z ∈ [0,1]  t = time  n = grid  height ∈ [0,1]
 
-seq(0.5,
+display(seq(0.5,
   flat(0),
   wave(1, 1),
   ripple(0.5, 0.5, 3),
@@ -610,7 +588,7 @@ seq(0.5,
     ripple(0.3, 0.7, 4),
     pat((x, z, t) => sin(t * 0.5) * 0.5 + 0.5)
   )
-)`;
+))`;
 
       // --- CodeMirror Editor Setup ---
       let editorView;
@@ -626,14 +604,6 @@ seq(0.5,
           },
         },
       ]);
-
-      // Debounced auto-run: evaluate pattern on code change (keeps clock running)
-      const autoRunListener = EditorView.updateListener.of((update) => {
-        if (update.docChanged && started) {
-          clearTimeout(autoRunTimer);
-          autoRunTimer = setTimeout(() => runProgram(editorView.state.doc.toString()), AUTO_EVAL_MS);
-        }
-      });
 
       const commonExtensions = [
         highlightActiveLine(),
@@ -661,7 +631,7 @@ seq(0.5,
         editorView = new EditorView({
           state: EditorState.create({
             doc: initialCode,
-            extensions: [...commonExtensions, javascript(), runKeymap, autoRunListener],
+            extensions: [...commonExtensions, javascript(), runKeymap],
           }),
           parent: document.getElementById("editor-wrap"),
         });
