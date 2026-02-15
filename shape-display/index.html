@@ -226,7 +226,8 @@
         <code>saw(freq, lo, hi)</code> · <code>pulse(freq, duty)</code><br />
         <code>setdim(n)</code> set dimension (2–64, default 32)<br />
         <code>setbackground(color)</code> set background color<br />
-        <code>sin</code> · <code>cos</code> · <code>PI</code> · <code>clamp(v)</code> · <code>lerp(a,b,t)</code>
+        <code>sin</code> · <code>cos</code> · <code>abs</code> · <code>sqrt</code> · <code>exp</code> · <code>log</code> · <code>pow</code> · <code>floor</code> · <code>ceil</code> · <code>round</code> · <code>min</code> · <code>max</code> · <code>atan2</code> · <code>hypot</code> · <code>sign</code><br />
+        <code>PI</code> · <code>TAU</code> · <code>E</code> · <code>clamp(v)</code> · <code>lerp(a,b,t)</code> · <code>fract(v)</code> · <code>smoothstep(t)</code>
       </div>
       <div id="editor-wrap"></div>
       <div id="console"></div>
@@ -970,6 +971,8 @@
       const _userClamp = (v) => Math.max(0, Math.min(1, v));
       const _userLerp = (a, b, t) => a + (b - a) * t;
       const _userSmoothstep = _smoothstep;
+      const _userFract = (v) => v - Math.floor(v);
+      const _TAU = Math.PI * 2;
 
       // Names injected into the user script scope
       const _scopeNames = [
@@ -999,10 +1002,24 @@
         "abs",
         "sqrt",
         "floor",
+        "ceil",
+        "round",
+        "min",
+        "max",
+        "exp",
+        "log",
+        "log2",
+        "pow",
+        "atan2",
+        "hypot",
+        "sign",
         "PI",
+        "TAU",
+        "E",
         "clamp",
         "lerp",
         "smoothstep",
+        "fract",
       ];
       const _scopeValues = [
         _wave,
@@ -1031,10 +1048,24 @@
         Math.abs,
         Math.sqrt,
         Math.floor,
+        Math.ceil,
+        Math.round,
+        Math.min,
+        Math.max,
+        Math.exp,
+        Math.log,
+        Math.log2,
+        Math.pow,
+        Math.atan2,
+        Math.hypot,
+        Math.sign,
         Math.PI,
+        _TAU,
+        Math.E,
         _userClamp,
         _userLerp,
         _userSmoothstep,
+        _userFract,
       ];
 
       let activePattern = null;

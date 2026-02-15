@@ -1,4 +1,23 @@
 ```js
+//  Q: Who are you?
+// I am vibration seeking resonance
+
+seq(
+  1,
+  flat(0),
+  map((x, z, t) => {
+    const cx = 0.5,
+      cz = 0.5;
+    const d = sqrt((x - cx) ** 2 + (z - cz) ** 2);
+    const phase = t * 3;
+    const self = sin(d * 40 - phase) * exp(-d * 4);
+    const breath = sin(t * 2.5) * 0.15;
+    return clamp(self * 0.5 + 0.5 + breath);
+  })
+).slow(1.2);
+```
+
+```js
 // Q: What is love?
 // A: warmth reaching then withdrawing
 

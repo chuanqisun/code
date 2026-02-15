@@ -8,13 +8,13 @@ The Shape Display is a programmable 30×30 grid of motorized pins. Each pin's he
 
 **Core concept:** Everything is a _Pattern_. A pattern describes a height field over space and time:
 
-| Parameter      | Range | Description                                  |
-| -------------- | ----- | -------------------------------------------- |
-| `x`            | 0–1   | Horizontal position (left to right)          |
-| `z`            | 0–1   | Depth position (front to back)               |
-| `t`            | 0–∞   | Time in seconds (resets on each run)         |
+| Parameter      | Range | Description                                    |
+| -------------- | ----- | ---------------------------------------------- |
+| `x`            | 0–1   | Horizontal position (left to right)            |
+| `z`            | 0–1   | Depth position (front to back)                 |
+| `t`            | 0–∞   | Time in seconds (resets on each run)           |
 | `n`            | 32    | Grid resolution (configurable via `setdim(n)`) |
-| **output** `h` | 0–1   | Pin height (0 = flush, 1 = fully extended)   |
+| **output** `h` | 0–1   | Pin height (0 = flush, 1 = fully extended)     |
 
 Write your pattern, then press **Ctrl+Enter** (Cmd+Enter on Mac) to run. Time resets to 0 on each run, so animations and sequences always start fresh.
 
@@ -391,11 +391,25 @@ These are available directly in your code (no prefix needed).
 | `cos(x)`        | Cosine                                   |
 | `abs(x)`        | Absolute value                           |
 | `sqrt(x)`       | Square root                              |
+| `exp(x)`        | e raised to the power x                  |
+| `log(x)`        | Natural logarithm (base e)              |
+| `log2(x)`       | Base-2 logarithm                         |
+| `pow(x, y)`     | x raised to the power y                  |
 | `floor(x)`      | Floor                                    |
-| `PI`            | π                                        |
+| `ceil(x)`       | Ceiling                                  |
+| `round(x)`      | Round to nearest integer                 |
+| `min(a, b)`     | Minimum of two values                    |
+| `max(a, b)`     | Maximum of two values                    |
+| `atan2(y, x)`   | Angle from origin to (x, y) in radians  |
+| `hypot(x, y)`   | Distance: √(x² + y²)                    |
+| `sign(x)`       | Sign of x (−1, 0, or 1)                 |
+| `PI`            | π ≈ 3.14159                              |
+| `TAU`           | 2π ≈ 6.28318                             |
+| `E`             | Euler's number ≈ 2.71828                 |
 | `clamp(v)`      | Clamp to 0–1                             |
 | `lerp(a, b, t)` | Linear interpolation                     |
 | `smoothstep(t)` | Smooth hermite interpolation (0–1 → 0–1) |
+| `fract(v)`      | Fractional part: `v - floor(v)`          |
 
 ---
 
