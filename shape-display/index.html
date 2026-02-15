@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -215,8 +215,8 @@
         </div>
       </div>
       <div id="api-ref">
-        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>gridlines(spacing)</code> · <code>pyramid()</code> ·
-        <code>flat(h)</code> · <code>noise(scale)</code><br />
+        <code>wave(freqX, freqZ)</code> · <code>ripple(cx, cz, freq)</code> · <code>checker(size)</code> · <code>gridlines(spacing)</code> ·
+        <code>pyramid()</code> · <code>flat(h)</code> · <code>noise(scale)</code><br />
         <code>map((x,z,t,n)=>h)</code> x,z∈[0,1] t=time h∈[0,1]<br />
         <code>.blend(b, mix)</code> · <code>.add(b)</code> · <code>.mul(b)</code> · <code>.inv()</code> · <code>.ease()</code><br />
         <code>seq(dur, ...patterns)</code> · <code>sleep(t)</code> hold / stop<br />
@@ -236,20 +236,33 @@
     <div id="start-overlay"><span>Click to start</span></div>
 
     <script type="importmap">
-      { "imports": { "three": "https://esm.sh/three@0.160.0", "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/" } }
+      {
+        "imports": {
+          "three": "https://esm.sh/three@0.160.0",
+          "three/addons/": "https://esm.sh/three@0.160.0/examples/jsm/",
+          "@codemirror/commands": "https://esm.sh/@codemirror/commands",
+          "@codemirror/state": "https://esm.sh/@codemirror/state",
+          "@codemirror/view": "https://esm.sh/@codemirror/view",
+          "@codemirror/language": "https://esm.sh/@codemirror/language",
+          "@codemirror/lang-javascript": "https://esm.sh/@codemirror/lang-javascript",
+          "@codemirror/theme-one-dark": "https://esm.sh/@codemirror/theme-one-dark",
+          "@codemirror/autocomplete": "https://esm.sh/@codemirror/autocomplete"
+        }
+      }
     </script>
     <script type="module">
       import * as THREE from "three";
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
       // CodeMirror imports
-      import { EditorState } from "https://esm.sh/@codemirror/state";
-      import { EditorView, keymap, highlightActiveLine } from "https://esm.sh/@codemirror/view";
-      import { defaultHighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching } from "https://esm.sh/@codemirror/language";
-      import { javascript } from "https://esm.sh/@codemirror/lang-javascript";
-      import { defaultKeymap, indentWithTab } from "https://esm.sh/@codemirror/commands";
-      import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
-      import { closeBrackets } from "https://esm.sh/@codemirror/autocomplete";
+      import { EditorState } from "@codemirror/state";
+      import { EditorView, keymap, highlightActiveLine } from "@codemirror/view";
+      import { defaultHighlightStyle, syntaxHighlighting, indentOnInput, bracketMatching } from "@codemirror/language";
+      import { javascript } from "@codemirror/lang-javascript";
+      import { defaultKeymap, indentWithTab } from "@codemirror/commands";
+      import { oneDark } from "@codemirror/theme-one-dark";
+      import { closeBrackets } from "@codemirror/autocomplete";
+      import { history, historyKeymap } from "@codemirror/commands";
 
       // --- URL Compression ---
       async function compressToURL(code) {
@@ -432,10 +445,18 @@
         OUTER = INNER + 2 * WALL;
 
         // Dispose old objects
-        if (pins) { scene.remove(pins); pins.dispose(); }
-        if (edgeLines) { scene.remove(edgeLines); edgeLines.geometry.dispose(); }
+        if (pins) {
+          scene.remove(pins);
+          pins.dispose();
+        }
+        if (edgeLines) {
+          scene.remove(edgeLines);
+          edgeLines.geometry.dispose();
+        }
         if (shellGroup) {
-          shellGroup.traverse((c) => { if (c.geometry) c.geometry.dispose(); });
+          shellGroup.traverse((c) => {
+            if (c.geometry) c.geometry.dispose();
+          });
           scene.remove(shellGroup);
         }
 
@@ -1034,7 +1055,7 @@
 // x, z ∈ [0,1]  t = time  n = grid size
 // Ctrl/Cmd + Enter to run
 
-seq(2,
+seq(1,
   flat(0),
   wave(1, 1).rotate(tween(0, PI, 4)),
   ripple(0.5, 0.5, 3),
@@ -1044,8 +1065,16 @@ seq(2,
     noise(5),
     osc(0.3)
   ),
+  map((x, z, t) => sin((x + z) * 6) * 0.5 + 0.5),
+  noise(5),
   flat(0.02),
-  sleep(Infinity)
+  blend(
+    wave(2, 0),
+    ripple(0.3, 0.7, 4),
+    map((x, z, t) =>
+      sin(t * 0.5) * 0.5 + 0.5
+    )
+  )
 )`;
 
       // --- CodeMirror Editor Setup ---
@@ -1063,9 +1092,10 @@ seq(2,
       ];
 
       const commonExtensions = [
+        history(),
         highlightActiveLine(),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        keymap.of([...runKeymap, ...defaultKeymap, indentWithTab]),
+        keymap.of([...runKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
         oneDark,
         javascript(),
         indentOnInput(),
