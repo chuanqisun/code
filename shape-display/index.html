@@ -226,6 +226,7 @@
         <code>saw(freq, lo, hi)</code> · <code>pulse(freq, duty)</code><br />
         <code>setdim(n)</code> set dimension (2–64, default 32)<br />
         <code>setbackground(color)</code> set background color<br />
+        <code>setrotate("on"|"off"|"auto")</code> control auto-rotation<br />
         <code>sin</code> · <code>cos</code> · <code>abs</code> · <code>sqrt</code> · <code>exp</code> · <code>log</code> · <code>pow</code> ·
         <code>floor</code> · <code>ceil</code> · <code>round</code> · <code>min</code> · <code>max</code> · <code>atan2</code> · <code>hypot</code> ·
         <code>sign</code><br />
@@ -383,12 +384,15 @@
       controls.enableDamping = true;
       controls.autoRotate = true;
 
+      // "auto" (default): stop on interaction. "on"/"off": forced.
+      let _rotateMode = "auto";
+
       renderer.domElement.addEventListener("pointerdown", () => {
-        controls.autoRotate = false;
+        if (_rotateMode === "auto") controls.autoRotate = false;
         if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
       });
       renderer.domElement.addEventListener("wheel", () => {
-        controls.autoRotate = false;
+        if (_rotateMode === "auto") controls.autoRotate = false;
       });
 
       scene.add(new THREE.AmbientLight(0xffffff, 1));
@@ -971,6 +975,15 @@
         _pendingBackground = color;
       }
 
+      // --- Rotation control API ---
+      let _pendingRotate = null;
+      function _setRotate(mode) {
+        const m = String(mode).toLowerCase();
+        if (m === "on" || m === "off" || m === "auto") {
+          _pendingRotate = m;
+        }
+      }
+
       const _userClamp = (v) => Math.max(0, Math.min(1, v));
       const _userLerp = (a, b, t) => a + (b - a) * t;
       const _userSmoothstep = _smoothstep;
@@ -1000,6 +1013,7 @@
         "pulse",
         "setdim",
         "setbackground",
+        "setrotate",
         "sin",
         "cos",
         "abs",
@@ -1046,6 +1060,7 @@
         _pulse,
         _setDim,
         _setBackground,
+        _setRotate,
         Math.sin,
         Math.cos,
         Math.abs,
@@ -1083,6 +1098,7 @@
           Pattern._clear();
           _pendingGridSize = null;
           _pendingBackground = null;
+          _pendingRotate = null;
           const fn = new Function(..._scopeNames, `"use strict";\n${code}`);
           fn(..._scopeValues);
 
@@ -1094,6 +1110,15 @@
           // Apply background color if requested
           if (_pendingBackground !== null) {
             scene.background = new THREE.Color(_pendingBackground);
+          }
+
+          // Apply rotation mode if requested
+          if (_pendingRotate !== null) {
+            _rotateMode = _pendingRotate;
+            if (_rotateMode === "on") controls.autoRotate = true;
+            else if (_rotateMode === "off") controls.autoRotate = false;
+            // "auto" keeps current state (autoRotate = true at program start)
+            else controls.autoRotate = true;
           }
 
           const roots = Pattern._getRoots();
