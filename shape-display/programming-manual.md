@@ -392,7 +392,7 @@ These are available directly in your code (no prefix needed).
 | `abs(x)`        | Absolute value                           |
 | `sqrt(x)`       | Square root                              |
 | `exp(x)`        | e raised to the power x                  |
-| `log(x)`        | Natural logarithm (base e)              |
+| `log(x)`        | Natural logarithm (base e)               |
 | `log2(x)`       | Base-2 logarithm                         |
 | `pow(x, y)`     | x raised to the power y                  |
 | `floor(x)`      | Floor                                    |
@@ -400,9 +400,9 @@ These are available directly in your code (no prefix needed).
 | `round(x)`      | Round to nearest integer                 |
 | `min(a, b)`     | Minimum of two values                    |
 | `max(a, b)`     | Maximum of two values                    |
-| `atan2(y, x)`   | Angle from origin to (x, y) in radians  |
-| `hypot(x, y)`   | Distance: √(x² + y²)                    |
-| `sign(x)`       | Sign of x (−1, 0, or 1)                 |
+| `atan2(y, x)`   | Angle from origin to (x, y) in radians   |
+| `hypot(x, y)`   | Distance: √(x² + y²)                     |
+| `sign(x)`       | Sign of x (−1, 0, or 1)                  |
 | `PI`            | π ≈ 3.14159                              |
 | `TAU`           | 2π ≈ 6.28318                             |
 | `E`             | Euler's number ≈ 2.71828                 |
