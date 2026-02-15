@@ -13,7 +13,7 @@ The Shape Display is a programmable 30×30 grid of motorized pins. Each pin's he
 | `x`            | 0–1   | Horizontal position (left to right)          |
 | `z`            | 0–1   | Depth position (front to back)               |
 | `t`            | 0–∞   | Time in seconds (resets on each run)         |
-| `n`            | 32    | Grid resolution (configurable via `grid(n)`) |
+| `n`            | 32    | Grid resolution (configurable via `setdim(n)`) |
 | **output** `h` | 0–1   | Pin height (0 = flush, 1 = fully extended)   |
 
 Write your pattern, then press **Ctrl+Enter** (Cmd+Enter on Mac) to run. Time resets to 0 on each run, so animations and sequences always start fresh.
@@ -287,20 +287,34 @@ wave(1, 1).blend(pyramid(), pulse(0.5));
 
 ---
 
-## Grid Configuration
+## Configuration
 
-### `grid(n)`
+### `setdim(n)`
 
 Set the grid resolution to `n × n` pins. Default is 32. Range: 2–64. Call at the top of your program.
 
 ```js
-grid(16); // 16×16 pins (coarser)
+setdim(16); // 16×16 pins (coarser)
 wave(1, 1);
 ```
 
 ```js
-grid(48); // 48×48 pins (finer)
+setdim(48); // 48×48 pins (finer)
 noise(5);
+```
+
+### `setbackground(color)`
+
+Set the background color of the 3D scene. Accepts any CSS color string. Default is `"#000000"` (black). Call at the top of your program.
+
+```js
+setbackground("#1a1a2e"); // dark blue
+wave(1, 1);
+```
+
+```js
+setbackground("white"); // white background
+pyramid();
 ```
 
 ---

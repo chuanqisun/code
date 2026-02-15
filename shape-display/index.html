@@ -224,7 +224,8 @@
         <code>.slow(factor)</code> · <code>.fast(factor)</code><br />
         <code>tween(from, to, dur)</code> · <code>osc(freq, lo, hi)</code><br />
         <code>saw(freq, lo, hi)</code> · <code>pulse(freq, duty)</code><br />
-        <code>grid(n)</code> set grid size (2–64, default 32)<br />
+        <code>setdim(n)</code> set dimension (2–64, default 32)<br />
+        <code>setbackground(color)</code> set background color<br />
         <code>sin</code> · <code>cos</code> · <code>PI</code> · <code>clamp(v)</code> · <code>lerp(a,b,t)</code>
       </div>
       <div id="editor-wrap"></div>
@@ -955,9 +956,15 @@
 
       // --- Grid size API ---
       let _pendingGridSize = null;
-      function _setGrid(n) {
+      function _setDim(n) {
         n = Math.max(2, Math.min(64, Math.round(n)));
         _pendingGridSize = n;
+      }
+
+      // --- Background color API ---
+      let _pendingBackground = null;
+      function _setBackground(color) {
+        _pendingBackground = color;
       }
 
       const _userClamp = (v) => Math.max(0, Math.min(1, v));
@@ -985,7 +992,8 @@
         "osc",
         "saw",
         "pulse",
-        "grid",
+        "setdim",
+        "setbackground",
         "sin",
         "cos",
         "abs",
@@ -1016,7 +1024,8 @@
         _osc,
         _saw,
         _pulse,
-        _setGrid,
+        _setDim,
+        _setBackground,
         Math.sin,
         Math.cos,
         Math.abs,
@@ -1039,12 +1048,18 @@
         try {
           Pattern._clear();
           _pendingGridSize = null;
+          _pendingBackground = null;
           const fn = new Function(..._scopeNames, `"use strict";\n${code}`);
           fn(..._scopeValues);
 
           // Apply grid resize if requested
           if (_pendingGridSize !== null && _pendingGridSize !== GRID) {
             rebuildGrid(_pendingGridSize);
+          }
+
+          // Apply background color if requested
+          if (_pendingBackground !== null) {
+            scene.background = new THREE.Color(_pendingBackground);
           }
 
           const roots = Pattern._getRoots();
