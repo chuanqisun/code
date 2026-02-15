@@ -321,11 +321,11 @@ pyramid();
 
 Control the 3D scene's auto-rotation. `mode` is one of `"on"`, `"off"`, or `"auto"`.
 
-| Mode     | Behavior                                                  |
-| -------- | --------------------------------------------------------- |
+| Mode     | Behavior                                                    |
+| -------- | ----------------------------------------------------------- |
 | `"auto"` | Rotates by default, stops when the user interacts (default) |
-| `"on"`   | Always rotates, even after user interaction               |
-| `"off"`  | Never rotates                                             |
+| `"on"`   | Always rotates, even after user interaction                 |
+| `"off"`  | Never rotates                                               |
 
 Call at the top of your program.
 
