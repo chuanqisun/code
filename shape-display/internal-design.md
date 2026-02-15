@@ -22,8 +22,8 @@ User Code  →  Pattern AST  →  compile()  →  (x,z,t,n)=>h  →  Scheduler (
 
 Each `Pattern` stores two fields:
 
-| Field | Description |
-|-------|-------------|
+| Field   | Description                                                                 |
+| ------- | --------------------------------------------------------------------------- |
 | `_type` | A string tag identifying the node kind (e.g. `"wave"`, `"rotate"`, `"seq"`) |
 | `_args` | A plain object holding the node's parameters and child `Pattern` references |
 
@@ -107,16 +107,16 @@ All factory functions create `Pattern` instances. Math utilities (`sin`, `cos`, 
 Animation signals are plain functions `(x, z, t, n) => number` that can be used anywhere a static value is accepted. Because `_resolveArg()` already normalises functions, signals compose naturally with transforms:
 
 ```js
-wave(1, 1).rotate(tween(0, PI, 5))    // animate rotation over 5 s
-checker(4).blend(pyramid(), osc(0.3))  // oscillating blend
+wave(1, 1).rotate(tween(0, PI, 5)); // animate rotation over 5 s
+checker(4).blend(pyramid(), osc(0.3)); // oscillating blend
 ```
 
-| Signal | Signature | Description |
-|--------|-----------|-------------|
+| Signal                        | Signature                                    | Description   |
+| ----------------------------- | -------------------------------------------- | ------------- |
 | `tween(from, to, dur, ease?)` | Ramp from → to over dur seconds, clamp at to | One-shot ramp |
-| `osc(freq, lo?, hi?)` | Sine oscillation between lo and hi | Continuous |
-| `saw(freq, lo?, hi?)` | Sawtooth ramp between lo and hi | Continuous |
-| `pulse(freq, duty?)` | Square wave (0 or 1) | Continuous |
+| `osc(freq, lo?, hi?)`         | Sine oscillation between lo and hi           | Continuous    |
+| `saw(freq, lo?, hi?)`         | Sawtooth ramp between lo and hi              | Continuous    |
+| `pulse(freq, duty?)`          | Square wave (0 or 1)                         | Continuous    |
 
 Signals depend on `t`, which is **program-relative time** (see below), so `tween` starts from 0 on each re-run.
 
@@ -131,11 +131,11 @@ Signals depend on `t`, which is **program-relative time** (see below), so `tween
 
 The `seq` compiler builds a flat list of **timeline segments**:
 
-| Segment type | Key | Description |
-|-------------|-----|-------------|
-| `"p"` (pattern) | `fn` | Show a pattern for `dur` seconds |
-| `"x"` (crossfade) | `from`, `to` | Smoothstep crossfade over 0.8 s |
-| `"h"` (hold) | `fn` | Hold a pattern for `sleep(t)` seconds |
+| Segment type      | Key          | Description                           |
+| ----------------- | ------------ | ------------------------------------- |
+| `"p"` (pattern)   | `fn`         | Show a pattern for `dur` seconds      |
+| `"x"` (crossfade) | `from`, `to` | Smoothstep crossfade over 0.8 s       |
+| `"h"` (hold)      | `fn`         | Hold a pattern for `sleep(t)` seconds |
 
 If the sequence contains `sleep(Infinity)`, `totalDur` is set to `Infinity` and the sequence does **not loop**. Otherwise `totalDur` is finite and time wraps via modulo for looping. A crossfade back to the first pattern is appended automatically when looping.
 

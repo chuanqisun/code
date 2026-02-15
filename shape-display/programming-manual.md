@@ -8,13 +8,13 @@ The Shape Display is a programmable 30×30 grid of motorized pins. Each pin's he
 
 **Core concept:** Everything is a _Pattern_. A pattern describes a height field over space and time:
 
-| Parameter      | Range | Description                                |
-| -------------- | ----- | ------------------------------------------ |
-| `x`            | 0–1   | Horizontal position (left to right)        |
-| `z`            | 0–1   | Depth position (front to back)             |
-| `t`            | 0–∞   | Time in seconds (resets on each run)       |
+| Parameter      | Range | Description                                  |
+| -------------- | ----- | -------------------------------------------- |
+| `x`            | 0–1   | Horizontal position (left to right)          |
+| `z`            | 0–1   | Depth position (front to back)               |
+| `t`            | 0–∞   | Time in seconds (resets on each run)         |
 | `n`            | 32    | Grid resolution (configurable via `grid(n)`) |
-| **output** `h` | 0–1   | Pin height (0 = flush, 1 = fully extended) |
+| **output** `h` | 0–1   | Pin height (0 = flush, 1 = fully extended)   |
 
 Write your pattern, then press **Ctrl+Enter** (Cmd+Enter on Mac) to run. Time resets to 0 on each run, so animations and sequences always start fresh.
 
