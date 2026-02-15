@@ -415,14 +415,14 @@
           opacity: { value: 0.06 },
           gridSize: { value: GRID },
           step: { value: STEP },
-          half: { value: HALF },
+          halfGrid: { value: HALF },
           pinH: { value: PIN_H },
           texW: { value: texW },
         },
         vertexShader: `
           attribute float pinIdx;
           uniform sampler2D offsets;
-          uniform float gridSize, step, half, pinH, texW;
+          uniform float gridSize, step, halfGrid, pinH, texW;
           void main() {
             int idx = int(pinIdx);
             float ix = mod(pinIdx, gridSize);
@@ -430,8 +430,8 @@
             ivec2 tc = ivec2(idx % int(texW), idx / int(texW));
             float h = texelFetch(offsets, tc, 0).r;
             vec3 p = position;
-            p.x += -half + ix * step;
-            p.z += -half + iz * step;
+            p.x += -halfGrid + ix * step;
+            p.z += -halfGrid + iz * step;
             p.y += h;
             gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
           }
@@ -486,7 +486,7 @@
         // Update shader uniforms
         edgeShaderMat.uniforms.offsets.value = heightTex;
         edgeShaderMat.uniforms.gridSize.value = GRID;
-        edgeShaderMat.uniforms.half.value = HALF;
+        edgeShaderMat.uniforms.halfGrid.value = HALF;
 
         edgeLines = new THREE.LineSegments(mergedEdgeGeom, edgeShaderMat);
         scene.add(edgeLines);
@@ -1050,7 +1050,7 @@
             activePattern = roots[roots.length - 1]._compile();
             programStartTime = globalTime;
             compressToURL(code).then((encoded) => {
-              history.replaceState(null, "", "#" + encoded);
+              window.history.replaceState(null, "", "#" + encoded);
             });
           } else {
             consoleEl.textContent = "⚠ No pattern created";
