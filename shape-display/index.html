@@ -1163,6 +1163,25 @@ seq(1,
 
       const clock = new THREE.Clock();
 
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          // Fade out audio while tab is hidden
+          if (audioCtx && masterGain) {
+            masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+          }
+        } else {
+          // Consume stale clock delta so the next frame sees a small dt
+          clock.getDelta();
+          // Prevent intensity spike from the position jump
+          prevFrame.set(current);
+          // Fade audio back in
+          if (audioCtx && masterGain) {
+            masterGain.gain.setTargetAtTime(0.12, audioCtx.currentTime, 0.3);
+          }
+          if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        }
+      });
+
       function loop() {
         requestAnimationFrame(loop);
         const dt = Math.min(clock.getDelta(), 0.1);
