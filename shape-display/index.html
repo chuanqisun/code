@@ -380,6 +380,7 @@
 
       renderer.domElement.addEventListener("pointerdown", () => {
         controls.autoRotate = false;
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
       });
       renderer.domElement.addEventListener("wheel", () => {
         controls.autoRotate = false;
@@ -549,7 +550,8 @@
       const voices = [];
 
       function initAudio() {
-        audioCtx = new AudioContext();
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.resume();
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.12;
         masterGain.connect(audioCtx.destination);
@@ -1153,6 +1155,7 @@ seq(1,
 
       document.getElementById("start-overlay").addEventListener("click", () => {
         if (!audioCtx) initAudio();
+        else if (audioCtx.state === "suspended") audioCtx.resume();
         document.getElementById("start-overlay").classList.add("hidden");
         started = true;
         runProgram(getEditorCode());
