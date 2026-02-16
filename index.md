@@ -34,6 +34,7 @@
 
 ## Experiments
 
+- [Ancient Robots](./ancient-robots/)
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
 - [Box It](./box-it/)

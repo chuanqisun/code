@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ancient Robots Deck</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>" />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg: #0a0a0f;
+        --surface: #0e0e16;
+        --surface-2: #12121c;
+        --line: #2a2a3a;
+        --text: #e0e0e0;
+        --muted: #8a8a99;
+        --accent: #8b5cf6;
+
+        color-scheme: dark;
+      }
+
+      *:not(:focus-visible) {
+        outline: none;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Space Mono", monospace;
+        min-height: 100vh;
+        padding: 28px 18px 40px;
+      }
+
+      .app {
+        max-width: 1320px;
+        margin: 0 auto;
+      }
+
+      .page-header {
+        text-align: center;
+        margin-bottom: 26px;
+      }
+
+      .page-header-actions {
+        margin-top: 12px;
+        display: inline-flex;
+        gap: 8px;
+      }
+
+      .page-header h1 {
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(13px, 2.2vw, 18px);
+        color: var(--accent);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        line-height: 1.7;
+      }
+
+      .page-header p {
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 1px;
+      }
+
+      .filters {
+        border: 2px solid var(--line);
+        background: var(--surface);
+        padding: 14px;
+        margin-bottom: 20px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) auto;
+        gap: 10px;
+        align-items: end;
+      }
+
+      .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .filter-label {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1.5px;
+        color: #b7b7c6;
+      }
+
+      .filter-input,
+      .filter-select,
+      .filter-button {
+        border: 2px solid #323245;
+        background: var(--surface-2);
+        color: var(--text);
+        font-family: "Space Mono", monospace;
+        font-size: 12px;
+        padding: 9px 10px;
+        outline: none;
+        min-width: 0;
+        width: 100%;
+      }
+
+      .filter-select,
+      .filter-input {
+        text-overflow: ellipsis;
+      }
+
+      .filter-input:focus,
+      .filter-select:focus,
+      .filter-button:focus {
+        border-color: var(--accent);
+      }
+
+      .filter-button {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        cursor: pointer;
+        height: 37px;
+      }
+
+      .header-button {
+        border: 2px solid #323245;
+        background: var(--surface-2);
+        color: var(--text);
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 12px 16px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+      }
+
+      .header-button:focus {
+        border-color: var(--accent);
+      }
+
+      .results-meta {
+        margin-bottom: 18px;
+        color: #7e7e90;
+        font-size: 11px;
+      }
+
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .card-b {
+        position: relative;
+        transition: transform 0.25s ease;
+        height: 100%;
+        min-width: 0;
+      }
+
+      .card-b-hitarea {
+        position: absolute;
+        inset: 0;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+        z-index: 2;
+      }
+
+      .card-b:hover {
+        transform: translateY(-3px);
+      }
+
+      .card-b .card-b-outer {
+        background: #0e0e16;
+        height: 100%;
+      }
+
+      .card-b .card-b-inner-border {
+        border: 2px solid;
+        display: grid;
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+        height: 100%;
+        min-width: 0;
+      }
+
+      .card-b .card-b-header {
+        position: relative;
+        padding: 12px 52px 12px 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 2px solid;
+        min-width: 0;
+      }
+
+      .card-b .card-b-header-agency {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        font-family: "Press Start 2P", monospace;
+        font-size: 22px;
+        letter-spacing: 0;
+        line-height: 1;
+        text-shadow: 0 0 4px rgba(0, 0, 0, 0.45);
+      }
+
+      .card-b .card-b-header-icon {
+        font-size: 18px;
+      }
+
+      .card-b .card-b-header-class {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .card-b .card-b-image-section {
+        position: relative;
+        background: #000;
+        border-bottom: 2px solid;
+      }
+
+      .card-b .card-b-image-section img {
+        width: 100%;
+        height: 184px;
+        object-fit: cover;
+        display: block;
+        image-rendering: pixelated;
+        opacity: 0.95;
+      }
+
+      .card-b .card-b-scanlines {
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.2) 2px, rgba(0, 0, 0, 0.2) 4px);
+        pointer-events: none;
+      }
+
+      .card-b .card-b-name-bar {
+        padding: 13px 14px;
+        border-bottom: 2px dashed rgba(255, 255, 255, 0.12);
+        min-width: 0;
+      }
+
+      .card-b .card-b-name {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        color: #fff;
+        line-height: 1.8;
+        overflow-wrap: anywhere;
+      }
+
+      .card-b .card-b-content {
+        padding: 14px;
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        min-width: 0;
+      }
+
+      .card-b .card-b-stat {
+        margin-bottom: 11px;
+      }
+
+      .card-b .card-b-stat-label {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
+        font-family: "Press Start 2P", monospace;
+        font-size: 7px;
+        letter-spacing: 2px;
+        margin-bottom: 6px;
+      }
+
+      .card-b .card-b-stat-label::before {
+        content: "▸";
+        font-size: 12px;
+        line-height: 1;
+      }
+
+      .card-b .card-b-stat-text {
+        font-size: 12px;
+        line-height: 1.6;
+        color: #aaaab8;
+        overflow-wrap: anywhere;
+      }
+
+      .card-b .card-b-quote-section {
+        padding: 11px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px dashed rgba(255, 255, 255, 0.12);
+        align-self: end;
+      }
+
+      .card-b .card-b-quote-text {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        line-height: 1.9;
+        color: #cecee0;
+        margin-bottom: 8px;
+        overflow-wrap: anywhere;
+      }
+
+      .card-b .card-b-quote-source {
+        font-size: 10px;
+        color: #66667a;
+      }
+
+      .card-b .card-b-footer {
+        padding: 9px 14px;
+        border-top: 2px solid;
+        display: flex;
+        align-items: center;
+        min-width: 0;
+      }
+
+      .card-b .card-b-footer-book {
+        font-size: 9px;
+        color: #777789;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+
+      .empty {
+        border: 2px dashed #39394c;
+        background: #0f0f18;
+        color: #8a8aa0;
+        padding: 24px;
+        text-align: center;
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        line-height: 2;
+      }
+
+      .deck-dialog {
+        width: min(1200px, 96vw);
+        height: min(900px, 86vh);
+        max-width: none;
+        max-height: none;
+        margin: auto;
+        border: 2px solid var(--line);
+        background: var(--surface);
+        color: var(--text);
+        padding: 0;
+      }
+
+      .deck-dialog::backdrop {
+        background: rgba(3, 3, 7, 0.78);
+      }
+
+      .deck-dialog-layout {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      .deck-dialog-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 14px;
+        border-bottom: 2px solid var(--line);
+      }
+
+      .deck-dialog-title {
+        font-family: "Press Start 2P", monospace;
+        font-size: 10px;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+
+      .deck-dialog-close {
+        border: 2px solid #323245;
+        background: var(--surface-2);
+        color: var(--text);
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        cursor: pointer;
+        padding: 8px 10px;
+      }
+
+      .deck-dialog-content {
+        min-width: 0;
+        min-height: 0;
+        padding: 16px;
+        overflow: auto;
+      }
+
+      .info-section {
+        margin-bottom: 18px;
+      }
+
+      .info-section:last-child {
+        margin-bottom: 0;
+      }
+
+      .info-heading {
+        font-family: "Press Start 2P", monospace;
+        font-size: 9px;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        color: #cfcfe3;
+        text-transform: uppercase;
+      }
+
+      .info-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .info-grid {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 1fr;
+      }
+
+      .info-grid-item {
+        border: 1px dashed rgba(255, 255, 255, 0.12);
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.01);
+      }
+
+      .info-item {
+        border: 2px solid #2f2f42;
+        background: #10101a;
+        padding: 10px;
+      }
+
+      .info-row {
+        padding: 8px 0;
+        border-top: 1px dashed rgba(255, 255, 255, 0.12);
+      }
+
+      .info-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .info-row:last-child {
+        padding-bottom: 0;
+      }
+
+      .info-item-title {
+        display: flex;
+        align-items: baseline;
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        line-height: 1.7;
+        margin-bottom: 6px;
+      }
+
+      .agency-stars {
+        font-size: 22px;
+        line-height: 1;
+        letter-spacing: 0;
+        margin-right: 8px;
+        vertical-align: middle;
+      }
+
+      .agency-level {
+        font-size: 8px;
+        vertical-align: middle;
+      }
+
+      .info-item-body {
+        font-size: 11px;
+        line-height: 1.6;
+        color: #b6b6ca;
+      }
+
+      .info-item-meta {
+        font-size: 10px;
+        color: #8f8fa8;
+        margin-bottom: 5px;
+      }
+
+      .card-detail {
+        display: grid;
+        gap: 16px;
+        max-width: 920px;
+        margin: 0 auto;
+      }
+
+      .card-detail-hero {
+        border: 1px solid #2f2f42;
+        background: #0b0b12;
+        overflow: hidden;
+      }
+
+      .card-detail-hero img {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        height: auto;
+        object-fit: cover;
+        display: block;
+        image-rendering: pixelated;
+      }
+
+      .card-detail-title {
+        font-family: "Press Start 2P", monospace;
+        font-size: clamp(11px, 1.4vw, 14px);
+        line-height: 1.9;
+        color: #ffffff;
+      }
+
+      .card-detail-subtitle {
+        font-size: 12px;
+        color: #9c9cb2;
+      }
+
+      .card-detail-lead {
+        font-size: 14px;
+        line-height: 1.8;
+        color: #d8d8e7;
+      }
+
+      .card-detail-quote {
+        border-left: 3px solid var(--accent);
+        background: rgba(139, 92, 246, 0.08);
+        padding: 12px;
+      }
+
+      .card-detail-quote-text {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        line-height: 1.9;
+        color: #ececff;
+        margin-bottom: 10px;
+      }
+
+      .card-detail-quote-meta {
+        font-size: 11px;
+        line-height: 1.6;
+        color: #aaaac2;
+      }
+
+      .card-detail-meta {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .card-detail-meta-item,
+      .card-detail-section {
+        border-top: 1px dashed rgba(255, 255, 255, 0.14);
+        padding-top: 10px;
+      }
+
+      .card-detail-label {
+        font-family: "Press Start 2P", monospace;
+        font-size: 8px;
+        letter-spacing: 1px;
+        color: #a4a4ba;
+        margin-bottom: 7px;
+      }
+
+      .card-detail-value {
+        font-size: 13px;
+        line-height: 1.7;
+        color: #e3e3ef;
+        overflow-wrap: anywhere;
+      }
+
+      .card-detail-section p {
+        font-size: 14px;
+        line-height: 1.8;
+        color: #d8d8e7;
+      }
+
+      .card-detail-citations {
+        margin: 0;
+        padding-left: 18px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .card-detail-citations li {
+        font-size: 12px;
+        line-height: 1.7;
+        color: #cecee0;
+      }
+
+      .about-content {
+        max-width: 920px;
+        margin: 0 auto;
+      }
+
+      .about-content p {
+        font-size: 14px;
+        line-height: 1.85;
+        color: #d8d8e7;
+      }
+
+      .about-content p + p {
+        margin-top: 20px;
+      }
+
+      .about-postscript {
+        margin-top: 22px;
+        padding: 12px;
+        border: 1px dashed rgba(255, 255, 255, 0.14);
+        background: #0a0a12;
+        font-size: 12px;
+        line-height: 1.7;
+        color: #9a9ab0;
+        white-space: pre-wrap;
+      }
+
+      @media (min-width: 900px) {
+        .info-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 980px) {
+        .filters {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .filters {
+          grid-template-columns: 1fr;
+        }
+
+        .cards-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .deck-dialog {
+          width: 100vw;
+          height: 100vh;
+          border: 0;
+          margin: 0;
+        }
+
+        .card-detail-meta {
+          grid-template-columns: 1fr;
+        }
+
+        .card-detail-lead,
+        .card-detail-section p {
+          font-size: 13px;
+          line-height: 1.75;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <div id="appContent">
+        <header class="page-header">
+          <h1>Ancient Robots Deck</h1>
+          <div class="page-header-actions">
+            <button type="button" class="header-button" commandfor="sharedDialog" command="show-modal" data-dialog-kind="info">Guide</button>
+            <button type="button" class="header-button" commandfor="sharedDialog" command="show-modal" data-dialog-kind="about">Meta</button>
+            <a class="header-button" href="https://chuanqisun.com/" target="_blank" rel="noopener noreferrer">About me</a>
+          </div>
+        </header>
+
+        <section class="filters" aria-label="Deck filters">
+          <label class="filter-group">
+            <span class="filter-label">SEARCH</span>
+            <input id="searchInput" class="filter-input" type="text" placeholder="name, purpose, source..." />
+          </label>
+
+          <label class="filter-group">
+            <span class="filter-label">CLASS</span>
+            <select id="classFilter" class="filter-select">
+              <option value="">All classes</option>
+            </select>
+          </label>
+
+          <label class="filter-group">
+            <span class="filter-label">BOOK</span>
+            <select id="bookFilter" class="filter-select">
+              <option value="">All books</option>
+            </select>
+          </label>
+
+          <label class="filter-group">
+            <span class="filter-label">AGENCY</span>
+            <select id="agencyFilter" class="filter-select">
+              <option value="">All levels</option>
+            </select>
+          </label>
+
+          <button id="clearFilters" class="filter-button" type="button">Clear</button>
+        </section>
+
+        <p class="results-meta" id="resultsMeta">Loading deck...</p>
+        <section id="cardsGrid" class="cards-grid" aria-live="polite"></section>
+      </div>
+
+      <dialog id="sharedDialog" class="deck-dialog" aria-labelledby="sharedDialogTitle">
+        <div class="deck-dialog-layout">
+          <header class="deck-dialog-header">
+            <h2 id="sharedDialogTitle" class="deck-dialog-title">Dialog</h2>
+            <button type="button" class="deck-dialog-close" commandfor="sharedDialog" command="close">Close</button>
+          </header>
+          <section id="sharedDialogContent" class="deck-dialog-content"></section>
+        </div>
+      </dialog>
+    </main>
+
+    <script>
+      const DATA_URL = "./data/207-view-model.json";
+      const INFO_DIALOG_URL = "./data/208-info-dialog.json";
+      const IMAGE_BASE = "./assets/";
+      const FALLBACK_COLOR = "#8B5CF6";
+      const ABOUT_PARAGRAPHS = [
+        `I started by summarizing each ancient text at the highest level, just to get oriented. Then I built an extraction pipeline: feed a book into an LLM, ask it to pull out every mention of an automaton, and collect the results as structured data. The key technique I landed on was forcing the model to cite its source location before producing a description. Citation first, interpretation second. This kept the outputs grounded and made hallucinations easy to spot.`,
+        `Early on, the Ramayan of Valmiki taught me that garbage in means garbage out. The source text was full of garbled characters, and the extractions came back garbled too: Rámáyan became Rmyan, Sítá became St. Cleaning the input mattered as much as tuning the prompt. I learned to start loose and progressively add constraints, testing a few individual prompts before committing to bulk generation across sixty images.`,
+        `At some point I felt distant from the original texts, so I asked the model to present three snippets from each book for closer reading. That step revealed something I would have missed otherwise: engineering writing in these ancient sources is often blended with theoretical discussion. The voice of each author came through in unexpected ways. I added classification labels, similar to elements in a game, by asking the model to synthesize themes first and then generate categories. I distilled citations down to a single short quote per card, assembled from pieces rather than pulled from one place.`,
+        `The whole pipeline was iterative. Structured extraction with today's LLMs is never a single pass. I designed multiple checkpoints and spent significant time tweaking individual word choices in prompts until the output was consistent. Francis Bacon gave permission to read books in parts rather than whole, and that is what I did. Ann Blair described how early modern scholars, overwhelmed by print, built new "reference genres" to cope. These cards, each one packaging an ancient automaton into an image, a label, and a quote, belong to that tradition. The mechanical processing echoes Roberto Busa's decades of indexing Aquinas with IBM machines, scaled down and sped up. And per Ted Chiang's argument about concentrated intention, the density of human involvement lived in the micro decisions: every prompt word, every field choice, every constraint added or relaxed.`,
+        `What surprised me was the intimacy. I never read these texts cover to cover, and yet designing the extraction schemas forced me to understand what each author cared about. Checking the model's output against the source forced me to read carefully, in fragments, with purpose. The cards gave the content a second life, and building them gave me a first real encounter with it.`,
+      ];
+
+      const state = {
+        robots: [],
+        infoDialogData: null,
+        search: "",
+        classFilter: "",
+        bookFilter: "",
+        agencyFilter: "",
+      };
+
+      const searchInput = document.getElementById("searchInput");
+      const classFilter = document.getElementById("classFilter");
+      const bookFilter = document.getElementById("bookFilter");
+      const agencyFilter = document.getElementById("agencyFilter");
+      const clearFilters = document.getElementById("clearFilters");
+      const cardsGrid = document.getElementById("cardsGrid");
+      const resultsMeta = document.getElementById("resultsMeta");
+      const sharedDialog = document.getElementById("sharedDialog");
+      const sharedDialogTitle = document.getElementById("sharedDialogTitle");
+      const sharedDialogContent = document.getElementById("sharedDialogContent");
+      const appContent = document.getElementById("appContent");
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function normalize(value) {
+        return String(value || "")
+          .toLowerCase()
+          .trim();
+      }
+
+      function buildFilterOptions() {
+        const classMap = new Map();
+        const bookMap = new Map();
+        const agencySet = new Set();
+
+        for (const robot of state.robots) {
+          if (robot.classificiationId && robot.classificiationDisplayName) {
+            classMap.set(robot.classificiationId, {
+              label: robot.classificiationDisplayName,
+              icon: robot.classficiationIcon || "⚙",
+            });
+          }
+          if (robot.bookId && robot.bookDisplayName) {
+            bookMap.set(robot.bookId, robot.bookDisplayName);
+          }
+
+          const level = Number(robot.agencyLevel);
+          if (Number.isFinite(level) && level > 0) {
+            agencySet.add(level);
+          }
+        }
+
+        classFilter.innerHTML = '<option value="">All classes</option>';
+        [...classMap.entries()]
+          .sort((a, b) => a[1].label.localeCompare(b[1].label))
+          .forEach(([id, meta]) => {
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = `${meta.icon} ${meta.label}`;
+            classFilter.appendChild(option);
+          });
+
+        bookFilter.innerHTML = '<option value="">All books</option>';
+        [...bookMap.entries()]
+          .sort((a, b) => a[1].localeCompare(b[1]))
+          .forEach(([id, label]) => {
+            const option = document.createElement("option");
+            option.value = id;
+            option.textContent = label;
+            bookFilter.appendChild(option);
+          });
+
+        agencyFilter.innerHTML = '<option value="">All levels</option>';
+        [...agencySet]
+          .sort((a, b) => a - b)
+          .forEach((level) => {
+            const option = document.createElement("option");
+            option.value = String(level);
+            option.textContent = `${"★".repeat(level)} (${level})`;
+            agencyFilter.appendChild(option);
+          });
+      }
+
+      function getFilteredRobots() {
+        const query = normalize(state.search);
+
+        return state.robots.filter((robot) => {
+          if (state.classFilter && robot.classificiationId !== state.classFilter) {
+            return false;
+          }
+
+          if (state.bookFilter && robot.bookId !== state.bookFilter) {
+            return false;
+          }
+
+          if (state.agencyFilter && String(robot.agencyLevel || "") !== state.agencyFilter) {
+            return false;
+          }
+
+          if (!query) {
+            return true;
+          }
+
+          const haystack = normalize(
+            [robot.name, robot.purpose, robot.design, robot.source, robot.bookDisplayName, robot.classificiationDisplayName].join(" ")
+          );
+
+          return haystack.includes(query);
+        });
+      }
+
+      function truncate(text, limit = 150) {
+        const value = String(text || "").trim();
+        if (value.length <= limit) return value;
+        return `${value.slice(0, limit - 1)}…`;
+      }
+
+      function getImageUrl(robot) {
+        return `${IMAGE_BASE}${encodeURIComponent(robot.id)}.webp`;
+      }
+
+      function parseHexColor(hex) {
+        const value = String(hex || "").trim();
+        const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(value);
+        if (!match) return null;
+
+        return {
+          red: parseInt(match[1], 16),
+          green: parseInt(match[2], 16),
+          blue: parseInt(match[3], 16),
+        };
+      }
+
+      function toRelativeLuminance(channel) {
+        const value = channel / 255;
+        return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+      }
+
+      function getHexLuminance(hex) {
+        const rgb = parseHexColor(hex);
+        if (!rgb) return null;
+
+        return 0.2126 * toRelativeLuminance(rgb.red) + 0.7152 * toRelativeLuminance(rgb.green) + 0.0722 * toRelativeLuminance(rgb.blue);
+      }
+
+      function getContrastRatio(l1, l2) {
+        const lighter = Math.max(l1, l2);
+        const darker = Math.min(l1, l2);
+        return (lighter + 0.05) / (darker + 0.05);
+      }
+
+      function getAccessibleHeaderTextColor(hex) {
+        const backgroundLuminance = getHexLuminance(hex);
+        if (backgroundLuminance === null) return "#F3F3FF";
+
+        const lightText = "#F6F7FF";
+        const darkText = "#12131A";
+
+        const lightLuminance = getHexLuminance(lightText);
+        const darkLuminance = getHexLuminance(darkText);
+        if (lightLuminance === null || darkLuminance === null) return lightText;
+
+        const lightContrast = getContrastRatio(backgroundLuminance, lightLuminance);
+        const darkContrast = getContrastRatio(backgroundLuminance, darkLuminance);
+
+        return darkContrast >= lightContrast ? darkText : lightText;
+      }
+
+      function renderCard(robot) {
+        const color = robot.classificationColor || FALLBACK_COLOR;
+        const icon = robot.classficiationIcon || "⚙";
+        const cls = robot.classificiationDisplayName || "Unknown";
+        const quote = truncate(robot.design, 120);
+        const imageAlt = `${robot.name} illustration`;
+        const agencyLevel = Number(robot.agencyLevel);
+        const agencyStars = Number.isFinite(agencyLevel) && agencyLevel > 0 ? "★".repeat(agencyLevel) : "☆";
+        const headerTextColor = getAccessibleHeaderTextColor(color);
+
+        return `
+					<article class="card-b">
+            <button
+              type="button"
+              class="card-b-hitarea"
+              commandfor="sharedDialog"
+              command="show-modal"
+              data-dialog-kind="card"
+              data-robot-id="${escapeHtml(robot.id)}"
+              aria-label="Open details for ${escapeHtml(robot.name)}"
+            ></button>
+						<div class="card-b-outer">
+							<div class="card-b-inner-border" style="border-color: ${escapeHtml(color)}">
+                <div class="card-b-header" style="border-bottom-color: ${escapeHtml(color)}; background: ${escapeHtml(color)};">
+                  <span class="card-b-header-icon" style="color: ${escapeHtml(headerTextColor)}">${escapeHtml(icon)}</span>
+                  <span class="card-b-header-class" style="color: ${escapeHtml(headerTextColor)}">${escapeHtml(cls)}</span>
+                  <span class="card-b-header-agency" style="color: ${escapeHtml(headerTextColor)}" aria-label="Agency level ${escapeHtml(
+          agencyLevel || 0
+        )}">${escapeHtml(agencyStars)}</span>
+								</div>
+								<div class="card-b-image-section" style="border-bottom-color: ${escapeHtml(color)}">
+									<img src="${escapeHtml(getImageUrl(robot))}" alt="${escapeHtml(
+          imageAlt
+        )}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='https://placehold.co/800x450/0d0d14/8B5CF6?text=Ancient+Robot';">
+									<div class="card-b-scanlines"></div>
+								</div>
+								<div class="card-b-name-bar">
+									<div class="card-b-name">${escapeHtml(robot.name)}</div>
+								</div>
+								<div class="card-b-content">
+									<div class="card-b-stat">
+                    <div class="card-b-stat-label" style="color: ${escapeHtml(color)}">PURPOSE</div>
+										<div class="card-b-stat-text">${escapeHtml(robot.purpose || "N/A")}</div>
+									</div>
+									<div class="card-b-stat">
+                    <div class="card-b-stat-label" style="color: ${escapeHtml(color)}">MECHANISM</div>
+										<div class="card-b-stat-text">${escapeHtml(truncate(robot.design, 210) || "N/A")}</div>
+									</div>
+									<div class="card-b-quote-section">
+                    <div class="card-b-quote-text">"${escapeHtml(quote || "Mechanical wonder")}"</div>
+										<div class="card-b-quote-source">${escapeHtml(robot.source || "Unknown source")}</div>
+									</div>
+								</div>
+								<div class="card-b-footer" style="border-top-color: ${escapeHtml(color)}">
+									<div class="card-b-footer-book">${escapeHtml(robot.bookDisplayName || robot.bookId || "Unknown Book")}</div>
+								</div>
+							</div>
+						</div>
+					</article>
+				`;
+      }
+
+      function renderAboutDialog() {
+        const paragraphs = ABOUT_PARAGRAPHS.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+        const postscript =
+          "Content generated by AI: text processed with GPT-5.2, pipeline engineered with GPT-5.3-Codex, and images generated with Gemini-2.5-Flash.\n\nThis website is a class project for COMPLIT 126X: Literature and/as Artificial Intelligence: Humanity, Technology, and Creativity. Thank you to Professor Moira Weigel and TA Mei Fujie for teaching this class, and thank you to all my classmates for shaping this project through our vivid discussions.";
+
+        return `
+          <article class="about-content">
+            <section>
+              ${paragraphs}
+            </section>
+            <p class="about-postscript">${escapeHtml(postscript)}</p>
+          </article>
+        `;
+      }
+
+      function setDialogContent(kind, robotId = "") {
+        if (kind === "about") {
+          sharedDialogTitle.textContent = "About";
+          sharedDialogContent.innerHTML = renderAboutDialog();
+          return;
+        }
+
+        if (kind === "info") {
+          sharedDialogTitle.textContent = "Guide";
+          sharedDialogContent.innerHTML = '<div class="info-item">Loading info…</div>';
+          void ensureInfoDialogData()
+            .then(() => {
+              if (!state.infoDialogData) {
+                sharedDialogContent.innerHTML = '<div class="info-item">Info is not available.</div>';
+                return;
+              }
+
+              sharedDialogContent.innerHTML = renderInfoDialog(state.infoDialogData);
+            })
+            .catch(() => {
+              sharedDialogContent.innerHTML = '<div class="info-item">Failed to load info.</div>';
+            });
+          return;
+        }
+
+        const robot = state.robots.find((entry) => entry.id === robotId);
+        sharedDialogTitle.textContent = robot?.name || "Card";
+        sharedDialogContent.innerHTML = renderCardDetail(robot);
+        sharedDialogContent.dataset.robotId = String(robotId || "");
+      }
+
+      function formatAgencyStars(level) {
+        const value = Number(level);
+        if (!Number.isFinite(value) || value <= 0) return "☆";
+        return "★".repeat(value);
+      }
+
+      function setDialogBackgroundState(isOpen) {
+        if (!appContent) return;
+        appContent.inert = isOpen;
+        document.body.style.overflow = isOpen ? "hidden" : "";
+      }
+
+      function renderCardDetail(robot) {
+        if (!robot) {
+          return '<div class="info-item">Robot details are not available.</div>';
+        }
+
+        const color = robot.classificationColor || FALLBACK_COLOR;
+        const icon = robot.classficiationIcon || "⚙";
+        const agencyStars = formatAgencyStars(robot.agencyLevel);
+        const citations = Array.isArray(robot.citations) ? robot.citations : [];
+        const citationsMarkup = citations.length
+          ? `<ul class="card-detail-citations">${citations.map((citation) => `<li>“${escapeHtml(citation)}”</li>`).join("")}</ul>`
+          : '<div class="card-detail-value">No citations available.</div>';
+        const quoteSourceText = [robot.bookDisplayName || robot.bookId || "Unknown Book", robot.source || "Unknown source"].join(" · ");
+
+        return `
+          <article class="card-detail">
+            <div class="card-detail-hero" style="border-color: ${escapeHtml(color)}">
+              <img
+                src="${escapeHtml(getImageUrl(robot))}"
+                alt="${escapeHtml(robot.name)} illustration"
+                loading="lazy"
+                decoding="async"
+                onerror="this.onerror=null;this.src='https://placehold.co/1200x700/0d0d14/8B5CF6?text=Ancient+Robot';"
+              >
+            </div>
+
+            <div class="card-detail-title">${escapeHtml(robot.name || "Unknown Robot")}</div>
+            <div class="card-detail-subtitle">${escapeHtml(icon)} ${escapeHtml(robot.classificiationDisplayName || "Unknown")} · ${escapeHtml(
+          agencyStars
+        )} (${escapeHtml(robot.agencyLevel ?? "0")})</div>
+
+            <div class="card-detail-lead">
+              ${escapeHtml(robot.purpose || "No purpose available.")}
+            </div>
+
+            <section class="card-detail-quote">
+              <div class="card-detail-quote-text">“${escapeHtml(robot.shortQuote || "No short quote available.")}”</div>
+              <div class="card-detail-quote-meta">${escapeHtml(quoteSourceText)}</div>
+            </section>
+
+            <section class="card-detail-section">
+              <div class="card-detail-label">AGENCY</div>
+              <p>${escapeHtml(robot.agency || "N/A")}</p>
+            </section>
+
+            <section class="card-detail-section">
+              <div class="card-detail-label">APPEARANCE</div>
+              <p>${escapeHtml(robot.appearance || "N/A")}</p>
+            </section>
+
+            <section class="card-detail-section">
+              <div class="card-detail-label">MECHANISM</div>
+              <p>${escapeHtml(robot.design || "N/A")}</p>
+            </section>
+
+            <section class="card-detail-section">
+              <div class="card-detail-label">CITATIONS</div>
+              ${citationsMarkup}
+            </section>
+          </article>
+        `;
+      }
+
+      function renderInfoDialog(data) {
+        const categories = Array.isArray(data.categories) ? data.categories : [];
+        const agencyLevels = Array.isArray(data.agencyLevels) ? data.agencyLevels : [];
+        const books = Array.isArray(data.books) ? data.books : [];
+
+        const categoryItems = categories
+          .map(
+            (category) => `
+              <article class="info-grid-item">
+                <div class="info-item-title" style="color: ${escapeHtml(category.color || "#CFCFE3")}">${escapeHtml(category.icon || "⚙")} ${escapeHtml(
+              category.name || "Unknown"
+            )}</div>
+                <div class="info-item-body">${escapeHtml(category.description || "")}</div>
+              </article>
+            `
+          )
+          .join("");
+
+        const agencyRows = agencyLevels
+          .map(
+            (agency) => `
+              <div class="info-row">
+                <div class="info-item-title"><span class="agency-stars">${escapeHtml(agency.stars || "☆")}</span><span class="agency-level">(${escapeHtml(
+              agency.level || "0"
+            )})</span></div>
+                <div class="info-item-body">${escapeHtml(agency.description || "")}</div>
+              </div>
+            `
+          )
+          .join("");
+
+        const bookItems = books
+          .map(
+            (book) => `
+              <article class="info-grid-item">
+                <div class="info-item-title">${escapeHtml(book.title || "Unknown title")}</div>
+                <div class="info-item-meta">By ${escapeHtml(book.author || "Unknown")}</div>
+                <div class="info-item-body">${escapeHtml(book.overview || "")}</div>
+              </article>
+            `
+          )
+          .join("");
+
+        return `
+          <section class="info-section">
+            <h3 class="info-heading">Category Legends</h3>
+            <div class="info-grid">${categoryItems}</div>
+          </section>
+          <section class="info-section">
+            <h3 class="info-heading">Agency Levels</h3>
+            <div>${agencyRows}</div>
+          </section>
+          <section class="info-section">
+            <h3 class="info-heading">Books</h3>
+            <div class="info-grid">${bookItems}</div>
+          </section>
+        `;
+      }
+
+      async function ensureInfoDialogData() {
+        if (state.infoDialogData) return state.infoDialogData;
+
+        const response = await fetch(INFO_DIALOG_URL);
+        if (!response.ok) {
+          throw new Error(`Failed to load info dialog data: ${response.status}`);
+        }
+
+        state.infoDialogData = await response.json();
+        return state.infoDialogData;
+      }
+
+      function render() {
+        const filtered = getFilteredRobots();
+
+        resultsMeta.textContent = `${filtered.length} / ${state.robots.length} cards`;
+
+        if (!filtered.length) {
+          cardsGrid.innerHTML = '<div class="empty">NO ROBOTS MATCH CURRENT FILTERS</div>';
+          return;
+        }
+
+        cardsGrid.innerHTML = filtered.map(renderCard).join("");
+      }
+
+      function attachEvents() {
+        sharedDialog.addEventListener("close", () => {
+          setDialogBackgroundState(false);
+        });
+
+        sharedDialog.addEventListener("cancel", () => {
+          setDialogBackgroundState(false);
+        });
+
+        document.addEventListener("click", (event) => {
+          const trigger = event.target.closest("[data-dialog-kind]");
+          if (!trigger) return;
+
+          setDialogContent(trigger.dataset.dialogKind, trigger.dataset.robotId || "");
+          setDialogBackgroundState(true);
+        });
+
+        searchInput.addEventListener("input", (event) => {
+          state.search = event.target.value;
+          render();
+        });
+
+        classFilter.addEventListener("change", (event) => {
+          state.classFilter = event.target.value;
+          render();
+        });
+
+        bookFilter.addEventListener("change", (event) => {
+          state.bookFilter = event.target.value;
+          render();
+        });
+
+        agencyFilter.addEventListener("change", (event) => {
+          state.agencyFilter = event.target.value;
+          render();
+        });
+
+        clearFilters.addEventListener("click", () => {
+          state.search = "";
+          state.classFilter = "";
+          state.bookFilter = "";
+          state.agencyFilter = "";
+          searchInput.value = "";
+          classFilter.value = "";
+          bookFilter.value = "";
+          agencyFilter.value = "";
+          render();
+        });
+      }
+
+      async function init() {
+        try {
+          const response = await fetch(DATA_URL);
+          if (!response.ok) {
+            throw new Error(`Failed to load data: ${response.status}`);
+          }
+
+          const json = await response.json();
+          state.robots = Array.isArray(json) ? json : [];
+          buildFilterOptions();
+          render();
+        } catch (error) {
+          resultsMeta.textContent = "Failed to load deck data";
+          cardsGrid.innerHTML = '<div class="empty">DATA LOAD ERROR</div>';
+          console.error(error);
+        }
+      }
+
+      attachEvents();
+      init();
+    </script>
+  </body>
+</html>
