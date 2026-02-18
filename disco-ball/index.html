@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Disco Ball</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100dvh;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: monospace;
+        color: white;
+        overflow: hidden;
+      }
+      canvas {
+        border-radius: 50%;
+        width: min(800px, 100vmin);
+        height: min(800px, 100vmin);
+      }
+      #controls {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(6px);
+        transition: transform 0.25s ease, opacity 0.25s ease;
+        z-index: 10;
+      }
+      #controls.hidden {
+        transform: translateY(-100%);
+        opacity: 0;
+        pointer-events: none;
+      }
+      #controls label {
+        font-size: 1.2em;
+      }
+      #bpmInput {
+        width: 100px;
+        font-size: 1.2em;
+        text-align: center;
+        background: #222;
+        color: white;
+        border: 1px solid #555;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-left: 8px;
+      }
+      #startBtn {
+        font-size: 1.2em;
+        padding: 6px 28px;
+        background: rgba(255, 80, 120, 0.85);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #startBtn:hover {
+        background: rgba(255, 80, 120, 1);
+      }
+      #connectBtn {
+        font-size: 1.2em;
+        padding: 6px 20px;
+        background: rgba(80, 160, 255, 0.8);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #connectBtn:hover {
+        background: rgba(80, 160, 255, 1);
+      }
+      #connectBtn.connected {
+        background: rgba(80, 200, 120, 0.8);
+        cursor: default;
+      }
+      #disconnectBtn {
+        font-size: 1.2em;
+        padding: 6px 20px;
+        background: rgba(180, 80, 80, 0.8);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #disconnectBtn:hover {
+        background: rgba(220, 60, 60, 1);
+      }
+      #stopBtn {
+        font-size: 1.2em;
+        padding: 6px 28px;
+        background: rgba(160, 130, 60, 0.85);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      #stopBtn:hover {
+        background: rgba(200, 170, 60, 1);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls" class="hidden">
+      <button id="connectBtn">Connect Audio</button>
+      <button id="disconnectBtn" style="display: none">Disconnect</button>
+      <label>BPM: <input type="number" id="bpmInput" min="20" max="300" value="120" /></label>
+      <label>Sensitivity: <input type="range" id="sensitivityInput" min="0.1" max="4" step="0.05" value="1" /></label>
+      <button id="startBtn">Start</button>
+      <button id="stopBtn" style="display: none">Stop</button>
+    </div>
+    <canvas id="c" width="800" height="800"></canvas>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const controls = document.getElementById("controls");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const connectBtn = document.getElementById("connectBtn");
+      const disconnectBtn = document.getElementById("disconnectBtn");
+      const bpmInput = document.getElementById("bpmInput");
+      const sensitivityInput = document.getElementById("sensitivityInput");
+
+      let audioStream = null;
+
+      const N = 200;
+      const cx = 400,
+        cy = 400;
+      const BASE_R = 400;
+      const MIN_R = 100;
+
+      // --- Web Audio ---
+      let analyser = null;
+      let audioDataArray = null;
+      let smoothedVolume = 0;
+
+      function getRawVolume() {
+        if (!analyser) return 1.0; // no audio connected → full radius
+        analyser.getByteFrequencyData(audioDataArray);
+        let sum = 0;
+        for (let i = 0; i < audioDataArray.length; i++) sum += audioDataArray[i];
+        return sum / (audioDataArray.length * 255); // 0..1
+      }
+
+      function getRadius() {
+        const sensitivity = parseFloat(sensitivityInput.value);
+        const vol = Math.min(getRawVolume() * sensitivity, 1.0);
+        // fast attack (0.6), slow release (0.06) for punchy feel
+        const coeff = vol > smoothedVolume ? 0.6 : 0.06;
+        smoothedVolume = smoothedVolume + (vol - smoothedVolume) * coeff;
+        return MIN_R + smoothedVolume * (BASE_R - MIN_R);
+      }
+
+      connectBtn.addEventListener("click", () => {
+        navigator.mediaDevices
+          .getDisplayMedia({ video: true, audio: true })
+          .then((stream) => {
+            const audioCtx = new AudioContext();
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 512;
+            analyser.smoothingTimeConstant = 0.0; // we handle smoothing ourselves
+            audioDataArray = new Uint8Array(analyser.frequencyBinCount);
+            source.connect(analyser);
+            audioStream = stream;
+            connectBtn.style.display = "none";
+            disconnectBtn.style.display = "";
+            connectBtn.textContent = "Connected";
+            connectBtn.classList.add("connected");
+            connectBtn.disabled = true;
+          })
+          .catch((err) => console.warn("Audio connect failed:", err));
+      });
+
+      // --- Drawing ---
+      function point(n, r) {
+        const angle = (2 * Math.PI * n) / N - Math.PI / 2;
+        return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)];
+      }
+
+      function easeInOut(t) {
+        return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      }
+
+      function draw(M, r, rot) {
+        ctx.clearRect(0, 0, 800, 800);
+
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+        ctx.translate(-cx, -cy);
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.strokeStyle = "rgba(255, 80, 120, 0.4)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(255, 80, 120, 0.4)";
+        ctx.lineWidth = 0.8;
+        ctx.shadowColor = "rgba(255, 80, 120, 0.8)";
+        ctx.shadowBlur = 6;
+
+        for (let n = 0; n < N; n++) {
+          const [x1, y1] = point(n, r);
+          const [x2, y2] = point((n * M) % N, r);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+
+      // --- Animation state ---
+      let beatDuration = 500;
+      let fromM = 2;
+      let toM = 2;
+      let beatStart = null;
+      let lastBeatIndex = -1;
+      let isAnimating = false;
+
+      const HOLD_END = 3 / 4;
+
+      function randomM() {
+        return 2 + Math.random() * 998;
+      }
+
+      // --- Continuous render loop (always running) ---
+      let previewM = 2;
+      let mouseY = 0.5; // tracks vertical position for sensitivity only
+      let driftOffset = 0;
+      let lastTimestamp = null;
+
+      function renderLoop(timestamp) {
+        const r = getRadius();
+
+        // Accumulate slow drift (~20 M-units/sec, full range in ~50 s)
+        if (lastTimestamp !== null) {
+          driftOffset = (driftOffset + (timestamp - lastTimestamp) * 0.00001) % 998;
+        }
+        lastTimestamp = timestamp;
+
+        // Pulse background with dark red tint driven by smoothedVolume
+        const rv = Math.round(smoothedVolume * 38);
+        const gv = Math.round(smoothedVolume * 9);
+        const bv = Math.round(smoothedVolume * 16);
+        document.body.style.background = `rgb(${rv},${gv},${bv})`;
+
+        if (isAnimating) {
+          if (beatStart === null) beatStart = timestamp;
+          const totalElapsed = timestamp - beatStart;
+          const beatIndex = Math.floor(totalElapsed / beatDuration);
+          const beatPhase = (totalElapsed % beatDuration) / beatDuration;
+
+          if (beatIndex !== lastBeatIndex) {
+            fromM = toM;
+            toM = randomM();
+            lastBeatIndex = beatIndex;
+          }
+
+          let currentM;
+          if (beatPhase < HOLD_END) {
+            currentM = fromM;
+          } else {
+            const t = (beatPhase - HOLD_END) / (1 - HOLD_END);
+            currentM = fromM + (toM - fromM) * easeInOut(t);
+          }
+
+          const rot = timestamp * ((Math.PI * 2) / 120000);
+          draw(currentM + driftOffset, r, rot);
+        } else {
+          const rot = timestamp * ((Math.PI * 2) / 120000);
+          draw(previewM + driftOffset, r, rot);
+        }
+
+        requestAnimationFrame(renderLoop);
+      }
+
+      requestAnimationFrame(renderLoop);
+
+      // --- Custom cursor ---
+      const _cursorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><line x1="16" y1="3" x2="16" y2="13" stroke="rgba(255,80,120,0.9)" stroke-width="2.5" stroke-linecap="round"/><line x1="16" y1="19" x2="16" y2="29" stroke="rgba(255,80,120,0.9)" stroke-width="2.5" stroke-linecap="round"/><line x1="3" y1="16" x2="13" y2="16" stroke="rgba(255,80,120,0.9)" stroke-width="2.5" stroke-linecap="round"/><line x1="19" y1="16" x2="29" y2="16" stroke="rgba(255,80,120,0.9)" stroke-width="2.5" stroke-linecap="round"/></svg>`;
+      const _cursorUrl = `url('data:image/svg+xml,${encodeURIComponent(_cursorSvg)}') 16 16, crosshair`;
+
+      function updateCursor() {
+        document.body.style.cursor = isAnimating ? "default" : _cursorUrl;
+      }
+      updateCursor();
+
+      // Full viewport controls M during preview (relative movement)
+      // Vertical position sets sensitivity; only horizontal deltas change M
+      document.addEventListener("mousemove", (e) => {
+        mouseY = Math.max(0, Math.min(1, e.clientY / window.innerHeight));
+        if (isAnimating) return;
+        if (e.movementX === 0) return;
+        // sensitivity: top → fine (~1 range), bottom → coarse (~998 range)
+        const xRange = 1 * Math.pow(998 / 1, mouseY);
+        const deltaM = e.movementX * (xRange / window.innerWidth);
+        previewM = Math.max(2, Math.min(1000, previewM + deltaM));
+      });
+
+      startBtn.addEventListener("click", () => {
+        const bpm = parseFloat(bpmInput.value) || 120;
+        beatDuration = 60000 / bpm;
+        startBtn.style.display = "none";
+        stopBtn.style.display = "";
+        fromM = previewM;
+        toM = randomM();
+        beatStart = null;
+        lastBeatIndex = -1;
+        isAnimating = true;
+        updateCursor();
+      });
+
+      stopBtn.addEventListener("click", () => {
+        isAnimating = false;
+        stopBtn.style.display = "none";
+        startBtn.style.display = "";
+        updateCursor();
+      });
+
+      disconnectBtn.addEventListener("click", () => {
+        if (audioStream) {
+          audioStream.getTracks().forEach((t) => t.stop());
+          audioStream = null;
+        }
+        analyser = null;
+        audioDataArray = null;
+        smoothedVolume = 0;
+        disconnectBtn.style.display = "none";
+        connectBtn.style.display = "";
+        connectBtn.textContent = "Connect Audio";
+        connectBtn.classList.remove("connected");
+        connectBtn.disabled = false;
+      });
+
+      // Show controls when hovering near the top of the screen
+      document.addEventListener("mousemove", (e) => {
+        if (e.clientY < 60) {
+          controls.classList.remove("hidden");
+        } else {
+          controls.classList.add("hidden");
+        }
+      });
+
+      // Apply BPM changes live while animating
+      bpmInput.addEventListener("input", () => {
+        if (isAnimating) {
+          const bpm = parseFloat(bpmInput.value) || 120;
+          beatDuration = 60000 / bpm;
+        }
+      });
+
+      // Space / Enter: jump to next random value
+      document.addEventListener("keydown", (e) => {
+        if (e.code !== "Space" && e.code !== "Enter") return;
+        const tag = document.activeElement?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        if (isAnimating) {
+          fromM = toM;
+          toM = randomM();
+          beatStart = performance.now();
+          lastBeatIndex = 0;
+        } else {
+          previewM = randomM();
+        }
+      });
+
+      // --- BPM tap detection: Space while BPM input is focused ---
+      const bpmTapTimes = [];
+      let bpmFlashTimer = null;
+
+      bpmInput.addEventListener("keydown", (e) => {
+        if (e.code !== "Space") return;
+        e.preventDefault();
+
+        const now = performance.now();
+
+        // Reset if gap > 3 s
+        if (bpmTapTimes.length > 0 && now - bpmTapTimes[bpmTapTimes.length - 1] > 3000) {
+          bpmTapTimes.length = 0;
+        }
+        bpmTapTimes.push(now);
+        if (bpmTapTimes.length > 11) bpmTapTimes.shift();
+
+        // Flash input border red
+        bpmInput.style.borderColor = "red";
+        bpmInput.style.boxShadow = "0 0 6px red";
+        clearTimeout(bpmFlashTimer);
+        bpmFlashTimer = setTimeout(() => {
+          bpmInput.style.borderColor = "";
+          bpmInput.style.boxShadow = "";
+        }, 150);
+
+        // Always trigger a transition on this tap
+        if (isAnimating) {
+          fromM = toM;
+          toM = randomM();
+          beatStart = now;
+          lastBeatIndex = 0;
+        }
+
+        if (bpmTapTimes.length < 2) return;
+        let total = 0;
+        for (let i = 1; i < bpmTapTimes.length; i++) total += bpmTapTimes[i] - bpmTapTimes[i - 1];
+        const interval = total / (bpmTapTimes.length - 1);
+        const bpm = Math.round(60000 / interval);
+        const clamped = Math.min(300, Math.max(20, bpm));
+        bpmInput.value = clamped;
+        beatDuration = 60000 / clamped;
+      });
+    </script>
+  </body>
+</html>

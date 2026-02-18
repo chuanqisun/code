@@ -44,6 +44,7 @@
 - [Device Orientation API](./device-orientation-api/)
 - [Dialogica Times](./design-fiction/dialogica-times.html)
 - [Digital Entropy](./digital-entropy/)
+- [Disco Ball](./disco-ball/)
 - [Dot grid field](./dot-grid-field/)
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
