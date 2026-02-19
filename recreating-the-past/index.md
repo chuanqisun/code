@@ -14,9 +14,9 @@
 
 ### Practice
 
-| [Original](https://youtu.be/UA_QcM7Ai1A) | [Recreated](https://youtube.com/shorts/ghtOiaavP-8) |
-| ---------------------------------------- | --------------------------------------------------- |
-|                                          |                                                     |
+| [Original](https://youtu.be/UA_QcM7Ai1A)                | [Recreated](https://youtube.com/shorts/ghtOiaavP-8)       |
+| ------------------------------------------------------- | --------------------------------------------------------- |
+| ![Whitney Original Screenshot](./whitney/original.webp) | ![Whitney Recreated Screenshot](./whitney/recreated.webp) |
 
 - Notes
   - [Live demo](./whitney/)
