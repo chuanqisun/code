@@ -7,17 +7,25 @@
     <button id="playPause" type="button">Play</button>
     <button id="render" type="button">Render</button>
     <button id="shareScreen" type="button">Share Screen</button>
+    <button id="shareMic" type="button">Share Mic</button>
     <label>Duration <input id="duration" type="number" min="0.1" step="0.1" value="30" style="width: 60px" />s</label>
+    <label>Volume <input id="volumeK" type="range" min="1" max="10" step="1" value="3" style="width: 100px" /><span id="volumeKVal">3</span></label>
     <br />
     <input id="scrub" type="range" min="0" max="10000" value="0" step="1" style="width: 800px" />
     <br />
     <canvas id="c" width="800" height="800" style="border: 1px solid black; background: black"></canvas>
     <script type="module">
-      import { wire } from "./shared/timeline.js";
+      import { wire } from "../shared/timeline.js";
 
       const canvas = document.getElementById("c");
       const ctx = canvas.getContext("2d");
       const $ = (id) => document.getElementById(id);
+
+      let k = 3;
+      $("volumeK").addEventListener("input", (e) => {
+        k = Number(e.target.value);
+        $("volumeKVal").textContent = k;
+      });
 
       const { tl } = wire({
         canvas,
@@ -166,9 +174,9 @@
         ctx.fillStyle = dotColor;
         ctx.shadowColor = dotColor;
         ctx.shadowBlur = 6;
-        const volume = currentVolume;
+        const volume = currentVolume * 10 * k;
         for (let i = 1; i <= ring.dotCount; i++) {
-          const volumeRingWidthIncrese = ring.ringWidth * volume * 20;
+          const volumeRingWidthIncrese = ring.ringWidth * volume;
           const r = Math.abs(Math.sin(i * time * ring.radialSpeed) * (ring.ringWidth + volumeRingWidthIncrese)) + ring.innerRadius - volumeRingWidthIncrese;
           const angle = i * time * ring.rotationSpeed + time * ring.baseRotationSpeed;
           const x = cx + Math.cos(angle) * r;
@@ -281,18 +289,40 @@
       let screenDestination = null;
       let screenVolumeRaf = null;
       let screenStream = null;
+      let screenVolume = 0;
+
+      // ── mic audio volume ──
+
+      let micAudioCtx = null;
+      let micAnalyser = null;
+      let micVolumeRaf = null;
+      let micStream = null;
+      let micVolume = 0;
+
       let currentVolume = 0;
 
-      function startVolumeLogging(analyser) {
+      function measureRms(analyser) {
         const buf = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+        return Math.sqrt(sum / buf.length);
+      }
+
+      function startVolumeLogging(analyser) {
         function loop() {
-          analyser.getFloatTimeDomainData(buf);
-          let sum = 0;
-          for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-          const rms = Math.sqrt(sum / buf.length);
-          currentVolume = rms;
-          console.log("screen share volume (RMS):", rms);
+          screenVolume = measureRms(analyser);
+          currentVolume = Math.max(screenVolume, micVolume);
           screenVolumeRaf = requestAnimationFrame(loop);
+        }
+        loop();
+      }
+
+      function startMicVolumeLogging(analyser) {
+        function loop() {
+          micVolume = measureRms(analyser);
+          currentVolume = Math.max(screenVolume, micVolume);
+          micVolumeRaf = requestAnimationFrame(loop);
         }
         loop();
       }
@@ -308,7 +338,8 @@
             screenAudioCtx = null;
           }
           screenDestination = null;
-          currentVolume = 0;
+          screenVolume = 0;
+          currentVolume = Math.max(screenVolume, micVolume);
           $("shareScreen").textContent = "Share Screen";
           return;
         }
@@ -341,12 +372,55 @@
               screenAudioCtx = null;
             }
             screenDestination = null;
-            currentVolume = 0;
+            screenVolume = 0;
+            currentVolume = Math.max(screenVolume, micVolume);
             screenStream = null;
             $("shareScreen").textContent = "Share Screen";
           });
         } catch (err) {
           console.error("Screen share failed:", err);
+        }
+      });
+
+      $("shareMic").addEventListener("click", async () => {
+        if (micStream) {
+          micStream.getTracks().forEach((t) => t.stop());
+          micStream = null;
+          if (micVolumeRaf) cancelAnimationFrame(micVolumeRaf);
+          if (micAudioCtx) {
+            micAudioCtx.close();
+            micAudioCtx = null;
+          }
+          micVolume = 0;
+          currentVolume = Math.max(screenVolume, micVolume);
+          $("shareMic").textContent = "Share Mic";
+          return;
+        }
+
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          $("shareMic").textContent = "Stop Mic";
+
+          micAudioCtx = new AudioContext();
+          const source = micAudioCtx.createMediaStreamSource(micStream);
+          micAnalyser = micAudioCtx.createAnalyser();
+          micAnalyser.fftSize = 2048;
+          source.connect(micAnalyser);
+          startMicVolumeLogging(micAnalyser);
+
+          micStream.getAudioTracks()[0]?.addEventListener("ended", () => {
+            if (micVolumeRaf) cancelAnimationFrame(micVolumeRaf);
+            if (micAudioCtx) {
+              micAudioCtx.close();
+              micAudioCtx = null;
+            }
+            micVolume = 0;
+            currentVolume = Math.max(screenVolume, micVolume);
+            micStream = null;
+            $("shareMic").textContent = "Share Mic";
+          });
+        } catch (err) {
+          console.error("Mic share failed:", err);
         }
       });
     </script>
