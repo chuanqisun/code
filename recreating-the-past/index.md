@@ -28,6 +28,7 @@
     - The endpoints on the circle is marching at speed proportional to the dots index, creating the twisting effect and periodic dense-sparse rhythm.
     - It takes calculation to both start and end the animation at a specific pattern using the periodicity of sine wave.
     - They appear to be a gradient between two shapes of greens, with out-of-phase oscillation of brightness on both sides.
+    - The line patterns started and ended very small. I had to hard code the intro and outro timing.
   - The dancing dots are achieved by applying the same principle as the circle where the green lines originate from, but in addition to step-ramp the rotation angle over time, I also modulated the radius with a circle, so they look like standing wave wrapped around a circular path.
   - I learned a little bit Strudel and composed a percussion sound track with AI's help.
   - I added a bit of blur to create the visual effects of the old IBM CRT monitor but didn't spend too much time making it retro. For future work, I want emulate the 24 FPS to see what would come out of it.
