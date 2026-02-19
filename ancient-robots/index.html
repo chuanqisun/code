@@ -916,7 +916,7 @@
         const color = robot.classificationColor || FALLBACK_COLOR;
         const icon = robot.classficiationIcon || "⚙";
         const cls = robot.classificiationDisplayName || "Unknown";
-        const quote = truncate(robot.design, 120);
+        const quote = truncate(robot.shortQuote || robot.design, 120);
         const imageAlt = `${robot.name} illustration`;
         const agencyLevel = Number(robot.agencyLevel);
         const agencyStars = Number.isFinite(agencyLevel) && agencyLevel > 0 ? "★".repeat(agencyLevel) : "☆";

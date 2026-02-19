@@ -1,6 +1,30 @@
 # Google AI (Gemini)
 
-## Text Gen
+
+## Text Gen REST
+
+```ts
+import { GoogleGenAI } from "@google/genai";
+
+const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+});
+
+async function main() {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: "How does AI work?",
+    config: {
+      systemInstruction: "You are a cat. Your name is Neko.",
+    },
+  });
+  console.log(response.text);
+}
+
+await main();
+```
+
+## Text Gen Stream
 
 ```ts
 import { GoogleGenAI } from "@google/genai";
@@ -14,7 +38,7 @@ async function main() {
       thinkingBudget: 0,
     },
   };
-  const model = "gemini-2.5-flash-lite";
+  const model = "gemini-3-flash-preview";
   const contents = [
     {
       role: "user",
@@ -269,6 +293,56 @@ async function main() {
 main();
 ```
 
+## Structured Output
+
+```ts
+import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
+
+const spamDetailsSchema = z.object({
+  reason: z.string().describe("The reason why the content is considered spam."),
+  spam_type: z.enum(["phishing", "scam", "unsolicited promotion", "other"]).describe("The type of spam."),
+});
+
+const notSpamDetailsSchema = z.object({
+  summary: z.string().describe("A brief summary of the content."),
+  is_safe: z.boolean().describe("Whether the content is safe for all audiences."),
+});
+
+const moderationResultSchema = z.object({
+  decision: z.union([spamDetailsSchema, notSpamDetailsSchema]),
+});
+
+const ai = new GoogleGenAI({});
+
+const prompt = `
+Please moderate the following content and provide a decision.
+Content: 'Congratulations! You''ve won a free cruise to the Bahamas. Click here to claim your prize: www.definitely-not-a-scam.com'
+`;
+
+const response = await ai.models.generateContent({
+  model: "gemini-3-flash-preview",
+  contents: prompt,
+  config: {
+    responseMimeType: "application/json",
+    responseJsonSchema: zodToJsonSchema(moderationResultSchema),
+  },
+});
+
+const result = moderationResultSchema.parse(JSON.parse(response.text));
+console.log(result);
+
+// OUTPUT
+// {
+//   "decision": {
+//     "reason": "Content tricks the user into clicking suspicious link",
+//     "spam_type": "scam"
+//   }
+// }
+```
+
+
 ## Stream Structured Output
 
 ```ts
@@ -312,7 +386,7 @@ function generatePeopleStream(): Observable<Person> {
     (async () => {
       try {
         const response = await ai.models.generateContentStream({
-          model: "gemini-2.5-flash",
+          model: "gemini-3-flash-preview",
           config: {
             responseMimeType: "application/json",
             responseSchema: schema,
