@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Dots + Connections</title>
+  </head>
+  <body style="margin: 0; overflow: hidden">
+    <input id="scrub" type="range" min="0" max="10000" value="0" step="1" style="width: 800px" />
+    <br />
+    <canvas id="c" width="800" height="800" style="border: 1px solid black; background: white"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      const W = 800,
+        H = 800;
+      const cx = 400,
+        cy = 400;
+
+      // Red arc (with red dot)
+      const redArc = {
+        N: 31,
+        R: 100,
+        outerRadiusMaxScale: 3,
+        outerRadiusDuty: 0.1,
+        spanDeg: 90,
+        centerX: cx,
+        centerY: cy,
+        maxAngle: 29 * Math.PI,
+        orbitRevolutions: 13,
+        radiusOscillations: 3,
+        radiusMaxScale: 2,
+      };
+
+      // Blue arc (without red dot)
+      const blueArc = {
+        N: 31,
+        R: 100,
+        outerRadiusMaxScale: 3,
+        outerRadiusDuty: 0.1,
+        spanDeg: 180,
+        orbitRevolutions: 8,
+        selfRevolutions: 6,
+        radiusOscillations: 4,
+        radiusMaxScale: 2,
+      };
+
+      const scrub = document.getElementById("scrub");
+
+      function blueRadiusScale(uTimeline) {
+        const phase = 2 * Math.PI * blueArc.radiusOscillations * uTimeline;
+        const sine01 = 0.5 - 0.5 * Math.cos(phase);
+        return 1 + (blueArc.radiusMaxScale - 1) * sine01;
+      }
+
+      function redRadiusScale(uTimeline) {
+        const phase = 2 * Math.PI * redArc.radiusOscillations * uTimeline;
+        const sine01 = 0.5 - 0.5 * Math.cos(phase);
+        return 1 + (redArc.radiusMaxScale - 1) * sine01;
+      }
+
+      function compressedDuty(t, K, duty) {
+        if (t < duty) {
+          const phase = t / duty;
+          return 1 + ((K - 1) * (1 - Math.cos(Math.PI * phase))) / 2;
+        } else if (t < 1 - duty) {
+          return K;
+        } else {
+          const phase = (t - (1 - duty)) / duty;
+          return 1 + ((K - 1) * (1 + Math.cos(Math.PI * phase))) / 2;
+        }
+      }
+
+      function outerRadiusScale(maxScale, duty, uTimeline) {
+        return compressedDuty(uTimeline, maxScale, duty);
+      }
+
+      function getTFromScrub() {
+        const min = Number(scrub.min);
+        const max = Number(scrub.max);
+        const v = Number(scrub.value);
+        const u = (v - min) / (max - min); // 0..1
+        return { u, t: u * (redArc.maxAngle / (redArc.N - 1)) };
+      }
+
+      function redArcPos(i, t, radiusScale) {
+        const base = i / (redArc.N - 1);
+        const angle = -base * Math.PI - i * t; // speed proportional to index
+        const radius = redArc.R * radiusScale;
+        return {
+          x: redArc.centerX + radius * Math.cos(angle),
+          y: redArc.centerY + radius * Math.sin(angle),
+        };
+      }
+
+      function redArcCenter(u, radiusScale) {
+        const radius = redArc.R * radiusScale;
+        const outerRadius = redArc.R * outerRadiusScale(redArc.outerRadiusMaxScale, redArc.outerRadiusDuty, u);
+        const orbitR = Math.max(0, outerRadius - radius);
+        const ang = -2 * Math.PI * redArc.orbitRevolutions * u; // counter-clockwise
+        return {
+          x: cx + orbitR * Math.cos(ang),
+          y: cy + orbitR * Math.sin(ang),
+        };
+      }
+
+      function blueArcCenter(u, radiusScale) {
+        const radius = blueArc.R * radiusScale;
+        const outerRadius = blueArc.R * outerRadiusScale(blueArc.outerRadiusMaxScale, blueArc.outerRadiusDuty, u);
+        const orbitR = Math.max(0, outerRadius - radius);
+        const ang = 2 * Math.PI * blueArc.orbitRevolutions * u;
+        return {
+          x: cx + orbitR * Math.cos(ang),
+          y: cy + orbitR * Math.sin(ang),
+        };
+      }
+
+      function blueArcPos(i, centerX, centerY, uTimeline, radiusScale) {
+        const u = i / (blueArc.N - 1);
+        const baseAng = Math.PI + Math.PI * u; // 180deg arc
+        const selfAng = 2 * Math.PI * blueArc.selfRevolutions * uTimeline; // clockwise
+        const ang = baseAng + selfAng;
+        const radius = blueArc.R * radiusScale;
+        return {
+          x: centerX + radius * Math.cos(ang),
+          y: centerY + radius * Math.sin(ang),
+        };
+      }
+
+      function draw(u, t) {
+        ctx.clearRect(0, 0, W, H);
+
+        const redRadiusScaleValue = redRadiusScale(u);
+        const blueRadiusScaleValue = blueRadiusScale(u);
+        const redCenter = redArcCenter(u, redRadiusScaleValue);
+        const center = blueArcCenter(u, blueRadiusScaleValue);
+        const redPos = new Array(redArc.N);
+        const bluePos = new Array(blueArc.N);
+
+        for (let i = 0; i < redArc.N; i++) {
+          redPos[i] = redArcPos(i, t, redRadiusScaleValue);
+          redPos[i].x += redCenter.x - redArc.centerX;
+          redPos[i].y += redCenter.y - redArc.centerY;
+        }
+
+        for (let i = 0; i < blueArc.N; i++) {
+          bluePos[i] = blueArcPos(i, center.x, center.y, u, blueRadiusScaleValue);
+        }
+
+        // Draw connections
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < redArc.N; i++) {
+          ctx.beginPath();
+          ctx.moveTo(redPos[i].x, redPos[i].y);
+          ctx.lineTo(bluePos[i].x, bluePos[i].y);
+          ctx.stroke();
+        }
+
+        // Draw red arc dots
+        for (let i = 0; i < redArc.N; i++) {
+          ctx.beginPath();
+          ctx.arc(redPos[i].x, redPos[i].y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = i === redArc.N - 1 ? "red" : "pink";
+          ctx.fill();
+        }
+
+        // Draw blue arc dots
+        for (let i = 0; i < blueArc.N; i++) {
+          ctx.beginPath();
+          ctx.arc(bluePos[i].x, bluePos[i].y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = i === redArc.N - 1 ? "blue" : "lightblue";
+          ctx.fill();
+        }
+      }
+
+      function loop() {
+        const { u, t } = getTFromScrub();
+        draw(u, t);
+        requestAnimationFrame(loop);
+      }
+
+      loop();
+    </script>
+  </body>
+</html>

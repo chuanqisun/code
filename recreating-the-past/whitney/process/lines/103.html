@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Animated Connected Circles</title>
+  </head>
+  <body>
+    <canvas id="canvas" width="640" height="640" style="border: 1px solid #ccc"></canvas>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const dotsCount = 60;
+      let time = 0;
+
+      // Circle 1 properties
+      const c1 = { x: 320, y: 320, r: 250, freq: 0.01 };
+      // Circle 2 properties
+      const c2 = { x: 320, y: 320, r: 120, freq: 0.011 };
+
+      function animate() {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = 0; i < dotsCount; i++) {
+          const baseAngle = (i / dotsCount) * (Math.PI * 4);
+
+          // Modulate angles by sin(time) with different frequencies
+          const angle1 = baseAngle * Math.sin(time * c1.freq);
+          const angle2 = baseAngle * Math.sin(time * c2.freq);
+
+          // Calculate coordinates for Circle 1
+          const x1 = c1.x + c1.r * Math.cos(angle1);
+          const y1 = c1.y + c1.r * Math.sin(angle1);
+
+          // Calculate coordinates for Circle 2
+          const x2 = c2.x + c2.r * Math.cos(angle2);
+          const y2 = c2.y + c2.r * Math.sin(angle2);
+
+          // Draw the connecting line
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.2)";
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+
+          // Draw dot on Circle 1
+          ctx.fillStyle = "blue";
+          ctx.beginPath();
+          ctx.arc(x1, y1, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw dot on Circle 2
+          ctx.fillStyle = "red";
+          ctx.beginPath();
+          ctx.arc(x2, y2, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        time += 1;
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>

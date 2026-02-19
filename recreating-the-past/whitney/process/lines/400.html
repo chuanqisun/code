@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Circular Vibrating Dots</title>
+  </head>
+  <body>
+    <canvas id="canvas" width="800" height="800"></canvas>
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const centerX = 400;
+      const centerY = 400;
+      const circleRadius = 250;
+      const period = 8;
+      const dotRadius = 4;
+      const numSegments = 8;
+      const segmentAngle = (2 * Math.PI) / numSegments;
+
+      const colors = ["#FF0000", "#FF8800", "#FFFF00", "#88FF00", "#00FF00", "#00FF88", "#00FFFF", "#0088FF", "#0000FF", "#8800FF"];
+
+      // Each segment has: 1 center dot + 9 symmetric pairs = 19 dots
+      // Amplitude is in arc length, converted to angle offset on the circle
+
+      const segments = [];
+
+      for (let s = 0; s < numSegments; s++) {
+        const baseAngle = s * segmentAngle;
+        const dots = [];
+
+        // Center dot
+        dots.push({ angleOffset: 0, amplitude: 0, color: colors[0] });
+
+        // 9 symmetric pairs
+        for (let i = 1; i <= 9; i++) {
+          // amplitude as arc length, convert to angle
+          const ampAngle = i * 12 * (Math.PI / 180); // spread within segment
+          dots.push({ angleOffset: 0, amplitude: ampAngle, color: colors[i], sign: 1 });
+          dots.push({ angleOffset: 0, amplitude: ampAngle, color: colors[i], sign: -1 });
+        }
+
+        segments.push({ baseAngle, dots });
+      }
+
+      function animate(time) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const t = time / 1000;
+        const omega = (2 * Math.PI) / period;
+        const wave = Math.sin(omega * t);
+
+        // Draw base circle for reference
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, circleRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        for (let s = 0; s < segments.length; s++) {
+          const seg = segments[s];
+
+          for (let d = 0; d < seg.dots.length; d++) {
+            const dot = seg.dots[d];
+            const sign = dot.sign || 1;
+            const angle = seg.baseAngle + sign * dot.amplitude * wave;
+
+            const x = centerX + circleRadius * Math.cos(angle);
+            const y = centerY + circleRadius * Math.sin(angle);
+
+            ctx.beginPath();
+            ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+            ctx.fillStyle = dot.color;
+            ctx.globalAlpha = 0.6;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>

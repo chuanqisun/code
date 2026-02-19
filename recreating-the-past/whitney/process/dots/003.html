@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Circle Dots</title>
+  </head>
+  <body style="margin: 0; overflow: hidden">
+    <button id="playPause" type="button">Play</button>
+    <button id="render" type="button">Render</button>
+    <label>Duration <input id="duration" type="number" min="0.1" step="0.1" value="10" style="width: 60px" />s</label>
+    <br />
+    <input id="scrub" type="range" min="0" max="10000" value="0" step="1" style="width: 800px" />
+    <br />
+    <canvas id="c" width="800" height="800" style="border: 1px solid black; background: white"></canvas>
+    <script type="module">
+      import { wire } from "../shared/timeline.js";
+
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const $ = (id) => document.getElementById(id);
+
+      const { tl } = wire({
+        canvas,
+        draw,
+        deriveT: (u) => u * +document.getElementById("duration").value,
+      });
+
+      const W = 800,
+        H = 800;
+      const cx = W / 2,
+        cy = H / 2;
+
+      // ── parameters ──
+      const N = 10; // number of dots per sector
+      const sectors = 10; // number of repeated sectors
+      const dotR = 2; // dot radius
+      const R = 250; // orbit radius
+      const freqBase = 0.1; // Hz for dot 0
+      const sectorAngle = (2 * Math.PI) / sectors; // 36 degrees per sector
+      const angAmp = sectorAngle / 2; // vibration amplitude fills half the sector
+
+      // ── draw ──
+      function draw() {
+        const t = tl.t;
+
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.fillStyle = "black";
+        for (let g = 0; g < sectors; g++) {
+          const sectorBase = g * sectorAngle;
+          for (let i = 0; i < N; i++) {
+            // evenly spaced within the 36° sector
+            const baseAngle = sectorBase + (i / N) * sectorAngle;
+
+            // each dot vibrates tangentially (angular oscillation)
+            const freq = (i + 1) * freqBase;
+            const angle = baseAngle + angAmp * Math.sin(2 * Math.PI * freq * t);
+
+            const x = cx + R * Math.cos(angle);
+            const y = cy + R * Math.sin(angle);
+
+            ctx.beginPath();
+            ctx.arc(x, y, dotR, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

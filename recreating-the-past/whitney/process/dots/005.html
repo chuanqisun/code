@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Whitney Permutations: Radial Differential</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #fff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      canvas {
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const dotCount = 281;
+      const innerRadius = 200;
+      const ringWidth = 10;
+      let time = 10000;
+
+      // These constants control the "harmony"
+      const rotationSpeed = 0.00011;
+      const radialSpeed = 0.00021; // The "dashing" speed
+      const maxRadius = 300;
+
+      function resize() {
+        canvas.width = 800;
+        canvas.height = 800;
+      }
+      window.onresize = resize;
+      resize();
+
+      function draw() {
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        for (let i = 1; i <= dotCount; i++) {
+          // 1. Differential Rotation (Theta)
+          const angle = i * time * rotationSpeed;
+
+          // 2. Differential Radius (The "Dashing" effect)
+          // We use a sine wave so dots move out and back in
+          const r = Math.abs(Math.sin(i * time * radialSpeed) * ringWidth) + innerRadius;
+
+          const x = cx + Math.cos(angle) * r;
+          const y = cy + Math.sin(angle) * r;
+
+          ctx.fillStyle = "black";
+          ctx.beginPath();
+          ctx.arc(x, y, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        time += 1; // Advance frame
+        requestAnimationFrame(draw);
+      }
+
+      draw();
+    </script>
+  </body>
+</html>

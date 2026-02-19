@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Dots + Connections</title>
+  </head>
+  <body style="margin: 0; overflow: hidden">
+    <input id="scrub" type="range" min="0" max="1800" value="0" step="1" style="width: 800px" />
+    <canvas id="c" width="800" height="800" style="border: 1px solid black; background: white"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      const W = 800,
+        H = 800;
+      const cx = 400,
+        cy = 360;
+      const R = 280;
+      const N = 31;
+
+      const bottomY = 770;
+      const leftX = 40,
+        rightX = 760;
+
+      const scrub = document.getElementById("scrub");
+
+      function circlePos(i, tms) {
+        // i: 0..N-1, ensure first and last overlap at base (i/(N-1))
+        const base = i / (N - 1);
+        const angle = -base * Math.PI - (i * tms) / 19760;
+        return {
+          x: cx + R * Math.cos(angle),
+          y: cy + R * Math.sin(angle),
+        };
+      }
+
+      function bottomPos(i) {
+        const u = i / (N - 1);
+        return {
+          x: rightX - (rightX - leftX) * u,
+          y: bottomY,
+        };
+      }
+
+      function draw(tms) {
+        ctx.clearRect(0, 0, W, H);
+
+        // precompute positions
+        const cpos = new Array(N);
+        const bpos = new Array(N);
+        for (let i = 0; i < N; i++) {
+          cpos[i] = circlePos(i, tms);
+          bpos[i] = bottomPos(i);
+        }
+
+        // connect pairwise
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < N; i++) {
+          ctx.beginPath();
+          ctx.moveTo(cpos[i].x, cpos[i].y);
+          ctx.lineTo(bpos[i].x, bpos[i].y);
+          ctx.stroke();
+        }
+
+        // circle dots
+        for (let i = 0; i < N; i++) {
+          ctx.beginPath();
+          ctx.arc(cpos[i].x, cpos[i].y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = i === N - 1 ? "red" : "black";
+          ctx.fill();
+        }
+
+        // bottom dots
+        for (let i = 0; i < N; i++) {
+          ctx.beginPath();
+          ctx.arc(bpos[i].x, bpos[i].y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "black";
+          ctx.fill();
+        }
+      }
+
+      function update() {
+        const frame = Number(scrub.value); // 0..1800
+        const t = frame * (1000 / 30); // ms, 30fps precision (0..60000)
+        draw(t);
+      }
+
+      scrub.addEventListener("input", update);
+      update();
+    </script>
+  </body>
+</html>

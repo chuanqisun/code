@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <body style="margin: 0; overflow: hidden">
+    <canvas id="canvas" width="640" height="640"></canvas>
+    <script>
+      // --- TWEAKABLE PARAMETERS ---
+      const DOT_COUNT = 80;
+      const CENTER = 320;
+
+      // Circle 1 (Clockwise)
+      const C1 = {
+        ORBIT_BASE: 0,
+        ORBIT_MOD: 0, // Distance from canvas center
+        BASE_R: 80,
+        R_MOD: 20, // Radius of the dot-ring
+        BASE_S: 0.02,
+        S_MOD: 0.01, // Orbit speed
+        PACK_BASE: 0.5,
+        PACK_AMP: 0.1,
+        PACK_FREQ: 0.0015,
+        COLOR: "#000",
+      };
+
+      // Circle 2 (Counter-Clockwise)
+      const C2 = {
+        ORBIT_BASE: 100,
+        ORBIT_MOD: 0, // Distance from canvas center
+        BASE_R: 160,
+        R_MOD: 40, // Radius of the dot-ring
+        BASE_S: 0.015,
+        S_MOD: 0.01, // Orbit speed
+        PACK_BASE: 0.8,
+        PACK_AMP: 0.4,
+        PACK_FREQ: 0.0008,
+        COLOR: "#000",
+      };
+
+      const LINE_COLOR = "rgba(0, 0, 0, 0.5)";
+      const GLOBAL_MOD_FREQ = 0.001;
+      // ----------------------------
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      let angle1 = 0;
+      let angle2 = 0;
+
+      function getDotCoords(orbitAngle, orbitRadius, innerR, spreadFactor, index) {
+        // Center of the dot-ring
+        const cx = CENTER + orbitRadius * Math.cos(orbitAngle);
+        const cy = CENTER + orbitRadius * Math.sin(orbitAngle);
+
+        // Spread logic
+        const arcLength = Math.PI * 2 * spreadFactor;
+        const relativeAngle = (index / (DOT_COUNT - 1)) * arcLength - arcLength / 2;
+        const dotAngle = orbitAngle + relativeAngle;
+
+        return {
+          x: cx + innerR * Math.cos(dotAngle),
+          y: cy + innerR * Math.sin(dotAngle),
+        };
+      }
+
+      function draw(time) {
+        ctx.clearRect(0, 0, 640, 640);
+
+        // Calculate Circle 1 State
+        const s1 = C1.BASE_S + Math.sin(time * GLOBAL_MOD_FREQ) * C1.S_MOD;
+        angle1 += s1;
+        const r1 = C1.BASE_R + Math.cos(time * GLOBAL_MOD_FREQ) * C1.R_MOD;
+        const p1 = C1.PACK_BASE + Math.sin(time * C1.PACK_FREQ) * C1.PACK_AMP;
+        const orb1 = C1.ORBIT_BASE + Math.sin(time * GLOBAL_MOD_FREQ * 0.5) * C1.ORBIT_MOD;
+
+        // Calculate Circle 2 State
+        const s2 = C2.BASE_S + Math.sin(time * GLOBAL_MOD_FREQ * 0.8) * C2.S_MOD;
+        angle2 -= s2;
+        const r2 = C2.BASE_R + Math.sin(time * GLOBAL_MOD_FREQ * 1.2) * C2.R_MOD;
+        const p2 = C2.PACK_BASE + Math.cos(time * C2.PACK_FREQ) * C2.PACK_AMP;
+        const orb2 = C2.ORBIT_BASE + Math.cos(time * GLOBAL_MOD_FREQ * 0.7) * C2.ORBIT_MOD;
+
+        const dots1 = [];
+        const dots2 = [];
+
+        // Generate positions
+        for (let i = 0; i < DOT_COUNT; i++) {
+          dots1.push(getDotCoords(angle1, orb1, r1, p1, i));
+          dots2.push(getDotCoords(angle2, orb2, r2, p2, i));
+        }
+
+        // Draw pairwise lines
+        ctx.strokeStyle = LINE_COLOR;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i < DOT_COUNT; i++) {
+          ctx.moveTo(dots1[i].x, dots1[i].y);
+          ctx.lineTo(dots2[i].x, dots2[i].y);
+        }
+        ctx.stroke();
+
+        requestAnimationFrame(draw);
+      }
+
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>

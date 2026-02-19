@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <canvas id="canvas" width="640" height="640"></canvas>
+    <script>
+      // --- TWEAKABLE PARAMETERS ---
+      const OUTER_R = 300;
+      const DOT_COUNT = 36;
+
+      const BASE_INNER_R = 100;
+      const R_MOD_AMP = 50; // How much the radius grows/shrinks
+      const R_MOD_FREQ = 0.001; // How fast the radius oscillates
+
+      const BASE_SPEED = 0.02;
+      const S_MOD_AMP = 0.015; // How much the speed fluctuates
+      const S_MOD_FREQ = 0.0005; // How fast the speed oscillates
+      // ----------------------------
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      let currentAngle = 0;
+
+      function draw(time) {
+        ctx.clearRect(0, 0, 640, 640);
+
+        // 1. Modulate Speed and update accumulated angle
+        const currentSpeed = BASE_SPEED + Math.sin(time * S_MOD_FREQ) * S_MOD_AMP;
+        currentAngle += currentSpeed;
+
+        // 2. Modulate Radius
+        const currentInnerR = BASE_INNER_R + Math.sin(time * R_MOD_FREQ) * R_MOD_AMP;
+
+        // 3. Calculate center of the inner circle
+        // It stays inside the outer circle: orbit radius = Outer - Inner
+        const orbitRadius = OUTER_R - currentInnerR;
+        const cx = 320 + orbitRadius * Math.cos(currentAngle);
+        const cy = 320 + orbitRadius * Math.sin(currentAngle);
+
+        // 4. Draw dots on the inner circle circumference
+        ctx.fillStyle = "#000000";
+        for (let i = 0; i < DOT_COUNT; i++) {
+          // The dots also rotate around the inner center
+          const dotAngle = (i / DOT_COUNT) * Math.PI * 2 + currentAngle;
+
+          const px = cx + currentInnerR * Math.cos(dotAngle);
+          const py = cy + currentInnerR * Math.sin(dotAngle);
+
+          ctx.beginPath();
+          ctx.arc(px, py, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        requestAnimationFrame(draw);
+      }
+
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>
