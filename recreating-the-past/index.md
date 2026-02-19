@@ -29,6 +29,7 @@
     - It takes calculation to both start and end the animation at a specific pattern using the periodicity of sine wave.
   - The dancing dots are achieved by applying the same principle as the circle where the green lines originate from, but in addition to step-ramp the rotation angle over time, I also modulated the radius with a circle, so they look like standing wave wrapped around a circular path.
   - I learned a little bit Strudel and composed a percussion sound track with AI's help.
+  - To make choreography easier, I created a scrubbable timeline tool to allow quick jump. This bridges the gap between creative coding and traditional animation technique.
   - Process
     - Lines: [motion study](./whitney/process/lines/103.html), [orbit study](./whitney/process/lines/200.html), [integration (failed)](./whitney/process/lines/300.html), [oscillation study](./whitney/process/lines/400.html), [motion decoded!](./whitney/process/lines/801.html), [choreography study](./whitney/process/lines/806.html)
     - Dots: [motion study](./whitney/process/dots/001.html), [harmonic progression study](./whitney/process/dots/002.html), [oscillation along circumference (failed)](./whitney/process/dots/003.html), [rose petals (failed)](./whitney/process/dots/004.html), [modulate radius](./whitney/process/dots/005.html)
