@@ -73,7 +73,7 @@
       #startBtn:hover {
         background: rgba(255, 80, 120, 1);
       }
-      #connectBtn {
+      #connectBtn, #connectMicBtn {
         font-size: 1.2em;
         padding: 6px 20px;
         background: rgba(80, 160, 255, 0.8);
@@ -83,10 +83,10 @@
         cursor: pointer;
         transition: background 0.15s;
       }
-      #connectBtn:hover {
+      #connectBtn:hover, #connectMicBtn:hover {
         background: rgba(80, 160, 255, 1);
       }
-      #connectBtn.connected {
+      #connectBtn.connected, #connectMicBtn.connected {
         background: rgba(80, 200, 120, 0.8);
         cursor: default;
       }
@@ -120,7 +120,8 @@
   </head>
   <body>
     <div id="controls" class="hidden">
-      <button id="connectBtn">Connect Audio</button>
+      <button id="connectBtn">Screen Audio</button>
+      <button id="connectMicBtn">Microphone</button>
       <button id="disconnectBtn" style="display: none">Disconnect</button>
       <label>BPM: <input type="number" id="bpmInput" min="20" max="300" value="120" /></label>
       <label>Sensitivity: <input type="range" id="sensitivityInput" min="0.1" max="4" step="0.05" value="1" /></label>
@@ -136,6 +137,7 @@
       const startBtn = document.getElementById("startBtn");
       const stopBtn = document.getElementById("stopBtn");
       const connectBtn = document.getElementById("connectBtn");
+      const connectMicBtn = document.getElementById("connectMicBtn");
       const disconnectBtn = document.getElementById("disconnectBtn");
       const bpmInput = document.getElementById("bpmInput");
       const sensitivityInput = document.getElementById("sensitivityInput");
@@ -170,25 +172,32 @@
         return MIN_R + smoothedVolume * (BASE_R - MIN_R);
       }
 
+      function connectAudioStream(stream) {
+        const audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.0; // we handle smoothing ourselves
+        audioDataArray = new Uint8Array(analyser.frequencyBinCount);
+        source.connect(analyser);
+        audioStream = stream;
+        connectBtn.style.display = "none";
+        connectMicBtn.style.display = "none";
+        disconnectBtn.style.display = "";
+      }
+
       connectBtn.addEventListener("click", () => {
         navigator.mediaDevices
           .getDisplayMedia({ video: true, audio: true })
-          .then((stream) => {
-            const audioCtx = new AudioContext();
-            const source = audioCtx.createMediaStreamSource(stream);
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 512;
-            analyser.smoothingTimeConstant = 0.0; // we handle smoothing ourselves
-            audioDataArray = new Uint8Array(analyser.frequencyBinCount);
-            source.connect(analyser);
-            audioStream = stream;
-            connectBtn.style.display = "none";
-            disconnectBtn.style.display = "";
-            connectBtn.textContent = "Connected";
-            connectBtn.classList.add("connected");
-            connectBtn.disabled = true;
-          })
-          .catch((err) => console.warn("Audio connect failed:", err));
+          .then(connectAudioStream)
+          .catch((err) => console.warn("Screen audio connect failed:", err));
+      });
+
+      connectMicBtn.addEventListener("click", () => {
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then(connectAudioStream)
+          .catch((err) => console.warn("Microphone connect failed:", err));
       });
 
       // --- Drawing ---
@@ -351,9 +360,7 @@
         smoothedVolume = 0;
         disconnectBtn.style.display = "none";
         connectBtn.style.display = "";
-        connectBtn.textContent = "Connect Audio";
-        connectBtn.classList.remove("connected");
-        connectBtn.disabled = false;
+        connectMicBtn.style.display = "";
       });
 
       // Show controls when hovering near the top of the screen
