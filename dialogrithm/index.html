@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>The Loom of Time</title>
+    <title>Dialogrithm</title>
     <style>
       *, *::before, *::after {
         box-sizing: border-box;
@@ -31,7 +31,7 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: transparent;
+        background: #050505;
         border: 1px solid #a3b8c7;
         color: #a3b8c7;
         font-family: 'Courier New', Courier, monospace;
@@ -42,79 +42,197 @@
         z-index: 100;
       }
       #start-btn:hover {
-        background: #a3b8c720;
+        background: #101010;
       }
     </style>
   </head>
   <body>
     <pre id="loom"></pre>
-    <button id="start-btn">[ ENGAGE ]</button>
+    <button id="start-btn">[ GENERATE ]</button>
 
     <script>
-      const LAYOUT = {
+      // CONFIGURATION
+
+      const GRID = {
+        TARGET_COLS: 120,
         ASPECT_RATIO: 9 / 16,
-        COLS_TARGET: 120,
-        MARGIN_CH: 1,
+        MARGIN_CHARS: 1,
       };
 
-      const PARAMS = {
-        CHAR_OUTSIDE: " ",
-        CHAR_INSIDE_EMPTY: " ",
-        THREAD_SYMBOLS_TOP: "IN THE BEGINNING THERE WAS THE COMMAND LINE. THE LOOM SPINS THE VOID INTO STRUCTURE. TIME WEAVES MEANING FROM THE ETHER. ",
-        THREAD_SYMBOLS_BOT: "!#%&*+=|\\/<>[]{}^~?@$;:",
-        THREADS: 24,
+      const LOOM = {
+        THREAD_COUNT: 24,
         ENVELOPE_POWER: 2.0,
+
         TOP_SWAY_AMP_1: 0.18,
         TOP_SWAY_FREQ_1: 1.3,
         TOP_SWAY_AMP_2: 0.1,
         TOP_SWAY_FREQ_2: 2.7,
-        TOP_SWAY_SPACE_F: 3.5,
+        TOP_SWAY_SPATIAL: 3.5,
+
         BOT_SWAY_AMP_1: 0.12,
         BOT_SWAY_FREQ_1: 0.5,
         BOT_SWAY_AMP_2: 0.07,
         BOT_SWAY_FREQ_2: 1.1,
-        BOT_SWAY_SPACE_F: 2.0,
-        TOP_TIME_MULT: 2.5,
+        BOT_SWAY_SPATIAL: 2.0,
+
+        TOP_TIME_SCALE: 2.5,
         TOP_FREQ_SPREAD: 0.08,
-        BOT_TIME_MULT: 0.6,
+        BOT_TIME_SCALE: 0.6,
         BOT_FREQ_SPREAD: 0.02,
-        TOP_BASE_SPEED: 0.05,
-        TOP_MOD_AMP: 0.4,
-        TOP_MOD_FREQ: 0.17,
-        TOP_MOD_PHASE: 0.0,
-        BOT_BASE_SPEED: 0.05,
-        BOT_MOD_AMP: 0.4,
-        BOT_MOD_FREQ: 0.29,
-        BOT_MOD_PHASE: 2.1,
+
+        TOP_SPEED_BASE: 0.05,
+        TOP_SPEED_MOD_AMP: 0.4,
+        TOP_SPEED_MOD_FREQ: 0.17,
+        TOP_SPEED_MOD_PHASE: 0.0,
+
+        BOT_SPEED_BASE: 0.05,
+        BOT_SPEED_MOD_AMP: 0.4,
+        BOT_SPEED_MOD_FREQ: 0.29,
+        BOT_SPEED_MOD_PHASE: 2.1,
+
+        WALL_TICK_RATE: 0.016,
+
+        CHAR_OUTSIDE: " ",
+        CHAR_INSIDE_EMPTY: " ",
+        BOT_THREAD_SYMBOLS: "!#%&*+=|\\/<>[]{}^~?@$;:",
       };
 
-      const BPM = 126;
-      const BEAT_SEC = 60 / BPM;
-      const BURST_SIZE = 128;
-      const SPEED_MIN = 0.28; // grid cells per frame
-      const SPEED_MAX = 1.0;
-      const FADE_FRAMES = Math.round(((BEAT_SEC * 1000) / 16) * 2.5); // ~2.5 beats
-      const DUCK_DEPTH = 0.85;
-      const DUCK_RELEASE = BEAT_SEC * 0.85;
+      const SOURCE_TEXT = {
+        FETCH_URL: new URL("./command.txt", window.location.href).href,
+        FALLBACK_TEXT: "IN THE BEGINNING WAS THE COMMAND LINE. ",
+      };
 
-      let COLS = LAYOUT.COLS_TARGET;
-      let ROWS = 40;
-      let cellW = 1,
-        cellH = 1; // updated by measureCharCell
+      const PARTICLES = {
+        BURST_SIZE: 128,
+        SPEED_MIN: 0.28,
+        SPEED_MAX: 1.0,
+        DIM_CHARS: [".", "·", "+"],
+        DIM_THRESHOLD_LO: 0.01,
+        DIM_THRESHOLD_HI: 0.05,
+        DIM_ALPHA_SCALE: 0.55,
+      };
 
-      // Grid origin in viewport pixels — needed to map particles to cells
-      let gridOriginX = 0;
-      let gridOriginY = 0;
+      const RHYTHM = {
+        BPM: 126,
+        SCHEDULER_LOOKAHEAD_SECS: 0.1,
+        SCHEDULER_TICK_MS: 25,
+      };
 
-      let wall = 100.0,
-        timeTop = 100.0,
-        timeBot = 100.0;
+      const KICK = {
+        FREQ_START: 150,
+        FREQ_END: 40,
+        FREQ_RAMP_SECS: 0.12,
+        GAIN_PEAK: 0.7,
+        GAIN_DECAY_SECS: 0.3,
+        DURATION_SECS: 0.35,
+      };
+
+      const CHORD = {
+        FREQUENCIES: [130.81, 155.56, 196.0, 233.08],
+        OSC_TYPE: "sawtooth",
+        VOICE_GAIN: 0.08,
+        DUCK_DEPTH: 0.85,
+        DUCK_RELEASE_BEATS: 0.85,
+      };
+
+      const FILTER = {
+        TYPE: "lowpass",
+        Q: 1,
+        FREQ_LOW: 400,
+        FREQ_HIGH: 3200,
+        OSCILLATION_PERIOD_SECS: 8,
+      };
+
+      const MASTER = {
+        GAIN: 0.8,
+        STARTUP_OFFSET_SECS: 0.05,
+      };
+
+      // DERIVED CONSTANTS
+
+      const BEAT_DURATION_SECS = 60 / RHYTHM.BPM;
+      const PARTICLE_FADE_FRAMES = Math.round(((BEAT_DURATION_SECS * 1000) / 16) * 2.5);
+      const DUCK_RELEASE_SECS = BEAT_DURATION_SECS * CHORD.DUCK_RELEASE_BEATS;
+
+      // GRID STATE
+
+      let gridCols = GRID.TARGET_COLS;
+      let gridRows = 40;
+      let charCellWidth = 1;
+      let charCellHeight = 1;
+
+      // LOOM STATE
+
+      let wallClock = 100.0;
+      let topTimeClock = 100.0;
+      let botTimeClock = 100.0;
+
+      // AUDIO STATE
+
+      let audioCtx = null;
+      let masterGainNode = null;
+      let chordGainNode = null;
+      let filterNode = null;
+      let filterLfoNode = null;
+      let nextBeatTime = 0;
+      let beatSchedulerId = null;
+      let pendingBeatTimes = [];
+
+      // TEXT CURSORS
+      // topThreadCursor starts with the fallback text and is replaced once the
+      // fetch resolves, so the loom is never empty while loading.
 
       const display = document.getElementById("loom");
 
-      // ── GRID SIZING ───────────────────────────────────────
+      function makeCyclicCharCursor(sourceString) {
+        const printableChars = sourceString.split("").filter((c) => c.trim().length > 0);
+        if (printableChars.length === 0) printableChars.push("?");
+        let position = 0;
+        return {
+          next() {
+            return printableChars[position++ % printableChars.length];
+          },
+          randomPick() {
+            return printableChars[Math.floor(Math.random() * printableChars.length)];
+          },
+          advance(n) {
+            position += n;
+          },
+          get position() {
+            return position;
+          },
+        };
+      }
 
-      function measureCharCell() {
+      let topThreadCursor = makeCyclicCharCursor(SOURCE_TEXT.FALLBACK_TEXT);
+      const botThreadCursor = makeCyclicCharCursor(LOOM.BOT_THREAD_SYMBOLS);
+
+      function replaceTopThreadCursorWhenReady(fetchPromise) {
+        fetchPromise.then((text) => {
+          topThreadCursor = makeCyclicCharCursor(text);
+        });
+      }
+
+      function fetchTopThreadSourceText() {
+        return fetch(SOURCE_TEXT.FETCH_URL)
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.text();
+          })
+          .catch(() => SOURCE_TEXT.FALLBACK_TEXT);
+      }
+
+      function pickBurstChar() {
+        return Math.random() < 0.5 ? topThreadCursor.randomPick() : botThreadCursor.randomPick();
+      }
+
+      // PARTICLE STATE
+
+      let activeParticles = [];
+
+      // GRID SIZING
+
+      function measureCharCellSize() {
         const probe = document.createElement("pre");
         probe.style.cssText = [
           "position:absolute",
@@ -132,133 +250,161 @@
         document.body.appendChild(probe);
         const rect = probe.getBoundingClientRect();
         document.body.removeChild(probe);
-        return { cellW: rect.width / 10, cellH: rect.height / 10 };
+        return { width: rect.width / 10, height: rect.height / 10 };
       }
 
-      function recalcGrid() {
-        ({ cellW, cellH } = measureCharCell());
-        const marginPx = LAYOUT.MARGIN_CH * cellW;
-        const availW = window.innerWidth - marginPx * 2;
-        const availH = window.innerHeight - marginPx * 2;
+      function recalcGridDimensions() {
+        const cell = measureCharCellSize();
+        charCellWidth = cell.width;
+        charCellHeight = cell.height;
 
-        let cols = Math.min(LAYOUT.COLS_TARGET, Math.floor(availW / cellW));
-        let rows = Math.floor((cols * cellW) / LAYOUT.ASPECT_RATIO / cellH);
+        const marginPx = GRID.MARGIN_CHARS * charCellWidth;
+        const availableWidth = window.innerWidth - marginPx * 2;
+        const availableHeight = window.innerHeight - marginPx * 2;
 
-        if (rows * cellH > availH) {
-          rows = Math.floor(availH / cellH);
-          cols = Math.floor((rows * cellH * LAYOUT.ASPECT_RATIO) / cellW);
+        let cols = Math.min(GRID.TARGET_COLS, Math.floor(availableWidth / charCellWidth));
+        let rows = Math.floor((cols * charCellWidth) / GRID.ASPECT_RATIO / charCellHeight);
+
+        if (rows * charCellHeight > availableHeight) {
+          rows = Math.floor(availableHeight / charCellHeight);
+          cols = Math.floor((rows * charCellHeight * GRID.ASPECT_RATIO) / charCellWidth);
         }
 
-        COLS = Math.max(cols, 4);
-        ROWS = Math.max(rows, 2);
-
-        // The pre is centred by flexbox; compute its top-left corner
-        gridOriginX = (window.innerWidth - COLS * cellW) / 2;
-        gridOriginY = (window.innerHeight - ROWS * cellH) / 2;
+        gridCols = Math.max(cols, 4);
+        gridRows = Math.max(rows, 2);
       }
 
-      // ── AUDIO ─────────────────────────────────────────────
+      // LOOM GEOMETRY
 
-      let ctx = null,
-        masterGain = null,
-        chordGain = null;
-      let chordOscs = [];
-      let beatSchedulerTimer = null;
-      let nextBeatTime = 0;
-      const SCHEDULE_AHEAD = 0.1;
-      const SCHEDULER_TICK = 25;
-
-      function playKick(time) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.setValueAtTime(150, time);
-        osc.frequency.exponentialRampToValueAtTime(40, time + 0.12);
-        gain.gain.setValueAtTime(0.7, time);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
-        osc.connect(gain);
-        gain.connect(masterGain);
-        osc.start(time);
-        osc.stop(time + 0.35);
-      }
-
-      function duckChord(time) {
-        chordGain.gain.cancelScheduledValues(time);
-        chordGain.gain.setValueAtTime(1.0 - DUCK_DEPTH, time);
-        chordGain.gain.linearRampToValueAtTime(1.0, time + DUCK_RELEASE);
-      }
-
-      function schedulerTick() {
-        while (nextBeatTime < ctx.currentTime + SCHEDULE_AHEAD) {
-          playKick(nextBeatTime);
-          duckChord(nextBeatTime);
-          pendingBursts.push(nextBeatTime);
-          nextBeatTime += BEAT_SEC;
+      function computeRowSway(normalisedY, isBottomHalf, timeClock) {
+        if (!isBottomHalf) {
+          return (
+            Math.sin(timeClock * LOOM.TOP_SWAY_FREQ_1 + normalisedY * LOOM.TOP_SWAY_SPATIAL) * LOOM.TOP_SWAY_AMP_1 +
+            Math.sin(timeClock * LOOM.TOP_SWAY_FREQ_2 + normalisedY * LOOM.TOP_SWAY_SPATIAL * 1.7 + 1.3) * LOOM.TOP_SWAY_AMP_2
+          );
+        } else {
+          return (
+            Math.sin(timeClock * LOOM.BOT_SWAY_FREQ_1 + normalisedY * LOOM.BOT_SWAY_SPATIAL + 0.9) * LOOM.BOT_SWAY_AMP_1 +
+            Math.sin(timeClock * LOOM.BOT_SWAY_FREQ_2 + normalisedY * LOOM.BOT_SWAY_SPATIAL * 2.1 + 2.4) * LOOM.BOT_SWAY_AMP_2
+          );
         }
       }
 
-      // ── PARTICLES (grid-space) ────────────────────────────
-      // Position and velocity are in fractional grid columns / rows.
+      function computeThreadWave(threadIndex, normalisedY, isBottomHalf, timeClock) {
+        const phase = threadIndex * ((Math.PI * 2) / LOOM.THREAD_COUNT);
+        if (!isBottomHalf) {
+          return Math.sin(timeClock * LOOM.TOP_TIME_SCALE * (1 + threadIndex * LOOM.TOP_FREQ_SPREAD) + normalisedY * Math.PI * 4 + phase);
+        } else {
+          return Math.sin(timeClock * LOOM.BOT_TIME_SCALE * (1 + threadIndex * LOOM.BOT_FREQ_SPREAD) + normalisedY * Math.PI * 2 + phase);
+        }
+      }
 
-      const textSource = `In the Beginning was the Command Line
+      function computeModulatedTickRate(referenceClock, baseSpeed, modAmp, modFreq, modPhase) {
+        return baseSpeed * (1 + modAmp * Math.sin(modFreq * referenceClock + modPhase));
+      }
 
-by Neal Stephenson
+      // CELL GRID CONSTRUCTION
 
-About twenty years ago Jobs and Wozniak, the founders of Apple, came up with the very strange idea of selling information processing machines for use in the home. The business took off, and its founders made a lot of money and received the credit they deserved for being daring visionaries. But around the same time, Bill Gates and Paul Allen came up with an idea even stranger and more fantastical: selling computer operating systems. This was much weirder than the idea of Jobs and Wozniak. A computer at least had some sort of physical reality to it. It came in a box, you could open it up and plug it in and watch lights blink. An operating system had no tangible incarnation at all. It arrived on a disk, of course, but the disk was, in effect, nothing more than the box that the OS came in. The product itself was a very long string of ones and zeroes that, when properly installed and coddled, gave you the ability to manipulate other very long strings of ones and zeroes. Even those few who actually understood what a computer operating system was were apt to think of it as a fantastically arcane engineering prodigy, like a breeder reactor or a U-2 spy plane, and not something that could ever be (in the parlance of high-tech) "productized."`.trim();
+      function buildEmptyCellGrid() {
+        const grid = [];
+        for (let row = 0; row < gridRows; row++) {
+          grid[row] = [];
+          for (let col = 0; col < gridCols; col++) {
+            grid[row][col] = { char: LOOM.CHAR_OUTSIDE, particle: null, particleAlpha: 0 };
+          }
+        }
+        return grid;
+      }
 
-      const printableChars = textSource.split("").filter((c) => c.trim().length > 0);
-      let textIndex = 0;
-      let particles = [];
-      let pendingBursts = [];
+      function fillLoomShapeIntoGrid(grid) {
+        const THREAD_MARKER = "\x00";
 
-      function spawnBurst() {
-        // Centre of the grid in fractional cell coordinates
-        const cx = COLS / 2;
-        const cy = ROWS / 2;
+        for (let row = 0; row < gridRows; row++) {
+          const normY = (row / gridRows) * 2 - 1;
+          const isBottom = normY > 0;
+          const timeClock = isBottom ? botTimeClock : topTimeClock;
+          const envelope = Math.pow(Math.abs(normY), LOOM.ENVELOPE_POWER);
+          const sway = computeRowSway(normY, isBottom, timeClock) * Math.abs(normY);
+          const leftEdge = -envelope + sway;
+          const rightEdge = envelope + sway;
 
-        for (let i = 0; i < BURST_SIZE; i++) {
+          for (let col = 0; col < gridCols; col++) {
+            const normX = (col / gridCols) * 2 - 1;
+            grid[row][col].char = normX < leftEdge || normX > rightEdge ? LOOM.CHAR_OUTSIDE : LOOM.CHAR_INSIDE_EMPTY;
+          }
+
+          for (let threadIdx = 0; threadIdx < LOOM.THREAD_COUNT; threadIdx++) {
+            const wave = computeThreadWave(threadIdx, normY, isBottom, timeClock);
+            const threadCol = Math.floor(((wave * envelope + sway + 1) / 2) * gridCols);
+            if (threadCol >= 0 && threadCol < gridCols) {
+              const normX = (threadCol / gridCols) * 2 - 1;
+              if (normX >= leftEdge && normX <= rightEdge) {
+                grid[row][threadCol].char = THREAD_MARKER;
+              }
+            }
+          }
+
+          if (!isBottom) {
+            for (let col = 0; col < gridCols; col++) {
+              if (grid[row][col].char === THREAD_MARKER) {
+                grid[row][col].char = topThreadCursor.next();
+              }
+            }
+          } else {
+            for (let col = 0; col < gridCols; col++) {
+              if (grid[row][col].char === THREAD_MARKER) {
+                const symbolOffset1 = Math.floor(Math.sin(col * 0.7 + botTimeClock * 3.1) * 7 + 7);
+                const symbolOffset2 = Math.floor(Math.cos(row * 1.3 + botTimeClock * 1.7) * 5 + 5);
+                const symbolIndex = (botThreadCursor.position + symbolOffset1 + symbolOffset2) % LOOM.BOT_THREAD_SYMBOLS.length;
+                grid[row][col].char = LOOM.BOT_THREAD_SYMBOLS[symbolIndex];
+                botThreadCursor.advance(1);
+              }
+            }
+          }
+        }
+      }
+
+      // PARTICLES
+
+      function spawnBurstParticles() {
+        const originCol = gridCols / 2;
+        const originRow = gridRows / 2;
+        const aspectCorrection = charCellHeight / charCellWidth;
+
+        for (let i = 0; i < PARTICLES.BURST_SIZE; i++) {
           const angle = Math.random() * Math.PI * 2;
-          // Scale horizontal speed by cellH/cellW so the visual trajectory
-          // looks circular despite non-square cells
-          const speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN);
-          const vx = Math.cos(angle) * speed * (cellH / cellW);
-          const vy = Math.sin(angle) * speed;
-
-          particles.push({
-            char: printableChars[textIndex++ % printableChars.length],
-            x: cx,
-            y: cy,
-            vx,
-            vy,
+          const speed = PARTICLES.SPEED_MIN + Math.random() * (PARTICLES.SPEED_MAX - PARTICLES.SPEED_MIN);
+          activeParticles.push({
+            char: pickBurstChar(),
+            x: originCol,
+            y: originRow,
+            vx: Math.cos(angle) * speed * aspectCorrection,
+            vy: Math.sin(angle) * speed,
             age: 0,
           });
         }
       }
 
-      function updateParticles() {
-        for (let i = particles.length - 1; i >= 0; i--) {
-          const p = particles[i];
+      function stepParticlePhysics() {
+        for (let i = activeParticles.length - 1; i >= 0; i--) {
+          const p = activeParticles[i];
           p.x += p.vx;
           p.y += p.vy;
           p.age++;
-          // Remove once fully faded or off-grid (with margin)
-          if (p.age >= FADE_FRAMES || p.x < -2 || p.x > COLS + 2 || p.y < -2 || p.y > ROWS + 2) {
-            particles.splice(i, 1);
+          const escaped = p.x < -2 || p.x > gridCols + 2 || p.y < -2 || p.y > gridRows + 2;
+          if (p.age >= PARTICLE_FADE_FRAMES || escaped) {
+            activeParticles.splice(i, 1);
           }
         }
       }
 
-      // Write live particles into the 2-D grid buffer.
-      // Brighter particles win when two land on the same cell.
-      function paintParticles(grid) {
-        // grid is an array of ROWS arrays, each COLS wide, holding { char, alpha }
-        for (const p of particles) {
+      function compositeParticlesOntoGrid(grid) {
+        for (const p of activeParticles) {
           const col = Math.round(p.x);
           const row = Math.round(p.y);
-          if (col < 0 || col >= COLS || row < 0 || row >= ROWS) continue;
-          const alpha = 1 - p.age / FADE_FRAMES;
+          if (col < 0 || col >= gridCols || row < 0 || row >= gridRows) continue;
+          const alpha = 1 - p.age / PARTICLE_FADE_FRAMES;
           const cell = grid[row][col];
-          // Only overwrite if this particle is brighter than whatever is there
           if (!cell.particle || alpha > cell.particleAlpha) {
             cell.particle = p.char;
             cell.particleAlpha = alpha;
@@ -266,195 +412,170 @@ About twenty years ago Jobs and Wozniak, the founders of Apple, came up with the
         }
       }
 
-      // ── LOOM ──────────────────────────────────────────────
+      // GRID → STRING SERIALISATION
 
-      function computeSway(ny, isBottom, t) {
-        if (!isBottom) {
-          return (
-            Math.sin(t * PARAMS.TOP_SWAY_FREQ_1 + ny * PARAMS.TOP_SWAY_SPACE_F) * PARAMS.TOP_SWAY_AMP_1 +
-            Math.sin(t * PARAMS.TOP_SWAY_FREQ_2 + ny * PARAMS.TOP_SWAY_SPACE_F * 1.7 + 1.3) * PARAMS.TOP_SWAY_AMP_2
-          );
-        } else {
-          return (
-            Math.sin(t * PARAMS.BOT_SWAY_FREQ_1 + ny * PARAMS.BOT_SWAY_SPACE_F + 0.9) * PARAMS.BOT_SWAY_AMP_1 +
-            Math.sin(t * PARAMS.BOT_SWAY_FREQ_2 + ny * PARAMS.BOT_SWAY_SPACE_F * 2.1 + 2.4) * PARAMS.BOT_SWAY_AMP_2
-          );
-        }
+      function chooseDimChar(alpha) {
+        const dimIndex = Math.floor((1 - alpha / PARTICLES.DIM_ALPHA_SCALE) * 2);
+        return PARTICLES.DIM_CHARS[Math.min(dimIndex, PARTICLES.DIM_CHARS.length - 1)];
       }
 
-      let lastTimestamp = null;
-
-      function render(timestamp) {
-        if (!lastTimestamp) lastTimestamp = timestamp;
-        lastTimestamp = timestamp;
-
-        // ── audio-driven burst trigger ──
-        if (ctx) {
-          let i = 0;
-          while (i < pendingBursts.length) {
-            if (ctx.currentTime >= pendingBursts[i]) {
-              spawnBurst();
-              pendingBursts.splice(i, 1);
-            } else {
-              i++;
-            }
-          }
-        }
-
-        updateParticles();
-
-        // ── loom tick ──
-        const topSpeed = PARAMS.TOP_BASE_SPEED * (1 + PARAMS.TOP_MOD_AMP * Math.sin(PARAMS.TOP_MOD_FREQ * wall + PARAMS.TOP_MOD_PHASE));
-        const botSpeed = PARAMS.BOT_BASE_SPEED * (1 + PARAMS.BOT_MOD_AMP * Math.sin(PARAMS.BOT_MOD_FREQ * wall + PARAMS.BOT_MOD_PHASE));
-        wall += 0.016;
-        timeTop += topSpeed;
-        timeBot += botSpeed;
-
-        // ── build cell grid ──
-        // Each cell: { char: string, particle: string|null, particleAlpha: number }
-        const grid = [];
-        for (let y = 0; y < ROWS; y++) {
-          grid[y] = [];
-          for (let x = 0; x < COLS; x++) {
-            grid[y][x] = { char: PARAMS.CHAR_OUTSIDE, particle: null, particleAlpha: 0 };
-          }
-        }
-
-        let globalTopOffset = Math.floor(timeTop * 6);
-        let globalBotOffset = Math.floor(timeBot * 14);
-
-        for (let y = 0; y < ROWS; y++) {
-          const ny = (y / ROWS) * 2 - 1;
-          const isBottom = ny > 0;
-          const t = isBottom ? timeBot : timeTop;
-          const envelope = Math.pow(Math.abs(ny), PARAMS.ENVELOPE_POWER);
-          const sway = computeSway(ny, isBottom, t) * Math.abs(ny);
-          const leftBound = -envelope + sway;
-          const rightBound = envelope + sway;
-
-          // Fill inside/outside
-          for (let x = 0; x < COLS; x++) {
-            const nx = (x / COLS) * 2 - 1;
-            grid[y][x].char = nx < leftBound || nx > rightBound ? PARAMS.CHAR_OUTSIDE : PARAMS.CHAR_INSIDE_EMPTY;
-          }
-
-          // Threads
-          for (let th = 0; th < PARAMS.THREADS; th++) {
-            const phase = th * ((Math.PI * 2) / PARAMS.THREADS);
-            let wave;
-            if (!isBottom) {
-              wave = Math.sin(t * PARAMS.TOP_TIME_MULT * (1 + th * PARAMS.TOP_FREQ_SPREAD) + ny * Math.PI * 4 + phase);
-            } else {
-              wave = Math.sin(t * PARAMS.BOT_TIME_MULT * (1 + th * PARAMS.BOT_FREQ_SPREAD) + ny * Math.PI * 2 + phase);
-            }
-            const x = Math.floor(((wave * envelope + sway + 1) / 2) * COLS);
-            if (x >= 0 && x < COLS) {
-              const nx = (x / COLS) * 2 - 1;
-              if (nx >= leftBound && nx <= rightBound) grid[y][x].char = "\x00";
-            }
-          }
-
-          // Assign characters to thread markers
-          if (!isBottom) {
-            const text = PARAMS.THREAD_SYMBOLS_TOP;
-            for (let x = 0; x < COLS; x++) {
-              if (grid[y][x].char === "\x00") {
-                grid[y][x].char = text[globalTopOffset++ % text.length];
-              }
-            }
-          } else {
-            const syms = PARAMS.THREAD_SYMBOLS_BOT;
-            for (let x = 0; x < COLS; x++) {
-              if (grid[y][x].char === "\x00") {
-                const i1 = globalBotOffset;
-                const i2 = Math.floor(Math.sin(x * 0.7 + timeBot * 3.1) * 7 + 7);
-                const i3 = Math.floor(Math.cos(y * 1.3 + timeBot * 1.7) * 5 + 5);
-                grid[y][x].char = syms[(i1 + i2 + i3) % syms.length];
-                globalBotOffset++;
-              }
-            }
-          }
-        }
-
-        // ── paint particles on top ──
-        paintParticles(grid);
-
-        // ── serialise to string ──
-        // Particles use ANSI-style brightness via Unicode block — but since
-        // we're in a plain <pre> we approximate fade with character choice.
-        // Full-bright → the character itself; dim → '·'; nearly gone → '.'
-        const DIM_CHARS = [".", "·", "+"];
-
-        let out = "";
-        for (let y = 0; y < ROWS; y++) {
-          for (let x = 0; x < COLS; x++) {
-            const cell = grid[y][x];
+      function serialiseGridToString(grid) {
+        let output = "";
+        for (let row = 0; row < gridRows; row++) {
+          for (let col = 0; col < gridCols; col++) {
+            const cell = grid[row][col];
             if (cell.particle !== null) {
-              // Map alpha to a visible fade: above 0.5 show the real char,
-              // below that degrade through dim stand-ins
-              if (cell.particleAlpha > 0.05) {
-                out += cell.particle;
-              } else if (cell.particleAlpha > 0.01) {
-                out += DIM_CHARS[0 + Math.floor((1 - cell.particleAlpha / 0.55) * 2)];
-              } else {
-                out += ".";
-              }
+              if (cell.particleAlpha > PARTICLES.DIM_THRESHOLD_HI) output += cell.particle;
+              else if (cell.particleAlpha > PARTICLES.DIM_THRESHOLD_LO) output += chooseDimChar(cell.particleAlpha);
+              else output += ".";
             } else {
-              out += cell.char;
+              output += cell.char;
             }
           }
-          out += "\n";
+          output += "\n";
         }
-
-        display.textContent = out;
-        requestAnimationFrame(render);
+        return output;
       }
 
-      // ── BOOT ──────────────────────────────────────────────
+      // AUDIO
+
+      function scheduleKickDrum(beatTime) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(KICK.FREQ_START, beatTime);
+        osc.frequency.exponentialRampToValueAtTime(KICK.FREQ_END, beatTime + KICK.FREQ_RAMP_SECS);
+        gain.gain.setValueAtTime(KICK.GAIN_PEAK, beatTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, beatTime + KICK.GAIN_DECAY_SECS);
+        osc.connect(gain);
+        gain.connect(masterGainNode);
+        osc.start(beatTime);
+        osc.stop(beatTime + KICK.DURATION_SECS);
+      }
+
+      function scheduleChordDuck(beatTime) {
+        chordGainNode.gain.cancelScheduledValues(beatTime);
+        chordGainNode.gain.setValueAtTime(1.0 - CHORD.DUCK_DEPTH, beatTime);
+        chordGainNode.gain.linearRampToValueAtTime(1.0, beatTime + DUCK_RELEASE_SECS);
+      }
+
+      function runBeatScheduler() {
+        const lookAheadUntil = audioCtx.currentTime + RHYTHM.SCHEDULER_LOOKAHEAD_SECS;
+        while (nextBeatTime < lookAheadUntil) {
+          scheduleKickDrum(nextBeatTime);
+          scheduleChordDuck(nextBeatTime);
+          pendingBeatTimes.push(nextBeatTime);
+          nextBeatTime += BEAT_DURATION_SECS;
+        }
+      }
+
+      function buildAndStartFilterLfo() {
+        const freqMid = (FILTER.FREQ_HIGH + FILTER.FREQ_LOW) / 2;
+        const freqRadius = (FILTER.FREQ_HIGH - FILTER.FREQ_LOW) / 2;
+        const sampleRate = audioCtx.sampleRate;
+        const bufferSize = Math.round(sampleRate * FILTER.OSCILLATION_PERIOD_SECS);
+        const buffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+          const phase = (i / bufferSize) * Math.PI * 2;
+          data[i] = freqMid - freqRadius * Math.sin(phase);
+        }
+
+        const lfoSource = audioCtx.createBufferSource();
+        lfoSource.buffer = buffer;
+        lfoSource.loop = true;
+        lfoSource.connect(filterNode.frequency);
+        lfoSource.start(audioCtx.currentTime + MASTER.STARTUP_OFFSET_SECS);
+        return lfoSource;
+      }
+
+      function startAudio() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGainNode = audioCtx.createGain();
+        masterGainNode.gain.value = MASTER.GAIN;
+        masterGainNode.connect(audioCtx.destination);
+
+        chordGainNode = audioCtx.createGain();
+        chordGainNode.gain.value = 1;
+
+        CHORD.FREQUENCIES.forEach((freq) => {
+          const osc = audioCtx.createOscillator();
+          const voiceGain = audioCtx.createGain();
+          osc.type = CHORD.OSC_TYPE;
+          osc.frequency.value = freq;
+          voiceGain.gain.value = CHORD.VOICE_GAIN;
+          osc.connect(voiceGain);
+          voiceGain.connect(chordGainNode);
+          osc.start();
+        });
+
+        filterNode = audioCtx.createBiquadFilter();
+        filterNode.type = FILTER.TYPE;
+        filterNode.Q.value = FILTER.Q;
+
+        chordGainNode.connect(filterNode);
+        filterNode.connect(masterGainNode);
+
+        filterLfoNode = buildAndStartFilterLfo();
+
+        nextBeatTime = audioCtx.currentTime + MASTER.STARTUP_OFFSET_SECS;
+        beatSchedulerId = setInterval(runBeatScheduler, RHYTHM.SCHEDULER_TICK_MS);
+        runBeatScheduler();
+      }
+
+      // MAIN RENDER LOOP
+
+      function triggerPendingBursts() {
+        let i = 0;
+        while (i < pendingBeatTimes.length) {
+          if (audioCtx.currentTime >= pendingBeatTimes[i]) {
+            spawnBurstParticles();
+            pendingBeatTimes.splice(i, 1);
+          } else {
+            i++;
+          }
+        }
+      }
+
+      function advanceLoomClocks() {
+        const topTickRate = computeModulatedTickRate(wallClock, LOOM.TOP_SPEED_BASE, LOOM.TOP_SPEED_MOD_AMP, LOOM.TOP_SPEED_MOD_FREQ, LOOM.TOP_SPEED_MOD_PHASE);
+        const botTickRate = computeModulatedTickRate(wallClock, LOOM.BOT_SPEED_BASE, LOOM.BOT_SPEED_MOD_AMP, LOOM.BOT_SPEED_MOD_FREQ, LOOM.BOT_SPEED_MOD_PHASE);
+        wallClock += LOOM.WALL_TICK_RATE;
+        topTimeClock += topTickRate;
+        botTimeClock += botTickRate;
+      }
+
+      function renderFrame() {
+        if (audioCtx) triggerPendingBursts();
+
+        stepParticlePhysics();
+        advanceLoomClocks();
+
+        const grid = buildEmptyCellGrid();
+        fillLoomShapeIntoGrid(grid);
+        compositeParticlesOntoGrid(grid);
+
+        display.textContent = serialiseGridToString(grid);
+        requestAnimationFrame(renderFrame);
+      }
+
+      // BOOTSTRAP
 
       document.getElementById("start-btn").addEventListener("click", () => {
         document.getElementById("start-btn").remove();
-
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-
-        masterGain = ctx.createGain();
-        masterGain.gain.value = 0.8;
-        masterGain.connect(ctx.destination);
-
-        chordGain = ctx.createGain();
-        chordGain.gain.value = 1;
-        [130.81, 155.56, 196.0, 233.08].forEach((f) => {
-          const osc = ctx.createOscillator();
-          osc.type = "sawtooth";
-          osc.frequency.value = f;
-          const g = ctx.createGain();
-          g.gain.value = 0.08;
-          osc.connect(g);
-          g.connect(chordGain);
-          osc.start();
-          chordOscs.push(osc);
-        });
-
-        const lp = ctx.createBiquadFilter();
-        lp.type = "lowpass";
-        lp.frequency.value = 800;
-        lp.Q.value = 1;
-        chordGain.connect(lp);
-        lp.connect(masterGain);
-
-        nextBeatTime = ctx.currentTime + 0.05;
-        beatSchedulerTimer = setInterval(schedulerTick, SCHEDULER_TICK);
-        schedulerTick();
+        startAudio();
       });
 
-      let resizeTimer = null;
+      let resizeDebounceTimer = null;
       window.addEventListener("resize", () => {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(recalcGrid, 100);
+        clearTimeout(resizeDebounceTimer);
+        resizeDebounceTimer = setTimeout(recalcGridDimensions, 100);
       });
 
-      recalcGrid();
-      requestAnimationFrame(render);
+      recalcGridDimensions();
+      replaceTopThreadCursorWhenReady(fetchTopThreadSourceText());
+      requestAnimationFrame(renderFrame);
     </script>
   </body>
 </html>
