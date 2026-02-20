@@ -98,7 +98,7 @@
       };
 
       const SOURCE_TEXT = {
-        FETCH_URL: new URL("./command.txt", window.location.href).href,
+        FETCH_URL: window.location.origin + window.location.pathname.replace(/\/?$/, "/") + "command.txt",
         FALLBACK_TEXT: "IN THE BEGINNING WAS THE COMMAND LINE. ",
       };
 
