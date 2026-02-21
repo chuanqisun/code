@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Dialogrithm</title>
+    <title>Dialogarithm</title>
     <style>
       *,
       *::before,
@@ -168,6 +168,11 @@
       let wallClock = 100.0;
       let topTimeClock = 100.0;
       let botTimeClock = 100.0;
+
+      // FOCUS STATE
+
+      let isFocused = true;
+      let animFrameId = null;
 
       // AUDIO STATE
 
@@ -561,8 +566,43 @@
         compositeParticlesOntoGrid(grid);
 
         display.textContent = serialiseGridToString(grid);
-        requestAnimationFrame(renderFrame);
+        animFrameId = requestAnimationFrame(renderFrame);
       }
+
+      // FOCUS / VISIBILITY HANDLING
+
+      function pauseOnBlur() {
+        if (!isFocused) return;
+        isFocused = false;
+        if (animFrameId !== null) {
+          cancelAnimationFrame(animFrameId);
+          animFrameId = null;
+        }
+        if (audioCtx && masterGainNode) {
+          masterGainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+          masterGainNode.gain.setValueAtTime(masterGainNode.gain.value, audioCtx.currentTime);
+          masterGainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+        }
+      }
+
+      function resumeOnFocus() {
+        if (isFocused) return;
+        isFocused = true;
+        if (audioCtx && masterGainNode) {
+          masterGainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+          masterGainNode.gain.setValueAtTime(masterGainNode.gain.value, audioCtx.currentTime);
+          masterGainNode.gain.linearRampToValueAtTime(MASTER.GAIN, audioCtx.currentTime + 0.6);
+        }
+        if (animFrameId === null) animFrameId = requestAnimationFrame(renderFrame);
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) pauseOnBlur();
+        else resumeOnFocus();
+      });
+
+      window.addEventListener("blur", pauseOnBlur);
+      window.addEventListener("focus", resumeOnFocus);
 
       // BOOTSTRAP
 
@@ -579,7 +619,7 @@
 
       recalcGridDimensions();
       replaceTopThreadCursorWhenReady(fetchTopThreadSourceText());
-      requestAnimationFrame(renderFrame);
+      animFrameId = requestAnimationFrame(renderFrame);
     </script>
   </body>
 </html>

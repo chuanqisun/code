@@ -43,7 +43,7 @@
 - [Clipboard++](./clipboard/)
 - [Device Orientation API](./device-orientation-api/)
 - [Dialogica Times](./design-fiction/dialogica-times.html)
-- [Dialogrithm](./dialogrithm/)
+- [Dialogarithm](./dialogarithm/)
 - [Digital Entropy](./digital-entropy/)
 - [Disco Ball](./disco-ball/)
 - [Dot grid field](./dot-grid-field/)
