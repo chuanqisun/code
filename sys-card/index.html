@@ -64,15 +64,11 @@
 
       /* Horizontal → vertical when container is narrow */
       @container card-h (max-width: 420px) {
-          .sc-h { grid-template-columns: 1fr; row-gap: 1px; column-gap: 0; }
           .sc-h > .sc-img-wrap.h-full { height: 200px; min-height: auto; }
       }
-      /* Fallback for no container query support */
-      @supports not (container-type: inline-size) {
-          @media (max-width: 500px) {
-              .sc-h { grid-template-columns: 1fr !important; row-gap: 1px; column-gap: 0; }
-              .sc-h > .sc-img-wrap.h-full { height: 200px; min-height: auto; }
-          }
+      @media (max-width: 500px) {
+          .sc-h { grid-template-columns: 1fr; row-gap: 1px; column-gap: 0; }
+          .sc-h > .sc-img-wrap.h-full { height: 200px; min-height: auto; }
       }
 
       /* ── Column Modules ── */
@@ -85,7 +81,7 @@
 
       /* Container-query responsive columns */
       @container card (max-width: 260px) {
-          .sc-cols-3 { grid-template-columns: 1fr 1fr; }
+          .sc-cols-3 { grid-template-columns: 1fr; }
           .sc-cols-4 { grid-template-columns: 1fr 1fr; }
       }
       @container card (max-width: 200px) {
@@ -97,7 +93,7 @@
       /* Fallback for no container query support */
       @supports not (container-type: inline-size) {
           @media (max-width: 360px) {
-              .sc-cols-3 { grid-template-columns: 1fr 1fr !important; }
+              .sc-cols-3 { grid-template-columns: 1fr !important; }
               .sc-cols-4 { grid-template-columns: 1fr 1fr !important; }
           }
           @media (max-width: 280px) {
