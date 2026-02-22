@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SYS.CARD | Design System</title>
+    <title>SYS.CARD — Design System</title>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css" />
 
@@ -11,7 +11,7 @@
          DESIGN SYSTEM STYLESHEET — sys.card.css
          ═══════════════════════════════════════════════════════════════ -->
     <style id="syscard-css">
-      /* sys.card.css v1.0 */
+      /* sys.card.css v1.1 — responsive */
       :root {
           --c-fg: #000000;
           --c-bg: #ffffff;
@@ -35,8 +35,13 @@
           font-size: 12px;
           line-height: 1.5;
           color: var(--c-fg);
+          container-type: inline-size;
+          container-name: card;
       }
       .sc > * { background: var(--c-bg); }
+
+      /* Fluid card — no max-width */
+      .sc-fluid { max-width: none; }
 
       .sc-h {
           display: grid;
@@ -50,9 +55,25 @@
           font-size: 12px;
           line-height: 1.5;
           color: var(--c-fg);
+          container-type: inline-size;
+          container-name: card-h;
       }
       .sc-h > * { background: var(--c-bg); }
       .sc-h > .sc { border: none; max-width: none; }
+      .sc-h-fluid { max-width: none; }
+
+      /* Horizontal → vertical when container is narrow */
+      @container card-h (max-width: 420px) {
+          .sc-h { grid-template-columns: 1fr; row-gap: 1px; column-gap: 0; }
+          .sc-h > .sc-img-wrap.h-full { height: 200px; min-height: auto; }
+      }
+      /* Fallback for no container query support */
+      @supports not (container-type: inline-size) {
+          @media (max-width: 500px) {
+              .sc-h { grid-template-columns: 1fr !important; row-gap: 1px; column-gap: 0; }
+              .sc-h > .sc-img-wrap.h-full { height: 200px; min-height: auto; }
+          }
+      }
 
       /* ── Column Modules ── */
       .sc-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--c-fg); }
@@ -62,16 +83,44 @@
       .sc-cols-3 > *,
       .sc-cols-4 > * { background: var(--c-bg); padding: calc(var(--u)*2); }
 
+      /* Container-query responsive columns */
+      @container card (max-width: 260px) {
+          .sc-cols-3 { grid-template-columns: 1fr 1fr; }
+          .sc-cols-4 { grid-template-columns: 1fr 1fr; }
+      }
+      @container card (max-width: 200px) {
+          .sc-cols-2 { grid-template-columns: 1fr; }
+          .sc-cols-3 { grid-template-columns: 1fr; }
+          .sc-cols-4 { grid-template-columns: 1fr; }
+      }
+
+      /* Fallback for no container query support */
+      @supports not (container-type: inline-size) {
+          @media (max-width: 360px) {
+              .sc-cols-3 { grid-template-columns: 1fr 1fr !important; }
+              .sc-cols-4 { grid-template-columns: 1fr 1fr !important; }
+          }
+          @media (max-width: 280px) {
+              .sc-cols-2 { grid-template-columns: 1fr !important; }
+              .sc-cols-3 { grid-template-columns: 1fr !important; }
+              .sc-cols-4 { grid-template-columns: 1fr !important; }
+          }
+      }
+
       /* ── List ── */
       .sc-list { display: grid; grid-template-columns: 1fr; row-gap: 1px; background: var(--c-fg); }
-      .sc-list > * { background: var(--c-bg); display: flex; justify-content: space-between; align-items: center; padding: var(--u) calc(var(--u)*2); }
+      .sc-list > * { background: var(--c-bg); display: flex; justify-content: space-between; align-items: center; padding: var(--u) calc(var(--u)*2); gap: var(--u); }
 
       /* ── Blocks ── */
       .sc-pad { padding: calc(var(--u)*2); }
-      .sc-header { display: flex; justify-content: space-between; align-items: baseline; }
+      .sc-header { display: flex; justify-content: space-between; align-items: baseline; gap: var(--u); flex-wrap: wrap; }
       .sc-img-wrap { width: 100%; height: 200px; overflow: hidden; }
       .sc-img-wrap.h-full { height: 100%; min-height: 200px; }
       .sc-img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) contrast(110%); display: block; }
+
+      @container card (max-width: 200px) {
+          .sc-img-wrap { height: 140px; }
+      }
 
       /* ── Actions ── */
       .sc-actions {
@@ -79,7 +128,11 @@
           gap: 1px;
           background: var(--c-fg);
       }
-      .sc-actions > * { background: var(--c-bg); flex: 1; }
+      .sc-actions > * { background: var(--c-bg); flex: 1; min-width: 0; }
+
+      @container card (max-width: 220px) {
+          .sc-actions { flex-direction: column; }
+      }
 
       .sc-action {
           display: flex;
@@ -98,6 +151,9 @@
           cursor: pointer;
           transition: background 0.1s, color 0.1s;
           width: 100%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
       }
       .sc-action:hover { background: var(--c-fg); color: var(--c-bg); }
 
@@ -135,7 +191,12 @@
       .t-md { font-size: 12px; }
       .t-sm { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
       .t-label { display: block; font-size: 10px; text-transform: uppercase; margin-bottom: 3px; color: var(--c-mute); letter-spacing: 0.3px; }
-      .t-value { display: block; font-size: 14px; }
+      .t-value { display: block; font-size: 14px; word-break: break-all; }
+
+      @container card (max-width: 200px) {
+          .t-lg { font-size: 13px; }
+          .t-value { font-size: 12px; }
+      }
 
       /* ── Loading ── */
       @keyframes sc-pulse {
@@ -191,6 +252,7 @@
           font-size: 13px;
           line-height: 1.55;
           -webkit-font-smoothing: antialiased;
+          overflow-x: hidden;
       }
 
       .site-header {
@@ -199,9 +261,11 @@
           display: flex;
           justify-content: space-between;
           align-items: baseline;
+          flex-wrap: wrap;
+          gap: calc(var(--u)*2);
       }
       .site-header h1 { font-size: 20px; font-weight: 400; letter-spacing: -0.5px; text-transform: uppercase; }
-      .site-nav { display: flex; align-items: center; gap: calc(var(--u)*3); }
+      .site-nav { display: flex; align-items: center; gap: calc(var(--u)*2); flex-wrap: wrap; }
       .site-nav a {
           color: var(--c-fg);
           text-decoration: none;
@@ -268,7 +332,13 @@
       .theme-bar {
           display: flex;
           align-items: center;
-          gap: calc(var(--u)*3);
+          gap: calc(var(--u)*2);
+          flex-wrap: wrap;
+      }
+      .theme-colors {
+          display: flex;
+          align-items: center;
+          gap: calc(var(--u)*2);
           flex-wrap: wrap;
       }
       .theme-field {
@@ -281,7 +351,7 @@
           text-transform: uppercase;
           letter-spacing: 0.5px;
           color: var(--c-mute);
-          min-width: 60px;
+          min-width: 50px;
       }
       .theme-field input[type="color"] {
           -webkit-appearance: none;
@@ -299,6 +369,7 @@
       .theme-presets {
           display: flex;
           gap: calc(var(--u)*0.5);
+          flex-wrap: wrap;
           margin-left: auto;
       }
 
@@ -313,18 +384,23 @@
           border-right: 1px solid var(--c-fg);
           display: flex;
           flex-direction: column;
+          min-width: 0;
       }
       .repl-preview {
           width: 50%;
           background: var(--c-surface);
           padding: calc(var(--u)*3);
-          overflow-y: auto;
+          overflow: auto;
           display: flex;
           align-items: flex-start;
           justify-content: center;
+          min-width: 0;
+      }
+      .repl-preview > * {
+          max-width: 100%;
       }
       .repl-toolbar {
-          padding: var(--u) calc(var(--u)*2);
+          padding: var(--u) calc(var(--u)*1.5);
           border-bottom: 1px solid var(--c-fg);
           display: flex;
           gap: calc(var(--u)*0.5);
@@ -412,13 +488,76 @@
       }
       .ref-group li span { color: var(--c-mute); font-size: 10px; text-align: right; white-space: nowrap; }
 
-      @media (max-width: 900px) {
-          .principles-grid { grid-template-columns: 1fr 1fr; }
+      /* ── Layout toggle (editor / preview / split) ── */
+      .layout-toggle { display: none; }
+
+      /* ═══════════════════════════════════════════════════════════
+         RESPONSIVE — SITE
+         ═══════════════════════════════════════════════════════════ */
+
+      /* ── Tablet ── */
+      @media (max-width: 960px) {
+          .principles-grid { grid-template-columns: repeat(2, 1fr); }
+          .ref-grid { grid-template-columns: repeat(2, 1fr); gap: calc(var(--u)*3); }
+      }
+
+      /* ── Small tablet / large phone ── */
+      @media (max-width: 740px) {
+          .site-header { padding: calc(var(--u)*2); }
+          .site-header h1 { font-size: 17px; }
+          section { padding: calc(var(--u)*3) calc(var(--u)*2); }
+
           .repl-wrap { flex-direction: column; height: auto; }
-          .repl-editor, .repl-preview { width: 100%; min-height: 360px; }
-          .repl-editor { border-right: none; border-bottom: 1px solid var(--c-fg); }
-          .ref-grid { grid-template-columns: 1fr; }
-          .theme-presets { margin-left: 0; }
+          .repl-editor {
+              width: 100%;
+              border-right: none;
+              border-bottom: 1px solid var(--c-fg);
+          }
+          .repl-preview {
+              width: 100%;
+              min-height: 400px;
+              padding: calc(var(--u)*2);
+          }
+
+          .layout-toggle { display: flex; gap: calc(var(--u)*0.5); }
+          .repl-wrap[data-layout="editor"] .repl-preview { display: none; }
+          .repl-wrap[data-layout="editor"] .repl-editor { width: 100%; min-height: 420px; border-bottom: none; }
+          .repl-wrap[data-layout="preview"] .repl-editor { display: none; }
+          .repl-wrap[data-layout="preview"] .repl-preview { width: 100%; min-height: 500px; }
+          .repl-wrap[data-layout="split"] .repl-editor,
+          .repl-wrap[data-layout="split"] .repl-preview { display: flex; }
+
+          .theme-presets { margin-left: 0; width: 100%; }
+      }
+
+      /* ── Phone ── */
+      @media (max-width: 540px) {
+          .site-header { flex-direction: column; align-items: flex-start; gap: var(--u); }
+          .site-nav { gap: calc(var(--u)*1.5); }
+
+          .principles-grid { grid-template-columns: 1fr; }
+          .ref-grid { grid-template-columns: 1fr; gap: calc(var(--u)*3); }
+
+          .theme-colors { width: 100%; }
+          .theme-field { flex: 1; min-width: 0; }
+          .theme-field label { min-width: 40px; font-size: 9px; }
+
+          .repl-toolbar { gap: 3px; padding: calc(var(--u)*0.75) var(--u); }
+          .repl-toolbar .btn { padding: 3px 7px; font-size: 9px; }
+          .repl-toolbar .sep { display: none; }
+
+          .inline-code { font-size: 10px; word-break: break-all; white-space: normal; }
+
+          h2 { font-size: 10px; margin-bottom: calc(var(--u)*2); }
+      }
+
+      /* ── Very small phone ── */
+      @media (max-width: 380px) {
+          section { padding: calc(var(--u)*2) calc(var(--u)*1.5); }
+          .principles-grid > div { padding: calc(var(--u)*2); }
+          .principles-grid p { font-size: 11px; }
+          .ref-group li { flex-direction: column; gap: 2px; }
+          .ref-group li span { text-align: left; }
       }
     </style>
   </head>
@@ -441,29 +580,29 @@
         <div>
           <h3>Modularity</h3>
           <p>
-            Cards assemble from discrete blocks — header, image, data grid, list, actions, body. Blocks are interchangeable and order-independent. Add what you
-            need, omit what you don't. The system composes; it never prescribes.
+            Cards assemble from discrete blocks. Blocks are interchangeable and order-independent. Add what you need, omit what you don't: header, image, data
+            grid, list, actions, body.
           </p>
         </div>
         <div>
           <h3>Proportion</h3>
           <p>
             All spacing derives from a single 8px unit. Padding is 2u. Gaps are 1px. Type steps at 10, 12, 14, 15. No magic numbers. Every measurement traces to
-            the base unit, producing consistent rhythm across all configurations.
+            the base unit.
           </p>
         </div>
         <div>
           <h3>Grid</h3>
           <p>
             The root card is a CSS Grid with row-gap: 1px over a foreground-colored background. Children fill with the background color. The gap reveals the
-            line. Nested modules repeat this pattern. One mechanism, zero border doubling.
+            line. One mechanism, zero border doubling.
           </p>
         </div>
         <div>
           <h3>Contrast</h3>
           <p>
-            Two values: foreground and background. Lines, text, and loading states use foreground. Surfaces use background. Grayscale images enforce tonal
-            unity. Swap two CSS custom properties and every element follows.
+            Two values: foreground and background. Lines, text, and loading states use foreground. Surfaces use background. Swap two CSS custom properties and
+            every element follows.
           </p>
         </div>
       </div>
@@ -472,9 +611,13 @@
     <!-- ── GET STARTED ── -->
     <section id="start">
       <h2>02 — Get Started</h2>
-      <p class="max-w-none">
+      <p>
         Download <a href="#" class="inline-link" id="btn-download">sys.card.css</a> and include it in your document head with
         <span class="inline-code">&lt;link rel="stylesheet" href="sys.card.css"&gt;</span>
+      </p>
+      <p>
+        Cards are responsive by default via container queries. Columns collapse, horizontal cards stack, and typography scales — all driven by the card's own
+        width, not the viewport. Add <code>.sc-fluid</code> to remove the default max-width constraint.
       </p>
     </section>
 
@@ -482,21 +625,23 @@
     <section id="theme">
       <h2>03 — Theme</h2>
       <div class="theme-bar">
-        <div class="theme-field">
-          <label>Foreground</label>
-          <input type="color" id="t-fg" value="#000000" />
-        </div>
-        <div class="theme-field">
-          <label>Background</label>
-          <input type="color" id="t-bg" value="#ffffff" />
-        </div>
-        <div class="theme-field">
-          <label>Muted</label>
-          <input type="color" id="t-mute" value="#888888" />
-        </div>
-        <div class="theme-field">
-          <label>Surface</label>
-          <input type="color" id="t-surface" value="#f4f4f4" />
+        <div class="theme-colors">
+          <div class="theme-field">
+            <label>Foreground</label>
+            <input type="color" id="t-fg" value="#000000" />
+          </div>
+          <div class="theme-field">
+            <label>Background</label>
+            <input type="color" id="t-bg" value="#ffffff" />
+          </div>
+          <div class="theme-field">
+            <label>Muted</label>
+            <input type="color" id="t-mute" value="#888888" />
+          </div>
+          <div class="theme-field">
+            <label>Surface</label>
+            <input type="color" id="t-surface" value="#f4f4f4" />
+          </div>
         </div>
         <div class="theme-presets">
           <button class="btn active" data-theme="light">Light</button>
@@ -511,7 +656,7 @@
     <!-- ── REPL ── -->
     <section id="repl">
       <h2>04 — REPL</h2>
-      <div class="repl-wrap">
+      <div class="repl-wrap" id="repl-wrap" data-layout="split">
         <div class="repl-editor">
           <div class="repl-toolbar">
             <button class="btn preset-btn active" data-preset="standard">Standard</button>
@@ -523,6 +668,12 @@
             <button class="btn preset-btn" data-preset="minimal">Minimal</button>
             <div class="sep"></div>
             <button class="btn-ghost" id="btn-copy">Copy ↗</button>
+            <div class="layout-toggle">
+              <div class="sep"></div>
+              <button class="btn layout-btn" data-layout="editor">Code</button>
+              <button class="btn layout-btn active" data-layout="split">Split</button>
+              <button class="btn layout-btn" data-layout="preview">Preview</button>
+            </div>
           </div>
           <textarea id="editor"></textarea>
         </div>
@@ -538,7 +689,9 @@
           <h3>Layout</h3>
           <ul>
             <li><code>.sc</code> <span>Root vertical card</span></li>
+            <li><code>.sc-fluid</code> <span>Remove max-width</span></li>
             <li><code>.sc-h</code> <span>Root horizontal card</span></li>
+            <li><code>.sc-h-fluid</code> <span>Fluid horizontal</span></li>
             <li><code>.sc-cols-2</code> <span>2-column row</span></li>
             <li><code>.sc-cols-3</code> <span>3-column row</span></li>
             <li><code>.sc-cols-4</code> <span>4-column row</span></li>
@@ -572,7 +725,7 @@
           <h3>Loading</h3>
           <ul>
             <li><code>.ld-img</code> <span>Image area skeleton</span></li>
-            <li><code>.ld-block</code> <span>Block-level skeleton bar</span></li>
+            <li><code>.ld-block</code> <span>Block-level skeleton</span></li>
             <li><code>.ld-inline</code> <span>Inline skeleton rect</span></li>
           </ul>
         </div>
@@ -633,7 +786,7 @@
   </div>
 
   <div class="sc-pad">
-    <p class="t-md max-w-none">Primary load-bearing mechanism.
+    <p class="t-md">Primary load-bearing mechanism.
 Calibrated for high-stress environments.
 Tolerance: ±0.005mm.</p>
   </div>
@@ -671,7 +824,7 @@ Tolerance: ±0.005mm.</p>
     </div>
 
     <div class="sc-pad flex-grow">
-      <p class="t-md max-w-none">Sequential processing unit for
+      <p class="t-md">Sequential processing unit for
 real-time telemetry. Active cooling
 required above 60% capacity.
 <a href="#" class="sc-link">View specs</a></p>
@@ -694,7 +847,7 @@ required above 60% capacity.
   </div>
 
   <div class="sc-pad">
-    <p class="t-md max-w-none">Build verified. All checks passed.
+    <p class="t-md">Build verified. All checks passed.
 Ready for production deployment.
 <a href="#" class="sc-link">View logs</a></p>
   </div>
@@ -906,6 +1059,17 @@ Ready for production deployment.
         const el = document.getElementById("btn-copy");
         el.textContent = "Copied ✓";
         setTimeout(() => (el.textContent = "Copy ↗"), 1200);
+      });
+
+      /* ── Layout Toggle (mobile REPL) ── */
+      document.querySelectorAll(".layout-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".layout-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          const wrap = document.getElementById("repl-wrap");
+          wrap.dataset.layout = btn.dataset.layout;
+          setTimeout(() => cm.refresh(), 50);
+        });
       });
 
       cm.setValue(presets.standard);
