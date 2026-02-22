@@ -72,6 +72,7 @@
 - [Shanshui](./shanshui/)
 - [Shape display](./shape-display/)
 - [Spaceship](./spaceship/)
+- [System Card](./sys-card/)
 - [Text Rain](./text-rain/)
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)

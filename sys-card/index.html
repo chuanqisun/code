@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SYS.CARD | Design System</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css" />
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         DESIGN SYSTEM STYLESHEET — sys.card.css
+         ═══════════════════════════════════════════════════════════════ -->
+    <style id="syscard-css">
+      /* sys.card.css v1.0 */
+      :root {
+          --c-fg: #000000;
+          --c-bg: #ffffff;
+          --c-mute: #888888;
+          --c-surface: #f4f4f4;
+          --c-line: #dddddd;
+          --f-mono: 'SF Mono', 'Roboto Mono', 'Courier New', Courier, monospace;
+          --u: 8px;
+      }
+
+      /* ── Root ── */
+      .sc {
+          display: grid;
+          grid-template-columns: 1fr;
+          row-gap: 1px;
+          background: var(--c-fg);
+          border: 1px solid var(--c-fg);
+          width: 100%;
+          max-width: 320px;
+          font-family: var(--f-mono);
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--c-fg);
+      }
+      .sc > * { background: var(--c-bg); }
+
+      .sc-h {
+          display: grid;
+          grid-template-columns: 220px 1fr;
+          column-gap: 1px;
+          background: var(--c-fg);
+          border: 1px solid var(--c-fg);
+          width: 100%;
+          max-width: 580px;
+          font-family: var(--f-mono);
+          font-size: 12px;
+          line-height: 1.5;
+          color: var(--c-fg);
+      }
+      .sc-h > * { background: var(--c-bg); }
+      .sc-h > .sc { border: none; max-width: none; }
+
+      /* ── Column Modules ── */
+      .sc-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--c-fg); }
+      .sc-cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--c-fg); }
+      .sc-cols-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 1px; background: var(--c-fg); }
+      .sc-cols-2 > *,
+      .sc-cols-3 > *,
+      .sc-cols-4 > * { background: var(--c-bg); padding: calc(var(--u)*2); }
+
+      /* ── List ── */
+      .sc-list { display: grid; grid-template-columns: 1fr; row-gap: 1px; background: var(--c-fg); }
+      .sc-list > * { background: var(--c-bg); display: flex; justify-content: space-between; align-items: center; padding: var(--u) calc(var(--u)*2); }
+
+      /* ── Blocks ── */
+      .sc-pad { padding: calc(var(--u)*2); }
+      .sc-header { display: flex; justify-content: space-between; align-items: baseline; }
+      .sc-img-wrap { width: 100%; height: 200px; overflow: hidden; }
+      .sc-img-wrap.h-full { height: 100%; min-height: 200px; }
+      .sc-img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(100%) contrast(110%); display: block; }
+
+      /* ── Actions ── */
+      .sc-actions {
+          display: flex;
+          gap: 1px;
+          background: var(--c-fg);
+      }
+      .sc-actions > * { background: var(--c-bg); flex: 1; }
+
+      .sc-action {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          padding: calc(var(--u)*1.25) calc(var(--u)*2);
+          font-family: var(--f-mono);
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          text-decoration: none;
+          color: var(--c-fg);
+          border: none;
+          background: var(--c-bg);
+          cursor: pointer;
+          transition: background 0.1s, color 0.1s;
+          width: 100%;
+      }
+      .sc-action:hover { background: var(--c-fg); color: var(--c-bg); }
+
+      .sc-action-full {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          padding: calc(var(--u)*1.25) calc(var(--u)*2);
+          font-family: var(--f-mono);
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          text-decoration: none;
+          color: var(--c-fg);
+          border: none;
+          background: var(--c-bg);
+          cursor: pointer;
+          transition: background 0.1s, color 0.1s;
+          width: 100%;
+      }
+      .sc-action-full:hover { background: var(--c-fg); color: var(--c-bg); }
+
+      .sc-link {
+          color: var(--c-fg);
+          text-decoration: none;
+          border-bottom: 1px solid var(--c-fg);
+          font-size: inherit;
+          transition: opacity 0.1s;
+      }
+      .sc-link:hover { opacity: 0.5; }
+
+      /* ── Typography ── */
+      .t-lg { font-size: 15px; text-transform: uppercase; letter-spacing: -0.3px; }
+      .t-md { font-size: 12px; }
+      .t-sm { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .t-label { display: block; font-size: 10px; text-transform: uppercase; margin-bottom: 3px; color: var(--c-mute); letter-spacing: 0.3px; }
+      .t-value { display: block; font-size: 14px; }
+
+      /* ── Loading ── */
+      @keyframes sc-pulse {
+          0%, 100% { opacity: 0.25; }
+          50% { opacity: 0.08; }
+      }
+
+      .ld-img {
+          width: 100%;
+          height: 100%;
+          background: var(--c-fg);
+          animation: sc-pulse 1.8s ease-in-out infinite;
+      }
+
+      .ld-block {
+          display: block;
+          height: 12px;
+          background: var(--c-fg);
+          animation: sc-pulse 1.8s ease-in-out infinite;
+          margin-bottom: 8px;
+      }
+      .ld-block:last-child { margin-bottom: 0; }
+
+      .ld-inline {
+          display: inline-block;
+          height: 1em;
+          vertical-align: middle;
+          background: var(--c-fg);
+          animation: sc-pulse 1.8s ease-in-out infinite;
+      }
+
+      /* ── Utilities ── */
+      .w-100 { width: 100%; }
+      .w-80 { width: 80%; }
+      .w-60 { width: 60%; }
+      .w-40 { width: 40%; }
+      .w-20 { width: 20%; }
+      .flex-grow { flex-grow: 1; }
+      .h-full { height: 100%; }
+      .max-w-none { max-width: none; }
+    </style>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         SITE STYLES
+         ═══════════════════════════════════════════════════════════════ -->
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+          background: var(--c-bg);
+          color: var(--c-fg);
+          font-family: var(--f-mono);
+          font-size: 13px;
+          line-height: 1.55;
+          -webkit-font-smoothing: antialiased;
+      }
+
+      .site-header {
+          padding: calc(var(--u)*3);
+          border-bottom: 1px solid var(--c-fg);
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+      }
+      .site-header h1 { font-size: 20px; font-weight: 400; letter-spacing: -0.5px; text-transform: uppercase; }
+      .site-nav { display: flex; align-items: center; gap: calc(var(--u)*3); }
+      .site-nav a {
+          color: var(--c-fg);
+          text-decoration: none;
+          text-transform: uppercase;
+          font-size: 11px;
+          letter-spacing: 0.3px;
+      }
+      .site-nav a:hover { text-decoration: underline; }
+
+      section {
+          padding: calc(var(--u)*4) calc(var(--u)*3);
+          border-bottom: 1px solid var(--c-fg);
+      }
+
+      h2 {
+          font-size: 11px;
+          font-weight: 400;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          color: var(--c-mute);
+          margin-bottom: calc(var(--u)*3);
+      }
+      h3 { font-size: 13px; font-weight: 600; margin-bottom: var(--u); }
+
+      p { max-width: 640px; margin-bottom: calc(var(--u)*2); }
+      p:last-child { margin-bottom: 0; }
+
+      .inline-code {
+          font-family: var(--f-mono);
+          font-size: 11px;
+          background: var(--c-fg);
+          color: var(--c-bg);
+          padding: 2px 6px;
+          letter-spacing: 0;
+          white-space: nowrap;
+      }
+
+      .inline-link {
+          color: var(--c-fg);
+          text-decoration: none;
+          border-bottom: 1px solid var(--c-fg);
+          cursor: pointer;
+          transition: opacity 0.1s;
+      }
+      .inline-link:hover { opacity: 0.5; }
+
+      code {
+          background: var(--c-surface);
+          padding: 1px 5px;
+          font-size: 11px;
+      }
+
+      .principles-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 1px;
+          background: var(--c-fg);
+          border: 1px solid var(--c-fg);
+      }
+      .principles-grid > div { background: var(--c-bg); padding: calc(var(--u)*3); }
+      .principles-grid h3 { font-size: 12px; margin-bottom: calc(var(--u)*1.5); text-transform: uppercase; letter-spacing: 0.3px; }
+      .principles-grid p { font-size: 12px; margin-bottom: 0; color: var(--c-mute); max-width: none; }
+
+      .theme-bar {
+          display: flex;
+          align-items: center;
+          gap: calc(var(--u)*3);
+          flex-wrap: wrap;
+      }
+      .theme-field {
+          display: flex;
+          align-items: center;
+          gap: var(--u);
+      }
+      .theme-field label {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: var(--c-mute);
+          min-width: 60px;
+      }
+      .theme-field input[type="color"] {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 28px;
+          height: 28px;
+          border: 1px solid var(--c-fg);
+          background: none;
+          cursor: pointer;
+          padding: 0;
+      }
+      .theme-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+      .theme-field input[type="color"]::-webkit-color-swatch { border: none; }
+
+      .theme-presets {
+          display: flex;
+          gap: calc(var(--u)*0.5);
+          margin-left: auto;
+      }
+
+      .repl-wrap {
+          border: 1px solid var(--c-fg);
+          margin-top: calc(var(--u)*2);
+          display: flex;
+          height: 560px;
+      }
+      .repl-editor {
+          width: 50%;
+          border-right: 1px solid var(--c-fg);
+          display: flex;
+          flex-direction: column;
+      }
+      .repl-preview {
+          width: 50%;
+          background: var(--c-surface);
+          padding: calc(var(--u)*3);
+          overflow-y: auto;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+      }
+      .repl-toolbar {
+          padding: var(--u) calc(var(--u)*2);
+          border-bottom: 1px solid var(--c-fg);
+          display: flex;
+          gap: calc(var(--u)*0.5);
+          align-items: center;
+          flex-wrap: wrap;
+      }
+      .repl-toolbar .sep {
+          width: 1px;
+          height: 16px;
+          background: var(--c-line);
+          margin: 0 var(--u);
+      }
+
+      .CodeMirror {
+          height: 100% !important;
+          font-family: var(--f-mono) !important;
+          font-size: 12px;
+          background: var(--c-bg) !important;
+          color: var(--c-fg) !important;
+      }
+      .CodeMirror-gutters { background: var(--c-surface) !important; border-right: 1px solid var(--c-line) !important; }
+      .CodeMirror-linenumber { color: var(--c-mute) !important; }
+      .CodeMirror-cursor { border-left-color: var(--c-fg) !important; }
+      .CodeMirror-selected { background: var(--c-surface) !important; }
+      .cm-s-default .cm-tag { color: var(--c-fg) !important; font-weight: 600; }
+      .cm-s-default .cm-attribute { color: var(--c-mute) !important; }
+      .cm-s-default .cm-string { color: var(--c-fg) !important; opacity: 0.6; }
+      .cm-s-default .cm-comment { color: var(--c-mute) !important; opacity: 0.5; }
+
+      .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: var(--c-bg);
+          border: 1px solid var(--c-fg);
+          padding: 4px 10px;
+          font-family: var(--f-mono);
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          cursor: pointer;
+          color: var(--c-fg);
+          text-decoration: none;
+          transition: background 0.1s, color 0.1s;
+          white-space: nowrap;
+      }
+      .btn:hover { background: var(--c-fg); color: var(--c-bg); }
+      .btn.active { background: var(--c-fg); color: var(--c-bg); }
+
+      .btn-ghost {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: none;
+          border: none;
+          padding: 4px 6px;
+          font-family: var(--f-mono);
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          cursor: pointer;
+          color: var(--c-mute);
+          text-decoration: none;
+          transition: color 0.1s;
+          white-space: nowrap;
+      }
+      .btn-ghost:hover { color: var(--c-fg); }
+
+      .ref-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: calc(var(--u)*4);
+          margin-top: calc(var(--u)*2);
+      }
+      .ref-group h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: calc(var(--u)*1.5); padding-bottom: var(--u); border-bottom: 1px solid var(--c-fg); }
+      .ref-group ul { list-style: none; }
+      .ref-group li {
+          font-size: 11px;
+          margin-bottom: 3px;
+          display: flex;
+          justify-content: space-between;
+          gap: calc(var(--u)*2);
+          padding: 3px 0;
+          border-bottom: 1px dotted var(--c-line);
+      }
+      .ref-group li span { color: var(--c-mute); font-size: 10px; text-align: right; white-space: nowrap; }
+
+      @media (max-width: 900px) {
+          .principles-grid { grid-template-columns: 1fr 1fr; }
+          .repl-wrap { flex-direction: column; height: auto; }
+          .repl-editor, .repl-preview { width: 100%; min-height: 360px; }
+          .repl-editor { border-right: none; border-bottom: 1px solid var(--c-fg); }
+          .ref-grid { grid-template-columns: 1fr; }
+          .theme-presets { margin-left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>SYS.CARD</h1>
+      <nav class="site-nav">
+        <a href="#principles">Principles</a>
+        <a href="#start">Start</a>
+        <a href="#theme">Theme</a>
+        <a href="#repl">REPL</a>
+        <a href="#api">API</a>
+      </nav>
+    </header>
+
+    <!-- ── PRINCIPLES ── -->
+    <section id="principles">
+      <h2>01 — Design Principles</h2>
+      <div class="principles-grid">
+        <div>
+          <h3>Modularity</h3>
+          <p>
+            Cards assemble from discrete blocks — header, image, data grid, list, actions, body. Blocks are interchangeable and order-independent. Add what you
+            need, omit what you don't. The system composes; it never prescribes.
+          </p>
+        </div>
+        <div>
+          <h3>Proportion</h3>
+          <p>
+            All spacing derives from a single 8px unit. Padding is 2u. Gaps are 1px. Type steps at 10, 12, 14, 15. No magic numbers. Every measurement traces to
+            the base unit, producing consistent rhythm across all configurations.
+          </p>
+        </div>
+        <div>
+          <h3>Grid</h3>
+          <p>
+            The root card is a CSS Grid with row-gap: 1px over a foreground-colored background. Children fill with the background color. The gap reveals the
+            line. Nested modules repeat this pattern. One mechanism, zero border doubling.
+          </p>
+        </div>
+        <div>
+          <h3>Contrast</h3>
+          <p>
+            Two values: foreground and background. Lines, text, and loading states use foreground. Surfaces use background. Grayscale images enforce tonal
+            unity. Swap two CSS custom properties and every element follows.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── GET STARTED ── -->
+    <section id="start">
+      <h2>02 — Get Started</h2>
+      <p class="max-w-none">
+        Download <a href="#" class="inline-link" id="btn-download">sys.card.css</a> and include it in your document head with
+        <span class="inline-code">&lt;link rel="stylesheet" href="sys.card.css"&gt;</span>
+      </p>
+    </section>
+
+    <!-- ── THEME ── -->
+    <section id="theme">
+      <h2>03 — Theme</h2>
+      <div class="theme-bar">
+        <div class="theme-field">
+          <label>Foreground</label>
+          <input type="color" id="t-fg" value="#000000" />
+        </div>
+        <div class="theme-field">
+          <label>Background</label>
+          <input type="color" id="t-bg" value="#ffffff" />
+        </div>
+        <div class="theme-field">
+          <label>Muted</label>
+          <input type="color" id="t-mute" value="#888888" />
+        </div>
+        <div class="theme-field">
+          <label>Surface</label>
+          <input type="color" id="t-surface" value="#f4f4f4" />
+        </div>
+        <div class="theme-presets">
+          <button class="btn active" data-theme="light">Light</button>
+          <button class="btn" data-theme="dark">Dark</button>
+          <button class="btn" data-theme="warm">Warm</button>
+          <button class="btn" data-theme="terminal">Terminal</button>
+          <button class="btn" data-theme="phosphor">Phosphor</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── REPL ── -->
+    <section id="repl">
+      <h2>04 — REPL</h2>
+      <div class="repl-wrap">
+        <div class="repl-editor">
+          <div class="repl-toolbar">
+            <button class="btn preset-btn active" data-preset="standard">Standard</button>
+            <button class="btn preset-btn" data-preset="horizontal">Horizontal</button>
+            <button class="btn preset-btn" data-preset="actions">Actions</button>
+            <button class="btn preset-btn" data-preset="dense">Dense</button>
+            <button class="btn preset-btn" data-preset="loading">Loading</button>
+            <button class="btn preset-btn" data-preset="partial">Partial</button>
+            <button class="btn preset-btn" data-preset="minimal">Minimal</button>
+            <div class="sep"></div>
+            <button class="btn-ghost" id="btn-copy">Copy ↗</button>
+          </div>
+          <textarea id="editor"></textarea>
+        </div>
+        <div class="repl-preview" id="preview"></div>
+      </div>
+    </section>
+
+    <!-- ── API REFERENCE ── -->
+    <section id="api">
+      <h2>05 — API Reference</h2>
+      <div class="ref-grid">
+        <div class="ref-group">
+          <h3>Layout</h3>
+          <ul>
+            <li><code>.sc</code> <span>Root vertical card</span></li>
+            <li><code>.sc-h</code> <span>Root horizontal card</span></li>
+            <li><code>.sc-cols-2</code> <span>2-column row</span></li>
+            <li><code>.sc-cols-3</code> <span>3-column row</span></li>
+            <li><code>.sc-cols-4</code> <span>4-column row</span></li>
+            <li><code>.sc-list</code> <span>Vertical list</span></li>
+          </ul>
+        </div>
+        <div class="ref-group">
+          <h3>Blocks</h3>
+          <ul>
+            <li><code>.sc-pad</code> <span>Padded content</span></li>
+            <li><code>.sc-header</code> <span>Space-between flex</span></li>
+            <li><code>.sc-img-wrap</code> <span>Image container</span></li>
+            <li><code>.sc-img</code> <span>Grayscale image</span></li>
+            <li><code>.sc-actions</code> <span>Split action bar</span></li>
+            <li><code>.sc-action</code> <span>Action button/link</span></li>
+            <li><code>.sc-action-full</code> <span>Full-width action</span></li>
+            <li><code>.sc-link</code> <span>Inline text link</span></li>
+          </ul>
+        </div>
+        <div class="ref-group">
+          <h3>Typography</h3>
+          <ul>
+            <li><code>.t-lg</code> <span>15px title</span></li>
+            <li><code>.t-md</code> <span>12px body</span></li>
+            <li><code>.t-sm</code> <span>10px label</span></li>
+            <li><code>.t-label</code> <span>Muted label</span></li>
+            <li><code>.t-value</code> <span>14px data</span></li>
+          </ul>
+        </div>
+        <div class="ref-group">
+          <h3>Loading</h3>
+          <ul>
+            <li><code>.ld-img</code> <span>Image area skeleton</span></li>
+            <li><code>.ld-block</code> <span>Block-level skeleton bar</span></li>
+            <li><code>.ld-inline</code> <span>Inline skeleton rect</span></li>
+          </ul>
+        </div>
+        <div class="ref-group">
+          <h3>Utilities</h3>
+          <ul>
+            <li><code>.w-100</code> <span>100% width</span></li>
+            <li><code>.w-80</code> <span>80% width</span></li>
+            <li><code>.w-60</code> <span>60% width</span></li>
+            <li><code>.w-40</code> <span>40% width</span></li>
+            <li><code>.w-20</code> <span>20% width</span></li>
+            <li><code>.flex-grow</code> <span>Fill remaining</span></li>
+            <li><code>.h-full</code> <span>Full height</span></li>
+            <li><code>.max-w-none</code> <span>Remove max-width</span></li>
+          </ul>
+        </div>
+        <div class="ref-group">
+          <h3>Theme Tokens</h3>
+          <ul>
+            <li><code>--c-fg</code> <span>Foreground</span></li>
+            <li><code>--c-bg</code> <span>Background</span></li>
+            <li><code>--c-mute</code> <span>Muted text</span></li>
+            <li><code>--c-surface</code> <span>Raised surface</span></li>
+            <li><code>--c-line</code> <span>Subtle dividers</span></li>
+            <li><code>--u</code> <span>Base unit (8px)</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js"></script>
+
+    <script>
+      const IMG = "https://images.unsplash.com/photo-1600573472550-8090b5e0745e?auto=format&fit=crop&w=600&q=80";
+      const IMG2 = "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80";
+
+      const presets = {
+        standard: `<div class="sc">
+  <div class="sc-pad sc-header">
+    <span class="t-lg">Actuator_MK4</span>
+    <span class="t-sm">9928</span>
+  </div>
+
+  <div class="sc-img-wrap">
+    <img src="${IMG}" alt="" class="sc-img">
+  </div>
+
+  <div class="sc-cols-2">
+    <div>
+      <span class="t-label">Mass</span>
+      <span class="t-value">1.24 KG</span>
+    </div>
+    <div>
+      <span class="t-label">Voltage</span>
+      <span class="t-value">24V DC</span>
+    </div>
+  </div>
+
+  <div class="sc-pad">
+    <p class="t-md max-w-none">Primary load-bearing mechanism.
+Calibrated for high-stress environments.
+Tolerance: ±0.005mm.</p>
+  </div>
+
+  <div class="sc-actions">
+    <button class="sc-action">Datasheet ↗</button>
+    <button class="sc-action">Configure</button>
+  </div>
+</div>`,
+
+        horizontal: `<div class="sc-h">
+  <div class="sc-img-wrap h-full">
+    <img src="${IMG2}" alt="" class="sc-img">
+  </div>
+
+  <div class="sc">
+    <div class="sc-pad sc-header">
+      <span class="t-lg">Logic_Array</span>
+      <span class="t-sm">SYS-77A</span>
+    </div>
+
+    <div class="sc-cols-3">
+      <div>
+        <span class="t-label">Freq</span>
+        <span class="t-value">4.2 GHz</span>
+      </div>
+      <div>
+        <span class="t-label">Thermal</span>
+        <span class="t-value">85°C</span>
+      </div>
+      <div>
+        <span class="t-label">Cores</span>
+        <span class="t-value">16</span>
+      </div>
+    </div>
+
+    <div class="sc-pad flex-grow">
+      <p class="t-md max-w-none">Sequential processing unit for
+real-time telemetry. Active cooling
+required above 60% capacity.
+<a href="#" class="sc-link">View specs</a></p>
+    </div>
+
+    <a href="#" class="sc-action-full">
+      Open Documentation ↗
+    </a>
+  </div>
+</div>`,
+
+        actions: `<div class="sc">
+  <div class="sc-pad sc-header">
+    <span class="t-lg">Deployment</span>
+    <span class="t-sm">Ready</span>
+  </div>
+
+  <div class="sc-img-wrap">
+    <img src="${IMG}" alt="" class="sc-img">
+  </div>
+
+  <div class="sc-pad">
+    <p class="t-md max-w-none">Build verified. All checks passed.
+Ready for production deployment.
+<a href="#" class="sc-link">View logs</a></p>
+  </div>
+
+  <div class="sc-actions">
+    <button class="sc-action">Deploy ↗</button>
+    <button class="sc-action">Rollback</button>
+    <button class="sc-action">Diff</button>
+  </div>
+</div>`,
+
+        dense: `<div class="sc">
+  <div class="sc-pad sc-header">
+    <span class="t-lg">Telemetry</span>
+    <span class="t-sm">Live</span>
+  </div>
+
+  <div class="sc-cols-3">
+    <div>
+      <span class="t-label">X</span>
+      <span class="t-value">+14.02</span>
+    </div>
+    <div>
+      <span class="t-label">Y</span>
+      <span class="t-value">-00.19</span>
+    </div>
+    <div>
+      <span class="t-label">Z</span>
+      <span class="t-value">+08.55</span>
+    </div>
+    <div>
+      <span class="t-label">Pitch</span>
+      <span class="t-value">12.4°</span>
+    </div>
+    <div>
+      <span class="t-label">Yaw</span>
+      <span class="t-value">0.0°</span>
+    </div>
+    <div>
+      <span class="t-label">Roll</span>
+      <span class="t-value">-1.2°</span>
+    </div>
+  </div>
+
+  <div class="sc-list">
+    <div>
+      <span class="t-sm">Status</span>
+      <span class="t-sm">Nominal</span>
+    </div>
+    <div>
+      <span class="t-sm">Uptime</span>
+      <span class="t-sm">94:12:00</span>
+    </div>
+    <div>
+      <span class="t-sm">Drift</span>
+      <span class="t-sm">0.002%</span>
+    </div>
+  </div>
+
+  <a href="#" class="sc-action-full">
+    Export CSV ↗
+  </a>
+</div>`,
+
+        loading: `<div class="sc">
+  <div class="sc-pad sc-header">
+    <span class="ld-inline w-60" style="height:15px"></span>
+    <span class="ld-inline w-20" style="height:10px"></span>
+  </div>
+
+  <div class="sc-img-wrap">
+    <div class="ld-img"></div>
+  </div>
+
+  <div class="sc-cols-2">
+    <div>
+      <span class="ld-block w-40"></span>
+      <span class="ld-block w-60"></span>
+    </div>
+    <div>
+      <span class="ld-block w-40"></span>
+      <span class="ld-block w-80"></span>
+    </div>
+  </div>
+
+  <div class="sc-pad">
+    <span class="ld-block w-100"></span>
+    <span class="ld-block w-100"></span>
+    <span class="ld-block w-60"></span>
+  </div>
+
+  <div class="sc-actions">
+    <div class="sc-pad">
+      <span class="ld-block w-60"></span>
+    </div>
+    <div class="sc-pad">
+      <span class="ld-block w-60"></span>
+    </div>
+  </div>
+</div>`,
+
+        partial: `<div class="sc">
+  <div class="sc-pad sc-header">
+    <span class="ld-inline w-60" style="height:15px"></span>
+  </div>
+
+  <div class="sc-img-wrap">
+    <img src="${IMG}" alt="" class="sc-img">
+  </div>
+
+  <div class="sc-cols-2">
+    <div>
+      <span class="t-label">Mass</span>
+      <span class="ld-block w-80"></span>
+    </div>
+    <div>
+      <span class="t-label">Voltage</span>
+      <span class="ld-block w-60"></span>
+    </div>
+  </div>
+
+  <div class="sc-pad">
+    <span class="ld-block w-100"></span>
+    <span class="ld-block w-80"></span>
+  </div>
+
+  <button class="sc-action-full">Configure</button>
+</div>`,
+
+        minimal: `<div class="sc">
+  <div class="sc-pad">
+    <span class="t-lg">Optical_Sensor</span>
+  </div>
+
+  <div class="sc-img-wrap">
+    <img src="${IMG2}" alt="" class="sc-img">
+  </div>
+
+  <a href="#" class="sc-action-full">
+    View Details →
+  </a>
+</div>`,
+      };
+
+      /* ── Themes ── */
+      const themes = {
+        light: { fg: "#000000", bg: "#ffffff", mute: "#888888", surface: "#f4f4f4", line: "#dddddd" },
+        dark: { fg: "#e0e0e0", bg: "#111111", mute: "#666666", surface: "#1a1a1a", line: "#333333" },
+        warm: { fg: "#2c2416", bg: "#f5f0e8", mute: "#9a8e7d", surface: "#ebe5d9", line: "#d4cdbf" },
+        terminal: { fg: "#00ccff", bg: "#0a0e14", mute: "#405060", surface: "#0f1620", line: "#1a2530" },
+        phosphor: { fg: "#33ff66", bg: "#0a100a", mute: "#2a5a2a", surface: "#0f180f", line: "#1a2a1a" },
+      };
+
+      function applyTheme(t) {
+        const r = document.documentElement.style;
+        r.setProperty("--c-fg", t.fg);
+        r.setProperty("--c-bg", t.bg);
+        r.setProperty("--c-mute", t.mute);
+        r.setProperty("--c-surface", t.surface);
+        r.setProperty("--c-line", t.line);
+        document.getElementById("t-fg").value = t.fg;
+        document.getElementById("t-bg").value = t.bg;
+        document.getElementById("t-mute").value = t.mute;
+        document.getElementById("t-surface").value = t.surface;
+        if (cm) cm.refresh();
+      }
+
+      document.querySelectorAll("[data-theme]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll("[data-theme]").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          applyTheme(themes[btn.dataset.theme]);
+        });
+      });
+
+      ["t-fg", "t-bg", "t-mute", "t-surface"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", (e) => {
+          const prop = { "t-fg": "--c-fg", "t-bg": "--c-bg", "t-mute": "--c-mute", "t-surface": "--c-surface" }[id];
+          document.documentElement.style.setProperty(prop, e.target.value);
+          document.querySelectorAll("[data-theme]").forEach((b) => b.classList.remove("active"));
+          if (cm) cm.refresh();
+        });
+      });
+
+      /* ── CodeMirror ── */
+      const preview = document.getElementById("preview");
+      const cm = CodeMirror.fromTextArea(document.getElementById("editor"), {
+        mode: "xml",
+        lineNumbers: true,
+        lineWrapping: true,
+        tabSize: 2,
+      });
+
+      function render() {
+        preview.innerHTML = cm.getValue();
+      }
+      cm.on("change", render);
+
+      document.querySelectorAll(".preset-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".preset-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          cm.setValue(presets[btn.dataset.preset]);
+        });
+      });
+
+      document.getElementById("btn-copy").addEventListener("click", () => {
+        navigator.clipboard.writeText(cm.getValue());
+        const el = document.getElementById("btn-copy");
+        el.textContent = "Copied ✓";
+        setTimeout(() => (el.textContent = "Copy ↗"), 1200);
+      });
+
+      cm.setValue(presets.standard);
+
+      /* ── Download ── */
+      document.getElementById("btn-download").addEventListener("click", (e) => {
+        e.preventDefault();
+        const css = document.getElementById("syscard-css").textContent;
+        const blob = new Blob([css], { type: "text/css" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "sys.card.css";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+    </script>
+  </body>
+</html>
