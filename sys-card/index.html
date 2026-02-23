@@ -40,8 +40,8 @@
       .sc > * { background: var(--c-bg); }
 
       .sc-h {
-          display: flex;
-          flex-wrap: wrap;
+          display: grid;
+          grid-template-columns: 220px 1fr;
           gap: 1px;
           background: var(--c-fg);
           border: 1px solid var(--c-fg);
@@ -54,8 +54,14 @@
           container-name: card-h;
       }
       .sc-h > * { background: var(--c-bg); }
-      .sc-h > .sc { border: none; flex: 10000 0 300px; min-width: 0; } /* high flex-grow so content takes remaining space; wraps below 521px */
-      .sc-h > .sc-img-wrap { flex: 1 0 220px; }
+      .sc-h > .sc { border: none; min-width: 0; }
+      .sc-h > .sc-img-wrap { height: 100%; }
+
+      /* Horizontal → vertical when container is narrow */
+      @container card-h (max-width: 480px) {
+          .sc-h > * { grid-column: 1 / -1; }
+          .sc-h > .sc-img-wrap { height: 200px; }
+      }
 
       /* ── Column Modules ── */
       .sc-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--c-fg); }
