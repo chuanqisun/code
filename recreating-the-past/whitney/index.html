@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <title>Permutations</title>
@@ -15,7 +15,7 @@
     <br />
     <canvas id="c" width="800" height="800" style="border: 1px solid black; background: black"></canvas>
     <script type="module">
-      import { wire } from "../shared/timeline.js";
+      import { wire } from "./shared/timeline.js";
 
       const canvas = document.getElementById("c");
       const ctx = canvas.getContext("2d");
@@ -142,9 +142,12 @@
         const phase = performance.now() % periodMs;
         const half = periodMs / 2;
         let f;
-        if (phase < fadeMs) f = 1 - phase / fadeMs; // bright → dim
-        else if (phase < half) f = 0; // solid dim
-        else if (phase < half + fadeMs) f = (phase - half) / fadeMs; // dim → bright
+        if (phase < fadeMs)
+          f = 1 - phase / fadeMs; // bright → dim
+        else if (phase < half)
+          f = 0; // solid dim
+        else if (phase < half + fadeMs)
+          f = (phase - half) / fadeMs; // dim → bright
         else f = 1; // solid bright
         return lerpColor(colorDim, colorBright, f);
       }
