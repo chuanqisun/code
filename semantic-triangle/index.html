@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Semantic Triangle</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="splash" class="splash">
+      <div id="splash-content">
+        <div id="loading-msg" class="loading-msg">loading data…</div>
+        <button id="btn-start" class="splash-start" disabled>start</button>
+      </div>
+    </div>
+    <main class="centered">
+      <div id="canvas-wrap">
+        <header class="hud">
+          <button id="btn-auto" class="hud-toggle" aria-pressed="true">auto: on</button>
+          <h1>SEMANTIC TRIANGLE</h1>
+          <button id="btn-sound" class="hud-toggle" aria-pressed="false">sound: off</button>
+        </header>
+
+        <svg id="svg" viewBox="-1.5 -1.5 3 3" xmlns="http://www.w3.org/2000/svg">
+          <g id="words-layer"></g>
+          <g id="hover-layer"></g>
+          <!-- Triangle edges -->
+          <polygon class="tri-edge" points="0,-1 -0.8660,0.5 0.8660,0.5" />
+          <!-- Vertex dots -->
+          <circle class="tri-vertex-dot" cx="0" cy="-1" r="0.005" />
+          <circle class="tri-vertex-dot" cx="-0.8660" cy="0.5" r="0.005" />
+          <circle class="tri-vertex-dot" cx="0.8660" cy="0.5" r="0.005" />
+          <!-- Vertex labels -->
+          <text id="labelA" class="tri-vertex-label" x="0" y="-1.04" text-anchor="middle" font-size="0.030" font-family="ui-monospace,'Courier New',monospace">
+            art
+          </text>
+          <text
+            id="labelB"
+            class="tri-vertex-label"
+            x="-0.8660"
+            y="0.55"
+            text-anchor="end"
+            font-size="0.030"
+            font-family="ui-monospace,'Courier New',monospace"
+          >
+            science
+          </text>
+          <text
+            id="labelC"
+            class="tri-vertex-label"
+            x="0.8660"
+            y="0.55"
+            text-anchor="start"
+            font-size="0.030"
+            font-family="ui-monospace,'Courier New',monospace"
+          >
+            technology
+          </text>
+        </svg>
+
+        <div id="tooltip">
+          <span class="tw" id="tt-text"></span>
+        </div>
+      </div>
+    </main>
+    <script src="client.js"></script>
+  </body>
+</html>

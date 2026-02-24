@@ -68,6 +68,7 @@
 - [Rain Analyzer](./rain-analyzer/)
 - [Re:draw](https://chuanqisun.github.io/redraw/)
 - [Recreate The Past](./recreating-the-past/)
+- [Semantic triangle](./semantic-triangle/)
 - [Shadowcast](./shadowcast/)
 - [Shanshui](./shanshui/)
 - [Shape display](./shape-display/)
