@@ -373,6 +373,75 @@ canvasWrap.addEventListener("mousemove", handleMouseMove);
 canvasWrap.addEventListener("mouseleave", handleMouseLeave);
 canvasWrap.addEventListener("click", handleClick);
 
+// ── Touch support (drag = hover, lift = confirm) ─────────────────────────────
+
+let touchActive = false;
+
+canvasWrap.addEventListener("touchstart", handleTouchStart, { passive: false });
+canvasWrap.addEventListener("touchmove", handleTouchMove, { passive: false });
+canvasWrap.addEventListener("touchend", handleTouchEnd, { passive: false });
+canvasWrap.addEventListener("touchcancel", handleTouchCancel, { passive: false });
+
+function handleTouchStart(event) {
+  // Ignore multi-touch (pinch-zoom etc.)
+  if (event.touches.length > 1) return;
+  event.preventDefault();
+
+  if (demoActive) {
+    stopDemo();
+    setToggle(document.getElementById("btn-auto"), false);
+    canvasWrap.classList.add("cursor-hidden");
+  }
+
+  if (!trackingActive) {
+    trackingActive = true;
+    canvasWrap.classList.add("tracking");
+  }
+
+  touchActive = true;
+  const svgCoords = touchEventToSvg(event.touches[0]);
+  if (svgCoords && projectedPoints.length) {
+    setCursorPosition(svgCoords);
+  }
+}
+
+function handleTouchMove(event) {
+  if (!touchActive || event.touches.length > 1) return;
+  event.preventDefault();
+
+  if (demoActive) return;
+  if (!trackingActive || !projectedPoints.length) {
+    clearCursorDisplay();
+    return;
+  }
+
+  const svgCoords = touchEventToSvg(event.touches[0]);
+  if (!svgCoords) {
+    clearCursorDisplay();
+    return;
+  }
+  setCursorPosition(svgCoords);
+}
+
+function handleTouchEnd(event) {
+  if (!touchActive) return;
+  event.preventDefault();
+  touchActive = false;
+
+  if (nearestPoint) {
+    confirmPoint(nearestPoint);
+    setCursorPosition(cursorSvg);
+    blinkConfirmation();
+  }
+  // Clear hover state after confirming
+  clearCursorDisplay();
+}
+
+function handleTouchCancel() {
+  touchActive = false;
+  clearCursorDisplay();
+}
+
 function handleMouseMove(event) {
   if (demoActive) return;
   if (!trackingActive || !projectedPoints.length) {
@@ -915,6 +984,14 @@ function mouseEventToSvg(event) {
   const pt = svg.createSVGPoint();
   pt.x = event.clientX;
   pt.y = event.clientY;
+  const ctm = svg.getScreenCTM();
+  return ctm ? pt.matrixTransform(ctm.inverse()) : null;
+}
+
+function touchEventToSvg(touch) {
+  const pt = svg.createSVGPoint();
+  pt.x = touch.clientX;
+  pt.y = touch.clientY;
   const ctm = svg.getScreenCTM();
   return ctm ? pt.matrixTransform(ctm.inverse()) : null;
 }
