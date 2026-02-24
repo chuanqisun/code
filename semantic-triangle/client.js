@@ -335,6 +335,7 @@ function initToggles(autoOn) {
     const next = btnAuto.getAttribute("aria-pressed") !== "true";
     setToggle(btnAuto, next);
     if (next) {
+      canvasWrap.classList.remove("cursor-hidden");
       if (!demoActive) startDemo();
     } else {
       if (demoActive) {

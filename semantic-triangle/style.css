@@ -332,16 +332,16 @@ button:disabled:hover {
   letter-spacing: 0.1em;
   text-transform: lowercase;
   padding: 3px 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--color-faint);
   color: var(--color-dim);
-  background: transparent;
+  background: var(--color-bg);
   cursor: pointer;
   transition: color var(--ease-normal);
 }
 
 .hud-toggle:hover {
   color: var(--color-muted);
-  background: transparent;
+  background: var(--color-bg);
 }
 
 .hud-toggle[aria-pressed="true"] {
