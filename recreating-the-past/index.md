@@ -24,15 +24,15 @@
   - Source: John Whitney, Permutations (1969)
   - Divide and conquer: I separated the dancing dots from the lines. After solving them individually, I added the sound track to further animate the dots.
   - The green lines:
-    - There are always 31 lines. They are projected from one 180 degree arc to a circle.
-    - The 180 degree arc's radius oscillates, self-rotates, and orbits around the center of the screen, with orbit radius oscillating as well.
-    - The endpoints on the circle is marching at speed proportional to the dots index, creating the twisting effect and periodic dense-sparse rhythm.
-    - It takes calculation to both start and end the animation at a specific pattern using the periodicity of sine wave.
-    - They appear to be a gradient between two shapes of greens, with out-of-phase oscillation of brightness on both sides.
-    - The line patterns started and ended very small. I had to hard code the intro and outro timing.
-  - The dancing dots are achieved by applying the same principle as the circle where the green lines originate from, but in addition to step-ramp the rotation angle over time, I also modulated the radius with a circle, so they look like standing wave wrapped around a circular path.
-  - I learned a little bit Strudel and composed a percussion sound track with AI's help.
-  - I added a bit of blur to create the visual effects of the old IBM CRT monitor but didn't spend too much time making it retro. For future work, I want emulate the 24 FPS to see what would come out of it.
+    - There are always 31 lines. They are projected from one 180-degree arc to a circle.
+    - The 180-degree arc's radius oscillates, self-rotates, and orbits around the center of the screen, with its orbit radius oscillating as well.
+    - The endpoints on the circle are marching at a speed proportional to the dot's index, creating the twisting effect and periodic dense-sparse rhythm.
+    - It takes calculation to both start and end the animation at a specific pattern using the periodicity of a sine wave.
+    - They appear to be a gradient between two shades of green, with out-of-phase oscillation of brightness on both sides.
+    - The line patterns started and ended very small. I had to hard-code the intro and outro timing.
+  - The dancing dots are achieved by applying the same principle as the circle where the green lines originate from, but in addition to step-ramping the rotation angle over time, I also modulated the radius with a circle, so they look like a standing wave wrapped around a circular path.
+  - I learned a little bit of Strudel and composed a percussion soundtrack with AI's help.
+  - I added a bit of blur to create the visual effects of the old IBM CRT monitor but didn't spend too much time making it retro. For future work, I want to emulate the 24 FPS to see what would come out of it.
   - To make choreography easier, I created a scrubbable timeline tool to allow quick jump. This bridges the gap between creative coding and traditional animation technique.
   - Process
     - Lines: [motion study](./whitney/process/lines/103.html), [orbit study](./whitney/process/lines/200.html), [integration (failed)](./whitney/process/lines/300.html), [oscillation study](./whitney/process/lines/400.html), [motion decoded!](./whitney/process/lines/801.html), [choreography study](./whitney/process/lines/806.html)
