@@ -22,8 +22,8 @@
         </header>
 
         <svg id="svg" viewBox="-1.5 -1.5 3 3" xmlns="http://www.w3.org/2000/svg">
+          <!-- Layer order (bottom → top): rulers (JS) → words → triangle → path (JS) → hover -->
           <g id="words-layer"></g>
-          <g id="hover-layer"></g>
           <!-- Triangle edges -->
           <polygon class="tri-edge" points="0,-1 -0.8660,0.5 0.8660,0.5" />
           <!-- Vertex dots -->
@@ -56,6 +56,8 @@
           >
             technology
           </text>
+          <!-- Measurement / hover layer (renders above vertex labels) -->
+          <g id="hover-layer"></g>
         </svg>
 
         <div id="tooltip">

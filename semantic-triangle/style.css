@@ -46,6 +46,11 @@
   /* Transitions */
   --ease-fast: 0.1s;
   --ease-normal: 0.15s;
+
+  /* Z-index layers (HTML overlays) */
+  --z-tooltip: 50;
+  --z-hud: 100;
+  --z-splash: 1000;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
@@ -164,7 +169,7 @@ button:disabled:hover {
   max-width: 260px;
   opacity: 0;
   transition: opacity var(--ease-fast);
-  z-index: 100;
+  z-index: var(--z-tooltip);
 }
 
 #tooltip.visible {
@@ -296,7 +301,7 @@ button:disabled:hover {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 10;
+  z-index: var(--z-hud);
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
@@ -348,7 +353,7 @@ button:disabled:hover {
 .splash {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-splash);
   display: flex;
   align-items: center;
   justify-content: center;
