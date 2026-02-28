@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESPP Basis Adjustment Calculator</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: "Courier New", Courier, monospace; font-size: 14px; padding: 12px; max-width: 600px; margin: 0 auto; }
+      h1 { font-size: 15px; border-bottom: 1px solid #000; padding-bottom: 4px; margin-bottom: 8px; }
+      h2 { font-size: 12px; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 1px; color: #666; }
+      .row { display: flex; align-items: baseline; margin: 3px 0; gap: 6px; }
+      .row label { flex: 1; }
+      .row input, .row select { width: 120px; flex-shrink: 0; font: inherit; text-align: right; }
+      .row select { text-align: left; }
+      .box { font-weight: bold; }
+      .out { border-top: 1px solid #000; margin-top: 10px; padding-top: 6px; }
+      .out-row { display: flex; justify-content: space-between; margin: 2px 0; }
+      .out-row.sep { border-top: 1px dashed #aaa; padding-top: 4px; margin-top: 4px; }
+      .out-row.big { font-weight: bold; }
+      .val { text-align: right; }
+      .neg { color: red; }
+      .formula { font-size: 11px; color: #888; margin-bottom: 6px; }
+      .tag { font-size: 11px; border: 1px solid; padding: 0 4px; vertical-align: middle; }
+      .tag.q { color: green; border-color: green; }
+      .tag.d { color: #c60; border-color: #c60; }
+      .hidden { display: none !important; }
+      .note { font-size: 11px; color: #888; margin-top: 10px; line-height: 1.4; }
+    </style>
+  </head>
+  <body>
+    <h1>ESPP Basis Adjustment Calculator</h1>
+
+    <div class="row">
+      <label>Disposition type</label>
+      <select id="dispType" onchange="toggle(); calc();">
+        <option value="q">Qualifying</option>
+        <option value="d">Disqualifying</option>
+      </select>
+    </div>
+
+    <h2>Form 3922</h2>
+
+    <div class="row" data-mode="q">
+      <label><span class="box">[Box 3]</span> FMV/share on grant date</label>
+      <input type="number" id="box3" step="0.01" placeholder="0.00" oninput="calc()" />
+    </div>
+    <div class="row" data-mode="d">
+      <label><span class="box">[Box 4]</span> FMV/share on exercise date</label>
+      <input type="number" id="box4" step="0.01" placeholder="0.00" oninput="calc()" />
+    </div>
+    <div class="row">
+      <label><span class="box">[Box 5]</span> Exercise price paid/share</label>
+      <input type="number" id="box5" step="0.01" placeholder="0.00" oninput="calc()" />
+    </div>
+    <div class="row" data-mode="q">
+      <label><span class="box">[Box 8]</span> Exercise price as-if grant</label>
+      <input type="number" id="box8" step="0.01" placeholder="0.00" oninput="calc()" />
+    </div>
+
+    <h2>Sale Info</h2>
+
+    <div class="row">
+      <label>Sale price / share</label>
+      <input type="number" id="salePrice" step="0.01" placeholder="0.00" oninput="calc()" />
+    </div>
+    <div class="row">
+      <label>Shares sold</label>
+      <input type="number" id="sharesSold" step="1" placeholder="0" oninput="calc()" />
+    </div>
+    <div class="row">
+      <label>1099-B reported basis (total)</label>
+      <input type="number" id="brokerBasis" step="0.01" placeholder="0.00" oninput="calc()" />
+    </div>
+
+    <div class="out">
+      <h2>Results <span id="dispTag"></span></h2>
+      <div class="formula" id="formulaText"></div>
+
+      <div class="out-row">
+        <span>Comp income / share (W-2)</span>
+        <span class="val" id="compShare">—</span>
+      </div>
+      <div class="out-row">
+        <span>Total comp income (W-2)</span>
+        <span class="val" id="compTotal">—</span>
+      </div>
+      <div class="out-row sep">
+        <span>Unadjusted basis (Box5 × shares)</span>
+        <span class="val" id="rawBasis">—</span>
+      </div>
+      <div class="out-row">
+        <span>+ Comp added to basis</span>
+        <span class="val" id="basisAdd">—</span>
+      </div>
+      <div class="out-row big">
+        <span>Adjusted basis</span>
+        <span class="val" id="adjBasis">—</span>
+      </div>
+      <div class="out-row sep">
+        <span>Sale proceeds</span>
+        <span class="val" id="proceeds">—</span>
+      </div>
+      <div class="out-row big">
+        <span>Capital gain / (loss)</span>
+        <span class="val" id="capGain">—</span>
+      </div>
+      <div class="out-row sep">
+        <span>1099-B reported basis</span>
+        <span class="val" id="brokerBasisOut">—</span>
+      </div>
+      <div class="out-row big">
+        <span>Form 8949 adj (code B)</span>
+        <span class="val" id="adjustment">—</span>
+      </div>
+    </div>
+
+    <p class="note">
+      Qualifying: held &gt;2yr from grant &amp; &gt;1yr from purchase.<br />
+      Education only — verify with a tax professional.
+    </p>
+
+    <script>
+      function n(id) {
+        return parseFloat(document.getElementById(id).value) || 0;
+      }
+      function fmt(v) {
+        return v < 0 ? "(" + Math.abs(v).toFixed(2) + ")" : v.toFixed(2);
+      }
+
+      function toggle() {
+        const mode = document.getElementById("dispType").value;
+        document.querySelectorAll("[data-mode]").forEach((el) => {
+          el.classList.toggle("hidden", el.getAttribute("data-mode") !== mode);
+        });
+      }
+
+      function calc() {
+        const disp = document.getElementById("dispType").value;
+        const box3 = n("box3"),
+          box4 = n("box4"),
+          box5 = n("box5"),
+          box8 = n("box8");
+        const sp = n("salePrice"),
+          sold = n("sharesSold");
+        const broker = n("brokerBasis");
+        let comp = 0;
+        const fEl = document.getElementById("formulaText");
+
+        if (disp === "q") {
+          const a = box3 - box8,
+            b = sp - box5;
+          comp = Math.max(0, Math.min(a, b));
+          fEl.textContent = "min(Box3-Box8, Sale-Box5) = min(" + a.toFixed(2) + ", " + b.toFixed(2) + ")";
+        } else {
+          const d = box4 - box5,
+            g = sp - box5;
+          comp = g < 0 ? 0 : Math.min(d, g);
+          fEl.textContent = g < 0 ? "comp = 0 (sold below purchase price)" : "min(Box4-Box5, Sale-Box5) = min(" + d.toFixed(2) + ", " + g.toFixed(2) + ")";
+        }
+
+        const compT = comp * sold;
+        const raw = box5 * sold;
+        const adj = raw + compT;
+        const proc = sp * sold;
+        const cg = proc - adj;
+
+        document.getElementById("compShare").textContent = "$" + fmt(comp);
+        document.getElementById("compTotal").textContent = "$" + fmt(compT);
+        document.getElementById("rawBasis").textContent = "$" + fmt(raw);
+        document.getElementById("basisAdd").textContent = "$" + fmt(compT);
+        document.getElementById("adjBasis").textContent = "$" + fmt(adj);
+        document.getElementById("proceeds").textContent = "$" + fmt(proc);
+
+        const cgEl = document.getElementById("capGain");
+        cgEl.textContent = "$" + fmt(cg);
+        cgEl.classList.toggle("neg", cg < 0);
+
+        document.getElementById("brokerBasisOut").textContent = broker ? "$" + fmt(broker) : "—";
+
+        const adjEl = document.getElementById("adjustment");
+        if (broker) {
+          const d = adj - broker;
+          adjEl.textContent = (d >= 0 ? "+" : "") + "$" + fmt(d);
+          adjEl.classList.toggle("neg", d < 0);
+        } else {
+          adjEl.textContent = "—";
+          adjEl.classList.remove("neg");
+        }
+
+        document.getElementById("dispTag").innerHTML = disp === "q" ? '<span class="tag q">QUALIFYING</span>' : '<span class="tag d">DISQUALIFYING</span>';
+      }
+
+      toggle();
+      calc();
+    </script>
+  </body>
+</html>

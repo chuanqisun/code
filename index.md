@@ -8,6 +8,7 @@
 - [CSV Visualizer](./csv-visualizer/)
 - [Emoji → Favicon](./emoji-to-favicon/)
 - [Emoji → Pixel Art](./emoji-to-pixel-art/)
+- [ESPP cost basis calculator](./espp-cost-basis-calculator/)
 - [Euler to Quaternion](./euler-to-quaternion/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [Gemini Image Lab](./gemini-image-lab/)
