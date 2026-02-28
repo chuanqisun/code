@@ -31,6 +31,7 @@
 - [Plotter/Hershey+JSON](./plotters/hershey-json.html)
 - [Spectrogram Recorder](./spectrogram-recorder/)
 - [Tax estimator](https://chuanqisun.github.io/tax/)
+- [Subtitle Editor](./subtitle-editor/)
 
 ## Experiments
 

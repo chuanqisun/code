@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SRT Video Editor</title>
+    <style>
+      /* Layout CSS to maximize space and enable independent scrolling */
+      body {
+          margin: 0;
+          padding: 0;
+          font-family: sans-serif;
+          display: flex;
+          height: 100vh; /* Full viewport height */
+          overflow: hidden; /* Prevent whole-page scrolling */
+          background: #ececec;
+      }
+
+      /* Left Column: Video and Controls */
+      .left-panel {
+          width: 40%;
+          min-width: 350px;
+          max-width: 600px;
+          display: flex;
+          flex-direction: column;
+          border-right: 2px solid #ccc;
+          background: #f9f9f9;
+          overflow-y: auto; /* Scrollable if controls exceed screen height */
+      }
+
+      .video-container {
+          background: #000;
+          width: 100%;
+      }
+
+      video {
+          width: 100%;
+          max-height: 45vh; /* Prevents video from pushing controls too far down */
+          display: block;
+      }
+
+      .controls-wrapper {
+          padding: 15px;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+      }
+
+      .control-group {
+          background: #fff;
+          border: 1px solid #ddd;
+          padding: 10px;
+      }
+
+      .control-group h3 {
+          margin: 0 0 10px 0;
+          font-size: 14px;
+      }
+
+      textarea#srt-input {
+          width: 100%;
+          height: 80px;
+          box-sizing: border-box;
+          margin-bottom: 5px;
+          font-family: monospace;
+          resize: vertical;
+      }
+
+      /* Right Column: Subtitle List */
+      .right-panel {
+          flex: 1;
+          padding: 15px;
+          overflow-y: auto; /* Independent scrolling for subtitles */
+          background: #fff;
+      }
+
+      /* Compact Subtitle Entry Design */
+      .subtitle-entry {
+          border: 1px solid #ccc;
+          padding: 8px;
+          margin-bottom: 8px;
+          background: #fafafa;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+      }
+
+      .entry-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+          font-size: 14px;
+      }
+
+      .entry-header input[type="text"] {
+          width: 95px;
+          font-family: monospace;
+      }
+
+      .entry-text {
+          width: 100%;
+          height: 40px;
+          box-sizing: border-box;
+          font-family: sans-serif;
+          resize: vertical;
+      }
+
+      .spacer { flex-grow: 1; }
+    </style>
+  </head>
+  <body>
+    <!-- LEFT COLUMN -->
+    <div class="left-panel">
+      <div class="video-container">
+        <video id="video-player" controls>
+          <track id="subtitle-track" kind="subtitles" srclang="en" label="English" default />
+        </video>
+      </div>
+
+      <div class="controls-wrapper">
+        <div class="control-group">
+          <h3>1. Load Video (MP4/WebM)</h3>
+          <input type="file" id="video-upload" accept="video/mp4,video/webm" />
+        </div>
+
+        <div class="control-group">
+          <h3>2. Import Existing SRT (Optional)</h3>
+          <textarea id="srt-input" placeholder="1&#10;00:00:01,000 --> 00:00:04,000&#10;Hello World"></textarea>
+          <button id="btn-load-srt">Load SRT into Editor</button>
+        </div>
+
+        <div class="control-group">
+          <h3>3. Actions</h3>
+          <button id="btn-add-current" style="margin-bottom: 5px;">+ Add Subtitle at Current Video Time</button><br />
+          <button id="btn-export">💾 Export / Download SRT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="right-panel" id="subtitle-list">
+      <div style="color: #666; text-align: center; margin-top: 20px;">No subtitles loaded. Import an SRT or add a new subtitle to begin.</div>
+    </div>
+
+    <script>
+      // --- State ---
+      let subtitles = [];
+      let trackUrl = null;
+
+      // --- DOM Elements ---
+      const videoPlayer = document.getElementById("video-player");
+      const videoUpload = document.getElementById("video-upload");
+      const srtInput = document.getElementById("srt-input");
+      const btnLoadSrt = document.getElementById("btn-load-srt");
+      const subtitleList = document.getElementById("subtitle-list");
+      const btnAddCurrent = document.getElementById("btn-add-current");
+      const btnExport = document.getElementById("btn-export");
+      const subtitleTrack = document.getElementById("subtitle-track");
+
+      // --- Event Listeners ---
+
+      // Load Video
+      videoUpload.addEventListener("change", function (e) {
+        const file = e.target.files[0];
+        if (file) {
+          const fileURL = URL.createObjectURL(file);
+          videoPlayer.src = fileURL;
+        }
+      });
+
+      // Load SRT from Textarea
+      btnLoadSrt.addEventListener("click", function () {
+        const text = srtInput.value.trim();
+        if (text) {
+          subtitles = parseSRT(text);
+          renderEditor();
+          updateLivePreview();
+        }
+      });
+
+      // Add Subtitle at current video time
+      btnAddCurrent.addEventListener("click", function () {
+        const currentTime = videoPlayer.currentTime;
+        const newSub = {
+          start: currentTime,
+          end: currentTime + 2, // Default 2 seconds duration
+          text: "New Subtitle",
+        };
+        subtitles.push(newSub);
+
+        // Sort by start time
+        subtitles.sort((a, b) => a.start - b.start);
+        renderEditor();
+        updateLivePreview();
+
+        // Scroll to the newly added subtitle
+        const newIndex = subtitles.indexOf(newSub);
+        const newElement = document.getElementById(`sub-entry-${newIndex}`);
+        if (newElement) {
+          newElement.scrollIntoView({ behavior: "smooth", block: "center" });
+          newElement.querySelector("textarea").focus();
+        }
+      });
+
+      // Export SRT
+      btnExport.addEventListener("click", function () {
+        if (subtitles.length === 0) return alert("No subtitles to export.");
+        const srtContent = generateSRT(subtitles);
+        const blob = new Blob([srtContent], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "edited_subtitles.srt";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
+
+      // Handle edits within the generated list (Event Delegation)
+      subtitleList.addEventListener("input", function (e) {
+        const index = parseInt(e.target.dataset.index);
+        if (isNaN(index)) return;
+
+        if (e.target.classList.contains("inp-start")) {
+          const sec = timeToSeconds(e.target.value);
+          if (!isNaN(sec)) subtitles[index].start = sec;
+        } else if (e.target.classList.contains("inp-end")) {
+          const sec = timeToSeconds(e.target.value);
+          if (!isNaN(sec)) subtitles[index].end = sec;
+        } else if (e.target.classList.contains("inp-text")) {
+          subtitles[index].text = e.target.value;
+        }
+        updateLivePreview();
+      });
+
+      // Handle button clicks within the generated list
+      subtitleList.addEventListener("click", function (e) {
+        if (e.target.tagName !== "BUTTON") return;
+
+        const index = parseInt(e.target.dataset.index);
+        if (isNaN(index)) return;
+
+        if (e.target.classList.contains("btn-delete")) {
+          subtitles.splice(index, 1);
+          renderEditor();
+          updateLivePreview();
+        } else if (e.target.classList.contains("btn-jump")) {
+          videoPlayer.currentTime = subtitles[index].start;
+          videoPlayer.play();
+        }
+      });
+
+      // --- Core Functions ---
+
+      function renderEditor() {
+        if (subtitles.length === 0) {
+          subtitleList.innerHTML = '<div style="color: #666; text-align: center; margin-top: 20px;">No subtitles loaded.</div>';
+          return;
+        }
+
+        subtitleList.innerHTML = "";
+        subtitles.forEach((sub, index) => {
+          const div = document.createElement("div");
+          div.className = "subtitle-entry";
+          div.id = `sub-entry-${index}`;
+          div.innerHTML = `
+                    <div class="entry-header">
+                        <strong>#${index + 1}</strong> 
+                        <input type="text" class="inp-start" data-index="${index}" value="${secondsToTime(sub.start)}" title="Start Time">
+                        <span>&rarr;</span>
+                        <input type="text" class="inp-end" data-index="${index}" value="${secondsToTime(sub.end)}" title="End Time">
+                        <div class="spacer"></div>
+                        <button class="btn-jump" data-index="${index}">▶ Jump</button>
+                        <button class="btn-delete" data-index="${index}">✖ Delete</button>
+                    </div>
+                    <textarea class="entry-text inp-text" data-index="${index}">${sub.text}</textarea>
+                `;
+          subtitleList.appendChild(div);
+        });
+      }
+
+      // Converts SRT string to array of objects
+      function parseSRT(srtText) {
+        const blocks = srtText.replace(/\r\n/g, "\n").split(/\n{2,}/);
+        const parsed = [];
+
+        blocks.forEach((block) => {
+          const lines = block.split("\n");
+          if (lines.length >= 3) {
+            const timeLine = lines[1];
+            const times = timeLine.split(" --> ");
+            if (times.length === 2) {
+              parsed.push({
+                start: timeToSeconds(times[0]),
+                end: timeToSeconds(times[1]),
+                text: lines.slice(2).join("\n"),
+              });
+            }
+          }
+        });
+        return parsed;
+      }
+
+      // Converts array of objects back to SRT string
+      function generateSRT(subs) {
+        let out = "";
+        subs.forEach((sub, index) => {
+          out += `${index + 1}\n`;
+          out += `${secondsToTime(sub.start)} --> ${secondsToTime(sub.end)}\n`;
+          out += `${sub.text}\n\n`;
+        });
+        return out;
+      }
+
+      // Updates the HTML5 Video Track for live preview
+      function updateLivePreview() {
+        if (trackUrl) URL.revokeObjectURL(trackUrl);
+
+        let vtt = "WEBVTT\n\n";
+        subtitles.forEach((sub, index) => {
+          vtt += `${index + 1}\n`;
+          // VTT uses '.' instead of ',' for milliseconds
+          vtt += `${secondsToTime(sub.start).replace(",", ".")} --> ${secondsToTime(sub.end).replace(",", ".")}\n`;
+          vtt += `${sub.text}\n\n`;
+        });
+
+        const blob = new Blob([vtt], { type: "text/vtt" });
+        trackUrl = URL.createObjectURL(blob);
+        subtitleTrack.src = trackUrl;
+
+        // Force video player to reload the track
+        videoPlayer.textTracks[0].mode = "hidden";
+        videoPlayer.textTracks[0].mode = "showing";
+      }
+
+      // --- Utility Functions (Time Conversion) ---
+
+      function timeToSeconds(timeString) {
+        try {
+          const parts = timeString.trim().split(":");
+          const secParts = parts[2].split(/[,.]/); // Handle both SRT (,) and VTT (.)
+          const hours = parseInt(parts[0], 10);
+          const minutes = parseInt(parts[1], 10);
+          const seconds = parseInt(secParts[0], 10);
+          const milliseconds = parseInt(secParts[1], 10);
+          return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+        } catch (e) {
+          return NaN;
+        }
+      }
+
+      function secondsToTime(totalSeconds) {
+        if (isNaN(totalSeconds)) return "00:00:00,000";
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = Math.floor(totalSeconds % 60);
+        const milliseconds = Math.floor((totalSeconds % 1) * 1000);
+
+        const pad = (num, size) => num.toString().padStart(size, "0");
+        return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)},${pad(milliseconds, 3)}`;
+      }
+    </script>
+  </body>
+</html>
