@@ -429,6 +429,9 @@
         fitCanvas();
 
         // ── WAT source ──
+        // Projected buffer now stores 3 f64 per vertex: px, py, tz (transformed z)
+        // Edge loop skips edges where either vertex has tz + cam < 0.1
+        // Line coordinates are clamped to [-4000, +4000] to prevent i32 overflow
         const wat = `(module
     (import "math" "sin" (func $sin (param f64)(result f64)))
     (import "math" "cos" (func $cos (param f64)(result f64)))
@@ -449,15 +452,20 @@
         (else (local.get $v))))
 
     (func $line (param $x0 i32)(param $y0 i32)(param $x1 i32)(param $y1 i32)(param $col i32)(param $w i32)(param $h i32)
-      (local $dx i32)(local $dy i32)(local $sx i32)(local $sy i32)(local $err i32)(local $e2 i32)
+      (local $dx i32)(local $dy i32)(local $sx i32)(local $sy i32)(local $err i32)(local $e2 i32)(local $steps i32)(local $maxSteps i32)
       (local.set $dx (call $abs (i32.sub (local.get $x1)(local.get $x0))))
       (local.set $dy (i32.sub (i32.const 0)(call $abs (i32.sub (local.get $y1)(local.get $y0)))))
       (local.set $sx (if (result i32)(i32.lt_s (local.get $x0)(local.get $x1))(then (i32.const 1))(else (i32.const -1))))
       (local.set $sy (if (result i32)(i32.lt_s (local.get $y0)(local.get $y1))(then (i32.const 1))(else (i32.const -1))))
       (local.set $err (i32.add (local.get $dx)(local.get $dy)))
+      (local.set $steps (i32.const 0))
+      ;; max steps = max(w,h)*3 to prevent runaway loops on huge off-screen lines
+      (local.set $maxSteps (i32.mul (if (result i32)(i32.gt_s (local.get $w)(local.get $h))(then (local.get $w))(else (local.get $h)))(i32.const 3)))
       (block $d (loop $l
         (call $sp (local.get $x0)(local.get $y0)(local.get $col)(local.get $w)(local.get $h))
         (br_if $d (i32.and (i32.eq (local.get $x0)(local.get $x1))(i32.eq (local.get $y0)(local.get $y1))))
+        (local.set $steps (i32.add (local.get $steps)(i32.const 1)))
+        (br_if $d (i32.gt_s (local.get $steps)(local.get $maxSteps)))
         (local.set $e2 (i32.mul (i32.const 2)(local.get $err)))
         (if (i32.ge_s (local.get $e2)(local.get $dy))(then
           (local.set $err (i32.add (local.get $err)(local.get $dy)))
@@ -484,6 +492,14 @@
         (local.set $oy (i32.add (local.get $oy)(i32.const 1)))
         (br $ly))))
 
+    ;; clamp f64 to [-4000, 4000] before trunc
+    (func $clampTrunc (param $v f64)(result i32)
+      (local $clamped f64)
+      (local.set $clamped (local.get $v))
+      (if (f64.gt (local.get $clamped)(f64.const 4000))(then (local.set $clamped (f64.const 4000))))
+      (if (f64.lt (local.get $clamped)(f64.const -4000))(then (local.set $clamped (f64.const -4000))))
+      (i32.trunc_f64_s (local.get $clamped)))
+
     (func (export "render")
       (param $ax f64)(param $ay f64)(param $az f64)(param $cam f64)
       (param $nv i32)(param $ne i32)
@@ -498,7 +514,9 @@
       (local $hw f64)(local $hh f64)(local $fov f64)
       (local $a i32)(local $b i32)(local $col i32)
       (local $x0 i32)(local $y0 i32)(local $x1 i32)(local $y1 i32)
+      (local $za f64)(local $zb f64)
 
+      ;; clear framebuffer
       (local.set $fbSize (i32.mul (i32.mul (local.get $w)(local.get $h))(i32.const 4)))
       (local.set $i (i32.const 0))
       (block $cb2 (loop $cl
@@ -507,6 +525,7 @@
         (local.set $i (i32.add (local.get $i)(i32.const 4)))
         (br $cl)))
 
+      ;; precompute trig
       (local.set $sinA (call $sin (local.get $ax)))
       (local.set $cosA (call $cos (local.get $ax)))
       (local.set $sinB (call $sin (local.get $ay)))
@@ -518,6 +537,8 @@
       (local.set $hh (f64.div (f64.convert_i32_s (local.get $h))(f64.const 2)))
       (local.set $fov (f64.mul (local.get $hh)(f64.const 1.8)))
 
+      ;; transform and project vertices
+      ;; proj buffer: 24 bytes per vertex (px f64, py f64, tz f64)
       (local.set $i (i32.const 0))
       (block $vd (loop $vl
         (br_if $vd (i32.ge_u (local.get $i)(local.get $nv)))
@@ -525,38 +546,65 @@
         (local.set $vy (f64.load (i32.add (local.get $vb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 8)))))
         (local.set $vz (f64.load (i32.add (local.get $vb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 16)))))
 
+        ;; rotate Y
         (local.set $tx (f64.sub (f64.mul (local.get $vx)(local.get $cosB))(f64.mul (local.get $vz)(local.get $sinB))))
         (local.set $tz (f64.add (f64.mul (local.get $vx)(local.get $sinB))(f64.mul (local.get $vz)(local.get $cosB))))
         (local.set $vx (local.get $tx))(local.set $vz (local.get $tz))
 
+        ;; rotate X
         (local.set $ty (f64.sub (f64.mul (local.get $vy)(local.get $cosA))(f64.mul (local.get $vz)(local.get $sinA))))
         (local.set $tz (f64.add (f64.mul (local.get $vy)(local.get $sinA))(f64.mul (local.get $vz)(local.get $cosA))))
         (local.set $vy (local.get $ty))(local.set $vz (local.get $tz))
 
+        ;; rotate Z
         (local.set $tx (f64.sub (f64.mul (local.get $vx)(local.get $cosC))(f64.mul (local.get $vy)(local.get $sinC))))
         (local.set $ty (f64.add (f64.mul (local.get $vx)(local.get $sinC))(f64.mul (local.get $vy)(local.get $cosC))))
         (local.set $vx (local.get $tx))(local.set $vy (local.get $ty))
 
-        (local.set $dep (f64.div (f64.const 1)(f64.add (local.get $vz)(local.get $cam))))
-        (local.set $px (f64.add (f64.mul (f64.mul (local.get $vx)(local.get $fov))(local.get $dep))(local.get $hw)))
-        (local.set $py (f64.add (f64.mul (f64.mul (local.get $vy)(local.get $fov))(local.get $dep))(local.get $hh)))
+        ;; perspective project
+        (local.set $dep (f64.add (local.get $vz)(local.get $cam)))
+        ;; store tz (the depth before division) for near-plane culling
+        ;; if dep < 0.1, store a sentinel (dep itself) so edge loop can skip
+        (if (f64.gt (local.get $dep)(f64.const 0.1))
+          (then
+            (local.set $dep (f64.div (f64.const 1)(local.get $dep)))
+            (local.set $px (f64.add (f64.mul (f64.mul (local.get $vx)(local.get $fov))(local.get $dep))(local.get $hw)))
+            (local.set $py (f64.add (f64.mul (f64.mul (local.get $vy)(local.get $fov))(local.get $dep))(local.get $hh)))
+            ;; store px, py, positive marker
+            (f64.store (i32.add (local.get $pb)(i32.mul (local.get $i)(i32.const 24)))(local.get $px))
+            (f64.store (i32.add (local.get $pb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 8)))(local.get $py))
+            (f64.store (i32.add (local.get $pb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 16)))(f64.const 1))
+          )
+          (else
+            ;; behind camera: store marker = -1
+            (f64.store (i32.add (local.get $pb)(i32.mul (local.get $i)(i32.const 24)))(f64.const 0))
+            (f64.store (i32.add (local.get $pb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 8)))(f64.const 0))
+            (f64.store (i32.add (local.get $pb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 16)))(f64.const -1))
+          ))
 
-        (f64.store (i32.add (local.get $pb)(i32.mul (local.get $i)(i32.const 16)))(local.get $px))
-        (f64.store (i32.add (local.get $pb)(i32.add (i32.mul (local.get $i)(i32.const 16))(i32.const 8)))(local.get $py))
         (local.set $i (i32.add (local.get $i)(i32.const 1)))
         (br $vl)))
 
+      ;; draw edges
       (local.set $i (i32.const 0))
       (block $ed (loop $el
         (br_if $ed (i32.ge_u (local.get $i)(local.get $ne)))
         (local.set $a (i32.load (i32.add (local.get $eb)(i32.mul (local.get $i)(i32.const 8)))))
         (local.set $b (i32.load (i32.add (local.get $eb)(i32.add (i32.mul (local.get $i)(i32.const 8))(i32.const 4)))))
         (local.set $col (i32.load (i32.add (local.get $cb)(i32.mul (local.get $i)(i32.const 4)))))
-        (local.set $x0 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.mul (local.get $a)(i32.const 16))))))
-        (local.set $y0 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $a)(i32.const 16))(i32.const 8))))))
-        (local.set $x1 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.mul (local.get $b)(i32.const 16))))))
-        (local.set $y1 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $b)(i32.const 16))(i32.const 8))))))
-        (call $tline (local.get $x0)(local.get $y0)(local.get $x1)(local.get $y1)(local.get $col)(local.get $w)(local.get $h))
+
+        ;; check near-plane: skip if either vertex behind camera
+        (local.set $za (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $a)(i32.const 24))(i32.const 16)))))
+        (local.set $zb (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $b)(i32.const 24))(i32.const 16)))))
+        (if (i32.and (f64.gt (local.get $za)(f64.const 0))(f64.gt (local.get $zb)(f64.const 0)))
+          (then
+            (local.set $x0 (call $clampTrunc (f64.load (i32.add (local.get $pb)(i32.mul (local.get $a)(i32.const 24))))))
+            (local.set $y0 (call $clampTrunc (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $a)(i32.const 24))(i32.const 8))))))
+            (local.set $x1 (call $clampTrunc (f64.load (i32.add (local.get $pb)(i32.mul (local.get $b)(i32.const 24))))))
+            (local.set $y1 (call $clampTrunc (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $b)(i32.const 24))(i32.const 8))))))
+            (call $tline (local.get $x0)(local.get $y0)(local.get $x1)(local.get $y1)(local.get $col)(local.get $w)(local.get $h))
+          ))
+
         (local.set $i (i32.add (local.get $i)(i32.const 1)))
         (br $el)))
     )
@@ -607,8 +655,9 @@
           VERT_BASE = FB_RESERVE;
           EDGE_BASE = VERT_BASE + nVerts * 24;
           COLOR_BASE = EDGE_BASE + nEdges * 8;
+          // proj buffer now 24 bytes per vertex (px, py, tz)
           PROJ_BASE = COLOR_BASE + nEdges * 4;
-          const total = PROJ_BASE + nVerts * 16 + 1024;
+          const total = PROJ_BASE + nVerts * 24 + 1024;
           const need = Math.ceil(total / 65536);
           const have = memory.buffer.byteLength / 65536;
           if (need > have) memory.grow(need - have);
@@ -666,13 +715,12 @@
         // MOUSE / TOUCH ORBIT + ZOOM
         // ═══════════════════════════════════════════════════════
         let orbitX = 0.4,
-          orbitY = 0.6; // manual orbit angles (radians)
+          orbitY = 0.6;
         let isDragging = false,
           lastPX = 0,
           lastPY = 0;
         const ORBIT_SENSITIVITY = 0.007;
 
-        // Mouse
         canvas.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
           isDragging = true;
@@ -693,7 +741,6 @@
           isDragging = false;
         });
 
-        // Touch
         let touchId = null;
         let pinchDist0 = null;
         let pinchCam0 = null;
@@ -761,7 +808,6 @@
           }
         });
 
-        // Scroll wheel zoom
         canvas.addEventListener(
           "wheel",
           (e) => {
@@ -797,7 +843,6 @@
           autoAngleY += sY;
           autoAngleZ += sZ;
 
-          // Combined angles: orbit + auto-rotation
           const finalX = orbitX + autoAngleX;
           const finalY = orbitY + autoAngleY;
           const finalZ = autoAngleZ;
@@ -805,7 +850,7 @@
           fitCanvas();
 
           const fbBytes = W * H * 4;
-          const neededPages = Math.ceil((FB_RESERVE + nVerts * 24 + nEdges * 12 + nVerts * 16 + 1024) / 65536);
+          const neededPages = Math.ceil((FB_RESERVE + nVerts * 24 + nEdges * 12 + nVerts * 24 + 1024) / 65536);
           const fbPages = Math.ceil(fbBytes / 65536);
           const totalPages = Math.max(neededPages, fbPages);
           const havePages = memory.buffer.byteLength / 65536;
