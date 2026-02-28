@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WASM Wireframe</title>
+    <style>
+      :root{--bg:#000;--fg:#fff;--muted:#666;--line:#222; color-scheme: dark}
+      *{box-sizing:border-box}
+      html,body{height:100%;margin:0}
+      body{
+        background:var(--bg);color:var(--fg);
+        font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Courier New",monospace;
+      }
+      .app{display:grid;grid-template-columns:320px minmax(0,1fr);height:100dvh;overflow:hidden}
+      .sidebar{border-right:1px solid var(--line);padding:14px;overflow-y:auto;background:#000}
+      .title{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 12px}
+      .group{margin-bottom:12px}
+      .label{display:block;color:var(--muted);margin:0 0 6px}
+      .row{display:flex;gap:6px;flex-wrap:wrap}
+      button,input,textarea{
+        width:100%;background:#000;color:#fff;border:1px solid var(--line);
+        border-radius:0;padding:7px 8px;font:inherit;
+      }
+      button{cursor:pointer}button:hover{border-color:#555}
+      .small{width:auto;padding:5px 8px}
+      textarea{min-height:140px;resize:vertical}
+      input[type=range]{border:none;padding:4px 0;accent-color:#fff}
+      .viewport{min-width:0;min-height:0;display:grid;place-items:center;padding:10px;overflow:hidden;background:#000}
+      .stage{width:100%;height:100%;border:1px solid var(--line);position:relative;min-height:240px}
+      canvas{width:100%;height:100%;display:block;background:#000;image-rendering:pixelated;touch-action:none}
+      .stats{position:absolute;right:8px;bottom:6px;color:var(--muted);font-size:11px;pointer-events:none;background:#000a;padding:2px 4px}
+      .hint{position:absolute;left:8px;bottom:6px;color:var(--muted);font-size:10px;pointer-events:none;background:#000a;padding:2px 4px}
+      @media(max-width:700px){
+        .app{grid-template-columns:1fr;grid-template-rows:44dvh minmax(0,1fr)}
+        .sidebar{border-right:none;border-bottom:1px solid var(--line)}
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <h1 class="title">wasm wireframe</h1>
+        <div class="group">
+          <label class="label">presets</label>
+          <div class="row">
+            <button class="small" onclick="loadPreset('cube')">cube</button>
+            <button class="small" onclick="loadPreset('tetra')">tetra</button>
+            <button class="small" onclick="loadPreset('octa')">octa</button>
+            <button class="small" onclick="loadPreset('icosa')">icosa</button>
+            <button class="small" onclick="loadPreset('star')">star</button>
+            <button class="small" onclick="loadPreset('grid')">grid</button>
+            <button class="small" onclick="loadPreset('axes')">axes</button>
+            <button class="small" onclick="loadPreset('pyramid')">pyramid</button>
+            <button class="small" onclick="loadPreset('diamond')">diamond</button>
+            <button class="small" onclick="loadPreset('torus')">torus</button>
+            <button class="small" onclick="loadPreset('multi')">multi</button>
+          </div>
+        </div>
+        <div class="group">
+          <label class="label">geometry json</label>
+          <textarea id="geomInput" spellcheck="false"></textarea>
+          <button style="margin-top:6px" onclick="applyGeometry()">apply</button>
+        </div>
+        <div class="group">
+          <label class="label">auto-rotation speed</label>
+          <div class="row" style="align-items:center"><span style="width:14px">x</span><input type="range" id="rx" min="0" max="200" value="0" /></div>
+          <div class="row" style="align-items:center"><span style="width:14px">y</span><input type="range" id="ry" min="0" max="200" value="30" /></div>
+          <div class="row" style="align-items:center"><span style="width:14px">z</span><input type="range" id="rz" min="0" max="200" value="0" /></div>
+        </div>
+        <div class="group">
+          <label class="label">camera distance</label>
+          <input type="range" id="camDist" min="200" max="1000" value="500" />
+        </div>
+        <div class="group">
+          <label class="label">line color</label>
+          <input id="lineColor" type="color" value="#ffffff" />
+        </div>
+        <div class="group">
+          <label class="label">background</label>
+          <input id="bgColor" type="color" value="#000000" />
+        </div>
+      </aside>
+      <main class="viewport">
+        <div class="stage">
+          <canvas id="c"></canvas>
+          <div class="hint">drag to orbit · scroll to zoom</div>
+          <div id="stats" class="stats">loading wasm…</div>
+        </div>
+      </main>
+    </div>
+
+    <script>
+      // ═══════════════════════════════════════════════════════
+      // PRESETS
+      // ═══════════════════════════════════════════════════════
+      const PRESETS = {};
+      PRESETS.cube = {
+        vertices: [
+          [-1, -1, -1],
+          [1, -1, -1],
+          [1, 1, -1],
+          [-1, 1, -1],
+          [-1, -1, 1],
+          [1, -1, 1],
+          [1, 1, 1],
+          [-1, 1, 1],
+        ],
+        edges: [
+          [0, 1],
+          [1, 2],
+          [2, 3],
+          [3, 0],
+          [4, 5],
+          [5, 6],
+          [6, 7],
+          [7, 4],
+          [0, 4],
+          [1, 5],
+          [2, 6],
+          [3, 7],
+        ],
+      };
+      PRESETS.tetra = (() => {
+        const v = [
+          [1, 1, 1],
+          [-1, -1, 1],
+          [-1, 1, -1],
+          [1, -1, -1],
+        ];
+        return {
+          vertices: v,
+          edges: [
+            [0, 1],
+            [0, 2],
+            [0, 3],
+            [1, 2],
+            [1, 3],
+            [2, 3],
+          ],
+        };
+      })();
+      PRESETS.octa = {
+        vertices: [
+          [1, 0, 0],
+          [-1, 0, 0],
+          [0, 1, 0],
+          [0, -1, 0],
+          [0, 0, 1],
+          [0, 0, -1],
+        ],
+        edges: [
+          [0, 2],
+          [0, 3],
+          [0, 4],
+          [0, 5],
+          [1, 2],
+          [1, 3],
+          [1, 4],
+          [1, 5],
+          [2, 4],
+          [2, 5],
+          [3, 4],
+          [3, 5],
+        ],
+      };
+      PRESETS.icosa = (() => {
+        const t = (1 + Math.sqrt(5)) / 2;
+        const v = [
+          [-1, t, 0],
+          [1, t, 0],
+          [-1, -t, 0],
+          [1, -t, 0],
+          [0, -1, t],
+          [0, 1, t],
+          [0, -1, -t],
+          [0, 1, -t],
+          [t, 0, -1],
+          [t, 0, 1],
+          [-t, 0, -1],
+          [-t, 0, 1],
+        ].map((p) => p.map((c) => c / t));
+        const e = [
+          [0, 11],
+          [0, 5],
+          [0, 1],
+          [0, 7],
+          [0, 10],
+          [1, 5],
+          [5, 11],
+          [11, 10],
+          [10, 7],
+          [7, 1],
+          [3, 9],
+          [3, 4],
+          [3, 2],
+          [3, 6],
+          [3, 8],
+          [9, 4],
+          [4, 2],
+          [2, 6],
+          [6, 8],
+          [8, 9],
+          [4, 5],
+          [4, 11],
+          [2, 11],
+          [2, 10],
+          [6, 10],
+          [6, 7],
+          [8, 7],
+          [8, 1],
+          [9, 1],
+          [9, 5],
+        ];
+        return { vertices: v, edges: e };
+      })();
+      PRESETS.star = (() => {
+        const v = [
+          [0, 1.5, 0],
+          [0, -1.5, 0],
+          [1.5, 0, 0],
+          [-1.5, 0, 0],
+          [0, 0, 1.5],
+          [0, 0, -1.5],
+          [0, 0, 0],
+        ];
+        const e = [
+          [6, 0],
+          [6, 1],
+          [6, 2],
+          [6, 3],
+          [6, 4],
+          [6, 5],
+          [0, 2],
+          [0, 3],
+          [0, 4],
+          [0, 5],
+          [1, 2],
+          [1, 3],
+          [1, 4],
+          [1, 5],
+        ];
+        return { vertices: v, edges: e };
+      })();
+      PRESETS.grid = (() => {
+        const v = [],
+          e = [],
+          n = 5;
+        for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) v.push([(i / n) * 2 - 1, 0, (j / n) * 2 - 1]);
+        for (let i = 0; i <= n; i++)
+          for (let j = 0; j < n; j++) {
+            e.push([i * (n + 1) + j, i * (n + 1) + j + 1]);
+            e.push([j * (n + 1) + i, (j + 1) * (n + 1) + i]);
+          }
+        return { vertices: v, edges: e };
+      })();
+      PRESETS.axes = {
+        vertices: [
+          [0, 0, 0],
+          [1.5, 0, 0],
+          [0, 1.5, 0],
+          [0, 0, 1.5],
+        ],
+        edges: [
+          [0, 1],
+          [0, 2],
+          [0, 3],
+        ],
+        edgeColors: [
+          [255, 60, 60],
+          [60, 255, 60],
+          [60, 100, 255],
+        ],
+      };
+      PRESETS.pyramid = {
+        vertices: [
+          [0, 1.2, 0],
+          [-1, -0.8, -1],
+          [1, -0.8, -1],
+          [1, -0.8, 1],
+          [-1, -0.8, 1],
+        ],
+        edges: [
+          [0, 1],
+          [0, 2],
+          [0, 3],
+          [0, 4],
+          [1, 2],
+          [2, 3],
+          [3, 4],
+          [4, 1],
+        ],
+      };
+      PRESETS.diamond = (() => {
+        const v = [
+            [0, 1.5, 0],
+            [0, -1.5, 0],
+          ],
+          n = 6;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          v.push([Math.cos(a), 0, Math.sin(a)]);
+        }
+        const e = [];
+        for (let i = 0; i < n; i++) {
+          e.push([0, i + 2]);
+          e.push([1, i + 2]);
+          e.push([i + 2, ((i + 1) % n) + 2]);
+        }
+        return { vertices: v, edges: e };
+      })();
+      PRESETS.torus = (() => {
+        const v = [],
+          e = [],
+          R = 1,
+          r = 0.4,
+          nu = 16,
+          nv = 10;
+        for (let i = 0; i < nu; i++) {
+          const u = (i / nu) * Math.PI * 2;
+          for (let j = 0; j < nv; j++) {
+            const w = (j / nv) * Math.PI * 2;
+            v.push([(R + r * Math.cos(w)) * Math.cos(u), r * Math.sin(w), (R + r * Math.cos(w)) * Math.sin(u)]);
+          }
+        }
+        for (let i = 0; i < nu; i++)
+          for (let j = 0; j < nv; j++) {
+            e.push([i * nv + j, i * nv + ((j + 1) % nv)]);
+            e.push([i * nv + j, ((i + 1) % nu) * nv + j]);
+          }
+        return { vertices: v, edges: e };
+      })();
+      PRESETS.multi = (() => {
+        const v = [],
+          e = [];
+        const cv = [
+          [-1, -1, -1],
+          [1, -1, -1],
+          [1, 1, -1],
+          [-1, 1, -1],
+          [-1, -1, 1],
+          [1, -1, 1],
+          [1, 1, 1],
+          [-1, 1, 1],
+        ];
+        const ce = [
+          [0, 1],
+          [1, 2],
+          [2, 3],
+          [3, 0],
+          [4, 5],
+          [5, 6],
+          [6, 7],
+          [7, 4],
+          [0, 4],
+          [1, 5],
+          [2, 6],
+          [3, 7],
+        ];
+        let b = v.length;
+        cv.forEach((p) => v.push([p[0] * 0.6 - 2, p[1] * 0.6, p[2] * 0.6]));
+        ce.forEach(([a, c]) => e.push([a + b, c + b]));
+        const ov = [
+          [1, 0, 0],
+          [-1, 0, 0],
+          [0, 1, 0],
+          [0, -1, 0],
+          [0, 0, 1],
+          [0, 0, -1],
+        ];
+        const oe = [
+          [0, 2],
+          [0, 3],
+          [0, 4],
+          [0, 5],
+          [1, 2],
+          [1, 3],
+          [1, 4],
+          [1, 5],
+          [2, 4],
+          [2, 5],
+          [3, 4],
+          [3, 5],
+        ];
+        b = v.length;
+        ov.forEach((p) => v.push([p[0] * 0.8 + 2, p[1] * 0.8, p[2] * 0.8]));
+        oe.forEach(([a, c]) => e.push([a + b, c + b]));
+        const tv = [
+          [1, 1, 1],
+          [-1, -1, 1],
+          [-1, 1, -1],
+          [1, -1, -1],
+        ];
+        const te = [
+          [0, 1],
+          [0, 2],
+          [0, 3],
+          [1, 2],
+          [1, 3],
+          [2, 3],
+        ];
+        b = v.length;
+        tv.forEach((p) => v.push([p[0] * 0.5, p[1] * 0.5 + 2, p[2] * 0.5]));
+        te.forEach(([a, c]) => e.push([a + b, c + b]));
+        return { vertices: v, edges: e };
+      })();
+
+      // ═══════════════════════════════════════════════════════
+      // WASM ENGINE
+      // ═══════════════════════════════════════════════════════
+      (async () => {
+        const canvas = document.getElementById("c");
+        const stageEl = canvas.parentElement;
+        const ctx2d = canvas.getContext("2d");
+        const statsEl = document.getElementById("stats");
+        const camDistSlider = document.getElementById("camDist");
+
+        let W = 512,
+          H = 512;
+
+        function fitCanvas() {
+          const r = stageEl.getBoundingClientRect();
+          W = Math.max(64, Math.floor(r.width));
+          H = Math.max(64, Math.floor(r.height));
+          canvas.width = W;
+          canvas.height = H;
+        }
+        new ResizeObserver(fitCanvas).observe(stageEl);
+        fitCanvas();
+
+        // ── WAT source ──
+        const wat = `(module
+    (import "math" "sin" (func $sin (param f64)(result f64)))
+    (import "math" "cos" (func $cos (param f64)(result f64)))
+    (memory (export "memory") 200)
+
+    (func $sp (param $x i32)(param $y i32)(param $c i32)(param $w i32)(param $h i32)
+      (if (i32.and
+            (i32.and (i32.ge_s (local.get $x)(i32.const 0))(i32.lt_s (local.get $x)(local.get $w)))
+            (i32.and (i32.ge_s (local.get $y)(i32.const 0))(i32.lt_s (local.get $y)(local.get $h))))
+        (then
+          (i32.store
+            (i32.mul (i32.add (i32.mul (local.get $y)(local.get $w))(local.get $x))(i32.const 4))
+            (local.get $c)))))
+
+    (func $abs (param $v i32)(result i32)
+      (if (result i32)(i32.lt_s (local.get $v)(i32.const 0))
+        (then (i32.sub (i32.const 0)(local.get $v)))
+        (else (local.get $v))))
+
+    (func $line (param $x0 i32)(param $y0 i32)(param $x1 i32)(param $y1 i32)(param $col i32)(param $w i32)(param $h i32)
+      (local $dx i32)(local $dy i32)(local $sx i32)(local $sy i32)(local $err i32)(local $e2 i32)
+      (local.set $dx (call $abs (i32.sub (local.get $x1)(local.get $x0))))
+      (local.set $dy (i32.sub (i32.const 0)(call $abs (i32.sub (local.get $y1)(local.get $y0)))))
+      (local.set $sx (if (result i32)(i32.lt_s (local.get $x0)(local.get $x1))(then (i32.const 1))(else (i32.const -1))))
+      (local.set $sy (if (result i32)(i32.lt_s (local.get $y0)(local.get $y1))(then (i32.const 1))(else (i32.const -1))))
+      (local.set $err (i32.add (local.get $dx)(local.get $dy)))
+      (block $d (loop $l
+        (call $sp (local.get $x0)(local.get $y0)(local.get $col)(local.get $w)(local.get $h))
+        (br_if $d (i32.and (i32.eq (local.get $x0)(local.get $x1))(i32.eq (local.get $y0)(local.get $y1))))
+        (local.set $e2 (i32.mul (i32.const 2)(local.get $err)))
+        (if (i32.ge_s (local.get $e2)(local.get $dy))(then
+          (local.set $err (i32.add (local.get $err)(local.get $dy)))
+          (local.set $x0 (i32.add (local.get $x0)(local.get $sx)))))
+        (if (i32.le_s (local.get $e2)(local.get $dx))(then
+          (local.set $err (i32.add (local.get $err)(local.get $dx)))
+          (local.set $y0 (i32.add (local.get $y0)(local.get $sy)))))
+        (br $l))))
+
+    (func $tline (param $x0 i32)(param $y0 i32)(param $x1 i32)(param $y1 i32)(param $col i32)(param $w i32)(param $h i32)
+      (local $ox i32)(local $oy i32)
+      (local.set $oy (i32.const -1))
+      (block $dy2 (loop $ly
+        (br_if $dy2 (i32.gt_s (local.get $oy)(i32.const 1)))
+        (local.set $ox (i32.const -1))
+        (block $dx2 (loop $lx
+          (br_if $dx2 (i32.gt_s (local.get $ox)(i32.const 1)))
+          (call $line
+            (i32.add (local.get $x0)(local.get $ox))(i32.add (local.get $y0)(local.get $oy))
+            (i32.add (local.get $x1)(local.get $ox))(i32.add (local.get $y1)(local.get $oy))
+            (local.get $col)(local.get $w)(local.get $h))
+          (local.set $ox (i32.add (local.get $ox)(i32.const 1)))
+          (br $lx)))
+        (local.set $oy (i32.add (local.get $oy)(i32.const 1)))
+        (br $ly))))
+
+    (func (export "render")
+      (param $ax f64)(param $ay f64)(param $az f64)(param $cam f64)
+      (param $nv i32)(param $ne i32)
+      (param $vb i32)(param $eb i32)(param $cb i32)(param $pb i32)
+      (param $w i32)(param $h i32)(param $bg i32)
+
+      (local $i i32)(local $fbSize i32)
+      (local $vx f64)(local $vy f64)(local $vz f64)
+      (local $tx f64)(local $ty f64)(local $tz f64)
+      (local $sinA f64)(local $cosA f64)(local $sinB f64)(local $cosB f64)(local $sinC f64)(local $cosC f64)
+      (local $dep f64)(local $px f64)(local $py f64)
+      (local $hw f64)(local $hh f64)(local $fov f64)
+      (local $a i32)(local $b i32)(local $col i32)
+      (local $x0 i32)(local $y0 i32)(local $x1 i32)(local $y1 i32)
+
+      (local.set $fbSize (i32.mul (i32.mul (local.get $w)(local.get $h))(i32.const 4)))
+      (local.set $i (i32.const 0))
+      (block $cb2 (loop $cl
+        (br_if $cb2 (i32.ge_u (local.get $i)(local.get $fbSize)))
+        (i32.store (local.get $i)(local.get $bg))
+        (local.set $i (i32.add (local.get $i)(i32.const 4)))
+        (br $cl)))
+
+      (local.set $sinA (call $sin (local.get $ax)))
+      (local.set $cosA (call $cos (local.get $ax)))
+      (local.set $sinB (call $sin (local.get $ay)))
+      (local.set $cosB (call $cos (local.get $ay)))
+      (local.set $sinC (call $sin (local.get $az)))
+      (local.set $cosC (call $cos (local.get $az)))
+
+      (local.set $hw (f64.div (f64.convert_i32_s (local.get $w))(f64.const 2)))
+      (local.set $hh (f64.div (f64.convert_i32_s (local.get $h))(f64.const 2)))
+      (local.set $fov (f64.mul (local.get $hh)(f64.const 1.8)))
+
+      (local.set $i (i32.const 0))
+      (block $vd (loop $vl
+        (br_if $vd (i32.ge_u (local.get $i)(local.get $nv)))
+        (local.set $vx (f64.load (i32.add (local.get $vb)(i32.mul (local.get $i)(i32.const 24)))))
+        (local.set $vy (f64.load (i32.add (local.get $vb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 8)))))
+        (local.set $vz (f64.load (i32.add (local.get $vb)(i32.add (i32.mul (local.get $i)(i32.const 24))(i32.const 16)))))
+
+        (local.set $tx (f64.sub (f64.mul (local.get $vx)(local.get $cosB))(f64.mul (local.get $vz)(local.get $sinB))))
+        (local.set $tz (f64.add (f64.mul (local.get $vx)(local.get $sinB))(f64.mul (local.get $vz)(local.get $cosB))))
+        (local.set $vx (local.get $tx))(local.set $vz (local.get $tz))
+
+        (local.set $ty (f64.sub (f64.mul (local.get $vy)(local.get $cosA))(f64.mul (local.get $vz)(local.get $sinA))))
+        (local.set $tz (f64.add (f64.mul (local.get $vy)(local.get $sinA))(f64.mul (local.get $vz)(local.get $cosA))))
+        (local.set $vy (local.get $ty))(local.set $vz (local.get $tz))
+
+        (local.set $tx (f64.sub (f64.mul (local.get $vx)(local.get $cosC))(f64.mul (local.get $vy)(local.get $sinC))))
+        (local.set $ty (f64.add (f64.mul (local.get $vx)(local.get $sinC))(f64.mul (local.get $vy)(local.get $cosC))))
+        (local.set $vx (local.get $tx))(local.set $vy (local.get $ty))
+
+        (local.set $dep (f64.div (f64.const 1)(f64.add (local.get $vz)(local.get $cam))))
+        (local.set $px (f64.add (f64.mul (f64.mul (local.get $vx)(local.get $fov))(local.get $dep))(local.get $hw)))
+        (local.set $py (f64.add (f64.mul (f64.mul (local.get $vy)(local.get $fov))(local.get $dep))(local.get $hh)))
+
+        (f64.store (i32.add (local.get $pb)(i32.mul (local.get $i)(i32.const 16)))(local.get $px))
+        (f64.store (i32.add (local.get $pb)(i32.add (i32.mul (local.get $i)(i32.const 16))(i32.const 8)))(local.get $py))
+        (local.set $i (i32.add (local.get $i)(i32.const 1)))
+        (br $vl)))
+
+      (local.set $i (i32.const 0))
+      (block $ed (loop $el
+        (br_if $ed (i32.ge_u (local.get $i)(local.get $ne)))
+        (local.set $a (i32.load (i32.add (local.get $eb)(i32.mul (local.get $i)(i32.const 8)))))
+        (local.set $b (i32.load (i32.add (local.get $eb)(i32.add (i32.mul (local.get $i)(i32.const 8))(i32.const 4)))))
+        (local.set $col (i32.load (i32.add (local.get $cb)(i32.mul (local.get $i)(i32.const 4)))))
+        (local.set $x0 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.mul (local.get $a)(i32.const 16))))))
+        (local.set $y0 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $a)(i32.const 16))(i32.const 8))))))
+        (local.set $x1 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.mul (local.get $b)(i32.const 16))))))
+        (local.set $y1 (i32.trunc_f64_s (f64.load (i32.add (local.get $pb)(i32.add (i32.mul (local.get $b)(i32.const 16))(i32.const 8))))))
+        (call $tline (local.get $x0)(local.get $y0)(local.get $x1)(local.get $y1)(local.get $col)(local.get $w)(local.get $h))
+        (local.set $i (i32.add (local.get $i)(i32.const 1)))
+        (br $el)))
+    )
+  )`;
+
+        // ── Compile ──
+        statsEl.textContent = "loading compiler…";
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/wabt@1.0.36/index.js";
+          s.onload = res;
+          s.onerror = rej;
+          document.head.appendChild(s);
+        });
+        statsEl.textContent = "compiling wat…";
+        const wabt = await WabtModule();
+        const m = wabt.parseWat("e.wat", wat);
+        m.validate();
+        const { buffer: wasmBytes } = m.toBinary({});
+        const { instance } = await WebAssembly.instantiate(wasmBytes, { math: { sin: Math.sin, cos: Math.cos } });
+        const { memory, render } = instance.exports;
+        statsEl.textContent = "ready";
+
+        // ── Geometry upload ──
+        let nVerts = 0,
+          nEdges = 0,
+          VERT_BASE = 0,
+          EDGE_BASE = 0,
+          COLOR_BASE = 0,
+          PROJ_BASE = 0,
+          currentGeom = null;
+        const FB_RESERVE = 2048 * 2048 * 4;
+
+        function hexToABGR(hex) {
+          const r = parseInt(hex.slice(1, 3), 16),
+            g = parseInt(hex.slice(3, 5), 16),
+            b = parseInt(hex.slice(5, 7), 16);
+          return ((0xff << 24) | (b << 16) | (g << 8) | r) >>> 0;
+        }
+        function rgbToABGR(r, g, b) {
+          return ((0xff << 24) | ((b & 0xff) << 16) | ((g & 0xff) << 8) | (r & 0xff)) >>> 0;
+        }
+
+        function uploadGeometry(geom) {
+          currentGeom = geom;
+          nVerts = geom.vertices.length;
+          nEdges = geom.edges.length;
+          VERT_BASE = FB_RESERVE;
+          EDGE_BASE = VERT_BASE + nVerts * 24;
+          COLOR_BASE = EDGE_BASE + nEdges * 8;
+          PROJ_BASE = COLOR_BASE + nEdges * 4;
+          const total = PROJ_BASE + nVerts * 16 + 1024;
+          const need = Math.ceil(total / 65536);
+          const have = memory.buffer.byteLength / 65536;
+          if (need > have) memory.grow(need - have);
+
+          const f = new Float64Array(memory.buffer);
+          for (let i = 0; i < nVerts; i++) {
+            const o = VERT_BASE / 8 + i * 3;
+            f[o] = geom.vertices[i][0];
+            f[o + 1] = geom.vertices[i][1];
+            f[o + 2] = geom.vertices[i][2];
+          }
+          const iv = new Int32Array(memory.buffer);
+          for (let i = 0; i < nEdges; i++) {
+            const o = EDGE_BASE / 4 + i * 2;
+            iv[o] = geom.edges[i][0];
+            iv[o + 1] = geom.edges[i][1];
+          }
+          updateColors();
+          document.getElementById("geomInput").value = JSON.stringify(geom, null, 2);
+        }
+
+        function updateColors() {
+          if (!currentGeom) return;
+          const hex = document.getElementById("lineColor").value;
+          const def = hexToABGR(hex);
+          const u = new Uint32Array(memory.buffer);
+          for (let i = 0; i < nEdges; i++) {
+            if (currentGeom.edgeColors && currentGeom.edgeColors[i]) {
+              const [r, g, b] = currentGeom.edgeColors[i];
+              u[COLOR_BASE / 4 + i] = rgbToABGR(r, g, b);
+            } else {
+              u[COLOR_BASE / 4 + i] = def;
+            }
+          }
+        }
+
+        document.getElementById("lineColor").addEventListener("input", updateColors);
+
+        window.loadPreset = function (name) {
+          if (PRESETS[name]) uploadGeometry(PRESETS[name]);
+        };
+        window.applyGeometry = function () {
+          try {
+            const g = JSON.parse(document.getElementById("geomInput").value);
+            if (!g.vertices || !g.edges) throw new Error("need vertices and edges");
+            uploadGeometry(g);
+          } catch (e) {
+            alert("invalid json: " + e.message);
+          }
+        };
+
+        uploadGeometry(PRESETS.cube);
+
+        // ═══════════════════════════════════════════════════════
+        // MOUSE / TOUCH ORBIT + ZOOM
+        // ═══════════════════════════════════════════════════════
+        let orbitX = 0.4,
+          orbitY = 0.6; // manual orbit angles (radians)
+        let isDragging = false,
+          lastPX = 0,
+          lastPY = 0;
+        const ORBIT_SENSITIVITY = 0.007;
+
+        // Mouse
+        canvas.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) return;
+          isDragging = true;
+          lastPX = e.clientX;
+          lastPY = e.clientY;
+          e.preventDefault();
+        });
+        window.addEventListener("mousemove", (e) => {
+          if (!isDragging) return;
+          const dx = e.clientX - lastPX,
+            dy = e.clientY - lastPY;
+          orbitY += dx * ORBIT_SENSITIVITY;
+          orbitX += dy * ORBIT_SENSITIVITY;
+          lastPX = e.clientX;
+          lastPY = e.clientY;
+        });
+        window.addEventListener("mouseup", () => {
+          isDragging = false;
+        });
+
+        // Touch
+        let touchId = null;
+        let pinchDist0 = null;
+        let pinchCam0 = null;
+
+        function getTouchDist(t) {
+          const dx = t[0].clientX - t[1].clientX,
+            dy = t[0].clientY - t[1].clientY;
+          return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        canvas.addEventListener(
+          "touchstart",
+          (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+              isDragging = true;
+              touchId = e.touches[0].identifier;
+              lastPX = e.touches[0].clientX;
+              lastPY = e.touches[0].clientY;
+            } else if (e.touches.length === 2) {
+              isDragging = false;
+              pinchDist0 = getTouchDist(e.touches);
+              pinchCam0 = parseFloat(camDistSlider.value);
+            }
+          },
+          { passive: false }
+        );
+
+        canvas.addEventListener(
+          "touchmove",
+          (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isDragging) {
+              const t = Array.from(e.touches).find((t) => t.identifier === touchId);
+              if (!t) return;
+              const dx = t.clientX - lastPX,
+                dy = t.clientY - lastPY;
+              orbitY += dx * ORBIT_SENSITIVITY;
+              orbitX += dy * ORBIT_SENSITIVITY;
+              lastPX = t.clientX;
+              lastPY = t.clientY;
+            } else if (e.touches.length === 2 && pinchDist0 !== null) {
+              const d = getTouchDist(e.touches);
+              const ratio = pinchDist0 / d;
+              let newVal = pinchCam0 * ratio;
+              newVal = Math.max(200, Math.min(1000, newVal));
+              camDistSlider.value = newVal;
+            }
+          },
+          { passive: false }
+        );
+
+        canvas.addEventListener("touchend", (e) => {
+          if (e.touches.length < 2) {
+            pinchDist0 = null;
+          }
+          if (e.touches.length === 0) {
+            isDragging = false;
+            touchId = null;
+          } else if (e.touches.length === 1) {
+            isDragging = true;
+            touchId = e.touches[0].identifier;
+            lastPX = e.touches[0].clientX;
+            lastPY = e.touches[0].clientY;
+          }
+        });
+
+        // Scroll wheel zoom
+        canvas.addEventListener(
+          "wheel",
+          (e) => {
+            e.preventDefault();
+            let v = parseFloat(camDistSlider.value);
+            v += e.deltaY * 0.5;
+            v = Math.max(200, Math.min(1000, v));
+            camDistSlider.value = v;
+          },
+          { passive: false }
+        );
+
+        // ── Render loop ──
+        let autoAngleX = 0,
+          autoAngleY = 0,
+          autoAngleZ = 0,
+          lastT = performance.now(),
+          fps = 0,
+          fc = 0;
+
+        function loop(now) {
+          fc++;
+          if (fc % 20 === 0) fps = Math.round(1000 / (now - lastT));
+          lastT = now;
+
+          const sX = document.getElementById("rx").value / 10000;
+          const sY = document.getElementById("ry").value / 10000;
+          const sZ = document.getElementById("rz").value / 10000;
+          const cam = camDistSlider.value / 100;
+          const bg = hexToABGR(document.getElementById("bgColor").value);
+
+          autoAngleX += sX;
+          autoAngleY += sY;
+          autoAngleZ += sZ;
+
+          // Combined angles: orbit + auto-rotation
+          const finalX = orbitX + autoAngleX;
+          const finalY = orbitY + autoAngleY;
+          const finalZ = autoAngleZ;
+
+          fitCanvas();
+
+          const fbBytes = W * H * 4;
+          const neededPages = Math.ceil((FB_RESERVE + nVerts * 24 + nEdges * 12 + nVerts * 16 + 1024) / 65536);
+          const fbPages = Math.ceil(fbBytes / 65536);
+          const totalPages = Math.max(neededPages, fbPages);
+          const havePages = memory.buffer.byteLength / 65536;
+          if (totalPages > havePages) memory.grow(totalPages - havePages);
+
+          const t0 = performance.now();
+          render(finalX, finalY, finalZ, cam, nVerts, nEdges, VERT_BASE, EDGE_BASE, COLOR_BASE, PROJ_BASE, W, H, bg);
+          const ms = (performance.now() - t0).toFixed(1);
+
+          const fb = new Uint8ClampedArray(memory.buffer, 0, fbBytes);
+          const img = new ImageData(new Uint8ClampedArray(fb), W, H);
+          ctx2d.putImageData(img, 0, 0);
+
+          statsEl.textContent = `${fps} fps · ${ms}ms · ${nVerts}v ${nEdges}e · ${W}×${H}`;
+          requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+      })();
+    </script>
+  </body>
+</html>

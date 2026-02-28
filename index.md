@@ -80,6 +80,7 @@
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)
 - [Voxel intersection](./voxel-intersection/)
+- [WASM 3D](./wasm-3d/)
 - [Web Speech API](./web-speech-api/)
 - [Wiki search](./wiki-search/)
 - [Wiki spacetime search](./wiki-spacetime-search/)
