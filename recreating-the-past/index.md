@@ -1,6 +1,21 @@
 # Recreating The Past
 
-## Week 2: John Whitney
+## Week 3: Computational Typography
+
+Artists: Muriel Cooper, John Maeda
+
+### Read
+
+> A poem only communicates if read slowly: only then does it have time to create a state of mind in which the images can form and be transformed.  
+> — [Poems and Telegrams](https://www.dropbox.com/s/7tmeb0cki0biyit/Articulated%286013%29.pdf?dl=0), by Bruno Munari
+
+### Watch
+
+- [Tutorial on typography](https://www.dropbox.com/s/uup0cbrmzl6a5ea/async_6_4.mp4?dl=0)
+
+## Week 2: Animation and Harmony
+
+Artist: John Whitney
 
 ### Read
 
@@ -39,7 +54,9 @@
     - Dots: [motion study](./whitney/process/dots/001.html), [harmonic progression study](./whitney/process/dots/002.html), [oscillation along circumference (failed)](./whitney/process/dots/003.html), [rose petals (failed)](./whitney/process/dots/004.html), [modulate radius](./whitney/process/dots/005.html)
   - Extras: [photon grammar](https://code.chuanqisun.com/photon-grammar/), [disco ball](https://code.chuanqisun.com/disco-ball/), [dialogarithm](https://code.chuanqisun.com/dialogarithm/)
 
-## Week 1: Vera Molnár
+## Week 1: Chaos and Order
+
+Artist: Vera Molnár
 
 ### Read
 
