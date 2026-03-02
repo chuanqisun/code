@@ -15,9 +15,9 @@ Artists: Muriel Cooper, John Maeda
 
 ### Practice
 
-| [Original](https://maedastudio.com/morisawa-10-2016/) | [Recreated (live animation)](./maeda/016-ultimate-wasm.html) |
-| ----------------------------------------------------- | ------------------------------------------------------------ |
-| ![Morisawa 6, 1996](./maeda/original.webp)            | ![Recreated](./maeda/recreated.webp)                         |
+| [Original](https://maedastudio.com/morisawa-10-2016/) | [Recreated (live animation)](./maeda/index.html) |
+| ----------------------------------------------------- | ------------------------------------------------ |
+| ![Morisawa 6, 1996](./maeda/original.webp)            | ![Recreated](./maeda/recreated.webp)             |
 
 - Notes
   - [Live](./maeda/016-ultimate-wasm.html), [Code (WebAssembly)](https://github.com/chuanqisun/code/tree/master/recreating-the-past/maeda/016-ultimate-wasm.html)
