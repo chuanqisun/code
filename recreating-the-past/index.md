@@ -15,21 +15,22 @@ Artists: Muriel Cooper, John Maeda
 
 ### Practice
 
-- Original
-  - [Morisawa 6, 1996](https://maedastudio.com/morisawa-10-2016/)
-  - ![Image](./maeda/original.webp)
-- Recreated
-  - [Live](./maeda/016-ultimate-wasm.html)
-  - ![Image](./maeda/recreated.png)
+| [Original](https://maedastudio.com/morisawa-10-2016/) | [Recreated](./maeda/016-ultimate-wasm.html) |
+| ----------------------------------------------------- | ------------------------------------------- |
+| ![Morisawa 6, 1996](./maeda/original.webp)            | ![Recreated](./maeda/recreated.png)         |
+
 - Notes
-  - [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/maeda/016-ultimate-wasm.html)
+  - [Live](./maeda/016-ultimate-wasm.html), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/maeda/016-ultimate-wasm.html)
+  - Source: Morisawa 6 from the Morisawa 10 series, 1996, John Maeda
   - Thought about different approaches: previous assignments were done in Canvas API, a CSS-only approach would be cool as I haven't explored its 3D capabilities before. SVG has potentials but I've hit perf bottleneck before so that's risky. Finally, if time allows, I want to use AI to implement my own graphics engine in WASM.
-  - The logo type of モリサワ is not coincidental. The lines are simple, with a mixure of straight and curved strokes. Not too dense to bury the patterns.
-  - My first few attemps tried oscillate the texts left and right. It wasn't doing what John did.
-  - Key realization came from seeing his reprint in 2024: https://art.gazelliarthouse.com/collections/awaken-metamagical-hands/products/morisawa-6. The bottom reveals that each character is rotated 180 degrees to the cross diagonal position.
+  - The logo type of モリサワ is not coincidental. The lines are simple, with a mixture of straight and curved strokes. Not too dense to bury the patterns.
+  - My first few attempts tried to oscillate the texts left and right. It wasn't doing what John did.
+  - Key realization came from seeing his [reprint in 2024](https://art.gazelliarthouse.com/collections/awaken-metamagical-hands/products/morisawa-6). The bottom reveals that each character is rotated 180 degrees to the cross diagonal position.
   - After finishing 2D animation, I designed a 3D animation, with additional orbit and font size variations
   - I also tried CMYK multi-color blending, but CSS engine finally taps out. I'm getting <5 FPS. We need C++
   - Process
+    - [CSS 3D proof of concept](./maeda/001-hello.html), [CSS particle system](./maeda/003-particle-system.html), [CSS Variable Font](./maeda/005-typography.html), [Choreography](./maeda/006-choreography.html), [Spin (failed)](./maeda/007-self-spin.html), [Graphics Engine](./maeda/014-wasm-3d-render.html)
+  - Extras: [3D in Canvas](./maeda/012-high-perf-simplified.html), [3D in WASM](./maeda/017-ultimate-2d-wasm.html),
 
 ## Week 2: Animation and Harmony
 
@@ -104,4 +105,4 @@ Artist: Vera Molnár
 
 ### Extra
 
-- [Hi(gh) Squre](./molnar/square.html)
+- [Hi(gh) Square](./molnar/square.html)

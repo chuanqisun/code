@@ -9,11 +9,13 @@
         background: #000;
         margin: 0;
         overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
       }
       canvas {
         display: block;
-        width: 100vw;
-        height: 100vh;
         image-rendering: pixelated;
       }
       #status {
@@ -414,8 +416,12 @@
         ;; ── render all active trails (outline, fading, falling) ──
         (func $renderTrails (param $scaledTime f64) (param $w i32) (param $h i32)
           (local $i i32) (local $write i32) (local $idx i32)
-          (local $p f64) (local $alpha i32) (local $y f32)
+          (local $p f64) (local $alpha i32) (local $y f32) (local $yBase f32)
           (local $charIdx i32) (local $glyphOff i32) (local $glyphNEdges i32)
+          (local.set $yBase
+            (f32.mul
+              (f32.convert_i32_s (local.get $h))
+              (f32.const -0.3535533905932738)))
           (local.set $write (i32.const 0))
           (local.set $i (i32.const 0))
           (block $done (loop $lp
@@ -439,7 +445,7 @@
                   (global.get $fontSize)
                   (f64.load (i32.add (global.get $tRotPtr) (i32.mul (local.get $idx) (i32.const 8))))
                   (f32.demote_f64 (f64.load (i32.add (global.get $tXPtr) (i32.mul (local.get $idx) (i32.const 8)))))
-                  (local.get $y) (f32.const 0.0)
+                  (f32.add (local.get $yBase) (local.get $y)) (f32.const 0.0)
                   (i32.const 255) (i32.const 255) (i32.const 255) (local.get $alpha)
                   (local.get $w) (local.get $h))
                 (i32.store (i32.add (global.get $activePtr) (i32.mul (local.get $write) (i32.const 4))) (local.get $idx))
@@ -450,7 +456,11 @@
 
         ;; ── render source glyphs (filled, on top) ──
         (func $renderSourceGlyphs (param $rotation f64) (param $w i32) (param $h i32)
-          (local $i i32) (local $glyphOff i32) (local $glyphNEdges i32)
+          (local $i i32) (local $glyphOff i32) (local $glyphNEdges i32) (local $yBase f32)
+          (local.set $yBase
+            (f32.mul
+              (f32.convert_i32_s (local.get $h))
+              (f32.const -0.3535533905932738)))
           (local.set $i (i32.const 0))
           (block $done (loop $lp
             (br_if $done (i32.ge_s (local.get $i) (global.get $nChars)))
@@ -460,7 +470,7 @@
               (local.get $glyphOff) (local.get $glyphNEdges)
               (global.get $fontSize) (local.get $rotation)
               (f32.demote_f64 (f64.load (i32.add (global.get $animXPtr) (i32.mul (local.get $i) (i32.const 8)))))
-              (f32.const 0.0) (f32.const 0.0)
+              (local.get $yBase) (f32.const 0.0)
               (i32.const 255) (i32.const 255) (i32.const 255) (i32.const 255)
               (local.get $w) (local.get $h))
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
@@ -498,10 +508,12 @@
         const SWAP_SPEED = 0.0008;
         const TRAIL_LIFETIME = 3500;
         const TRAIL_SPAWN_INTERVAL = 20;
-        const TRAIL_FALL_DISTANCE = 800;
+        const TRAIL_FALL_DISTANCE = 1200;
         const BASE_FONT_SIZE = 140; // reference size used for measuring glyph centers
-        const FONT_SIZE_VW = 20; // font size as % of viewport width (≈ 140px / 1920px * 100)
-        const LETTER_GAP_RATIO = -10 / 140; // gap as fraction of font size — scales with fontScale via baseX * fontScale
+        const FONT_SIZE_VW = 20; // font size as % of canvas width
+        const PAUSE_AFTER_DEGREES = 0; // e.g. 180 pauses after 180° for original poster position; 0 or Infinity = run forever
+        const LETTER_GAP_RATIO = -14 / 140; // gap as fraction of font size — scales with fontScale via baseX * fontScale
+        const ASPECT_RATIO = 9 / 16; // fixed width:height ratio for the canvas (portrait)
         const LEN = TEXT.length;
         const INV_TRAIL_LIFE = 1 / TRAIL_LIFETIME;
         const POOL_SIZE = (Math.ceil(TRAIL_LIFETIME / TRAIL_SPAWN_INTERVAL) + 2) * LEN;
@@ -511,20 +523,42 @@
           [1, 2],
         ];
         const INITIAL_SPIN_OFFSET = Math.PI;
+        const PAUSE_AFTER_RADIANS = Number.isFinite(PAUSE_AFTER_DEGREES) && PAUSE_AFTER_DEGREES > 0 ? (PAUSE_AFTER_DEGREES * Math.PI) / 180 : Infinity;
+        const PAUSE_AFTER_MS = SWAP_SPEED > 0 && Number.isFinite(PAUSE_AFTER_RADIANS) ? PAUSE_AFTER_RADIANS / SWAP_SPEED : Infinity;
 
         let W = 512,
           H = 512;
+        // Initial cap uses screen dimensions; refined after STATIC_BASE is computed
+        let maxFBPixels = Math.max(screen.width || 1920, 1920) * Math.max(screen.height || 1080, 1080);
         function fitCanvas() {
-          W = Math.max(64, window.innerWidth);
-          H = Math.max(64, window.innerHeight);
+          const vpW = Math.max(64, window.innerWidth);
+          const vpH = Math.max(64, window.innerHeight);
+          // Fit ASPECT_RATIO : 1 within viewport (object-fit: contain)
+          if (vpW / vpH > ASPECT_RATIO) {
+            H = vpH;
+            W = Math.round(H * ASPECT_RATIO);
+          } else {
+            W = vpW;
+            H = Math.round(W / ASPECT_RATIO);
+          }
+          // Cap to prevent buffer overflow in WASM memory
+          if (W * H > maxFBPixels) {
+            const scale = Math.sqrt(maxFBPixels / (W * H));
+            W = Math.max(64, Math.floor(W * scale));
+            H = Math.max(64, Math.floor(W / ASPECT_RATIO));
+            // Final safety: ensure product is within bounds
+            if (W * H > maxFBPixels) H = Math.max(64, Math.floor(maxFBPixels / W));
+          }
           canvas.width = W;
           canvas.height = H;
+          canvas.style.width = W + "px";
+          canvas.style.height = H + "px";
         }
         window.addEventListener("resize", fitCanvas);
         fitCanvas();
 
         function vw() {
-          return window.innerWidth / 100;
+          return W / 100;
         }
 
         /* ── Measure glyph centers (requires Canvas API) ── */
@@ -772,9 +806,13 @@
         statusEl.textContent = "uploading data…";
 
         // Compute safe base for static data (above max framebuffer + working buffers)
+        const WORKING_BUFFER_SIZE = 512 * 1024;
         const maxW = Math.max(screen.width || 1920, 1920);
         const maxH = Math.max(screen.height || 1080, 1080);
-        const STATIC_BASE = Math.ceil((maxW * maxH * 4 + 512 * 1024) / 8) * 8;
+        const STATIC_BASE = Math.ceil((maxW * maxH * 4 + WORKING_BUFFER_SIZE) / 8) * 8;
+        // Cap canvas dimensions so framebuffer never overlaps static data
+        maxFBPixels = Math.floor((STATIC_BASE - WORKING_BUFFER_SIZE) / 4);
+        fitCanvas();
 
         // Layout static data at STATIC_BASE (all 8-byte aligned)
         function align8(n) {
@@ -877,7 +915,8 @@
           fitCanvas();
           if (startTime < 0) startTime = time;
 
-          const scaledTime = (time - startTime) * TIME_SCALE;
+          const elapsed = (time - startTime) * TIME_SCALE;
+          const scaledTime = Math.min(elapsed, PAUSE_AFTER_MS);
           const rotation = scaledTime * SWAP_SPEED + INITIAL_SPIN_OFFSET;
 
           // Update font size and character positions responsively (like 017)
