@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 1000px;
+        overflow: hidden;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(75deg);
+      }
+
+      h1 {
+        position: absolute;
+        margin: 0;
+        font-size: 120px;
+        font-family: sans-serif;
+        white-space: nowrap;
+        transform: translate(-50%, -50%);
+      }
+
+      /* The fixed top layer */
+      .source {
+        color: white;
+        z-index: 10;
+      }
+
+      /* The falling outline layers */
+      .clone {
+        color: transparent;
+        -webkit-text-stroke: 1px white;
+        animation: fall 2s linear forwards;
+      }
+
+      @keyframes fall {
+        0% {
+          transform: translate(-50%, -50%) translateZ(0);
+          opacity: 0.8;
+        }
+        100% {
+          transform: translate(-50%, -50%) translateZ(-800px);
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scene" id="scene">
+      <h1 class="source">HELLO</h1>
+    </div>
+
+    <script>
+      const scene = document.getElementById("scene");
+
+      function emit() {
+        const el = document.createElement("h1");
+        el.className = "clone";
+        el.innerText = "HELLO";
+        scene.appendChild(el);
+
+        // Cleanup
+        setTimeout(() => el.remove(), 2000);
+      }
+
+      setInterval(emit, 150);
+    </script>
+  </body>
+</html>

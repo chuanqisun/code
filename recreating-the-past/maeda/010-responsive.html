@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@100..900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 10000px;
+        overflow: hidden;
+        font-family: "M PLUS 2", sans-serif;
+      }
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(45deg);
+        position: relative;
+        width: 0;
+        height: 0;
+        contain: layout;
+      }
+      .letter {
+        position: absolute;
+        white-space: nowrap;
+        pointer-events: none;
+        will-change: transform, opacity;
+        contain: layout;
+      }
+      .source {
+        color: white;
+        z-index: 10;
+      }
+      .trail {
+        color: transparent;
+        -webkit-text-stroke: 1px white;
+      }
+      .pooled {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scene" id="scene"></div>
+    <script>
+      /* ── Parameters ── */
+      const TEXT = "モリワサ";
+      const WEIGHT = 900;
+      const SPEED = 1.0;
+      const SIZE_MULTIPLIER = 2.0; // ← adjust this to scale everything
+      const MIN_RADIUS_VW = 5; // in vw
+      const MAX_RADIUS_VW = 15; // in vw
+      const MIN_SIZE_VW = 7; // in vw
+      const MAX_SIZE_VW = 14; // in vw
+      const TRAIL_DEPTH = -1000;
+      const TRAIL_LIFE = 2000;
+      const SPAWN_RATE = 40;
+      const ORBIT_PERIOD = 60000;
+      const SPIN_PERIOD = 4000;
+      const BREATHE_PERIOD = 10000;
+
+      /* ── Derived ── */
+      const LEN = TEXT.length;
+      const TAU = Math.PI * 2;
+      const INV_LIFE = 1 / TRAIL_LIFE;
+      const INV_BREATHE = TAU / BREATHE_PERIOD;
+      const INV_ORBIT = TAU / ORBIT_PERIOD;
+      const INV_SPIN = 360 / SPIN_PERIOD;
+      const POOL_SIZE = (Math.ceil(TRAIL_LIFE / SPAWN_RATE) + 2) * LEN;
+
+      const phaseOffsets = Float64Array.from({ length: LEN }, (_, i) => (i / LEN) * TAU);
+      const spinDirs = Int8Array.from({ length: LEN }, (_, i) => (i % 2 === 0 ? 1 : -1));
+
+      /* ── vw → px conversion ── */
+      function vw() {
+        return window.innerWidth / 100;
+      }
+
+      /* ── Scene ── */
+      const scene = document.getElementById("scene");
+
+      const sourceEls = Array.from({ length: LEN }, (_, i) => {
+        const el = document.createElement("span");
+        el.className = "letter source";
+        el.textContent = TEXT[i];
+        el.style.fontWeight = WEIGHT;
+        scene.appendChild(el);
+        return el;
+      });
+
+      /* ── Trail pool ── */
+      const poolEls = new Array(POOL_SIZE);
+      const freeStack = Int32Array.from({ length: POOL_SIZE }, (_, i) => i);
+      let freeCount = POOL_SIZE;
+
+      const tStart = new Float64Array(POOL_SIZE);
+      const tX = new Float64Array(POOL_SIZE);
+      const tY = new Float64Array(POOL_SIZE);
+      const tSpin = new Float64Array(POOL_SIZE);
+      const tSize = new Float64Array(POOL_SIZE);
+
+      const active = new Int32Array(POOL_SIZE);
+      let activeCount = 0;
+
+      {
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < POOL_SIZE; i++) {
+          const el = document.createElement("span");
+          el.className = "letter trail pooled";
+          el.style.fontWeight = WEIGHT;
+          frag.appendChild(el);
+          poolEls[i] = el;
+        }
+        scene.appendChild(frag);
+      }
+
+      /* ── Loop ── */
+      let lastSpawn = 0;
+      let prevSizePx = -1;
+
+      function loop(time) {
+        const t = time * SPEED;
+        const px = vw() * SIZE_MULTIPLIER;
+
+        const breathe = Math.sin(t * INV_BREATHE) * 0.5 + 0.5;
+        const radiusPx = (breathe * (MAX_RADIUS_VW - MIN_RADIUS_VW) + MIN_RADIUS_VW) * px;
+        const sizePx = (breathe * (MAX_SIZE_VW - MIN_SIZE_VW) + MIN_SIZE_VW) * px;
+        const orbit = t * INV_ORBIT;
+        const spin = t * INV_SPIN;
+        const sizeStr = sizePx + "px";
+        const sizeChanged = sizePx !== prevSizePx;
+        if (sizeChanged) prevSizePx = sizePx;
+
+        for (let i = 0; i < LEN; i++) {
+          const a = orbit + phaseOffsets[i];
+          const x = Math.cos(a) * radiusPx;
+          const y = Math.sin(a) * radiusPx;
+          const r = spin * spinDirs[i];
+          const el = sourceEls[i];
+          if (sizeChanged) el.style.fontSize = sizeStr;
+          el.style.transform = `translate(-50%,-50%) translateX(${x}px) translateY(${y}px) rotateZ(${r}deg)`;
+        }
+
+        if (time - lastSpawn >= SPAWN_RATE) {
+          for (let i = 0; i < LEN; i++) {
+            if (freeCount === 0) break;
+            const idx = freeStack[--freeCount];
+            const a = orbit + phaseOffsets[i];
+
+            tStart[idx] = time;
+            tX[idx] = Math.cos(a) * radiusPx;
+            tY[idx] = Math.sin(a) * radiusPx;
+            tSpin[idx] = spin * spinDirs[i];
+            tSize[idx] = sizePx;
+
+            const el = poolEls[idx];
+            el.textContent = TEXT[i];
+            el.style.fontSize = sizePx + "px";
+            el.classList.remove("pooled");
+            active[activeCount++] = idx;
+          }
+          lastSpawn = time;
+        }
+
+        let write = 0;
+        for (let i = 0; i < activeCount; i++) {
+          const idx = active[i];
+          const p = (time - tStart[idx]) * INV_LIFE;
+          if (p >= 1) {
+            poolEls[idx].classList.add("pooled");
+            freeStack[freeCount++] = idx;
+          } else {
+            const el = poolEls[idx];
+            el.style.transform = `translate(-50%,-50%) translateX(${tX[idx]}px) translateY(${tY[idx]}px) translateZ(${p * TRAIL_DEPTH}px) rotateZ(${
+              tSpin[idx]
+            }deg)`;
+            el.style.opacity = 1 - p;
+            active[write++] = idx;
+          }
+        }
+        activeCount = write;
+
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

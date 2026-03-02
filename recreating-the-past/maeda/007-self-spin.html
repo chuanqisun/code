@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@100..900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 10000px;
+        overflow: hidden;
+        font-family: "M PLUS 2", sans-serif;
+        color: white;
+      }
+
+      .controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
+
+      .controls input {
+        width: 180px;
+        margin: 10px 0 20px;
+        display: block;
+      }
+
+      .controls label {
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(45deg);
+        position: relative;
+        width: 0;
+        height: 0;
+      }
+
+      .letter {
+        position: absolute;
+        font-size: 140px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      .letter.source {
+        color: white;
+        z-index: 10;
+      }
+
+      .letter.trail {
+        color: transparent;
+        -webkit-text-stroke: 1px white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Weight: <span id="weightDisplay">900</span></label>
+      <input type="range" id="weight" min="100" max="900" value="900" />
+      <label>Speed: <span id="speedDisplay">1.0</span>x</label>
+      <input type="range" id="speed" min="1" max="50" value="10" />
+    </div>
+
+    <div class="scene" id="scene"></div>
+
+    <script>
+      const scene = document.getElementById("scene");
+      const weightInput = document.getElementById("weight");
+      const speedInput = document.getElementById("speed");
+      const weightDisplay = document.getElementById("weightDisplay");
+      const speedDisplay = document.getElementById("speedDisplay");
+
+      const TEXT = "モリサワ";
+      const CHAR_WIDTH = 115;
+      const DURATION = 3500;
+      const SPAWN_INTERVAL = 50;
+      const TRAIL_DEPTH = -1500;
+
+      const HOLD_TIME = 1000;
+      const MOVE_TIME = 3000;
+      const CYCLE_TIME = HOLD_TIME + MOVE_TIME;
+
+      const letters = [];
+      const trails = [];
+      let lastSpawnTime = 0;
+
+      const offsets = [];
+      const totalWidth = TEXT.length * CHAR_WIDTH;
+      for (let i = 0; i < TEXT.length; i++) {
+        offsets.push((i + 0.5) * CHAR_WIDTH - totalWidth / 2);
+      }
+
+      for (let i = 0; i < TEXT.length; i++) {
+        const el = document.createElement("span");
+        el.className = "letter source";
+        el.textContent = TEXT[i];
+        scene.appendChild(el);
+        letters.push(el);
+      }
+
+      // Returns a value 0..1 representing how much the letters have collapsed
+      // 0 = full width (hold), 1 = fully collapsed
+      function getCollapseAmount(time) {
+        const cyclePos = time % CYCLE_TIME;
+        if (cyclePos < HOLD_TIME) {
+          return 0; // holding at full width
+        }
+        const movePos = (cyclePos - HOLD_TIME) / MOVE_TIME; // 0..1 over 3 seconds
+        // sine wave: 0 -> 1 -> 0 over movePos 0..1
+        return Math.sin(movePos * Math.PI);
+      }
+
+      // Returns spin angle (only spins during move phase)
+      function getSpinAngle(time) {
+        const cyclePos = time % CYCLE_TIME;
+        if (cyclePos < HOLD_TIME) {
+          return 0;
+        }
+        const movePos = (cyclePos - HOLD_TIME) / MOVE_TIME;
+        // One full clockwise rotation per move phase
+        return movePos * 360;
+      }
+
+      function isHolding(time) {
+        return time % CYCLE_TIME < HOLD_TIME;
+      }
+
+      function getLetterX(index, time) {
+        const collapse = getCollapseAmount(time);
+        return offsets[index] * (1 - collapse);
+      }
+
+      function applyTransform(el, x, z, spin, opacity, weight) {
+        el.style.transform = `translate(-50%, -50%) translateX(${x}px) translateZ(${z}px) rotateZ(${spin}deg)`;
+        el.style.opacity = opacity;
+        el.style.fontWeight = weight;
+      }
+
+      function loop(time) {
+        const weight = weightInput.value;
+        const speed = speedInput.value / 10;
+        weightDisplay.textContent = weight;
+        speedDisplay.textContent = speed.toFixed(1);
+
+        const scaledTime = time * speed;
+        const spin = getSpinAngle(scaledTime);
+
+        for (let i = 0; i < letters.length; i++) {
+          const x = getLetterX(i, scaledTime);
+          applyTransform(letters[i], x, 0, spin, 1, weight);
+        }
+
+        // Spawn trails
+        if (time - lastSpawnTime >= SPAWN_INTERVAL) {
+          for (let i = 0; i < TEXT.length; i++) {
+            const x = getLetterX(i, scaledTime);
+            const el = document.createElement("span");
+            el.className = "letter trail";
+            el.textContent = TEXT[i];
+            el._spinAtSpawn = spin;
+            el._xAtSpawn = x;
+            el._weightAtSpawn = weight;
+            scene.appendChild(el);
+            trails.push({ el, start: time, x, spin: spin, weight });
+          }
+          lastSpawnTime = time;
+        }
+
+        // Update trails
+        for (let i = trails.length - 1; i >= 0; i--) {
+          const t = trails[i];
+          const progress = (time - t.start) / DURATION;
+          if (progress >= 1) {
+            t.el.remove();
+            trails.splice(i, 1);
+          } else {
+            const z = progress * TRAIL_DEPTH;
+            const opacity = 1 - progress;
+            applyTransform(t.el, t.x, z, t.spin, opacity, t.weight);
+          }
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

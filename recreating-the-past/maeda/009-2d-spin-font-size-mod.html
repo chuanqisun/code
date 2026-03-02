@@ -1,0 +1,195 @@
+<!doctype html>
+<html>
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@100..900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 10000px;
+        overflow: hidden;
+        font-family: "M PLUS 2", sans-serif;
+        color: white;
+      }
+
+      .controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
+
+      .controls input {
+        width: 180px;
+        margin: 10px 0 20px;
+        display: block;
+      }
+
+      .controls label {
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(45deg);
+        position: relative;
+        width: 0;
+        height: 0;
+      }
+
+      .letter {
+        position: absolute;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      .letter.source {
+        color: white;
+        z-index: 10;
+      }
+
+      .letter.trail {
+        color: transparent;
+        -webkit-text-stroke: 1px white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Weight: <span id="weightDisplay">900</span></label>
+      <input type="range" id="weight" min="100" max="900" value="900" />
+      <label>Speed: <span id="speedDisplay">1.0</span>x</label>
+      <input type="range" id="speed" min="1" max="50" value="10" />
+    </div>
+
+    <div class="scene" id="scene"></div>
+
+    <script>
+      const scene = document.getElementById("scene");
+      const weightInput = document.getElementById("weight");
+      const speedInput = document.getElementById("speed");
+      const weightDisplay = document.getElementById("weightDisplay");
+      const speedDisplay = document.getElementById("speedDisplay");
+
+      const TEXT = "モリサワ";
+      const DURATION = 3500;
+      const SPAWN_INTERVAL = 50;
+      const TRAIL_DEPTH = -1000;
+      const ORBIT_PERIOD = 60000;
+      const SPIN_PERIOD = -4000;
+      const BREATHE_PERIOD = 10000;
+      const MIN_RADIUS = 100;
+      const MAX_RADIUS = 300;
+      const MIN_SIZE = 140;
+      const MAX_SIZE = 280;
+
+      const letters = [];
+      const trails = [];
+      let lastSpawnTime = 0;
+
+      for (let i = 0; i < TEXT.length; i++) {
+        const el = document.createElement("span");
+        el.className = "letter source";
+        el.textContent = TEXT[i];
+        scene.appendChild(el);
+        letters.push(el);
+      }
+
+      function getBreatheT(scaledTime) {
+        return Math.sin((scaledTime / BREATHE_PERIOD) * Math.PI * 2) * 0.5 + 0.5;
+      }
+
+      function getOrbitRadius(breatheT) {
+        return breatheT * (MAX_RADIUS - MIN_RADIUS) + MIN_RADIUS;
+      }
+
+      function getLetterSize(breatheT) {
+        return breatheT * (MAX_SIZE - MIN_SIZE) + MIN_SIZE;
+      }
+
+      function getLetterPosition(index, scaledTime) {
+        const breatheT = getBreatheT(scaledTime);
+        const orbitRadius = getOrbitRadius(breatheT);
+        const phaseOffset = (index / TEXT.length) * Math.PI * 2;
+        const angle = (scaledTime / ORBIT_PERIOD) * Math.PI * 2 + phaseOffset;
+        return {
+          x: Math.cos(angle) * orbitRadius,
+          y: Math.sin(angle) * orbitRadius,
+          size: getLetterSize(breatheT),
+        };
+      }
+
+      function getSpinAngle(scaledTime) {
+        return (scaledTime / SPIN_PERIOD) * 360;
+      }
+
+      function applyTransform(el, x, y, z, spin, opacity, weight, size) {
+        el.style.fontSize = size + "px";
+        el.style.transform = `translate(-50%, -50%) translateX(${x}px) translateY(${y}px) translateZ(${z}px) rotateZ(${spin}deg)`;
+        el.style.opacity = opacity;
+        el.style.fontWeight = weight;
+      }
+
+      function loop(time) {
+        const weight = weightInput.value;
+        const speed = speedInput.value / 10;
+        weightDisplay.textContent = weight;
+        speedDisplay.textContent = speed.toFixed(1);
+
+        const scaledTime = time * speed;
+        const spin = getSpinAngle(scaledTime);
+
+        for (let i = 0; i < letters.length; i++) {
+          const pos = getLetterPosition(i, scaledTime);
+          applyTransform(letters[i], pos.x, pos.y, 0, spin, 1, weight, pos.size);
+        }
+
+        if (time - lastSpawnTime >= SPAWN_INTERVAL) {
+          for (let i = 0; i < TEXT.length; i++) {
+            const pos = getLetterPosition(i, scaledTime);
+            const el = document.createElement("span");
+            el.className = "letter trail";
+            el.textContent = TEXT[i];
+            scene.appendChild(el);
+            trails.push({
+              el,
+              start: time,
+              x: pos.x,
+              y: pos.y,
+              spin,
+              weight,
+              size: pos.size,
+            });
+          }
+          lastSpawnTime = time;
+        }
+
+        for (let i = trails.length - 1; i >= 0; i--) {
+          const t = trails[i];
+          const progress = (time - t.start) / DURATION;
+          if (progress >= 1) {
+            t.el.remove();
+            trails.splice(i, 1);
+          } else {
+            const z = progress * TRAIL_DEPTH;
+            const opacity = 1 - progress;
+            applyTransform(t.el, t.x, t.y, z, t.spin, opacity, t.weight, t.size);
+          }
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@100..900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 1000px;
+        overflow: hidden;
+        font-family: "M PLUS 2", sans-serif;
+        color: white;
+      }
+
+      .controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
+
+      .controls input {
+        width: 180px;
+        margin: 10px 0 20px;
+        display: block;
+      }
+
+      .controls label {
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(65deg);
+        position: relative;
+        width: 0;
+        height: 0;
+      }
+
+      .letter {
+        position: absolute;
+        font-size: 140px;
+        white-space: nowrap;
+        pointer-events: none;
+        transform: translate(-50%, -50%) translateX(calc(var(--x) * 1px)) translateZ(calc(var(--z, 0) * 1px));
+        opacity: var(--o, 1);
+        font-weight: var(--w, 900);
+      }
+
+      .letter.source {
+        color: white;
+        z-index: 10;
+      }
+
+      .letter.trail {
+        color: transparent;
+        -webkit-text-stroke: 1px white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Weight: <span id="weightDisplay">900</span></label>
+      <input type="range" id="weight" min="100" max="900" value="900" />
+      <label>Speed: <span id="speedDisplay">1.0</span>x</label>
+      <input type="range" id="speed" min="1" max="50" value="10" />
+    </div>
+
+    <div class="scene" id="scene"></div>
+
+    <script>
+      const scene = document.getElementById("scene");
+      const weightInput = document.getElementById("weight");
+      const speedInput = document.getElementById("speed");
+      const weightDisplay = document.getElementById("weightDisplay");
+      const speedDisplay = document.getElementById("speedDisplay");
+
+      const TEXT = "モリサワ";
+      const CHAR_WIDTH = 115;
+      const DURATION = 3500;
+      const SPAWN_INTERVAL = 50;
+      const TRAIL_DEPTH = -1500;
+      const FREQUENCY = 0.0012;
+
+      const letters = [];
+      const trails = [];
+      let lastSpawnTime = 0;
+
+      // Compute each letter's base offset from center
+      const offsets = [];
+      const totalWidth = TEXT.length * CHAR_WIDTH;
+      for (let i = 0; i < TEXT.length; i++) {
+        offsets.push((i + 0.5) * CHAR_WIDTH - totalWidth / 2);
+      }
+
+      // Create source letters
+      for (let i = 0; i < TEXT.length; i++) {
+        const el = document.createElement("span");
+        el.className = "letter source";
+        el.textContent = TEXT[i];
+        scene.appendChild(el);
+        letters.push(el);
+      }
+
+      function getLetterX(index, time) {
+        const speed = speedInput.value / 10;
+        // Each letter oscillates between its base offset and 0 (center)
+        // Use a sin wave; phase-shift each letter slightly for a wave effect
+        const phase = index * 0.4 * 0;
+        const t = (Math.sin(time * FREQUENCY * speed - phase) + 1) / 2; // 0..1
+        return offsets[index] * t;
+      }
+
+      function loop(time) {
+        const weight = weightInput.value;
+        const speed = speedInput.value / 10;
+        weightDisplay.textContent = weight;
+        speedDisplay.textContent = speed.toFixed(1);
+
+        // Update source letters
+        for (let i = 0; i < letters.length; i++) {
+          const x = getLetterX(i, time);
+          letters[i].style.setProperty("--x", x);
+          letters[i].style.setProperty("--w", weight);
+        }
+
+        // Spawn trails
+        if (time - lastSpawnTime >= SPAWN_INTERVAL) {
+          for (let i = 0; i < TEXT.length; i++) {
+            const x = getLetterX(i, time);
+            const el = document.createElement("span");
+            el.className = "letter trail";
+            el.textContent = TEXT[i];
+            el.style.setProperty("--x", x);
+            el.style.setProperty("--w", weight);
+            scene.appendChild(el);
+            trails.push({ el, start: time });
+          }
+          lastSpawnTime = time;
+        }
+
+        // Update trails
+        for (let i = trails.length - 1; i >= 0; i--) {
+          const progress = (time - trails[i].start) / DURATION;
+          if (progress >= 1) {
+            trails[i].el.remove();
+            trails.splice(i, 1);
+          } else {
+            trails[i].el.style.setProperty("--z", progress * TRAIL_DEPTH);
+            trails[i].el.style.setProperty("--o", 1 - progress);
+          }
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

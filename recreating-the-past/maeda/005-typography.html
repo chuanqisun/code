@@ -1,0 +1,152 @@
+<!doctype html>
+<html>
+  <head>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+2:wght@100..900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 1000px;
+        overflow: hidden;
+        font-family: "M PLUS 2", sans-serif;
+        color: white;
+      }
+
+      .controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.1);
+        padding: 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
+
+      .controls input {
+        width: 180px;
+        margin: 10px 0 20px;
+        display: block;
+      }
+
+      .controls label {
+        text-transform: uppercase;
+        opacity: 0.8;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(65deg);
+      }
+
+      h1 {
+        position: absolute;
+        margin: 0;
+        font-size: 140px;
+        white-space: nowrap;
+        font-weight: var(--w);
+        letter-spacing: calc(var(--ls) * 1px);
+        transform: translate(-50%, -50%) translateX(calc(var(--x) * 1px)) translateZ(calc(var(--z) * 1px));
+        opacity: var(--o);
+      }
+
+      .source {
+        color: white;
+        --z: 0;
+        --o: 1;
+        z-index: 10;
+      }
+
+      .trail {
+        color: transparent;
+        -webkit-text-stroke: 1px white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Weight: <span id="weightDisplay">900</span></label>
+      <input type="range" id="weight" min="100" max="900" value="900" />
+      <label>Spacing: <span id="spacingDisplay">-24</span>px</label>
+      <input type="range" id="spacing" min="-100" max="100" value="-24" />
+    </div>
+
+    <div class="scene" id="scene">
+      <h1 class="source" id="source">モリサワ</h1>
+    </div>
+
+    <script>
+      const scene = document.getElementById("scene");
+      const source = document.getElementById("source");
+      const weightInput = document.getElementById("weight");
+      const spacingInput = document.getElementById("spacing");
+      const weightDisplay = document.getElementById("weightDisplay");
+      const spacingDisplay = document.getElementById("spacingDisplay");
+
+      const DURATION = 3500;
+      const SPAWN_INTERVAL = 50;
+      const SWING_AMPLITUDE = 300;
+      const SWING_FREQUENCY = 0.0015;
+      const TRAIL_DEPTH = -1500;
+
+      const trails = [];
+      let lastSpawnTime = 0;
+
+      function loop(time) {
+        const weight = weightInput.value;
+        const spacing = spacingInput.value;
+        const x = Math.sin(time * SWING_FREQUENCY) * SWING_AMPLITUDE;
+
+        updateDisplays(weight, spacing);
+        applyProps(source, x, weight, spacing);
+        spawnTrail(time, x, weight, spacing);
+        updateTrails(time);
+
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+
+      function updateDisplays(weight, spacing) {
+        weightDisplay.textContent = weight;
+        spacingDisplay.textContent = spacing;
+      }
+
+      function applyProps(el, x, weight, spacing) {
+        el.style.setProperty("--x", x);
+        el.style.setProperty("--w", weight);
+        el.style.setProperty("--ls", spacing);
+      }
+
+      function spawnTrail(time, x, weight, spacing) {
+        if (time - lastSpawnTime < SPAWN_INTERVAL) return;
+
+        const el = document.createElement("h1");
+        el.className = "trail";
+        el.textContent = "モリサワ";
+        applyProps(el, x, weight, spacing);
+        scene.appendChild(el);
+        trails.push({ el, start: time });
+        lastSpawnTime = time;
+      }
+
+      function updateTrails(time) {
+        for (let i = trails.length - 1; i >= 0; i--) {
+          const progress = (time - trails[i].start) / DURATION;
+
+          if (progress >= 1) {
+            trails[i].el.remove();
+            trails.splice(i, 1);
+          } else {
+            trails[i].el.style.setProperty("--z", progress * TRAIL_DEPTH);
+            trails[i].el.style.setProperty("--o", 1 - progress);
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

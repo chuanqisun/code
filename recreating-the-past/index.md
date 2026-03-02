@@ -13,6 +13,22 @@ Artists: Muriel Cooper, John Maeda
 
 - [Tutorial on typography](https://www.dropbox.com/s/uup0cbrmzl6a5ea/async_6_4.mp4?dl=0)
 
+### Practice
+
+- Original
+  - [Morisawa 6, 1996](https://maedastudio.com/morisawa-10-2016/)
+  - ![Image](./maeda/original.webp)
+- Recreated
+- Notes
+  - Source code
+  - Thought about different approaches: previous assignments were done in Canvas API, a CSS-only approach would be cool as I haven't explored its 3D capabilities before. SVG has potentials but I've hit perf bottleneck before so that's risky. Finally, if time allows, I want to use AI to implement my own graphics engine in WASM.
+  - The logo type of モリサワ is not coincidental. The lines are simple, with a mixure of straight and curved strokes. Not too dense to bury the patterns.
+  - My first few attemps tried oscillate the texts left and right. It wasn't doing what John did.
+  - Key realization came from seeing his reprint in 2024: https://art.gazelliarthouse.com/collections/awaken-metamagical-hands/products/morisawa-6. The bottom reveals that each character is rotated 180 degrees to the cross diagonal position.
+  - After finishing 2D animation, I designed a 3D animation, with additional orbit and font size variations
+  - I also tried CMYK multi-color blending, but CSS engine finally taps out. I'm getting <5 FPS. We need C++
+  - Process
+
 ## Week 2: Animation and Harmony
 
 Artist: John Whitney

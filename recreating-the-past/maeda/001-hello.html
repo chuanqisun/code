@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 1000px;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        /* rotateX(70deg) tilts the "table" toward the camera */
+        transform: rotateX(60deg);
+      }
+
+      .rotator {
+        transform-style: preserve-3d;
+        animation: spin 5s infinite linear;
+      }
+
+      h1 {
+        position: absolute;
+        margin: 0;
+        font-size: 120px;
+        font-family: sans-serif;
+        color: transparent;
+        -webkit-text-stroke: 2px white;
+        white-space: nowrap;
+        transform: translate(-50%, -50%) translateZ(var(--z));
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotateZ(0deg);
+        }
+        to {
+          transform: rotateZ(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scene">
+      <div class="rotator">
+        <h1 style="--z: 0px">HELLO</h1>
+      </div>
+    </div>
+  </body>
+</html>

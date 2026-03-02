@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        place-items: center;
+        perspective: 1200px;
+        overflow: hidden;
+      }
+
+      .scene {
+        transform-style: preserve-3d;
+        transform: rotateX(65deg); /* Tilt the "table" */
+      }
+
+      .spiral {
+        transform-style: preserve-3d;
+        animation: spin 4s infinite linear;
+      }
+
+      h1 {
+        position: absolute;
+        margin: 0;
+        font-size: 80px;
+        font-family: sans-serif;
+        color: transparent;
+        -webkit-text-stroke: 1px cyan;
+        white-space: nowrap;
+        /* 
+       Each layer is pushed further down (Z) 
+       and rotated slightly more (Z) to create the twist 
+    */
+        transform: translate(-50%, -50%) translateZ(calc(var(--i) * -20px)) rotateZ(calc(var(--i) * 10deg));
+
+        opacity: calc(1 - (var(--i) * 0.05));
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotateZ(0deg);
+        }
+        to {
+          transform: rotateZ(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scene">
+      <div class="spiral">
+        <!-- Manually creating the "particle" trail layers -->
+        <h1 style="--i: 0">HELLO</h1>
+        <h1 style="--i: 1">HELLO</h1>
+        <h1 style="--i: 2">HELLO</h1>
+        <h1 style="--i: 3">HELLO</h1>
+        <h1 style="--i: 4">HELLO</h1>
+        <h1 style="--i: 5">HELLO</h1>
+        <h1 style="--i: 6">HELLO</h1>
+        <h1 style="--i: 7">HELLO</h1>
+        <h1 style="--i: 8">HELLO</h1>
+        <h1 style="--i: 9">HELLO</h1>
+        <h1 style="--i: 10">HELLO</h1>
+        <h1 style="--i: 11">HELLO</h1>
+        <h1 style="--i: 12">HELLO</h1>
+        <h1 style="--i: 13">HELLO</h1>
+        <h1 style="--i: 14">HELLO</h1>
+        <h1 style="--i: 15">HELLO</h1>
+      </div>
+    </div>
+  </body>
+</html>
