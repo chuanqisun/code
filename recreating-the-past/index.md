@@ -30,7 +30,7 @@ Artists: Muriel Cooper, John Maeda
   - I also tried CMYK multi-color blending, but CSS engine finally taps out. I'm getting <5 FPS. We need C++
   - Process
     - [CSS 3D proof of concept](./maeda/001-hello.html), [CSS particle system](./maeda/003-particle-system.html), [CSS Variable Font](./maeda/005-typography.html), [Choreography](./maeda/006-choreography.html), [Spin (failed)](./maeda/007-self-spin.html), [Graphics Engine](./maeda/014-wasm-3d-render.html), [TTF font analyzer](./maeda/013-ttf-praser.html)
-  - Extras: [3D in Canvas](./maeda/012-high-perf-simplified.html), [3D in WASM](./maeda/017-ultimate-2d-wasm.html),
+  - Extras: [3D in CSS](./maeda/012-high-perf-simplified.html), [3D in WASM](./maeda/017-ultimate-2d-wasm.html),
 
 ## Week 2: Animation and Harmony
 
