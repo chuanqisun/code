@@ -22,12 +22,13 @@ Artists: Muriel Cooper, John Maeda
 - Notes
   - [Live](./maeda/index.html), [Code (JavaScript + WebAssembly)](https://github.com/chuanqisun/code/tree/master/recreating-the-past/maeda/index.html)
   - Source: Morisawa 6 from the Morisawa 10 series, 1996, John Maeda
-  - Thought about different approaches: previous assignments were done in Canvas API, a CSS-only approach would be cool as I haven't explored its 3D capabilities before. SVG has potentials but I've hit perf bottleneck before so that's risky. Finally, if time allows, I want to use AI to implement my own graphics engine in WASM.
+  - Thought about different approaches: previous assignments were done in Canvas API, a CSS-only approach would be cool as I haven't explored its 3D capabilities before. SVG has potentials but I've hit perf bottleneck before so that's risky.
+  - The final version used JavaScript for vectorizing font and managing animation loop. It used WebAssembly for drawing, animation, compositing, and rasterization.
   - The logo type of モリサワ is not coincidental. The lines are simple, with a mixture of straight and curved strokes. Not too dense to bury the patterns.
   - My first few attempts was oscillating the texts left to right. It wasn't doing what John did.
   - Key realization came from seeing John's [reprint in 2024](https://art.gazelliarthouse.com/collections/awaken-metamagical-hands/products/morisawa-6). The bottom reveals that each character is rotated 180 degrees to the cross diagonal position.
   - After finishing 2D animation, I designed a 3D animation, with additional orbit and font size variations
-  - I also tried CMYK multi-color blending, but CSS engine finally taps out. I'm getting <5 FPS. We need C++
+  - Before porting the system to WebAssembly, I also tried CMYK multi-color blending, but CSS engine finally tapped out. I was getting <5 FPS. We need C++
   - Process
     - [CSS 3D proof of concept](./maeda/001-hello.html), [CSS particle system](./maeda/003-particle-system.html), [CSS Variable Font](./maeda/005-typography.html), [Choreography](./maeda/006-choreography.html), [Spin (failed)](./maeda/007-self-spin.html), [Graphics engine from scratch](./maeda/014-wasm-3d-render.html), [TTF font analyzer](./maeda/013-ttf-praser.html)
   - Extras: [3D in CSS](./maeda/012-high-perf-simplified.html), [3D in WASM](./maeda/017-ultimate-2d-wasm.html),
