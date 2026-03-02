@@ -17,7 +17,7 @@ Artists: Muriel Cooper, John Maeda
 
 | [Original](https://maedastudio.com/morisawa-10-2016/) | [Recreated](./maeda/016-ultimate-wasm.html) |
 | ----------------------------------------------------- | ------------------------------------------- |
-| ![Morisawa 6, 1996](./maeda/original.webp)            | ![Recreated](./maeda/recreated.png)         |
+| ![Morisawa 6, 1996](./maeda/original.webp)            | ![Recreated](./maeda/recreated.webp)        |
 
 - Notes
   - [Live](./maeda/016-ultimate-wasm.html), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/maeda/016-ultimate-wasm.html)
