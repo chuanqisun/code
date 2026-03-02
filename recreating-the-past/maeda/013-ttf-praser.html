@@ -1,0 +1,227 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      textarea {
+        width: 100%;
+        height: 80px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Raw JS TTF Extractor (with Cmap Parsing)</h2>
+    <input type="file" id="fileInput" accept=".ttf" />
+    <input type="text" id="charInput" value="A" maxlength="1" style="width: 30px" />
+    <div id="status">Upload a .ttf file to begin</div>
+
+    <svg id="svg" width="400" height="400" style="border: 1px solid #ccc; margin-top: 20px; transform: scaleY(-1); background: #f0f0f0"></svg>
+    <br />
+    <textarea id="pathOutput" readonly></textarea>
+
+    <script>
+      const fileInput = document.getElementById("fileInput");
+      const charInput = document.getElementById("charInput");
+      const svg = document.getElementById("svg");
+      const status = document.getElementById("status");
+
+      fileInput.onchange = async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        const buffer = await file.arrayBuffer();
+        const view = new DataView(buffer);
+
+        // 1. Parse Table Directory
+        const numTables = view.getUint16(4);
+        const tables = {};
+        for (let i = 0; i < numTables; i++) {
+          const off = 12 + i * 16;
+          const tag = String.fromCharCode(view.getUint8(off), view.getUint8(off + 1), view.getUint8(off + 2), view.getUint8(off + 3));
+          tables[tag] = { offset: view.getUint32(off + 8), length: view.getUint32(off + 12) };
+        }
+
+        // 2. Find Glyph ID for the character (cmap table)
+        const charCode = charInput.value.charCodeAt(0);
+        const glyphId = getGlyphId(view, tables["cmap"].offset, charCode);
+        status.innerText = `Character: ${charInput.value} | Unicode: ${charCode} | Glyph ID: ${glyphId}`;
+
+        if (glyphId === 0) {
+          status.innerText += " (Warning: Glyph not found)";
+        }
+
+        // 3. Get Glyph Offset (loca table)
+        const headOffset = tables["head"].offset;
+        const indexToLocFormat = view.getInt16(headOffset + 50);
+        const locaOffset = tables["loca"].offset;
+        let gStart, gEnd;
+
+        if (indexToLocFormat === 0) {
+          gStart = view.getUint16(locaOffset + glyphId * 2) * 2;
+          gEnd = view.getUint16(locaOffset + (glyphId + 1) * 2) * 2;
+        } else {
+          gStart = view.getUint32(locaOffset + glyphId * 4);
+          gEnd = view.getUint32(locaOffset + (glyphId + 1) * 4);
+        }
+
+        if (gStart === gEnd) {
+          alert("This glyph is empty (like a space). Try another letter.");
+          return;
+        }
+
+        // 4. Parse Glyph Outline (glyf table)
+        const glyfBase = tables["glyf"].offset + gStart;
+        const numContours = view.getInt16(glyfBase);
+        if (numContours < 0) {
+          alert("Composite glyph detected. This simple parser only supports basic characters.");
+          return;
+        }
+
+        const endPts = [];
+        for (let i = 0; i < numContours; i++) endPts.push(view.getUint16(glyfBase + 10 + i * 2));
+        const numPoints = endPts[endPts.length - 1] + 1;
+        const instructionLen = view.getUint16(glyfBase + 10 + numContours * 2);
+        let ptr = glyfBase + 12 + numContours * 2 + instructionLen;
+
+        // Flags
+        let points = [];
+        for (let i = 0; i < numPoints; i++) {
+          const flag = view.getUint8(ptr++);
+          points.push({ flag });
+          if (flag & 0x08) {
+            let repeat = view.getUint8(ptr++);
+            while (repeat--) {
+              points.push({ flag });
+              i++;
+            }
+          }
+        }
+
+        // X Coords
+        let curX = 0;
+        for (let i = 0; i < numPoints; i++) {
+          const f = points[i].flag;
+          if (f & 0x02) {
+            // Short
+            const v = view.getUint8(ptr++);
+            curX += f & 0x10 ? v : -v;
+          } else if (!(f & 0x10)) {
+            // Long
+            curX += view.getInt16(ptr);
+            ptr += 2;
+          }
+          points[i].x = curX;
+        }
+
+        // Y Coords
+        let curY = 0;
+        for (let i = 0; i < numPoints; i++) {
+          const f = points[i].flag;
+          if (f & 0x04) {
+            // Short
+            const v = view.getUint8(ptr++);
+            curY += f & 0x20 ? v : -v;
+          } else if (!(f & 0x20)) {
+            // Long
+            curY += view.getInt16(ptr);
+            ptr += 2;
+          }
+          points[i].y = curY;
+        }
+
+        // 5. Generate SVG Path
+        let d = "";
+        let startIdx = 0;
+        for (let i = 0; i < endPts.length; i++) {
+          const contour = points.slice(startIdx, endPts[i] + 1);
+          d += generatePath(contour);
+          startIdx = endPts[i] + 1;
+        }
+
+        render(d);
+      };
+
+      function getGlyphId(view, cmapOffset, charCode) {
+        const numTables = view.getUint16(cmapOffset + 2);
+        let subtableOffset = -1;
+
+        // Find Windows Unicode BMP table (Platform 3, Encoding 1)
+        for (let i = 0; i < numTables; i++) {
+          const platformId = view.getUint16(cmapOffset + 4 + i * 8);
+          const encodingId = view.getUint16(cmapOffset + 4 + i * 8 + 2);
+          if (platformId === 3 && encodingId === 1) {
+            subtableOffset = cmapOffset + view.getUint32(cmapOffset + 4 + i * 8 + 4);
+            break;
+          }
+        }
+
+        if (subtableOffset === -1) return 0;
+
+        const format = view.getUint16(subtableOffset);
+        if (format === 4) {
+          const segCount = view.getUint16(subtableOffset + 6) / 2;
+          const endCodes = subtableOffset + 14;
+          const startCodes = endCodes + 2 + segCount * 2;
+          const idDeltas = startCodes + segCount * 2;
+          const idRangeOffsets = idDeltas + segCount * 2;
+
+          for (let i = 0; i < segCount; i++) {
+            const start = view.getUint16(startCodes + i * 2);
+            const end = view.getUint16(endCodes + i * 2);
+            if (charCode >= start && charCode <= end) {
+              const delta = view.getInt16(idDeltas + i * 2);
+              const rangeOffset = view.getUint16(idRangeOffsets + i * 2);
+              if (rangeOffset === 0) return (charCode + delta) % 65536;
+
+              // Complex range offset mapping
+              const glyphPtr = idRangeOffsets + i * 2 + rangeOffset + (charCode - start) * 2;
+              const gid = view.getUint16(glyphPtr);
+              return gid !== 0 ? (gid + delta) % 65536 : 0;
+            }
+          }
+        }
+        return 0;
+      }
+
+      function generatePath(pts) {
+        if (pts.length === 0) return "";
+        // TTF points can start off-curve. For simplicity, we start at the first point.
+        let d = `M ${pts[0].x} ${pts[0].y} `;
+        for (let i = 1; i <= pts.length; i++) {
+          const curr = pts[i % pts.length];
+          const prev = pts[(i - 1) % pts.length];
+
+          if (curr.flag & 0x01) {
+            // On Curve
+            d += `L ${curr.x} ${curr.y} `;
+          } else {
+            // Off Curve (Quadratic)
+            const next = pts[(i + 1) % pts.length];
+            if (next.flag & 0x01) {
+              d += `Q ${curr.x} ${curr.y}, ${next.x} ${next.y} `;
+              i++;
+            } else {
+              // Two off-curves in a row: use midpoint
+              d += `Q ${curr.x} ${curr.y}, ${(curr.x + next.x) / 2} ${(curr.y + next.y) / 2} `;
+            }
+          }
+        }
+        return d + "Z ";
+      }
+
+      function render(d) {
+        svg.innerHTML = "";
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "#333");
+        svg.appendChild(path);
+        document.getElementById("pathOutput").value = d;
+
+        // Auto-zoom
+        const bb = path.getBBox();
+        svg.setAttribute("viewBox", `${bb.x} ${bb.y} ${bb.width} ${bb.height}`);
+      }
+    </script>
+  </body>
+</html>
