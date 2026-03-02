@@ -19,10 +19,10 @@ Artists: Muriel Cooper, John Maeda
   - [Morisawa 6, 1996](https://maedastudio.com/morisawa-10-2016/)
   - ![Image](./maeda/original.webp)
 - Recreated
-  - [Animated](./maeda/morisawa.mp4)
-  - ![Image](./maeda/recreated.webp)
+  - [Live](./maeda/016-ultimate-wasm.html)
+  - ![Image](./maeda/recreated.png)
 - Notes
-  - Source code
+  - [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/maeda/016-ultimate-wasm.html)
   - Thought about different approaches: previous assignments were done in Canvas API, a CSS-only approach would be cool as I haven't explored its 3D capabilities before. SVG has potentials but I've hit perf bottleneck before so that's risky. Finally, if time allows, I want to use AI to implement my own graphics engine in WASM.
   - The logo type of モリサワ is not coincidental. The lines are simple, with a mixure of straight and curved strokes. Not too dense to bury the patterns.
   - My first few attemps tried oscillate the texts left and right. It wasn't doing what John did.
