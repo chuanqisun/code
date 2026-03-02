@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>010 Responsive WASM</title>
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        image-rendering: pixelated;
+      }
+      #status {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        color: #666;
+        font: 11px monospace;
+        pointer-events: none;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">loading…</div>
+    <canvas id="c"></canvas>
+    <script>
+      (async () => {
+        const statusEl = document.getElementById("status");
+        const canvas = document.getElementById("c");
+        const ctx2d = canvas.getContext("2d");
+
+        /* ── Parameters (matching 010-responsive.html) ── */
+        const TEXT = "モリワサ";
+        const SPEED = 1.0;
+        const SIZE_MULTIPLIER = 2.0;
+        const MIN_RADIUS_VW = 5;
+        const MAX_RADIUS_VW = 15;
+        const MIN_SIZE_VW = 7;
+        const MAX_SIZE_VW = 14;
+        const TRAIL_DEPTH = -1000;
+        const TRAIL_LIFE = 2000;
+        const SPAWN_RATE = 20;
+        const ORBIT_PERIOD = 6000;
+        const SPIN_PERIOD = 4000;
+        const BREATHE_PERIOD = 10000;
+        const BREATHE_AMPLITUDE = 0.5;
+        const LEN = TEXT.length;
+        const TAU = Math.PI * 2;
+        const INV_LIFE = 1 / TRAIL_LIFE;
+        const INV_BREATHE = TAU / BREATHE_PERIOD;
+        const INV_ORBIT = TAU / ORBIT_PERIOD;
+        const INV_SPIN = TAU / SPIN_PERIOD;
+        const POOL_SIZE = (Math.ceil(TRAIL_LIFE / SPAWN_RATE) + 2) * LEN;
+        const COS45 = Math.cos(Math.PI / 4);
+        const SIN45 = Math.sin(Math.PI / 4);
+        const CURVE_STEPS = 5;
+
+        const phaseOffsets = Float64Array.from({ length: LEN }, (_, i) => (i / LEN) * TAU);
+        const spinDirs = Int8Array.from({ length: LEN }, (_, i) => (i % 2 === 0 ? 1 : -1));
+
+        let W = 512,
+          H = 512;
+        function fitCanvas() {
+          W = Math.max(64, window.innerWidth);
+          H = Math.max(64, window.innerHeight);
+          canvas.width = W;
+          canvas.height = H;
+        }
+        window.addEventListener("resize", fitCanvas);
+        fitCanvas();
+
+        function vw() {
+          return window.innerWidth / 100;
+        }
+
+        /* ── TTF Parsing ── */
+        statusEl.textContent = "loading font…";
+        const fontBuf = await fetch("mplus-2p-black.ttf").then((r) => r.arrayBuffer());
+        const dv = new DataView(fontBuf);
+
+        function parseTables() {
+          const numTables = dv.getUint16(4);
+          const tables = {};
+          for (let i = 0; i < numTables; i++) {
+            const off = 12 + i * 16;
+            const tag = String.fromCharCode(dv.getUint8(off), dv.getUint8(off + 1), dv.getUint8(off + 2), dv.getUint8(off + 3));
+            tables[tag] = { offset: dv.getUint32(off + 8), length: dv.getUint32(off + 12) };
+          }
+          return tables;
+        }
+
+        function getGlyphId(cmapOff, charCode) {
+          const numSub = dv.getUint16(cmapOff + 2);
+          let subOff = -1;
+          for (let i = 0; i < numSub; i++) {
+            const pid = dv.getUint16(cmapOff + 4 + i * 8);
+            const eid = dv.getUint16(cmapOff + 4 + i * 8 + 2);
+            if (pid === 3 && eid === 1) {
+              subOff = cmapOff + dv.getUint32(cmapOff + 4 + i * 8 + 4);
+              break;
+            }
+          }
+          if (subOff === -1) return 0;
+          const fmt = dv.getUint16(subOff);
+          if (fmt === 4) {
+            const segCount = dv.getUint16(subOff + 6) / 2;
+            const endCodes = subOff + 14;
+            const startCodes = endCodes + 2 + segCount * 2;
+            const idDeltas = startCodes + segCount * 2;
+            const idRangeOffsets = idDeltas + segCount * 2;
+            for (let i = 0; i < segCount; i++) {
+              const start = dv.getUint16(startCodes + i * 2);
+              const end = dv.getUint16(endCodes + i * 2);
+              if (charCode >= start && charCode <= end) {
+                const delta = dv.getInt16(idDeltas + i * 2);
+                const rangeOff = dv.getUint16(idRangeOffsets + i * 2);
+                if (rangeOff === 0) return (charCode + delta) % 65536;
+                const glyphPtr = idRangeOffsets + i * 2 + rangeOff + (charCode - start) * 2;
+                const gid = dv.getUint16(glyphPtr);
+                return gid !== 0 ? (gid + delta) % 65536 : 0;
+              }
+            }
+          }
+          return 0;
+        }
+
+        function parseGlyph(tables, glyphId) {
+          const headOff = tables["head"].offset;
+          const locFmt = dv.getInt16(headOff + 50);
+          const locaOff = tables["loca"].offset;
+          let gStart, gEnd;
+          if (locFmt === 0) {
+            gStart = dv.getUint16(locaOff + glyphId * 2) * 2;
+            gEnd = dv.getUint16(locaOff + (glyphId + 1) * 2) * 2;
+          } else {
+            gStart = dv.getUint32(locaOff + glyphId * 4);
+            gEnd = dv.getUint32(locaOff + (glyphId + 1) * 4);
+          }
+          if (gStart === gEnd) return null;
+
+          const base = tables["glyf"].offset + gStart;
+          const numContours = dv.getInt16(base);
+          if (numContours < 0) return null; // composite not supported
+
+          const xMin = dv.getInt16(base + 2);
+          const yMin = dv.getInt16(base + 4);
+          const xMax = dv.getInt16(base + 6);
+          const yMax = dv.getInt16(base + 8);
+
+          const endPts = [];
+          for (let i = 0; i < numContours; i++) endPts.push(dv.getUint16(base + 10 + i * 2));
+          const numPoints = endPts[endPts.length - 1] + 1;
+          const instrLen = dv.getUint16(base + 10 + numContours * 2);
+          let ptr = base + 12 + numContours * 2 + instrLen;
+
+          const points = [];
+          for (let i = 0; i < numPoints; i++) {
+            const flag = dv.getUint8(ptr++);
+            points.push({ flag });
+            if (flag & 0x08) {
+              let repeat = dv.getUint8(ptr++);
+              while (repeat-- > 0) {
+                points.push({ flag });
+                i++;
+              }
+            }
+          }
+
+          let curX = 0;
+          for (let i = 0; i < numPoints; i++) {
+            const f = points[i].flag;
+            if (f & 0x02) {
+              const v = dv.getUint8(ptr++);
+              curX += f & 0x10 ? v : -v;
+            } else if (!(f & 0x10)) {
+              curX += dv.getInt16(ptr);
+              ptr += 2;
+            }
+            points[i].x = curX;
+          }
+
+          let curY = 0;
+          for (let i = 0; i < numPoints; i++) {
+            const f = points[i].flag;
+            if (f & 0x04) {
+              const v = dv.getUint8(ptr++);
+              curY += f & 0x20 ? v : -v;
+            } else if (!(f & 0x20)) {
+              curY += dv.getInt16(ptr);
+              ptr += 2;
+            }
+            points[i].y = curY;
+          }
+
+          return { points, endPts, xMin, yMin, xMax, yMax };
+        }
+
+        // Linearize contours into arrays of line-segment edges
+        function linearizeGlyph(glyph) {
+          if (!glyph) return [];
+          const { points, endPts, xMin, yMin, xMax, yMax } = glyph;
+          const w = xMax - xMin || 1;
+          const h = yMax - yMin || 1;
+          const scale = 1 / Math.max(w, h);
+          const cx = (xMin + xMax) / 2;
+          const cy = (yMin + yMax) / 2;
+          const contours = [];
+          let startIdx = 0;
+
+          for (let c = 0; c < endPts.length; c++) {
+            const cPts = points.slice(startIdx, endPts[c] + 1);
+            startIdx = endPts[c] + 1;
+
+            // First, resolve implied on-curve points between consecutive off-curve points
+            const resolved = [];
+            for (let i = 0; i < cPts.length; i++) {
+              const pt = cPts[i];
+              resolved.push(pt);
+              if (!(pt.flag & 1)) {
+                const next = cPts[(i + 1) % cPts.length];
+                if (!(next.flag & 1)) {
+                  // Insert implied on-curve midpoint
+                  resolved.push({ x: (pt.x + next.x) / 2, y: (pt.y + next.y) / 2, flag: 1 });
+                }
+              }
+            }
+
+            // Now generate line segments
+            const edges = [];
+            const len = resolved.length;
+            let i = 0;
+            // Find first on-curve point
+            let firstOn = 0;
+            for (let j = 0; j < len; j++) {
+              if (resolved[j].flag & 1) {
+                firstOn = j;
+                break;
+              }
+            }
+
+            let prevX = -(resolved[firstOn].x - cx) * scale;
+            let prevY = (resolved[firstOn].y - cy) * scale;
+            const startX = prevX,
+              startY = prevY;
+
+            i = (firstOn + 1) % len;
+            let count = 0;
+            while (count < len - 1) {
+              const curr = resolved[i];
+              if (curr.flag & 1) {
+                // On-curve: straight line
+                const nx = -(curr.x - cx) * scale;
+                const ny = (curr.y - cy) * scale;
+                edges.push(prevX, prevY, nx, ny);
+                prevX = nx;
+                prevY = ny;
+                i = (i + 1) % len;
+                count++;
+              } else {
+                // Off-curve: quadratic bezier to next on-curve
+                const next = resolved[(i + 1) % len];
+                const cpx = -(curr.x - cx) * scale;
+                const cpy = (curr.y - cy) * scale;
+                const ex = -(next.x - cx) * scale;
+                const ey = (next.y - cy) * scale;
+                for (let s = 1; s <= CURVE_STEPS; s++) {
+                  const t = s / CURVE_STEPS;
+                  const it = 1 - t;
+                  const nx = it * it * prevX + 2 * it * t * cpx + t * t * ex;
+                  const ny = it * it * prevY + 2 * it * t * cpy + t * t * ey;
+                  edges.push(prevX, prevY, nx, ny);
+                  prevX = nx;
+                  prevY = ny;
+                }
+                i = (i + 2) % len;
+                count += 2;
+              }
+            }
+            // Close contour
+            if (prevX !== startX || prevY !== startY) {
+              edges.push(prevX, prevY, startX, startY);
+            }
+
+            if (edges.length > 0) contours.push(new Float32Array(edges));
+          }
+          return contours;
+        }
+
+        statusEl.textContent = "parsing glyphs…";
+        const tables = parseTables();
+        const glyphs = [];
+        for (let i = 0; i < LEN; i++) {
+          const code = TEXT.charCodeAt(i);
+          const gid = getGlyphId(tables["cmap"].offset, code);
+          const g = parseGlyph(tables, gid);
+          glyphs.push(linearizeGlyph(g));
+        }
+
+        /* ── WASM (pre-compiled from WAT via wabt) ──
+         * WAT source compiled offline with: wat2wasm render.wat -o render.wasm
+         * Exports:
+         *   memory  – linear memory (initial 400 pages = 25 MB)
+         *   clear(w, h, color)  – fill framebuffer at offset 0 with ABGR color
+         *   drawLine(x0, y0, x1, y1, r, g, b, a, w, h)  – Bresenham line with alpha blend
+         *   fillPoly(edgeBase, nEdges, r, g, b, a, w, h, minY, maxY, scratchBase)
+         *       – scanline-fill polygon; edges are f32 quads [x0,y0,x1,y1] (16 B each)
+         *         at edgeBase; scratchBase holds sorted intersection x-values (i32)
+         */
+        statusEl.textContent = "loading compiler…";
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "https://cdn.jsdelivr.net/npm/wabt@1.0.36/index.js";
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+        const wabtModule = await WabtModule();
+
+        statusEl.textContent = "compiling WAT…";
+        const watSource = await fetch("render.wat").then((r) => {
+          if (!r.ok) throw new Error(`Failed to fetch render.wat: ${r.status}`);
+          return r.text();
+        });
+        const parsed = wabtModule.parseWat("render.wat", watSource);
+        parsed.validate();
+        const { buffer } = parsed.toBinary({ log: false, write_debug_names: false });
+        parsed.destroy();
+
+        statusEl.textContent = "loading WASM…";
+        const { instance } = await WebAssembly.instantiate(buffer, {});
+        const wasm = instance.exports;
+        statusEl.textContent = "ready";
+
+        // Memory layout (recalculated each frame based on viewport):
+        // [0 .. W*H*4)            framebuffer (RGBA pixels)
+        // [EDGE_BASE .. +200 KB)  edge data for current glyph (f32×4 per edge, 16 B each)
+        //                         200 KB ≈ 12 500 edges — well above max glyph complexity
+        // [SCRATCH_BASE .. +200 KB) scanline intersection scratch (i32 per hit)
+        //                         total headroom 400 KB after framebuffer
+        let EDGE_BASE = 0;
+        let SCRATCH_BASE = 0;
+
+        /* ── Trail pool ── */
+        const tStart = new Float64Array(POOL_SIZE);
+        const tX = new Float64Array(POOL_SIZE);
+        const tY = new Float64Array(POOL_SIZE);
+        const tSpin = new Float64Array(POOL_SIZE);
+        const tSize = new Float64Array(POOL_SIZE);
+        const tChar = new Int32Array(POOL_SIZE);
+        const freeStack = Int32Array.from({ length: POOL_SIZE }, (_, i) => i);
+        let freeCount = POOL_SIZE;
+        const active = new Int32Array(POOL_SIZE);
+        let activeCount = 0;
+        let lastSpawn = 0;
+
+        /* ── Render helpers ── */
+
+        // Transform glyph edges and write to WASM memory at EDGE_BASE
+        // Returns { nEdges, minY, maxY } in screen space
+        function writeEdges(contours, scale, angle, tx, ty) {
+          const cosA = Math.cos(angle);
+          const sinA = Math.sin(angle);
+          let nEdges = 0;
+          let minY = 1e9,
+            maxY = -1e9;
+          const edgeF32 = new Float32Array(wasm.memory.buffer, EDGE_BASE);
+
+          for (let c = 0; c < contours.length; c++) {
+            const edges = contours[c];
+            const numSegs = edges.length / 4;
+            for (let s = 0; s < numSegs; s++) {
+              let x0 = edges[s * 4] * scale;
+              let y0 = edges[s * 4 + 1] * scale;
+              let x1 = edges[s * 4 + 2] * scale;
+              let y1 = edges[s * 4 + 3] * scale;
+
+              // Rotate by spin angle
+              let rx0 = x0 * cosA - y0 * sinA;
+              let ry0 = x0 * sinA + y0 * cosA;
+              let rx1 = x1 * cosA - y1 * sinA;
+              let ry1 = x1 * sinA + y1 * cosA;
+
+              // Translate to screen position
+              rx0 += tx;
+              ry0 += ty;
+              rx1 += tx;
+              ry1 += ty;
+
+              edgeF32[nEdges * 4] = rx0;
+              edgeF32[nEdges * 4 + 1] = ry0;
+              edgeF32[nEdges * 4 + 2] = rx1;
+              edgeF32[nEdges * 4 + 3] = ry1;
+
+              if (ry0 < minY) minY = ry0;
+              if (ry0 > maxY) maxY = ry0;
+              if (ry1 < minY) minY = ry1;
+              if (ry1 > maxY) maxY = ry1;
+              nEdges++;
+            }
+          }
+          return { nEdges, minY: Math.floor(minY), maxY: Math.ceil(maxY) };
+        }
+
+        function drawGlyphFilled(contours, scale, spinAngle, worldX, worldY, worldZ, alpha255) {
+          // Isometric projection: screen_x = x, screen_y = y*cos45 - z*sin45
+          const sx = W / 2 + worldX;
+          const sy = H / 2 + worldY * COS45 - worldZ * SIN45;
+          const { nEdges, minY, maxY } = writeEdges(contours, scale, spinAngle, sx, sy);
+          if (nEdges === 0) return;
+          wasm.fillPoly(EDGE_BASE, nEdges, 255, 255, 255, alpha255, W, H, minY, maxY, SCRATCH_BASE);
+        }
+
+        function drawGlyphOutline(contours, scale, spinAngle, worldX, worldY, worldZ, alpha255) {
+          const sx = W / 2 + worldX;
+          const sy = H / 2 + worldY * COS45 - worldZ * SIN45;
+          const cosA = Math.cos(spinAngle);
+          const sinA = Math.sin(spinAngle);
+
+          for (let c = 0; c < contours.length; c++) {
+            const edges = contours[c];
+            const numSegs = edges.length / 4;
+            for (let s = 0; s < numSegs; s++) {
+              let x0 = edges[s * 4] * scale;
+              let y0 = edges[s * 4 + 1] * scale;
+              let x1 = edges[s * 4 + 2] * scale;
+              let y1 = edges[s * 4 + 3] * scale;
+
+              let rx0 = x0 * cosA - y0 * sinA + sx;
+              let ry0 = x0 * sinA + y0 * cosA + sy;
+              let rx1 = x1 * cosA - y1 * sinA + sx;
+              let ry1 = x1 * sinA + y1 * cosA + sy;
+
+              wasm.drawLine(Math.round(rx0) | 0, Math.round(ry0) | 0, Math.round(rx1) | 0, Math.round(ry1) | 0, 255, 255, 255, alpha255, W, H);
+            }
+          }
+        }
+
+        /* ── Animation loop ── */
+        let imgData = null;
+
+        function loop(time) {
+          fitCanvas();
+
+          const t = time * SPEED;
+          const px = vw() * SIZE_MULTIPLIER;
+
+          const breathe = 0.5 + 0.5 * BREATHE_AMPLITUDE * Math.sin(t * INV_BREATHE);
+          const radiusPx = (breathe * (MAX_RADIUS_VW - MIN_RADIUS_VW) + MIN_RADIUS_VW) * px;
+          const sizePx = (breathe * (MAX_SIZE_VW - MIN_SIZE_VW) + MIN_SIZE_VW) * px;
+          const orbit = t * INV_ORBIT;
+          const spin = t * INV_SPIN;
+
+          // Ensure WASM memory is large enough for framebuffer + edge/scratch data
+          const fbSize = W * H * 4;
+          const totalNeeded = fbSize + 400000; // fb + edge + scratch headroom
+          const haveBytes = wasm.memory.buffer.byteLength;
+          if (totalNeeded > haveBytes) {
+            const needPages = Math.ceil((totalNeeded - haveBytes) / 65536);
+            wasm.memory.grow(needPages);
+          }
+          EDGE_BASE = fbSize;
+          SCRATCH_BASE = EDGE_BASE + 200000;
+
+          // Clear framebuffer
+          wasm.clear(W, H, 0xff000000); // opaque black ABGR
+
+          // Spawn trails
+          if (time - lastSpawn >= SPAWN_RATE) {
+            for (let i = 0; i < LEN; i++) {
+              if (freeCount === 0) break;
+              const idx = freeStack[--freeCount];
+              const a = orbit + phaseOffsets[i];
+              tStart[idx] = time;
+              tX[idx] = Math.cos(a) * radiusPx;
+              tY[idx] = Math.sin(a) * radiusPx;
+              tSpin[idx] = spin * spinDirs[i];
+              tSize[idx] = sizePx;
+              tChar[idx] = i;
+              active[activeCount++] = idx;
+            }
+            lastSpawn = time;
+          }
+
+          // Draw trails (outlines, back to front by age = oldest first)
+          let write = 0;
+          for (let i = 0; i < activeCount; i++) {
+            const idx = active[i];
+            const p = (time - tStart[idx]) * INV_LIFE;
+            if (p >= 1) {
+              freeStack[freeCount++] = idx;
+            } else {
+              const alpha = Math.round((1 - p) * 255);
+              const z = p * TRAIL_DEPTH;
+              const charIdx = tChar[idx];
+              drawGlyphOutline(glyphs[charIdx], tSize[idx], tSpin[idx], tX[idx], tY[idx], z, alpha);
+              active[write++] = idx;
+            }
+          }
+          activeCount = write;
+
+          // Draw source characters (filled, on top)
+          for (let i = 0; i < LEN; i++) {
+            const a = orbit + phaseOffsets[i];
+            const x = Math.cos(a) * radiusPx;
+            const y = Math.sin(a) * radiusPx;
+            const r = spin * spinDirs[i];
+            drawGlyphFilled(glyphs[i], sizePx, r, x, y, 0, 255);
+          }
+
+          // Copy framebuffer to canvas
+          const fbBytes = new Uint8ClampedArray(wasm.memory.buffer, 0, W * H * 4);
+          if (!imgData || imgData.width !== W || imgData.height !== H) {
+            imgData = new ImageData(W, H);
+          }
+          imgData.data.set(fbBytes);
+          ctx2d.putImageData(imgData, 0, 0);
+
+          requestAnimationFrame(loop);
+        }
+
+        requestAnimationFrame(loop);
+      })();
+    </script>
+  </body>
+</html>

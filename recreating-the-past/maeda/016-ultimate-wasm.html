@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>010 Responsive WASM</title>
+    <style>
+      body {
+        background: #000;
+        margin: 0;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        image-rendering: pixelated;
+      }
+      #status {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        color: #666;
+        font: 11px monospace;
+        pointer-events: none;
+        z-index: 1;
+      }
+    </style>
+    <script src="./wabt-1.0.39.js"></script>
+    <script type="wasm">
+      (module
+        ;; ── Math imports ──
+        (import "math" "sin" (func $sin (param f64) (result f64)))
+        (import "math" "cos" (func $cos (param f64) (result f64)))
+
+        (memory (export "memory") 400)
+
+        ;; ── Constants ──
+        (global $COS45 f32 (f32.const 0.7071067811865476))
+        (global $SIN45 f32 (f32.const 0.7071067811865476))
+
+        ;; ── Configuration globals (set once via init) ──
+        (global $glyphTable (mut i32) (i32.const 0))
+        (global $nChars (mut i32) (i32.const 0))
+        (global $baseXPtr (mut i32) (i32.const 0))
+        (global $animXPtr (mut i32) (i32.const 0))
+        (global $swapPairsPtr (mut i32) (i32.const 0))
+        (global $nSwapPairs (mut i32) (i32.const 0))
+        (global $tStartPtr (mut i32) (i32.const 0))
+        (global $tXPtr (mut i32) (i32.const 0))
+        (global $tRotPtr (mut i32) (i32.const 0))
+        (global $tCharPtr (mut i32) (i32.const 0))
+        (global $freeStackPtr (mut i32) (i32.const 0))
+        (global $activePtr (mut i32) (i32.const 0))
+        (global $poolSize (mut i32) (i32.const 0))
+        (global $freeCount (mut i32) (i32.const 0))
+        (global $activeCount (mut i32) (i32.const 0))
+        (global $lastSpawn (mut f64) (f64.const 0))
+        (global $edgeBuf (mut i32) (i32.const 0))
+        (global $scratchBuf (mut i32) (i32.const 0))
+        (global $fontSize (mut f32) (f32.const 140))
+        (global $swapSpeed (mut f64) (f64.const 0.0008))
+        (global $invTrailLife (mut f64) (f64.const 0))
+        (global $trailSpawnInterval (mut f64) (f64.const 40))
+        (global $trailFallDistance (mut f32) (f32.const 800))
+
+        ;; ── init: called once from JS to configure all pointers and constants ──
+        (func (export "init")
+          (param $pGlyphTable i32) (param $pNChars i32)
+          (param $pBaseX i32) (param $pAnimX i32)
+          (param $pSwapPairs i32) (param $pNSwapPairs i32)
+          (param $pTStart i32) (param $pTX i32) (param $pTRot i32) (param $pTChar i32)
+          (param $pFreeStack i32) (param $pActive i32) (param $pPoolSize i32)
+          (param $pFontSize f32) (param $pSwapSpeed f64)
+          (param $pInvTrailLife f64) (param $pTrailSpawnInterval f64)
+          (param $pTrailFallDist f32) (param $pInitLastSpawn f64)
+          (global.set $glyphTable (local.get $pGlyphTable))
+          (global.set $nChars (local.get $pNChars))
+          (global.set $baseXPtr (local.get $pBaseX))
+          (global.set $animXPtr (local.get $pAnimX))
+          (global.set $swapPairsPtr (local.get $pSwapPairs))
+          (global.set $nSwapPairs (local.get $pNSwapPairs))
+          (global.set $tStartPtr (local.get $pTStart))
+          (global.set $tXPtr (local.get $pTX))
+          (global.set $tRotPtr (local.get $pTRot))
+          (global.set $tCharPtr (local.get $pTChar))
+          (global.set $freeStackPtr (local.get $pFreeStack))
+          (global.set $activePtr (local.get $pActive))
+          (global.set $poolSize (local.get $pPoolSize))
+          (global.set $freeCount (local.get $pPoolSize))
+          (global.set $activeCount (i32.const 0))
+          (global.set $fontSize (local.get $pFontSize))
+          (global.set $swapSpeed (local.get $pSwapSpeed))
+          (global.set $invTrailLife (local.get $pInvTrailLife))
+          (global.set $trailSpawnInterval (local.get $pTrailSpawnInterval))
+          (global.set $trailFallDistance (local.get $pTrailFallDist))
+          (global.set $lastSpawn (local.get $pInitLastSpawn)))
+
+        ;; ── update font size each frame from JS ──
+        (func (export "setFontSize") (param $f f32)
+          (global.set $fontSize (local.get $f)))
+
+        ;; ══════════════════════════════════════════════
+        ;; Core rendering primitives
+        ;; ══════════════════════════════════════════════
+
+        ;; ── clear framebuffer ──
+        (func $clear (export "clear") (param $w i32) (param $h i32) (param $color i32)
+          (local $size i32) (local $i i32)
+          (local.set $size (i32.mul (i32.mul (local.get $w) (local.get $h)) (i32.const 4)))
+          (local.set $i (i32.const 0))
+          (block $brk (loop $lp
+            (br_if $brk (i32.ge_u (local.get $i) (local.get $size)))
+            (i32.store (local.get $i) (local.get $color))
+            (local.set $i (i32.add (local.get $i) (i32.const 4)))
+            (br $lp))))
+
+        ;; ── set pixel with alpha blending (ABGR format) ──
+        (func $blendPixel (param $x i32) (param $y i32) (param $r i32) (param $g i32) (param $b i32) (param $a i32) (param $w i32) (param $h i32)
+          (local $off i32) (local $dst i32) (local $dr i32) (local $dg i32) (local $db i32) (local $ia i32)
+          (if (i32.and
+                (i32.and (i32.ge_s (local.get $x) (i32.const 0)) (i32.lt_s (local.get $x) (local.get $w)))
+                (i32.and (i32.ge_s (local.get $y) (i32.const 0)) (i32.lt_s (local.get $y) (local.get $h))))
+            (then
+              (local.set $off (i32.mul (i32.add (i32.mul (local.get $y) (local.get $w)) (local.get $x)) (i32.const 4)))
+              (if (i32.ge_s (local.get $a) (i32.const 255))
+                (then
+                  (i32.store (local.get $off)
+                    (i32.or (i32.const 0xFF000000)
+                      (i32.or (i32.shl (local.get $b) (i32.const 16))
+                        (i32.or (i32.shl (local.get $g) (i32.const 8)) (local.get $r))))))
+                (else
+                  (local.set $dst (i32.load (local.get $off)))
+                  (local.set $dr (i32.and (local.get $dst) (i32.const 0xFF)))
+                  (local.set $dg (i32.and (i32.shr_u (local.get $dst) (i32.const 8)) (i32.const 0xFF)))
+                  (local.set $db (i32.and (i32.shr_u (local.get $dst) (i32.const 16)) (i32.const 0xFF)))
+                  (local.set $ia (i32.sub (i32.const 255) (local.get $a)))
+                  (local.set $dr (i32.div_u (i32.add (i32.mul (local.get $r) (local.get $a)) (i32.mul (local.get $dr) (local.get $ia))) (i32.const 255)))
+                  (local.set $dg (i32.div_u (i32.add (i32.mul (local.get $g) (local.get $a)) (i32.mul (local.get $dg) (local.get $ia))) (i32.const 255)))
+                  (local.set $db (i32.div_u (i32.add (i32.mul (local.get $b) (local.get $a)) (i32.mul (local.get $db) (local.get $ia))) (i32.const 255)))
+                  (i32.store (local.get $off)
+                    (i32.or (i32.const 0xFF000000)
+                      (i32.or (i32.shl (local.get $db) (i32.const 16))
+                        (i32.or (i32.shl (local.get $dg) (i32.const 8)) (local.get $dr))))))))))
+
+        ;; ── absolute value helper ──
+        (func $abs (param $v i32) (result i32)
+          (if (result i32) (i32.lt_s (local.get $v) (i32.const 0))
+            (then (i32.sub (i32.const 0) (local.get $v)))
+            (else (local.get $v))))
+
+        ;; ── Bresenham line with alpha ──
+        (func $drawLine (export "drawLine")
+          (param $x0 i32) (param $y0 i32) (param $x1 i32) (param $y1 i32)
+          (param $r i32) (param $g i32) (param $b i32) (param $a i32)
+          (param $w i32) (param $h i32)
+          (local $dx i32) (local $dy i32) (local $sx i32) (local $sy i32) (local $err i32) (local $e2 i32) (local $steps i32) (local $maxSteps i32)
+          (local.set $dx (call $abs (i32.sub (local.get $x1) (local.get $x0))))
+          (local.set $dy (i32.sub (i32.const 0) (call $abs (i32.sub (local.get $y1) (local.get $y0)))))
+          (local.set $sx (if (result i32) (i32.lt_s (local.get $x0) (local.get $x1)) (then (i32.const 1)) (else (i32.const -1))))
+          (local.set $sy (if (result i32) (i32.lt_s (local.get $y0) (local.get $y1)) (then (i32.const 1)) (else (i32.const -1))))
+          (local.set $err (i32.add (local.get $dx) (local.get $dy)))
+          (local.set $steps (i32.const 0))
+          (local.set $maxSteps (i32.mul (if (result i32) (i32.gt_s (local.get $w) (local.get $h)) (then (local.get $w)) (else (local.get $h))) (i32.const 4)))
+          (block $done (loop $lp
+            (call $blendPixel (local.get $x0) (local.get $y0) (local.get $r) (local.get $g) (local.get $b) (local.get $a) (local.get $w) (local.get $h))
+            (br_if $done (i32.and (i32.eq (local.get $x0) (local.get $x1)) (i32.eq (local.get $y0) (local.get $y1))))
+            (local.set $steps (i32.add (local.get $steps) (i32.const 1)))
+            (br_if $done (i32.gt_s (local.get $steps) (local.get $maxSteps)))
+            (local.set $e2 (i32.mul (i32.const 2) (local.get $err)))
+            (if (i32.ge_s (local.get $e2) (local.get $dy)) (then
+              (local.set $err (i32.add (local.get $err) (local.get $dy)))
+              (local.set $x0 (i32.add (local.get $x0) (local.get $sx)))))
+            (if (i32.le_s (local.get $e2) (local.get $dx)) (then
+              (local.set $err (i32.add (local.get $err) (local.get $dx)))
+              (local.set $y0 (i32.add (local.get $y0) (local.get $sy)))))
+            (br $lp))))
+
+        ;; ── scanline fill ──
+        (func $fillPoly (export "fillPoly")
+          (param $edgeBase i32) (param $nEdges i32)
+          (param $r i32) (param $g i32) (param $b i32) (param $a i32)
+          (param $w i32) (param $h i32)
+          (param $minY i32) (param $maxY i32)
+          (param $scratchBase i32)
+          (local $y i32) (local $i i32) (local $nHits i32)
+          (local $ey0 f32) (local $ey1 f32) (local $ex0 f32) (local $ex1 f32)
+          (local $yf f32) (local $ix f32) (local $tmp i32)
+          (local $j i32) (local $k i32) (local $xStart i32) (local $xEnd i32)
+          (local $eOff i32)
+          (if (i32.lt_s (local.get $minY) (i32.const 0)) (then (local.set $minY (i32.const 0))))
+          (if (i32.ge_s (local.get $maxY) (local.get $h)) (then (local.set $maxY (i32.sub (local.get $h) (i32.const 1)))))
+          (local.set $y (local.get $minY))
+          (block $ydone (loop $yloop
+            (br_if $ydone (i32.gt_s (local.get $y) (local.get $maxY)))
+            (local.set $yf (f32.add (f32.convert_i32_s (local.get $y)) (f32.const 0.5)))
+            (local.set $nHits (i32.const 0))
+            (local.set $i (i32.const 0))
+            (block $edone (loop $eloop
+              (br_if $edone (i32.ge_s (local.get $i) (local.get $nEdges)))
+              (local.set $eOff (i32.add (local.get $edgeBase) (i32.mul (local.get $i) (i32.const 16))))
+              (local.set $ex0 (f32.load (local.get $eOff)))
+              (local.set $ey0 (f32.load (i32.add (local.get $eOff) (i32.const 4))))
+              (local.set $ex1 (f32.load (i32.add (local.get $eOff) (i32.const 8))))
+              (local.set $ey1 (f32.load (i32.add (local.get $eOff) (i32.const 12))))
+              (if (i32.or
+                    (i32.and (f32.le (local.get $ey0) (local.get $yf)) (f32.gt (local.get $ey1) (local.get $yf)))
+                    (i32.and (f32.le (local.get $ey1) (local.get $yf)) (f32.gt (local.get $ey0) (local.get $yf))))
+                (then
+                  (local.set $ix
+                    (f32.add (local.get $ex0)
+                      (f32.mul
+                        (f32.div (f32.sub (local.get $yf) (local.get $ey0)) (f32.sub (local.get $ey1) (local.get $ey0)))
+                        (f32.sub (local.get $ex1) (local.get $ex0)))))
+                  (i32.store
+                    (i32.add (local.get $scratchBase) (i32.mul (local.get $nHits) (i32.const 4)))
+                    (i32.trunc_f32_s (local.get $ix)))
+                  (local.set $nHits (i32.add (local.get $nHits) (i32.const 1)))))
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br $eloop)))
+            (local.set $j (i32.const 1))
+            (block $sdone (loop $sloop
+              (br_if $sdone (i32.ge_s (local.get $j) (local.get $nHits)))
+              (local.set $tmp (i32.load (i32.add (local.get $scratchBase) (i32.mul (local.get $j) (i32.const 4)))))
+              (local.set $k (i32.sub (local.get $j) (i32.const 1)))
+              (block $idone (loop $iloop
+                (br_if $idone (i32.lt_s (local.get $k) (i32.const 0)))
+                (br_if $idone (i32.le_s (i32.load (i32.add (local.get $scratchBase) (i32.mul (local.get $k) (i32.const 4)))) (local.get $tmp)))
+                (i32.store
+                  (i32.add (local.get $scratchBase) (i32.mul (i32.add (local.get $k) (i32.const 1)) (i32.const 4)))
+                  (i32.load (i32.add (local.get $scratchBase) (i32.mul (local.get $k) (i32.const 4)))))
+                (local.set $k (i32.sub (local.get $k) (i32.const 1)))
+                (br $iloop)))
+              (i32.store
+                (i32.add (local.get $scratchBase) (i32.mul (i32.add (local.get $k) (i32.const 1)) (i32.const 4)))
+                (local.get $tmp))
+              (local.set $j (i32.add (local.get $j) (i32.const 1)))
+              (br $sloop)))
+            (local.set $j (i32.const 0))
+            (block $pdone (loop $ploop
+              (br_if $pdone (i32.ge_s (i32.add (local.get $j) (i32.const 1)) (local.get $nHits)))
+              (local.set $xStart (i32.load (i32.add (local.get $scratchBase) (i32.mul (local.get $j) (i32.const 4)))))
+              (local.set $xEnd (i32.load (i32.add (local.get $scratchBase) (i32.mul (i32.add (local.get $j) (i32.const 1)) (i32.const 4)))))
+              (if (i32.lt_s (local.get $xStart) (i32.const 0)) (then (local.set $xStart (i32.const 0))))
+              (if (i32.ge_s (local.get $xEnd) (local.get $w)) (then (local.set $xEnd (i32.sub (local.get $w) (i32.const 1)))))
+              (local.set $k (local.get $xStart))
+              (block $fdone (loop $floop
+                (br_if $fdone (i32.gt_s (local.get $k) (local.get $xEnd)))
+                (call $blendPixel (local.get $k) (local.get $y) (local.get $r) (local.get $g) (local.get $b) (local.get $a) (local.get $w) (local.get $h))
+                (local.set $k (i32.add (local.get $k) (i32.const 1)))
+                (br $floop)))
+              (local.set $j (i32.add (local.get $j) (i32.const 2)))
+              (br $ploop)))
+            (local.set $y (i32.add (local.get $y) (i32.const 1)))
+            (br $yloop))))
+
+        ;; ══════════════════════════════════════════════
+        ;; Glyph rendering (transform + draw in WASM)
+        ;; ══════════════════════════════════════════════
+
+        ;; ── draw glyph outline: transform raw edges then Bresenham each segment ──
+        (func $drawOutline
+          (param $srcBase i32) (param $nEdges i32)
+          (param $scale f32) (param $angle f64)
+          (param $worldX f32) (param $worldY f32) (param $worldZ f32)
+          (param $r i32) (param $g i32) (param $b i32) (param $a i32)
+          (param $w i32) (param $h i32)
+          (local $cosA f32) (local $sinA f32) (local $tx f32) (local $ty f32)
+          (local $i i32) (local $off i32)
+          (local $x0 f32) (local $y0 f32) (local $x1 f32) (local $y1 f32)
+          (local $rx0 f32) (local $ry0 f32) (local $rx1 f32) (local $ry1 f32)
+          (local.set $cosA (f32.demote_f64 (call $cos (local.get $angle))))
+          (local.set $sinA (f32.demote_f64 (call $sin (local.get $angle))))
+          (local.set $tx (f32.add (f32.div (f32.convert_i32_s (local.get $w)) (f32.const 2.0)) (local.get $worldX)))
+          (local.set $ty (f32.add (f32.div (f32.convert_i32_s (local.get $h)) (f32.const 2.0))
+            (f32.sub (f32.mul (local.get $worldY) (global.get $COS45))
+                     (f32.mul (local.get $worldZ) (global.get $SIN45)))))
+          (local.set $i (i32.const 0))
+          (block $done (loop $lp
+            (br_if $done (i32.ge_s (local.get $i) (local.get $nEdges)))
+            (local.set $off (i32.add (local.get $srcBase) (i32.mul (local.get $i) (i32.const 16))))
+            (local.set $x0 (f32.mul (f32.load (local.get $off)) (local.get $scale)))
+            (local.set $y0 (f32.neg (f32.mul (f32.load (i32.add (local.get $off) (i32.const 4))) (local.get $scale))))
+            (local.set $x1 (f32.mul (f32.load (i32.add (local.get $off) (i32.const 8))) (local.get $scale)))
+            (local.set $y1 (f32.neg (f32.mul (f32.load (i32.add (local.get $off) (i32.const 12))) (local.get $scale))))
+            (local.set $rx0 (f32.add (f32.sub (f32.mul (local.get $x0) (local.get $cosA)) (f32.mul (local.get $y0) (local.get $sinA))) (local.get $tx)))
+            (local.set $ry0 (f32.add (f32.add (f32.mul (local.get $x0) (local.get $sinA)) (f32.mul (local.get $y0) (local.get $cosA))) (local.get $ty)))
+            (local.set $rx1 (f32.add (f32.sub (f32.mul (local.get $x1) (local.get $cosA)) (f32.mul (local.get $y1) (local.get $sinA))) (local.get $tx)))
+            (local.set $ry1 (f32.add (f32.add (f32.mul (local.get $x1) (local.get $sinA)) (f32.mul (local.get $y1) (local.get $cosA))) (local.get $ty)))
+            (call $drawLine
+              (i32.trunc_f32_s (f32.nearest (local.get $rx0)))
+              (i32.trunc_f32_s (f32.nearest (local.get $ry0)))
+              (i32.trunc_f32_s (f32.nearest (local.get $rx1)))
+              (i32.trunc_f32_s (f32.nearest (local.get $ry1)))
+              (local.get $r) (local.get $g) (local.get $b) (local.get $a)
+              (local.get $w) (local.get $h))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $lp))))
+
+        ;; ── draw glyph filled: transform raw edges, then scanline fill ──
+        (func $drawFilled
+          (param $srcBase i32) (param $nEdges i32)
+          (param $scale f32) (param $angle f64)
+          (param $worldX f32) (param $worldY f32) (param $worldZ f32)
+          (param $r i32) (param $g i32) (param $b i32) (param $a i32)
+          (param $w i32) (param $h i32)
+          (local $cosA f32) (local $sinA f32) (local $tx f32) (local $ty f32)
+          (local $i i32) (local $off i32) (local $outOff i32)
+          (local $x0 f32) (local $y0 f32) (local $x1 f32) (local $y1 f32)
+          (local $rx0 f32) (local $ry0 f32) (local $rx1 f32) (local $ry1 f32)
+          (local $minY f32) (local $maxY f32)
+          (if (i32.le_s (local.get $nEdges) (i32.const 0)) (then (return)))
+          (local.set $cosA (f32.demote_f64 (call $cos (local.get $angle))))
+          (local.set $sinA (f32.demote_f64 (call $sin (local.get $angle))))
+          (local.set $tx (f32.add (f32.div (f32.convert_i32_s (local.get $w)) (f32.const 2.0)) (local.get $worldX)))
+          (local.set $ty (f32.add (f32.div (f32.convert_i32_s (local.get $h)) (f32.const 2.0))
+            (f32.sub (f32.mul (local.get $worldY) (global.get $COS45))
+                     (f32.mul (local.get $worldZ) (global.get $SIN45)))))
+          ;; Sentinel values for bounding-box tracking (well above any viewport size)
+          (local.set $minY (f32.const 1000000))
+          (local.set $maxY (f32.const -1000000))
+          (local.set $i (i32.const 0))
+          (block $done (loop $lp
+            (br_if $done (i32.ge_s (local.get $i) (local.get $nEdges)))
+            (local.set $off (i32.add (local.get $srcBase) (i32.mul (local.get $i) (i32.const 16))))
+            (local.set $outOff (i32.add (global.get $edgeBuf) (i32.mul (local.get $i) (i32.const 16))))
+            (local.set $x0 (f32.mul (f32.load (local.get $off)) (local.get $scale)))
+            (local.set $y0 (f32.neg (f32.mul (f32.load (i32.add (local.get $off) (i32.const 4))) (local.get $scale))))
+            (local.set $x1 (f32.mul (f32.load (i32.add (local.get $off) (i32.const 8))) (local.get $scale)))
+            (local.set $y1 (f32.neg (f32.mul (f32.load (i32.add (local.get $off) (i32.const 12))) (local.get $scale))))
+            (local.set $rx0 (f32.add (f32.sub (f32.mul (local.get $x0) (local.get $cosA)) (f32.mul (local.get $y0) (local.get $sinA))) (local.get $tx)))
+            (local.set $ry0 (f32.add (f32.add (f32.mul (local.get $x0) (local.get $sinA)) (f32.mul (local.get $y0) (local.get $cosA))) (local.get $ty)))
+            (local.set $rx1 (f32.add (f32.sub (f32.mul (local.get $x1) (local.get $cosA)) (f32.mul (local.get $y1) (local.get $sinA))) (local.get $tx)))
+            (local.set $ry1 (f32.add (f32.add (f32.mul (local.get $x1) (local.get $sinA)) (f32.mul (local.get $y1) (local.get $cosA))) (local.get $ty)))
+            (f32.store (local.get $outOff) (local.get $rx0))
+            (f32.store (i32.add (local.get $outOff) (i32.const 4)) (local.get $ry0))
+            (f32.store (i32.add (local.get $outOff) (i32.const 8)) (local.get $rx1))
+            (f32.store (i32.add (local.get $outOff) (i32.const 12)) (local.get $ry1))
+            (if (f32.lt (local.get $ry0) (local.get $minY)) (then (local.set $minY (local.get $ry0))))
+            (if (f32.gt (local.get $ry0) (local.get $maxY)) (then (local.set $maxY (local.get $ry0))))
+            (if (f32.lt (local.get $ry1) (local.get $minY)) (then (local.set $minY (local.get $ry1))))
+            (if (f32.gt (local.get $ry1) (local.get $maxY)) (then (local.set $maxY (local.get $ry1))))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $lp)))
+          (call $fillPoly
+            (global.get $edgeBuf) (local.get $nEdges)
+            (local.get $r) (local.get $g) (local.get $b) (local.get $a)
+            (local.get $w) (local.get $h)
+            (i32.trunc_f32_s (f32.floor (local.get $minY)))
+            (i32.trunc_f32_s (f32.ceil (local.get $maxY)))
+            (global.get $scratchBuf)))
+
+        ;; ══════════════════════════════════════════════
+        ;; Animation logic (all math stays in WASM)
+        ;; ══════════════════════════════════════════════
+
+        ;; ── compute swapped character positions ──
+        (func $computeSwapPositions (param $scaledTime f64)
+          (local $t f64) (local $i i32) (local $a i32) (local $b i32)
+          (local $baseA f64) (local $baseB f64)
+          (local.set $t
+            (f64.div
+              (f64.sub (f64.const 1.0)
+                (call $cos (f64.mul (local.get $scaledTime) (global.get $swapSpeed))))
+              (f64.const 2.0)))
+          ;; Copy baseX to animX
+          (local.set $i (i32.const 0))
+          (block $d1 (loop $l1
+            (br_if $d1 (i32.ge_s (local.get $i) (global.get $nChars)))
+            (f64.store
+              (i32.add (global.get $animXPtr) (i32.mul (local.get $i) (i32.const 8)))
+              (f64.load (i32.add (global.get $baseXPtr) (i32.mul (local.get $i) (i32.const 8)))))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $l1)))
+          ;; Apply swap pairs: animX[a] = lerp(baseA, baseB, t), animX[b] = lerp(baseB, baseA, t)
+          (local.set $i (i32.const 0))
+          (block $d2 (loop $l2
+            (br_if $d2 (i32.ge_s (local.get $i) (global.get $nSwapPairs)))
+            (local.set $a (i32.load (i32.add (global.get $swapPairsPtr) (i32.mul (local.get $i) (i32.const 8)))))
+            (local.set $b (i32.load (i32.add (global.get $swapPairsPtr) (i32.add (i32.mul (local.get $i) (i32.const 8)) (i32.const 4)))))
+            (local.set $baseA (f64.load (i32.add (global.get $baseXPtr) (i32.mul (local.get $a) (i32.const 8)))))
+            (local.set $baseB (f64.load (i32.add (global.get $baseXPtr) (i32.mul (local.get $b) (i32.const 8)))))
+            (f64.store
+              (i32.add (global.get $animXPtr) (i32.mul (local.get $a) (i32.const 8)))
+              (f64.add (local.get $baseA) (f64.mul (f64.sub (local.get $baseB) (local.get $baseA)) (local.get $t))))
+            (f64.store
+              (i32.add (global.get $animXPtr) (i32.mul (local.get $b) (i32.const 8)))
+              (f64.add (local.get $baseB) (f64.mul (f64.sub (local.get $baseA) (local.get $baseB)) (local.get $t))))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $l2))))
+
+        ;; ── spawn new trails ──
+        (func $spawnTrails (param $scaledTime f64) (param $rotation f64)
+          (local $i i32) (local $idx i32)
+          (if (f64.lt (f64.sub (local.get $scaledTime) (global.get $lastSpawn)) (global.get $trailSpawnInterval))
+            (then (return)))
+          (local.set $i (i32.const 0))
+          (block $done (loop $lp
+            (br_if $done (i32.ge_s (local.get $i) (global.get $nChars)))
+            (br_if $done (i32.eq (global.get $freeCount) (i32.const 0)))
+            (global.set $freeCount (i32.sub (global.get $freeCount) (i32.const 1)))
+            (local.set $idx (i32.load (i32.add (global.get $freeStackPtr) (i32.mul (global.get $freeCount) (i32.const 4)))))
+            (f64.store (i32.add (global.get $tStartPtr) (i32.mul (local.get $idx) (i32.const 8))) (local.get $scaledTime))
+            (f64.store (i32.add (global.get $tXPtr) (i32.mul (local.get $idx) (i32.const 8)))
+              (f64.load (i32.add (global.get $animXPtr) (i32.mul (local.get $i) (i32.const 8)))))
+            (f64.store (i32.add (global.get $tRotPtr) (i32.mul (local.get $idx) (i32.const 8))) (local.get $rotation))
+            (i32.store (i32.add (global.get $tCharPtr) (i32.mul (local.get $idx) (i32.const 4))) (local.get $i))
+            (i32.store (i32.add (global.get $activePtr) (i32.mul (global.get $activeCount) (i32.const 4))) (local.get $idx))
+            (global.set $activeCount (i32.add (global.get $activeCount) (i32.const 1)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $lp)))
+          (global.set $lastSpawn (local.get $scaledTime)))
+
+        ;; ── render all active trails (outline, fading, falling) ──
+        (func $renderTrails (param $scaledTime f64) (param $w i32) (param $h i32)
+          (local $i i32) (local $write i32) (local $idx i32)
+          (local $p f64) (local $alpha i32) (local $y f32)
+          (local $charIdx i32) (local $glyphOff i32) (local $glyphNEdges i32)
+          (local.set $write (i32.const 0))
+          (local.set $i (i32.const 0))
+          (block $done (loop $lp
+            (br_if $done (i32.ge_s (local.get $i) (global.get $activeCount)))
+            (local.set $idx (i32.load (i32.add (global.get $activePtr) (i32.mul (local.get $i) (i32.const 4)))))
+            (local.set $p (f64.mul
+              (f64.sub (local.get $scaledTime) (f64.load (i32.add (global.get $tStartPtr) (i32.mul (local.get $idx) (i32.const 8)))))
+              (global.get $invTrailLife)))
+            (if (f64.ge (local.get $p) (f64.const 1.0))
+              (then
+                (i32.store (i32.add (global.get $freeStackPtr) (i32.mul (global.get $freeCount) (i32.const 4))) (local.get $idx))
+                (global.set $freeCount (i32.add (global.get $freeCount) (i32.const 1))))
+              (else
+                (local.set $alpha (i32.trunc_f64_s (f64.nearest (f64.mul (f64.sub (f64.const 1.0) (local.get $p)) (f64.const 255.0)))))
+                (local.set $y (f32.mul (f32.demote_f64 (local.get $p)) (global.get $trailFallDistance)))
+                (local.set $charIdx (i32.load (i32.add (global.get $tCharPtr) (i32.mul (local.get $idx) (i32.const 4)))))
+                (local.set $glyphOff (i32.load (i32.add (global.get $glyphTable) (i32.mul (local.get $charIdx) (i32.const 8)))))
+                (local.set $glyphNEdges (i32.load (i32.add (global.get $glyphTable) (i32.add (i32.mul (local.get $charIdx) (i32.const 8)) (i32.const 4)))))
+                (call $drawOutline
+                  (local.get $glyphOff) (local.get $glyphNEdges)
+                  (global.get $fontSize)
+                  (f64.load (i32.add (global.get $tRotPtr) (i32.mul (local.get $idx) (i32.const 8))))
+                  (f32.demote_f64 (f64.load (i32.add (global.get $tXPtr) (i32.mul (local.get $idx) (i32.const 8)))))
+                  (local.get $y) (f32.const 0.0)
+                  (i32.const 255) (i32.const 255) (i32.const 255) (local.get $alpha)
+                  (local.get $w) (local.get $h))
+                (i32.store (i32.add (global.get $activePtr) (i32.mul (local.get $write) (i32.const 4))) (local.get $idx))
+                (local.set $write (i32.add (local.get $write) (i32.const 1)))))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $lp)))
+          (global.set $activeCount (local.get $write)))
+
+        ;; ── render source glyphs (filled, on top) ──
+        (func $renderSourceGlyphs (param $rotation f64) (param $w i32) (param $h i32)
+          (local $i i32) (local $glyphOff i32) (local $glyphNEdges i32)
+          (local.set $i (i32.const 0))
+          (block $done (loop $lp
+            (br_if $done (i32.ge_s (local.get $i) (global.get $nChars)))
+            (local.set $glyphOff (i32.load (i32.add (global.get $glyphTable) (i32.mul (local.get $i) (i32.const 8)))))
+            (local.set $glyphNEdges (i32.load (i32.add (global.get $glyphTable) (i32.add (i32.mul (local.get $i) (i32.const 8)) (i32.const 4)))))
+            (call $drawFilled
+              (local.get $glyphOff) (local.get $glyphNEdges)
+              (global.get $fontSize) (local.get $rotation)
+              (f32.demote_f64 (f64.load (i32.add (global.get $animXPtr) (i32.mul (local.get $i) (i32.const 8)))))
+              (f32.const 0.0) (f32.const 0.0)
+              (i32.const 255) (i32.const 255) (i32.const 255) (i32.const 255)
+              (local.get $w) (local.get $h))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (br $lp))))
+
+        ;; ══════════════════════════════════════════════
+        ;; Main entry point: ONE call per frame from JS
+        ;; ══════════════════════════════════════════════
+        (func (export "renderFrame")
+          (param $scaledTime f64) (param $rotation f64)
+          (param $w i32) (param $h i32)
+          (param $p_edgeBuf i32) (param $p_scratchBuf i32)
+          (global.set $edgeBuf (local.get $p_edgeBuf))
+          (global.set $scratchBuf (local.get $p_scratchBuf))
+          (call $clear (local.get $w) (local.get $h) (i32.const 0xFF000000))
+          (call $computeSwapPositions (local.get $scaledTime))
+          (call $spawnTrails (local.get $scaledTime) (local.get $rotation))
+          (call $renderTrails (local.get $scaledTime) (local.get $w) (local.get $h))
+          (call $renderSourceGlyphs (local.get $rotation) (local.get $w) (local.get $h)))
+      )
+    </script>
+  </head>
+  <body>
+    <div id="status">loading…</div>
+    <canvas id="c"></canvas>
+    <script>
+      (async () => {
+        const statusEl = document.getElementById("status");
+        const canvas = document.getElementById("c");
+        const ctx2d = canvas.getContext("2d");
+
+        /* ── Parameters ── */
+        const TEXT = "モリサワ".split("").reverse().join("");
+        const TIME_SCALE = 1;
+        const SWAP_SPEED = 0.0008;
+        const TRAIL_LIFETIME = 3500;
+        const TRAIL_SPAWN_INTERVAL = 20;
+        const TRAIL_FALL_DISTANCE = 800;
+        const BASE_FONT_SIZE = 140; // reference size used for measuring glyph centers
+        const FONT_SIZE_VW = 20; // font size as % of viewport width (≈ 140px / 1920px * 100)
+        const LETTER_GAP_RATIO = -10 / 140; // gap as fraction of font size — scales with fontScale via baseX * fontScale
+        const LEN = TEXT.length;
+        const INV_TRAIL_LIFE = 1 / TRAIL_LIFETIME;
+        const POOL_SIZE = (Math.ceil(TRAIL_LIFETIME / TRAIL_SPAWN_INTERVAL) + 2) * LEN;
+        const CURVE_STEPS = 5;
+        const swapPairs = [
+          [0, 3],
+          [1, 2],
+        ];
+        const INITIAL_SPIN_OFFSET = Math.PI;
+
+        let W = 512,
+          H = 512;
+        function fitCanvas() {
+          W = Math.max(64, window.innerWidth);
+          H = Math.max(64, window.innerHeight);
+          canvas.width = W;
+          canvas.height = H;
+        }
+        window.addEventListener("resize", fitCanvas);
+        fitCanvas();
+
+        function vw() {
+          return window.innerWidth / 100;
+        }
+
+        /* ── Measure glyph centers (requires Canvas API) ── */
+        function measureGlyphCenters() {
+          const c = document.createElement("canvas");
+          const ctx = c.getContext("2d");
+          ctx.font = `900 ${BASE_FONT_SIZE}px "M PLUS 2", sans-serif`;
+          const widths = [...TEXT].map((ch) => ctx.measureText(ch).width);
+          const gap = LETTER_GAP_RATIO * BASE_FONT_SIZE; // px at BASE_FONT_SIZE; proportional at other sizes via baseX * fontScale
+          const total = widths.reduce((sum, w) => sum + w, 0) + gap * (LEN - 1);
+          const centers = new Float64Array(LEN);
+          let cursor = -total / 2;
+          for (let i = 0; i < LEN; i++) {
+            centers[i] = cursor + widths[i] / 2;
+            cursor += widths[i] + gap;
+          }
+          return centers;
+        }
+
+        const baseX = measureGlyphCenters();
+
+        /* ── TTF Parsing (font I/O stays in JS) ── */
+        statusEl.textContent = "loading font…";
+        const fontBuf = await fetch("mplus-2p-black.ttf").then((r) => r.arrayBuffer());
+        const dv = new DataView(fontBuf);
+
+        function parseTables() {
+          const numTables = dv.getUint16(4);
+          const tables = {};
+          for (let i = 0; i < numTables; i++) {
+            const off = 12 + i * 16;
+            const tag = String.fromCharCode(dv.getUint8(off), dv.getUint8(off + 1), dv.getUint8(off + 2), dv.getUint8(off + 3));
+            tables[tag] = { offset: dv.getUint32(off + 8), length: dv.getUint32(off + 12) };
+          }
+          return tables;
+        }
+
+        function getGlyphId(cmapOff, charCode) {
+          const numSub = dv.getUint16(cmapOff + 2);
+          let subOff = -1;
+          for (let i = 0; i < numSub; i++) {
+            const pid = dv.getUint16(cmapOff + 4 + i * 8);
+            const eid = dv.getUint16(cmapOff + 4 + i * 8 + 2);
+            if (pid === 3 && eid === 1) {
+              subOff = cmapOff + dv.getUint32(cmapOff + 4 + i * 8 + 4);
+              break;
+            }
+          }
+          if (subOff === -1) return 0;
+          const fmt = dv.getUint16(subOff);
+          if (fmt === 4) {
+            const segCount = dv.getUint16(subOff + 6) / 2;
+            const endCodes = subOff + 14;
+            const startCodes = endCodes + 2 + segCount * 2;
+            const idDeltas = startCodes + segCount * 2;
+            const idRangeOffsets = idDeltas + segCount * 2;
+            for (let i = 0; i < segCount; i++) {
+              const start = dv.getUint16(startCodes + i * 2);
+              const end = dv.getUint16(endCodes + i * 2);
+              if (charCode >= start && charCode <= end) {
+                const delta = dv.getInt16(idDeltas + i * 2);
+                const rangeOff = dv.getUint16(idRangeOffsets + i * 2);
+                if (rangeOff === 0) return (charCode + delta) % 65536;
+                const glyphPtr = idRangeOffsets + i * 2 + rangeOff + (charCode - start) * 2;
+                const gid = dv.getUint16(glyphPtr);
+                return gid !== 0 ? (gid + delta) % 65536 : 0;
+              }
+            }
+          }
+          return 0;
+        }
+
+        function parseGlyph(tables, glyphId) {
+          const headOff = tables["head"].offset;
+          const locFmt = dv.getInt16(headOff + 50);
+          const locaOff = tables["loca"].offset;
+          let gStart, gEnd;
+          if (locFmt === 0) {
+            gStart = dv.getUint16(locaOff + glyphId * 2) * 2;
+            gEnd = dv.getUint16(locaOff + (glyphId + 1) * 2) * 2;
+          } else {
+            gStart = dv.getUint32(locaOff + glyphId * 4);
+            gEnd = dv.getUint32(locaOff + (glyphId + 1) * 4);
+          }
+          if (gStart === gEnd) return null;
+          const base = tables["glyf"].offset + gStart;
+          const numContours = dv.getInt16(base);
+          if (numContours < 0) return null;
+          const xMin = dv.getInt16(base + 2);
+          const yMin = dv.getInt16(base + 4);
+          const xMax = dv.getInt16(base + 6);
+          const yMax = dv.getInt16(base + 8);
+          const endPts = [];
+          for (let i = 0; i < numContours; i++) endPts.push(dv.getUint16(base + 10 + i * 2));
+          const numPoints = endPts[endPts.length - 1] + 1;
+          const instrLen = dv.getUint16(base + 10 + numContours * 2);
+          let ptr = base + 12 + numContours * 2 + instrLen;
+          const points = [];
+          for (let i = 0; i < numPoints; i++) {
+            const flag = dv.getUint8(ptr++);
+            points.push({ flag });
+            if (flag & 0x08) {
+              let repeat = dv.getUint8(ptr++);
+              while (repeat-- > 0) {
+                points.push({ flag });
+                i++;
+              }
+            }
+          }
+          let curX = 0;
+          for (let i = 0; i < numPoints; i++) {
+            const f = points[i].flag;
+            if (f & 0x02) {
+              const v = dv.getUint8(ptr++);
+              curX += f & 0x10 ? v : -v;
+            } else if (!(f & 0x10)) {
+              curX += dv.getInt16(ptr);
+              ptr += 2;
+            }
+            points[i].x = curX;
+          }
+          let curY = 0;
+          for (let i = 0; i < numPoints; i++) {
+            const f = points[i].flag;
+            if (f & 0x04) {
+              const v = dv.getUint8(ptr++);
+              curY += f & 0x20 ? v : -v;
+            } else if (!(f & 0x20)) {
+              curY += dv.getInt16(ptr);
+              ptr += 2;
+            }
+            points[i].y = curY;
+          }
+          return { points, endPts, xMin, yMin, xMax, yMax };
+        }
+
+        function linearizeGlyph(glyph) {
+          if (!glyph) return [];
+          const { points, endPts, xMin, yMin, xMax, yMax } = glyph;
+          const w = xMax - xMin || 1;
+          const h = yMax - yMin || 1;
+          const scale = 1 / Math.max(w, h);
+          const cx = (xMin + xMax) / 2;
+          const cy = (yMin + yMax) / 2;
+          const contours = [];
+          let startIdx = 0;
+          for (let c = 0; c < endPts.length; c++) {
+            const cPts = points.slice(startIdx, endPts[c] + 1);
+            startIdx = endPts[c] + 1;
+            const resolved = [];
+            for (let i = 0; i < cPts.length; i++) {
+              const pt = cPts[i];
+              resolved.push(pt);
+              if (!(pt.flag & 1)) {
+                const next = cPts[(i + 1) % cPts.length];
+                if (!(next.flag & 1)) {
+                  resolved.push({ x: (pt.x + next.x) / 2, y: (pt.y + next.y) / 2, flag: 1 });
+                }
+              }
+            }
+            const edges = [];
+            const len = resolved.length;
+            let i = 0;
+            let firstOn = 0;
+            for (let j = 0; j < len; j++) {
+              if (resolved[j].flag & 1) {
+                firstOn = j;
+                break;
+              }
+            }
+            let prevX = (resolved[firstOn].x - cx) * scale;
+            let prevY = (resolved[firstOn].y - cy) * scale;
+            const startX = prevX,
+              startY = prevY;
+            i = (firstOn + 1) % len;
+            let count = 0;
+            while (count < len - 1) {
+              const curr = resolved[i];
+              if (curr.flag & 1) {
+                const nx = (curr.x - cx) * scale;
+                const ny = (curr.y - cy) * scale;
+                edges.push(prevX, prevY, nx, ny);
+                prevX = nx;
+                prevY = ny;
+                i = (i + 1) % len;
+                count++;
+              } else {
+                const next = resolved[(i + 1) % len];
+                const cpx = (curr.x - cx) * scale;
+                const cpy = (curr.y - cy) * scale;
+                const ex = (next.x - cx) * scale;
+                const ey = (next.y - cy) * scale;
+                for (let s = 1; s <= CURVE_STEPS; s++) {
+                  const t = s / CURVE_STEPS;
+                  const it = 1 - t;
+                  const nx = it * it * prevX + 2 * it * t * cpx + t * t * ex;
+                  const ny = it * it * prevY + 2 * it * t * cpy + t * t * ey;
+                  edges.push(prevX, prevY, nx, ny);
+                  prevX = nx;
+                  prevY = ny;
+                }
+                i = (i + 2) % len;
+                count += 2;
+              }
+            }
+            if (prevX !== startX || prevY !== startY) {
+              edges.push(prevX, prevY, startX, startY);
+            }
+            if (edges.length > 0) contours.push(new Float32Array(edges));
+          }
+          return contours;
+        }
+
+        statusEl.textContent = "parsing glyphs…";
+        const tables = parseTables();
+        const glyphs = [];
+        for (let i = 0; i < LEN; i++) {
+          const code = TEXT.charCodeAt(i);
+          const gid = getGlyphId(tables["cmap"].offset, code);
+          const g = parseGlyph(tables, gid);
+          glyphs.push(linearizeGlyph(g));
+        }
+
+        /* ── Compile and instantiate WASM ── */
+        statusEl.textContent = "loading compiler…";
+        const wabtModule = await WabtModule();
+        statusEl.textContent = "compiling WAT…";
+        const watScript = document.querySelector('script[type="wasm"]');
+        if (!watScript || !watScript.textContent.trim()) {
+          throw new Error("Missing or empty inline WASM script tag");
+        }
+        const watSource = watScript.textContent;
+        const parsed = wabtModule.parseWat("render.wat", watSource);
+        parsed.validate();
+        const { buffer } = parsed.toBinary({ log: false, write_debug_names: false });
+        parsed.destroy();
+
+        statusEl.textContent = "loading WASM…";
+        const { instance } = await WebAssembly.instantiate(buffer, {
+          math: { sin: Math.sin, cos: Math.cos },
+        });
+        const wasm = instance.exports;
+
+        /* ── Upload glyph + trail data to WASM memory ── */
+        statusEl.textContent = "uploading data…";
+
+        // Compute safe base for static data (above max framebuffer + working buffers)
+        const maxW = Math.max(screen.width || 1920, 1920);
+        const maxH = Math.max(screen.height || 1080, 1080);
+        const STATIC_BASE = Math.ceil((maxW * maxH * 4 + 512 * 1024) / 8) * 8;
+
+        // Layout static data at STATIC_BASE (all 8-byte aligned)
+        function align8(n) {
+          return Math.ceil(n / 8) * 8;
+        }
+        let cursor = STATIC_BASE;
+
+        const GLYPH_TABLE = cursor;
+        cursor += align8(LEN * 8);
+        const glyphEdgeStarts = [];
+        for (let gi = 0; gi < LEN; gi++) {
+          const start = cursor;
+          let nEdges = 0;
+          for (const edges of glyphs[gi]) {
+            cursor += edges.length * 4;
+            nEdges += edges.length / 4;
+          }
+          cursor = align8(cursor);
+          glyphEdgeStarts.push({ offset: start, nEdges });
+        }
+        const BASE_X_PTR = cursor;
+        cursor += align8(LEN * 8);
+        const ANIM_X_PTR = cursor;
+        cursor += align8(LEN * 8);
+        const SWAP_PAIRS_PTR = cursor;
+        cursor += align8(swapPairs.length * 8);
+        const T_START = cursor;
+        cursor += align8(POOL_SIZE * 8);
+        const T_X = cursor;
+        cursor += align8(POOL_SIZE * 8);
+        const T_ROT = cursor;
+        cursor += align8(POOL_SIZE * 8);
+        const T_CHAR = cursor;
+        cursor += align8(POOL_SIZE * 4);
+        const FREE_STACK = cursor;
+        cursor += align8(POOL_SIZE * 4);
+        const ACTIVE = cursor;
+        cursor += align8(POOL_SIZE * 4);
+
+        // Grow WASM memory to fit all static data
+        if (cursor > wasm.memory.buffer.byteLength) {
+          wasm.memory.grow(Math.ceil((cursor - wasm.memory.buffer.byteLength) / 65536));
+        }
+
+        // Write glyph table + edge data
+        const memDv = new DataView(wasm.memory.buffer);
+        for (let gi = 0; gi < LEN; gi++) {
+          memDv.setInt32(GLYPH_TABLE + gi * 8, glyphEdgeStarts[gi].offset, true);
+          memDv.setInt32(GLYPH_TABLE + gi * 8 + 4, glyphEdgeStarts[gi].nEdges, true);
+          let eCursor = glyphEdgeStarts[gi].offset;
+          for (const edges of glyphs[gi]) {
+            new Float32Array(wasm.memory.buffer, eCursor, edges.length).set(edges);
+            eCursor += edges.length * 4;
+          }
+        }
+
+        // Write baseX
+        new Float64Array(wasm.memory.buffer, BASE_X_PTR, LEN).set(baseX);
+
+        // Write swap pairs
+        for (let i = 0; i < swapPairs.length; i++) {
+          memDv.setInt32(SWAP_PAIRS_PTR + i * 8, swapPairs[i][0], true);
+          memDv.setInt32(SWAP_PAIRS_PTR + i * 8 + 4, swapPairs[i][1], true);
+        }
+
+        // Initialize free stack: [0, 1, 2, ..., POOL_SIZE-1]
+        const freeArr = new Int32Array(wasm.memory.buffer, FREE_STACK, POOL_SIZE);
+        for (let i = 0; i < POOL_SIZE; i++) freeArr[i] = i;
+
+        // Call WASM init with all pointers and constants
+        wasm.init(
+          GLYPH_TABLE,
+          LEN,
+          BASE_X_PTR,
+          ANIM_X_PTR,
+          SWAP_PAIRS_PTR,
+          swapPairs.length,
+          T_START,
+          T_X,
+          T_ROT,
+          T_CHAR,
+          FREE_STACK,
+          ACTIVE,
+          POOL_SIZE,
+          FONT_SIZE_VW * vw(),
+          SWAP_SPEED,
+          INV_TRAIL_LIFE,
+          TRAIL_SPAWN_INTERVAL,
+          TRAIL_FALL_DISTANCE,
+          -TRAIL_SPAWN_INTERVAL
+        );
+
+        statusEl.textContent = "";
+
+        /* ── Animation loop (thin: schedule + buffer I/O only) ── */
+        let imgData = null;
+        let startTime = -1;
+
+        function loop(time) {
+          fitCanvas();
+          if (startTime < 0) startTime = time;
+
+          const scaledTime = (time - startTime) * TIME_SCALE;
+          const rotation = scaledTime * SWAP_SPEED + INITIAL_SPIN_OFFSET;
+
+          // Update font size and character positions responsively (like 017)
+          const fontSizePx = FONT_SIZE_VW * vw();
+          wasm.setFontSize(fontSizePx);
+          const fontScale = fontSizePx / BASE_FONT_SIZE;
+          const baseXView = new Float64Array(wasm.memory.buffer, BASE_X_PTR, LEN);
+          for (let i = 0; i < LEN; i++) baseXView[i] = baseX[i] * fontScale;
+
+          // Ensure WASM memory fits framebuffer + working buffers
+          const fbSize = W * H * 4;
+          const totalNeeded = fbSize + 400000;
+          if (totalNeeded > wasm.memory.buffer.byteLength) {
+            wasm.memory.grow(Math.ceil((totalNeeded - wasm.memory.buffer.byteLength) / 65536));
+          }
+          const edgeBuf = fbSize;
+          const scratchBuf = edgeBuf + 200000;
+
+          // ONE WASM call per frame: clear, swap, spawn, trail-render, source-render
+          wasm.renderFrame(scaledTime, rotation, W, H, edgeBuf, scratchBuf);
+
+          // Copy framebuffer to canvas
+          const fbBytes = new Uint8ClampedArray(wasm.memory.buffer, 0, W * H * 4);
+          if (!imgData || imgData.width !== W || imgData.height !== H) {
+            imgData = new ImageData(W, H);
+          }
+          imgData.data.set(fbBytes);
+          ctx2d.putImageData(imgData, 0, 0);
+
+          requestAnimationFrame(loop);
+        }
+
+        requestAnimationFrame(loop);
+      })();
+    </script>
+  </body>
+</html>
