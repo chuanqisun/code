@@ -7,7 +7,7 @@ Artists: Muriel Cooper, John Maeda
 ### Read
 
 > A poem only communicates if read slowly: only then does it have time to create a state of mind in which the images can form and be transformed.  
-> — [Poems and Telegrams](https://www.dropbox.com/s/7tmeb0cki0biyit/Articulated%286013%29.pdf?dl=0), by Bruno Munari
+> — [Poems and Telegrams](https://www.dropbox.com/s/vbuhevmpajcjda2/Bruno-Munari-The-Shape-of-Words-and-Poems-and-Telegrams-in-Design-as-Art-1971.pdf), by Bruno Munari
 
 ### Watch
 
