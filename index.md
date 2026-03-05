@@ -43,6 +43,7 @@
 - [Braille 3D](./braille-3d/)
 - [Bubbles](./bubbles/)
 - [Clipboard++](./clipboard/)
+- [CyberMUSE](https://chuanqisun.github.io/cybermuse/)
 - [Device Orientation API](./device-orientation-api/)
 - [Dialogica Times](./design-fiction/dialogica-times.html)
 - [Dialogarithm](./dialogarithm/)
