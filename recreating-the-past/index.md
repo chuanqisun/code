@@ -13,13 +13,10 @@
 
 ### Practice
 
-- Original
-  - still: https://www.moma.org/collection/works/80954
-  - video: https://youtu.be/yTo8Z59Idr0?si=UPs2Yjnm5PhXf2dT&t=989
-  - Image: ![Original](./leparc/original.webp)
-- Recreated:
-  - app: [Recreated (live experience)](./leparc/index.html)
-  - Image: ![Recreated](./leparc/recreated.webp)
+| [Original](https://www.moma.org/collection/works/80954) | [Recreated (live experience)](./leparc/index.html) |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| ![Original](./leparc/original.webp)                     | ![Recreated](./leparc/recreated.webp)              |
+
 - Notes
   - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64
 
