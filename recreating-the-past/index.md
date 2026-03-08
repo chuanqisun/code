@@ -18,7 +18,7 @@
 | ![Original](./leparc/original.webp)                     | ![Recreated](./leparc/recreated.webp)              |
 
 - Notes
-  - [Live](./leparc/index.html), [Recording](https://www.youtube.com/shorts/zkKdvdRDc64), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/lemarc/index.html),
+  - [Live](./leparc/index.html), [Recording](https://www.youtube.com/shorts/zkKdvdRDc64), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/leparc/index.html),
   - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64
   - Op Art creates movement without movement
   - Body movement can further enhance the effect and make the art participatory, as seen in the MoMA Responsive Eyes exhibition (1965)
