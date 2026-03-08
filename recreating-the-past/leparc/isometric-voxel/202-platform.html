@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: #888;
+        font-family: monospace;
+        font-size: 14px;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">Click or Space to mutate | Cubes: <span id="count"></span></div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      // --- Config ---
+      const N = 8;
+
+      // --- Heightmap representation ---
+      // height[x][y] = number of stacked cubes at column (x,y)
+      // Column (x,y) contains cubes at z = 0, 1, ..., height[x][y]-1
+      // This is equivalent to the box set but constrained to solid columns from ground up.
+      const height = Array.from({ length: N }, () => new Array(N).fill(0));
+
+      // Initialize pyramid
+      for (let x = 0; x < N; x++) {
+        for (let y = 0; y < N; y++) {
+          // Pyramid: height = N - max(x, y) but aligned to back corner
+          height[x][y] = Math.max(0, N - Math.max(x, y));
+        }
+      }
+
+      function totalCubes() {
+        let c = 0;
+        for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) c += height[x][y];
+        return c;
+      }
+
+      function h(x, y) {
+        if (x < 0 || x >= N || y < 0 || y >= N) return 0;
+        return height[x][y];
+      }
+
+      // --- Mutation ---
+      // A column can lose its top cube if it's exposed (always true for top cube)
+      // and removing it doesn't violate anything (it's always the top, so no support issue).
+      // Removable: any column with height > 0
+      // Placeable: any column where height < N AND the new top would be exposed
+      //   AND the new cube is within bounds (height < N)
+      //   The new top is always exposed (it's the top of a column).
+      //   We just need height[x][y] < N.
+      //   But we also want the placed cube to be "exposed to outside" meaning
+      //   at least one lateral neighbor is open OR it's the top.
+      //   Since it IS the new top, it's always exposed via z+. ✓
+
+      function mutate() {
+        // Collect removable columns (height > 0)
+        const removable = [];
+        for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) if (height[x][y] > 0) removable.push({ x, y });
+
+        if (removable.length === 0) return false;
+
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const ri = Math.floor(Math.random() * removable.length);
+          const rem = removable[ri];
+          const remH = height[rem.x][rem.y];
+
+          // Temporarily remove
+          height[rem.x][rem.y] = remH - 1;
+
+          // Collect placeable columns
+          const placeable = [];
+          for (let x = 0; x < N; x++) {
+            for (let y = 0; y < N; y++) {
+              if (x === rem.x && y === rem.y && height[x][y] === remH - 1) {
+                // Placing back at same column same height = same position, skip
+                if (height[x][y] + 1 === remH) continue;
+              }
+              if (height[x][y] < N) {
+                // Different position check: not (same column restoring same height)
+                if (x === rem.x && y === rem.y) continue; // skip same column entirely for simplicity
+                placeable.push({ x, y });
+              }
+            }
+          }
+
+          if (placeable.length > 0) {
+            const pi = Math.floor(Math.random() * placeable.length);
+            const plc = placeable[pi];
+            height[plc.x][plc.y] += 1;
+            return true;
+          }
+
+          // Restore
+          height[rem.x][rem.y] = remH;
+        }
+        return false;
+      }
+
+      // --- Three.js setup ---
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      const aspect = window.innerWidth / window.innerHeight;
+      const viewSize = 12;
+      const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, -100, 100);
+      camera.position.set(10, 10, 10);
+      camera.lookAt(N / 2, N / 2, N / 2);
+      camera.up.set(0, 0, 1);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(N / 2, N / 2, N / 2);
+      controls.update();
+
+      // --- Walls ---
+      const wallGroup = new THREE.Group();
+      scene.add(wallGroup);
+
+      function buildWalls() {
+        wallGroup.clear();
+        const wallMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+        const addGrid = (pts) => {
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+          wallGroup.add(new THREE.LineSegments(g, wallMat));
+        };
+        let pX = [],
+          pY = [],
+          pZ = [];
+        for (let i = 0; i <= N; i++) {
+          pX.push(0, i, 0, 0, i, N, 0, 0, i, 0, N, i);
+          pY.push(i, 0, 0, i, 0, N, 0, 0, i, N, 0, i);
+          pZ.push(i, 0, 0, i, N, 0, 0, i, 0, N, i, 0);
+        }
+        addGrid(pX);
+        addGrid(pY);
+        addGrid(pZ);
+      }
+
+      // --- Mesh building from heightmap ---
+      // We reconstruct the full face set from the heightmap.
+      // For column (x,y) with height h:
+      //   - Top face at z = h (always, if h > 0)
+      //   - Bottom face at z = 0 (always, if h > 0) — only if visible (z=0 is floor, skip if we want)
+      //     Actually bottom at z=0 is against the floor, not visible. Skip.
+      //   - For each lateral direction, we need side faces where this column
+      //     is taller than its neighbor.
+      //     If h(x,y) > h(x+1,y), we have exposed +X faces from z=h(x+1,y) to z=h(x,y)
+      //     Each unit of that range is one quad face.
+
+      let faceMesh = null;
+      let edgeLines = null;
+
+      function rebuildMesh() {
+        if (faceMesh) {
+          scene.remove(faceMesh);
+          faceMesh.geometry.dispose();
+        }
+        if (edgeLines) {
+          scene.remove(edgeLines);
+          edgeLines.geometry.dispose();
+        }
+
+        const faces = []; // { type, v: [[x,y,z], ...] }
+
+        for (let x = 0; x < N; x++) {
+          for (let y = 0; y < N; y++) {
+            const hh = height[x][y];
+            if (hh === 0) continue;
+
+            // Top face
+            faces.push({
+              type: "zp",
+              v: [
+                [x, y, hh],
+                [x + 1, y, hh],
+                [x + 1, y + 1, hh],
+                [x, y + 1, hh],
+              ],
+            });
+
+            // +X side faces
+            const hxp = h(x + 1, y);
+            for (let z = hxp; z < hh; z++) {
+              faces.push({
+                type: "xp",
+                v: [
+                  [x + 1, y, z],
+                  [x + 1, y, z + 1],
+                  [x + 1, y + 1, z + 1],
+                  [x + 1, y + 1, z],
+                ],
+              });
+            }
+
+            // -X side faces
+            const hxn = h(x - 1, y);
+            for (let z = hxn; z < hh; z++) {
+              faces.push({
+                type: "xn",
+                v: [
+                  [x, y, z],
+                  [x, y + 1, z],
+                  [x, y + 1, z + 1],
+                  [x, y, z + 1],
+                ],
+              });
+            }
+
+            // +Y side faces
+            const hyp = h(x, y + 1);
+            for (let z = hyp; z < hh; z++) {
+              faces.push({
+                type: "yp",
+                v: [
+                  [x, y + 1, z],
+                  [x, y + 1, z + 1],
+                  [x + 1, y + 1, z + 1],
+                  [x + 1, y + 1, z],
+                ],
+              });
+            }
+
+            // -Y side faces
+            const hyn = h(x, y - 1);
+            for (let z = hyn; z < hh; z++) {
+              faces.push({
+                type: "yn",
+                v: [
+                  [x, y, z],
+                  [x + 1, y, z],
+                  [x + 1, y, z + 1],
+                  [x, y, z + 1],
+                ],
+              });
+            }
+          }
+        }
+
+        // Build face mesh
+        const faceVerts = [],
+          faceIndices = [];
+        faces.forEach((f) => {
+          const base = faceVerts.length / 3;
+          f.v.forEach((p) => faceVerts.push(p[0], p[1], p[2]));
+          faceIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        });
+
+        const fGeom = new THREE.BufferGeometry();
+        fGeom.setAttribute("position", new THREE.Float32BufferAttribute(faceVerts, 3));
+        fGeom.setIndex(faceIndices);
+        fGeom.computeVertexNormals();
+        faceMesh = new THREE.Mesh(
+          fGeom,
+          new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
+          })
+        );
+        scene.add(faceMesh);
+
+        // Build external edges
+        const edgeMap = new Map();
+        faces.forEach((f) => {
+          for (let i = 0; i < f.v.length; i++) {
+            const a = f.v[i],
+              b = f.v[(i + 1) % f.v.length];
+            const ka = a.join(","),
+              kb = b.join(",");
+            const k = ka < kb ? ka + "|" + kb : kb + "|" + ka;
+            if (!edgeMap.has(k)) edgeMap.set(k, { a, b, types: new Set() });
+            edgeMap.get(k).types.add(f.type);
+          }
+        });
+
+        const ev = [];
+        edgeMap.forEach((e) => {
+          if (e.types.size > 1) {
+            ev.push(...e.a, ...e.b);
+          }
+        });
+
+        const eGeom = new THREE.BufferGeometry();
+        eGeom.setAttribute("position", new THREE.Float32BufferAttribute(ev, 3));
+        edgeLines = new THREE.LineSegments(eGeom, new THREE.LineBasicMaterial({ color: 0x000000 }));
+        scene.add(edgeLines);
+
+        document.getElementById("count").textContent = totalCubes();
+      }
+
+      // --- Optimized heightmap edge generation ---
+      // For the heightmap, we can also directly compute external edges without
+      // per-cube face enumeration. But the above approach is clear and correct.
+
+      // --- Input ---
+      function handleAction() {
+        if (mutate()) rebuildMesh();
+      }
+
+      let clickStart = null;
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        clickStart = { x: e.clientX, y: e.clientY };
+      });
+      renderer.domElement.addEventListener("pointerup", (e) => {
+        if (!clickStart) return;
+        if (Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y) < 5) handleAction();
+        clickStart = null;
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          handleAction();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        const a = window.innerWidth / window.innerHeight;
+        camera.left = -viewSize * a;
+        camera.right = viewSize * a;
+        camera.top = viewSize;
+        camera.bottom = -viewSize;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      buildWalls();
+      rebuildMesh();
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: #888;
+        font-family: monospace;
+        font-size: 14px;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">Click or Space to mutate</div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      const N = 8;
+      const ANIM_DURATION = 320;
+
+      const height = Array.from({ length: N }, () => new Array(N).fill(0));
+      for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) height[x][y] = Math.max(0, N - Math.max(x, y));
+
+      const displayHeight = Array.from({ length: N }, (_, x) => Array.from({ length: N }, (_, y) => height[x][y]));
+
+      let animations = [];
+      let animating = false;
+      let pendingMutations = 0;
+
+      function easeOutQuart(t) {
+        return 1 - Math.pow(1 - t, 4);
+      }
+
+      function dh(x, y) {
+        if (x < 0 || x >= N || y < 0 || y >= N) return 0;
+        return displayHeight[x][y];
+      }
+
+      function mutate() {
+        const removable = [];
+        for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) if (height[x][y] > 0) removable.push({ x, y });
+        if (removable.length === 0) return false;
+
+        for (let attempt = 0; attempt < 200; attempt++) {
+          const ri = Math.floor(Math.random() * removable.length);
+          const rem = removable[ri];
+          const remH = height[rem.x][rem.y];
+          height[rem.x][rem.y] = remH - 1;
+
+          const placeable = [];
+          for (let x = 0; x < N; x++)
+            for (let y = 0; y < N; y++) {
+              if (x === rem.x && y === rem.y) continue;
+              if (height[x][y] < N) placeable.push({ x, y });
+            }
+
+          if (placeable.length > 0) {
+            const pi = Math.floor(Math.random() * placeable.length);
+            const plc = placeable[pi];
+            const plcOldH = height[plc.x][plc.y];
+            height[plc.x][plc.y] += 1;
+
+            const now = performance.now();
+            animations.push({
+              x: rem.x,
+              y: rem.y,
+              from: remH,
+              to: remH - 1,
+              startTime: now,
+              duration: ANIM_DURATION * 0.6,
+            });
+            animations.push({
+              x: plc.x,
+              y: plc.y,
+              from: plcOldH,
+              to: plcOldH + 1,
+              startTime: now + ANIM_DURATION * 0.3,
+              duration: ANIM_DURATION,
+            });
+            animating = true;
+            return true;
+          }
+          height[rem.x][rem.y] = remH;
+        }
+        return false;
+      }
+
+      // --- Three.js setup ---
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      const aspect = window.innerWidth / window.innerHeight;
+      const viewSize = 12;
+      const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, -100, 100);
+      camera.position.set(10, 10, 10);
+      camera.lookAt(N / 2, N / 2, N / 2);
+      camera.up.set(0, 0, 1);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(N / 2, N / 2, N / 2);
+      controls.update();
+
+      // --- Hatch textures ---
+      function createDotTexture(size) {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = "#000000";
+        const dotR = size * 0.03;
+        const spacing = size / 8;
+        for (let row = 0; row < 8; row++) {
+          for (let col = 0; col < 8; col++) {
+            const cx = spacing * (col + 0.5);
+            const cy = spacing * (row + 0.5);
+            ctx.beginPath();
+            ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        return tex;
+      }
+
+      function createCrossTexture(size) {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, size, size);
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = size * 0.02;
+        const spacing = size / 6;
+        // Diagonal lines going one way
+        for (let i = -size; i < size * 2; i += spacing) {
+          ctx.beginPath();
+          ctx.moveTo(i, 0);
+          ctx.lineTo(i + size, size);
+          ctx.stroke();
+        }
+        // Diagonal lines going other way
+        for (let i = -size; i < size * 2; i += spacing) {
+          ctx.beginPath();
+          ctx.moveTo(i, size);
+          ctx.lineTo(i + size, 0);
+          ctx.stroke();
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        return tex;
+      }
+
+      const TEX_SIZE = 256;
+      const dotTex = createDotTexture(TEX_SIZE);
+      const crossTex = createCrossTexture(TEX_SIZE);
+
+      const topMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+
+      const dotMat = new THREE.MeshBasicMaterial({
+        map: dotTex,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+
+      const crossMat = new THREE.MeshBasicMaterial({
+        map: crossTex,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+      // --- Walls ---
+      function buildWalls() {
+        const wallMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          pts.push(0, i, 0, 0, i, N);
+          pts.push(0, 0, i, 0, N, i);
+          pts.push(i, 0, 0, i, 0, N);
+          pts.push(0, 0, i, N, 0, i);
+          pts.push(i, 0, 0, i, N, 0);
+          pts.push(0, i, 0, N, i, 0);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        scene.add(new THREE.LineSegments(g, wallMat));
+      }
+
+      let topMesh = null,
+        dotMesh = null,
+        crossMesh = null,
+        edgeLines = null;
+
+      function rebuildMesh() {
+        if (topMesh) {
+          scene.remove(topMesh);
+          topMesh.geometry.dispose();
+        }
+        if (dotMesh) {
+          scene.remove(dotMesh);
+          dotMesh.geometry.dispose();
+        }
+        if (crossMesh) {
+          scene.remove(crossMesh);
+          crossMesh.geometry.dispose();
+        }
+        if (edgeLines) {
+          scene.remove(edgeLines);
+          edgeLines.geometry.dispose();
+        }
+
+        // Collect faces by material type
+        const topFaces = []; // top (zp)
+        const dotFaces = []; // xp, xn faces (dot hatch)
+        const crossFaces = []; // yp, yn faces (cross hatch)
+        const allFaces = []; // for edge detection
+
+        for (let x = 0; x < N; x++) {
+          for (let y = 0; y < N; y++) {
+            const hh = displayHeight[x][y];
+            if (hh <= 1e-6) continue;
+
+            // Top face
+            const tv = [
+              [x, y, hh],
+              [x + 1, y, hh],
+              [x + 1, y + 1, hh],
+              [x, y + 1, hh],
+            ];
+            // UV for top: tile 1:1 per unit
+            const tuv = [
+              [0, 0],
+              [1, 0],
+              [1, 1],
+              [0, 1],
+            ];
+            topFaces.push({ v: tv, uv: tuv });
+            allFaces.push({ type: "zp", v: tv });
+
+            const dirs = [
+              {
+                dx: 1,
+                dy: 0,
+                type: "xp",
+                quad: (z0, z1) => [
+                  [x + 1, y, z0],
+                  [x + 1, y, z1],
+                  [x + 1, y + 1, z1],
+                  [x + 1, y + 1, z0],
+                ],
+                // UV: along y-axis horizontally, z vertically. Use world coords for tiling.
+                uv: (z0, z1) => [
+                  [y, z0],
+                  [y, z1],
+                  [y + 1, z1],
+                  [y + 1, z0],
+                ],
+              },
+              {
+                dx: -1,
+                dy: 0,
+                type: "xn",
+                quad: (z0, z1) => [
+                  [x, y, z0],
+                  [x, y + 1, z0],
+                  [x, y + 1, z1],
+                  [x, y, z1],
+                ],
+                uv: (z0, z1) => [
+                  [y, z0],
+                  [y + 1, z0],
+                  [y + 1, z1],
+                  [y, z1],
+                ],
+              },
+              {
+                dx: 0,
+                dy: 1,
+                type: "yp",
+                quad: (z0, z1) => [
+                  [x, y + 1, z0],
+                  [x, y + 1, z1],
+                  [x + 1, y + 1, z1],
+                  [x + 1, y + 1, z0],
+                ],
+                uv: (z0, z1) => [
+                  [x, z0],
+                  [x, z1],
+                  [x + 1, z1],
+                  [x + 1, z0],
+                ],
+              },
+              {
+                dx: 0,
+                dy: -1,
+                type: "yn",
+                quad: (z0, z1) => [
+                  [x, y, z0],
+                  [x + 1, y, z0],
+                  [x + 1, y, z1],
+                  [x, y, z1],
+                ],
+                uv: (z0, z1) => [
+                  [x, z0],
+                  [x + 1, z0],
+                  [x + 1, z1],
+                  [x, z1],
+                ],
+              },
+            ];
+
+            for (const d of dirs) {
+              const nh = dh(x + d.dx, y + d.dy);
+              if (hh > nh) {
+                const zBot = Math.max(0, nh);
+                const zTop = hh;
+                const splits = [zBot];
+                const lo = Math.ceil(zBot + 1e-9);
+                const hi = Math.floor(zTop - 1e-9);
+                for (let z = lo; z <= hi; z++) {
+                  if (z > zBot + 1e-6 && z < zTop - 1e-6) splits.push(z);
+                }
+                splits.push(zTop);
+
+                for (let i = 0; i < splits.length - 1; i++) {
+                  const z0 = splits[i],
+                    z1 = splits[i + 1];
+                  if (z1 - z0 < 1e-6) continue;
+                  const fv = d.quad(z0, z1);
+                  const fuv = d.uv(z0, z1);
+                  allFaces.push({ type: d.type, v: fv });
+
+                  if (d.type === "xp" || d.type === "xn") {
+                    dotFaces.push({ v: fv, uv: fuv });
+                  } else {
+                    crossFaces.push({ v: fv, uv: fuv });
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Build geometry helper
+        function buildGeom(faceList, withUV) {
+          const verts = [],
+            indices = [],
+            uvs = [];
+          faceList.forEach((f) => {
+            const base = verts.length / 3;
+            f.v.forEach((p) => verts.push(p[0], p[1], p[2]));
+            if (withUV) f.uv.forEach((u) => uvs.push(u[0], u[1]));
+            indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+          });
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+          if (withUV) g.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+          g.setIndex(indices);
+          return g;
+        }
+
+        const tg = buildGeom(topFaces, false);
+        topMesh = new THREE.Mesh(tg, topMat);
+        scene.add(topMesh);
+
+        const dg = buildGeom(dotFaces, true);
+        dotMesh = new THREE.Mesh(dg, dotMat);
+        scene.add(dotMesh);
+
+        const cg = buildGeom(crossFaces, true);
+        crossMesh = new THREE.Mesh(cg, crossMat);
+        scene.add(crossMesh);
+
+        // External edges
+        const edgeMap = new Map();
+        function qv(v) {
+          return v.map((c) => Math.round(c * 1024) / 1024);
+        }
+
+        allFaces.forEach((f) => {
+          for (let i = 0; i < f.v.length; i++) {
+            const a = qv(f.v[i]),
+              b = qv(f.v[(i + 1) % f.v.length]);
+            const ka = a.join(","),
+              kb = b.join(",");
+            const k = ka < kb ? ka + "|" + kb : kb + "|" + ka;
+            if (!edgeMap.has(k)) edgeMap.set(k, { a, b, types: new Set() });
+            edgeMap.get(k).types.add(f.type);
+          }
+        });
+
+        const ev = [];
+        edgeMap.forEach((e) => {
+          if (e.types.size > 1) {
+            ev.push(...e.a, ...e.b);
+          }
+        });
+
+        const eGeom = new THREE.BufferGeometry();
+        eGeom.setAttribute("position", new THREE.Float32BufferAttribute(ev, 3));
+        edgeLines = new THREE.LineSegments(eGeom, edgeMat);
+        scene.add(edgeLines);
+      }
+
+      // --- Input ---
+      function handleAction() {
+        if (animating) {
+          pendingMutations++;
+          return;
+        }
+        mutate();
+      }
+
+      let clickStart = null;
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        clickStart = { x: e.clientX, y: e.clientY };
+      });
+      renderer.domElement.addEventListener("pointerup", (e) => {
+        if (!clickStart) return;
+        if (Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y) < 5) handleAction();
+        clickStart = null;
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          handleAction();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        const a = window.innerWidth / window.innerHeight;
+        camera.left = -viewSize * a;
+        camera.right = viewSize * a;
+        camera.top = viewSize;
+        camera.bottom = -viewSize;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // --- Animation ---
+      function updateAnimations(now) {
+        let anyActive = false;
+        for (let i = animations.length - 1; i >= 0; i--) {
+          const a = animations[i];
+          const elapsed = now - a.startTime;
+          if (elapsed < 0) {
+            displayHeight[a.x][a.y] = a.from;
+            anyActive = true;
+            continue;
+          }
+          const t = Math.min(elapsed / a.duration, 1);
+          displayHeight[a.x][a.y] = a.from + (a.to - a.from) * easeOutQuart(t);
+          if (t >= 1) {
+            displayHeight[a.x][a.y] = a.to;
+            animations.splice(i, 1);
+          } else {
+            anyActive = true;
+          }
+        }
+        animating = anyActive;
+        if (!anyActive && pendingMutations > 0) {
+          pendingMutations--;
+          mutate();
+        }
+      }
+
+      buildWalls();
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        updateAnimations(now);
+        rebuildMesh();
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate(performance.now());
+    </script>
+  </body>
+</html>

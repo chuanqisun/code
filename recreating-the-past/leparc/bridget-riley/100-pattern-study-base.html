@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        overflow: hidden;
+        padding: clamp(4px, 1.5vw, 20px);
+      }
+      .grid {
+        display: grid;
+        gap: clamp(4px, 1.2vw, 16px);
+        /* columns, width and max-width are set by JS based on mode */
+      }
+      .tile canvas {
+        cursor: default;
+      }
+      .all-mode .tile canvas {
+        cursor: crosshair;
+      }
+      .tile canvas {
+        width: 100%;
+        aspect-ratio: 1;
+        display: block;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script>
+      const S = 400;
+
+      /* ── Mode detection ── */
+      const ALL_MODE = new URLSearchParams(location.search).get("all") === "true";
+
+      /* ── Tweakable parameters ── */
+      const COLS = ALL_MODE ? 8 : 3;
+      const ROWS = ALL_MODE ? 5 : 5;
+      const SLOTS = COLS * ROWS; // 40 in all-mode, 15 in normal
+      const SWAP_TIMERS = 3; // concurrent swap timers
+      const SWAP_MIN_MS = 500; // min ms between swaps per timer
+      const SWAP_MAX_MS = 2000; // max ms between swaps per timer
+      const BLINK_UP_MS = 300; // ms to fade to black
+      const BLINK_HOLD_MS = 100; // ms to hold at black before reveal
+      const BLINK_DOWN_MS = 300; // ms to fade back to normal
+
+      /* ── Collect all draw functions ── */
+      const allDrawFns = [];
+      function mk(drawFn) {
+        allDrawFns.push(drawFn);
+      }
+
+      // 1. Parallel stripe repetition — Riley: stripes rapidly oscillate width creating scanning dazzle
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 100; i++) {
+          let w = 1 + 1 * Math.sin(i * 0.2 + t * 8) + 0.75 * Math.sin(i * 0.5 - t * 12);
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, i * 4, S, Math.max(0.5, w));
+        }
+      });
+
+      // 2. Black-and-white wave lines — Riley: multi-axis turbulence, waves crash in opposing directions
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 80; i++) {
+          ctx.beginPath();
+          for (let x = 0; x <= S; x += 2) ctx.lineTo(x, i * 5 + Math.sin(x * 0.04 + i * 0.3 + t * 8) * 12 + Math.cos(x * 0.02 - i * 0.15 + t * 6) * 8);
+          ctx.stroke();
+        }
+      });
+
+      // 3. Checkerboard distortion — Vasarely: bulge center races around fast, large radius warp
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        const n = 20,
+          cx = 200 + Math.sin(t * 5) * 100,
+          cy = 200 + Math.cos(t * 3.7) * 100;
+        for (let i = 0; i < n; i++)
+          for (let j = 0; j < n; j++) {
+            let dx = ((i + 0.5) * S) / n - cx,
+              dy = ((j + 0.5) * S) / n - cy,
+              d = Math.sqrt(dx * dx + dy * dy) / 160;
+            let sz = (S / n) * (1 - 0.6 * Math.exp(-d * d * 1.5));
+            ctx.fillStyle = (i + j) % 2 ? "#fff" : "#000";
+            ctx.fillRect((i * S) / n + (S / n - sz) / 2, (j * S) / n + (S / n - sz) / 2, sz, sz);
+          }
+      });
+
+      // 4. Concentric circles — Tadasky: rings pulse outward rapidly like sonar blasts
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let r = 200; r > 0; r -= 3) {
+          let phase = (r + t * 50) % 12;
+          ctx.beginPath();
+          ctx.arc(200, 200, r, 0, Math.PI * 2);
+          ctx.strokeStyle = phase < 6 ? "#fff" : "#000";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      });
+
+      // 5. Concentric squares — Anuszkiewicz: hue rotation races creating glowing neon tunnel
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 30; i++) {
+          let s = S - i * 13;
+          ctx.strokeStyle = `hsl(${i * 12 + t * 120},100%,55%)`;
+          ctx.lineWidth = 4;
+          ctx.strokeRect((S - s) / 2, (S - s) / 2, s, s);
+        }
+      });
+
+      // 6. Chromatic adjacency — Anuszkiewicz/Stanczak: hues swing wildly, edges strobe
+      mk(function (ctx, t) {
+        for (let i = 0; i < 50; i++) {
+          let h1 = t * 80 + Math.sin(t * 6 + i * 0.3) * 60;
+          let h2 = h1 + 180 + Math.sin(t * 4) * 40;
+          ctx.fillStyle = i % 2 ? `hsl(${h1},100%,50%)` : `hsl(${h2},100%,50%)`;
+          ctx.fillRect(i * 8, 0, 8, S);
+        }
+      });
+
+      // 7. Gradated modular grids — Vasarely Vega: modules throb rapidly, cosmic breathing
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#0a0a2a";
+        ctx.fillRect(0, 0, S, S);
+        const n = 20;
+        for (let i = 0; i < n; i++)
+          for (let j = 0; j < n; j++) {
+            let dx = i - n / 2,
+              dy = j - n / 2,
+              d = Math.sqrt(dx * dx + dy * dy);
+            let pulse = 0.2 + (0.8 * d) / (n / 2) + 0.3 * Math.sin(t * 6 - d * 0.5);
+            let r = (S / n / 2) * Math.max(0.1, Math.min(pulse, 1));
+            ctx.fillStyle = `hsl(${220 + d * 10 + t * 60},80%,55%)`;
+            ctx.beginPath();
+            ctx.arc((i * S) / n + S / n / 2, (j * S) / n + S / n / 2, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+      });
+
+      // 8. Bulge-and-recession — Vasarely: grid inflates/deflates fast, large bulge radius
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        const n = 25,
+          amp = 0.1 + 0.6 * Math.abs(Math.sin(t * 5));
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= n; i++) {
+          ctx.beginPath();
+          for (let x = 0; x <= S; x += 2) {
+            let tt = i / n,
+              dx = x - 200,
+              f = 1 + amp * Math.exp(-(dx * dx + (tt * S - 200) * (tt * S - 200)) / 12000);
+            ctx.lineTo(x, tt * S * f - (f - 1) * 200);
+          }
+          ctx.stroke();
+        }
+        for (let i = 0; i <= n; i++) {
+          ctx.beginPath();
+          for (let y = 0; y <= S; y += 2) {
+            let tt = i / n,
+              dy = y - 200,
+              f = 1 + amp * Math.exp(-(dy * dy + (tt * S - 200) * (tt * S - 200)) / 12000);
+            ctx.lineTo(tt * S * f - (f - 1) * 200, y);
+          }
+          ctx.stroke();
+        }
+      });
+
+      // 9. Hexagonal tessellation — Vasarely: cells flash psychedelic hues rapidly
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#1a1a2e";
+        ctx.fillRect(0, 0, S, S);
+        const r = 15;
+        for (let row = 0; row < 30; row++)
+          for (let col = 0; col < 20; col++) {
+            let x = col * r * 1.75 + (row % 2) * r * 0.875,
+              y = row * r * 1.5;
+            let d = Math.hypot(x - 200, y - 200) / 200;
+            ctx.fillStyle = `hsl(${260 + d * 80 + t * 100 + row * 5 + col * 7},80%,${40 + d * 25 + 15 * Math.sin(t * 8 + d * 4)}%)`;
+            ctx.beginPath();
+            for (let a = 0; a < 6; a++) {
+              let ang = (Math.PI / 3) * a;
+              ctx.lineTo(x + r * Math.cos(ang), y + r * Math.sin(ang));
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+      });
+
+      // 10. Moiré interference — Soto/GRAV: ring centers orbit fast creating wild ghost patterns
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.globalAlpha = 0.5;
+        for (let a = 0; a < 2; a++) {
+          let cx = 200 + Math.sin(t * 3 + a * 4) * 70,
+            cy = 200 + Math.cos(t * 2.5 + a * 4) * 70;
+          for (let r = 2; r < 300; r += 3.5) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      });
+
+      // 11. Serial permutation — Morellet: color assignments cycle rapidly
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, S, S);
+        const n = 16,
+          cols = ["#ff3366", "#33ccff", "#ffcc00", "#66ff66", "#ff8800", "#cc33ff"];
+        let shift = Math.floor(t * 8);
+        for (let i = 0; i < n; i++)
+          for (let j = 0; j < n; j++) {
+            ctx.fillStyle = cols[(i * 3 + j * 7 + i * j + shift) % cols.length];
+            let s = (S / n) * 0.85;
+            ctx.fillRect((i * S) / n + (S / n - s) / 2, (j * S) / n + (S / n - s) / 2, s, s);
+          }
+      });
+
+      // 12. Digital rasterization — Yvaral: pixel wave scans fast creating digital interference
+      mk(function (ctx, t) {
+        const n = 32;
+        for (let i = 0; i < n; i++)
+          for (let j = 0; j < n; j++) {
+            let d = Math.sqrt((i - n / 2) ** 2 + (j - n / 2) ** 2);
+            let v = Math.sin(d * 0.8 - t * 8) * 127 + 128;
+            let v2 = Math.cos(d * 0.5 + t * 6) * 127 + 128;
+            ctx.fillStyle = `rgb(${v},${(v + v2) * 0.35},${255 - v2})`;
+            ctx.fillRect((i * S) / n, (j * S) / n, S / n, S / n);
+          }
+      });
+
+      // 13. Rotational symmetry — Tadasky: fast spin with hue cycling
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.save();
+        ctx.translate(200, 200);
+        ctx.rotate(t * 2);
+        for (let i = 0; i < 48; i++) {
+          ctx.rotate(Math.PI / 24);
+          for (let r = 10; r < 200; r += 12) {
+            ctx.strokeStyle = `hsl(${r * 2 + i * 8 + t * 80},80%,55%)`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.lineTo(r + 10, 0);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      });
+
+      // 14. Radiating starburst — Anuszkiewicz: rays spin fast, hues cycle
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 150; i++) {
+          let a = (i * Math.PI * 2) / 150 + t * 2;
+          ctx.strokeStyle = `hsl(${i * 2.4 + t * 80},100%,55%)`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(200, 200);
+          ctx.lineTo(200 + Math.cos(a) * 220, 200 + Math.sin(a) * 220);
+          ctx.stroke();
+        }
+      });
+
+      // 15. Zigzag and chevron — Riley/Andrade: chevrons race laterally
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 50; i++) {
+          ctx.strokeStyle = i % 2 ? "#fff" : "#ff3366";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          for (let x = 0; x <= S; x += 16) ctx.lineTo(x, i * 8 + ((x + t * 200) % 32 < 16 ? 6 : -6));
+          ctx.stroke();
+        }
+      });
+
+      // 16. Figure-ground reversal — Riley/Vasarely: circle grows to fill square, then opposite-color square grows to fill, then circle again. Always forward.
+      mk(function (ctx, t) {
+        let unit = S / 16;
+        let cycle = (t * 3) % 2; // 0-1: circle grows, 1-2: square grows
+        for (let i = 0; i < 16; i++)
+          for (let j = 0; j < 16; j++) {
+            let cx = i * unit + unit / 2,
+              cy = j * unit + unit / 2;
+            let even = (i + j) % 2 === 0;
+            if (cycle < 1) {
+              // Phase 1: base color square, then circle of opposite color grows to cover
+              let progress = cycle;
+              ctx.fillStyle = even ? "#fff" : "#000";
+              ctx.fillRect(i * unit, j * unit, unit, unit);
+              ctx.fillStyle = even ? "#000" : "#fff";
+              let r = progress * unit * 0.72;
+              ctx.beginPath();
+              ctx.arc(cx, cy, r, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              // Phase 2: after circle filled, now opposite-color square grows from center to cover
+              let progress = cycle - 1;
+              // Background is the circle color (filled)
+              ctx.fillStyle = even ? "#000" : "#fff";
+              ctx.fillRect(i * unit, j * unit, unit, unit);
+              // Square of original color grows
+              ctx.fillStyle = even ? "#fff" : "#000";
+              let sz = progress * unit;
+              ctx.fillRect(cx - sz / 2, cy - sz / 2, sz, sz);
+            }
+          }
+      });
+
+      // 17. Incremental line spacing — Riley/Soto: spacing oscillates, fills full canvas height
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.2;
+        let totalLines = 160;
+        for (let i = 0; i < totalLines; i++) {
+          let base = i / totalLines;
+          let wave = Math.sin(i * 0.15 + t * 6) * 0.008 + Math.cos(i * 0.08 - t * 4) * 0.006;
+          let y = (base + wave) * S;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(S, y);
+          ctx.stroke();
+        }
+      });
+
+      // 18. Progressive scale shift — Vasarely/Poons: discs wildly scale and bounce
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 20; i++) {
+          let baseR = 3 + i * 2;
+          let r = baseR + baseR * 1.5 * Math.sin(t * 5 + i * 0.8);
+          r = Math.max(2, r);
+          let x = 20 + i * 19,
+            y = 200 + Math.sin(i * 0.6 + t * 4) * 80 + Math.cos(t * 3 + i) * 30;
+          ctx.fillStyle = `hsl(${180 + i * 12 + t * 40},80%,55%)`;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // 19. Dot / disc fields — Poons: dots swarm energetically
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#1a0a30";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 500; i++) {
+          let seed = i * 7919;
+          let px = (seed % 1000) / 1000,
+            py = ((seed * 13) % 1000) / 1000;
+          let x = (px * S + Math.sin(t * 4 + i * 0.7) * 8 + Math.cos(t * 3 + i * 1.1) * 6) % S;
+          let y = (py * S + Math.cos(t * 3.5 + i * 0.9) * 8 + Math.sin(t * 5 + i * 0.5) * 6) % S;
+          if (x < 0) x += S;
+          if (y < 0) y += S;
+          let r = 2 + (seed % 400) / 100 + Math.sin(t * 6 + i) * 1;
+          ctx.fillStyle = `hsl(${(seed % 60) + 10 + t * 30},100%,60%)`;
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1, r), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // 20. Ellipse and oval repetition — Vasarely/Rayo: ovals spin fast
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#0a0a1a";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 12; i++)
+          for (let j = 0; j < 12; j++) {
+            ctx.save();
+            ctx.translate(i * 35 + 15, j * 35 + 15);
+            ctx.rotate(i * 0.2 + j * 0.1 + t * 4);
+            ctx.scale(1, 0.4 + 0.2 * Math.sin(t * 5 + i + j));
+            ctx.beginPath();
+            ctx.arc(0, 0, 13, 0, Math.PI * 2);
+            ctx.fillStyle = `hsl(${i * 20 + j * 10 + t * 60},70%,55%)`;
+            ctx.fill();
+            ctx.restore();
+          }
+      });
+
+      // 21. Hard-edge contouring — Anuszkiewicz/Stanczak: color blocks cycle fast
+      mk(function (ctx, t) {
+        const cols = ["#ff0055", "#0088ff", "#ffcc00", "#00ff88", "#ff8800", "#aa00ff", "#ff3399", "#00ffcc"];
+        for (let i = 0; i < 8; i++)
+          for (let j = 0; j < 8; j++) {
+            let idx = (i + j * 3 + Math.floor(t * 6)) % cols.length;
+            ctx.fillStyle = cols[idx];
+            ctx.fillRect(i * 50, j * 50, 50, 50);
+          }
+      });
+
+      // 22. Luminous edge halos — Anuszkiewicz: glow pulses intensely
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 12; i++) {
+          let x = 18 + i * 32;
+          let blur = 15 + 15 * Math.sin(t * 8 + i * 0.7);
+          let h = i * 30 + t * 60;
+          ctx.shadowColor = `hsl(${h},100%,60%)`;
+          ctx.shadowBlur = blur;
+          ctx.fillStyle = `hsl(${h},100%,55%)`;
+          ctx.fillRect(x, 80, 24, 240);
+          ctx.fillRect(x, 80, 24, 240);
+        }
+        ctx.shadowBlur = 0;
+      });
+
+      // 23. Transparent overlays — Soto/Cruz-Diez: line screens slide fast
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.globalAlpha = 0.5;
+        const colors = ["#ff0066", "#00ffcc", "#ffff00"];
+        for (let l = 0; l < 3; l++) {
+          let off = (l - 1) * t * 100;
+          ctx.strokeStyle = colors[l];
+          ctx.lineWidth = 1.5;
+          for (let i = -40; i < 80; i++) {
+            ctx.beginPath();
+            ctx.moveTo(off + i * 7, 0);
+            ctx.lineTo(off + i * 7 + l * 40 - 40, S);
+            ctx.stroke();
+          }
+        }
+        ctx.globalAlpha = 1;
+      });
+
+      // 24. Suspended rods — Soto: rods sway vigorously and fast in strong wind
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 100; i++) {
+          let baseX = (i / 100) * S;
+          let seed = i * 131;
+          let sway = Math.sin(t * 10 + i * 0.4) * 18 + Math.cos(t * 7 + i * 0.6) * 12;
+          let sway2 = Math.sin(t * 8 + i * 0.3) * 15 + Math.cos(t * 9 + i * 0.5) * 10;
+          ctx.strokeStyle = `rgba(255,255,255,${0.4 + (seed % 40) / 100})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(baseX + sway, 20 + (seed % 20));
+          ctx.lineTo(baseX + sway2, 380 + (seed % 20));
+          ctx.stroke();
+        }
+      });
+
+      // 25. Penetrable environments — Soto: strands whip energetically
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#0a0a1e";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 150; i++) {
+          let seed = i * 7919;
+          let baseX = seed % 400;
+          let w1 = Math.sin(t * 5 + i * 0.15) * 20;
+          let w2 = Math.cos(t * 4 + i * 0.2) * 18;
+          ctx.strokeStyle = `hsla(${200 + (seed % 80) + t * 20},70%,65%,0.7)`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(baseX + w1, 0);
+          ctx.bezierCurveTo(baseX - w2, 133, baseX + w1, 266, baseX - w2, S);
+          ctx.stroke();
+        }
+      });
+
+      // 26. Additive color progression — Cruz-Diez: spectrum scrolls fast
+      mk(function (ctx, t) {
+        for (let i = 0; i < 80; i++) {
+          ctx.fillStyle = `hsl(${i * 4.5 + t * 120},100%,50%)`;
+          ctx.fillRect(i * 5, 0, 5, S);
+        }
+      });
+
+      // 27. Physichromie-style — Cruz-Diez: slats shift hue rapidly
+      mk(function (ctx, t) {
+        for (let i = 0; i < 40; i++) {
+          let x = i * 10;
+          ctx.fillStyle = `hsl(${i * 9 + t * 80},80%,45%)`;
+          ctx.fillRect(x, 0, 5, S);
+          ctx.fillStyle = `hsl(${i * 9 + 180 - t * 80},80%,55%)`;
+          ctx.fillRect(x + 5, 0, 5, S);
+        }
+      });
+
+      // 28. Kinetic light modulation — Le Parc: dense spiral of light orbits fast, hypnotic
+      mk(function (ctx, t) {
+        ctx.fillStyle = "rgba(0,0,0,0.15)";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 150; i++) {
+          let a = i * 0.042 + t * 5;
+          let r = 15 + i * 1.25;
+          let x = 200 + Math.cos(a) * r,
+            y = 200 + Math.sin(a) * r;
+          let g = ctx.createRadialGradient(x, y, 0, x, y, 10);
+          g.addColorStop(0, `hsla(${40 + i},100%,85%,0.9)`);
+          g.addColorStop(1, "rgba(255,255,200,0)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, 10, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // 29. Reflective metal surface — Alviani: hard-edge grayscale bands migrate fast
+      mk(function (ctx, t) {
+        for (let y = 0; y < S; y++) {
+          let v1 = Math.sin(y * 0.1 + t * 6);
+          let v2 = Math.sin(y * 0.27 - t * 4);
+          let v = v1 > 0 ? (v2 > 0 ? 220 : 160) : v2 > 0 ? 100 : 40;
+          ctx.fillStyle = `rgb(${v},${v + 8},${v + 16})`;
+          ctx.fillRect(0, y, S, 1);
+        }
+      });
+
+      // 30. Relief-based shadow patterning — Alviani/Cruz-Diez: shadow angle whips around
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#ccc";
+        ctx.fillRect(0, 0, S, S);
+        let sx = 5 * Math.cos(t * 4),
+          sy = 5 * Math.sin(t * 4);
+        for (let i = 0; i < 16; i++)
+          for (let j = 0; j < 16; j++) {
+            let s = 22,
+              x = i * 25 + 2,
+              y = j * 25 + 2;
+            ctx.fillStyle = "rgba(0,0,0,0.4)";
+            ctx.fillRect(x + sx, y + sy, s, s);
+            ctx.fillStyle = "#f0f0f0";
+            ctx.fillRect(x, y, s, s);
+          }
+      });
+
+      // 31. Tilted perspective lattices — Vasarely/Steele: all points float freely, no anchors
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = "#0f0";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 20; i++) {
+          let tt = i / 20;
+          let x0 = tt * S + Math.sin(t * 2.5 + i * 0.4) * 30;
+          let y0 = Math.cos(t * 1.8 + i * 0.3) * 25;
+          let x1 = tt * S * 0.6 + S * 0.2 + Math.sin(t * 3 + i * 0.5) * 35;
+          let y1 = S + Math.cos(t * 2 + i * 0.35) * 20;
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x1, y1);
+          ctx.stroke();
+          let hx0 = Math.sin(t * 2 + i * 0.3) * 25;
+          let hy0 = tt * S + Math.cos(t * 1.5 + i * 0.4) * 30;
+          let hx1 = S + Math.sin(t * 2.7 + i * 0.35) * 20;
+          let hy1 = tt * S * 0.7 + S * 0.15 + Math.cos(t * 3.2 + i * 0.5) * 35;
+          ctx.beginPath();
+          ctx.moveTo(hx0, hy0);
+          ctx.lineTo(hx1, hy1);
+          ctx.stroke();
+        }
+      });
+
+      // 32. Nested labyrinth — spiral snake: one end grows, another disappears, simple B&W
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        let pts = [{ x: 200, y: 200 }],
+          x = 200,
+          y = 200,
+          len = 16,
+          dir = 0,
+          turns = 0;
+        while (x >= 0 && x <= S && y >= 0 && y <= S) {
+          if (dir === 0) x += len;
+          else if (dir === 1) y -= len;
+          else if (dir === 2) x -= len;
+          else y += len;
+          pts.push({ x, y });
+          dir = (dir + 1) % 4;
+          if (++turns % 2 === 0) len += 16;
+        }
+        const total = pts.length - 1,
+          snakeLen = 22,
+          head = Math.floor(t * 18);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 8;
+        ctx.lineCap = "square";
+        for (let k = 0; k < snakeLen; k++) {
+          let i = (head - k) % total;
+          if (i < 0) i += total;
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+          ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+          ctx.stroke();
+        }
+      });
+
+      // 33. Alternating polarity bands — Riley/Vasarely: bands scroll with color oscillation, slightly slower
+      mk(function (ctx, t) {
+        for (let i = 0; i < 60; i++) {
+          let y = i * 10 - ((t * 120) % 10);
+          let h1 = 0 + Math.sin(t * 4) * 30,
+            h2 = 240 + Math.cos(t * 3) * 30;
+          ctx.fillStyle = i % 2 ? `hsl(${h1},100%,50%)` : `hsl(${h2},100%,50%)`;
+          ctx.fillRect(0, y, S, 10);
+        }
+      });
+
+      // 34. Symmetry disrupted by anomaly — Morellet: red dot dances frantically
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, S, S);
+        const n = 16;
+        let ai = Math.floor(8 + Math.sin(t * 7) * 5 + Math.cos(t * 11) * 3) % n;
+        let aj = Math.floor(8 + Math.cos(t * 6) * 5 + Math.sin(t * 9) * 3) % n;
+        if (ai < 0) ai += n;
+        if (aj < 0) aj += n;
+        for (let i = 0; i < n; i++)
+          for (let j = 0; j < n; j++) {
+            let s = (S / n) * 0.7,
+              x = (i * S) / n + (S / n - s) / 2,
+              y = (j * S) / n + (S / n - s) / 2;
+            let anom = i === ai && j === aj;
+            ctx.fillStyle = anom ? "#ff0055" : "#fff";
+            if (anom) {
+              ctx.beginPath();
+              ctx.arc(x + s / 2, y + s / 2, (s / 2) * 1.2, 0, Math.PI * 2);
+              ctx.fill();
+            } else ctx.fillRect(x, y, s, s);
+          }
+      });
+
+      // 35. Micro-units forming macro-image — Yvaral/Vasarely: white circle grows out, then dark circle grows out from center (not shrinks in). Always forward.
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        const n = 40,
+          maxR = n * 0.75;
+        let cycle = (t * 2) % 2;
+        let rad, fg, bg;
+        if (cycle < 1) {
+          // White circle grows from center outward
+          rad = cycle * maxR;
+          fg = "#fff";
+          bg = "#222";
+        } else {
+          // Dark circle grows from center outward over the white
+          let outerRad = maxR; // white stays full
+          let innerRad = (cycle - 1) * maxR; // dark grows from center
+          for (let i = 0; i < n; i++)
+            for (let j = 0; j < n; j++) {
+              let dx = i - n / 2,
+                dy = j - n / 2,
+                d = Math.sqrt(dx * dx + dy * dy);
+              let color;
+              if (d < innerRad) color = "#222";
+              else if (d < outerRad) color = "#fff";
+              else color = "#222";
+              ctx.fillStyle = color;
+              ctx.fillRect((i * S) / n + 0.5, (j * S) / n + 0.5, S / n - 1, S / n - 1);
+            }
+          return;
+        }
+        for (let i = 0; i < n; i++)
+          for (let j = 0; j < n; j++) {
+            let dx = i - n / 2,
+              dy = j - n / 2,
+              d = Math.sqrt(dx * dx + dy * dy);
+            ctx.fillStyle = d < rad ? fg : bg;
+            ctx.fillRect((i * S) / n + 0.5, (j * S) / n + 0.5, S / n - 1, S / n - 1);
+          }
+      });
+
+      // 36. Monochrome retinal flicker — Riley B&W: lines vibrate with multi-frequency harmonics
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 100; i++) {
+          let y = i * 4;
+          ctx.beginPath();
+          for (let x = 0; x <= S; x += 2)
+            ctx.lineTo(x, y + Math.sin(x * 0.12 + i * 0.5 + t * 10) * 3 + Math.cos(x * 0.07 - i * 0.3 + t * 8) * 2.5 + (i % 2) * 2);
+          ctx.stroke();
+        }
+      });
+
+      // 37. Curvilinear compression/expansion — Riley: wave frequency modulates fast
+      mk(function (ctx, t) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, S, S);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 50; i++) {
+          ctx.beginPath();
+          for (let x = 0; x <= S; x += 2) {
+            let freq = 0.02 + 0.015 * Math.sin(x * 0.012 + t * 4) + 0.01 * Math.cos(x * 0.008 - t * 3);
+            ctx.lineTo(x, i * 8 + Math.sin(x * freq + i * 0.3 + t * 6) * 12);
+          }
+          ctx.stroke();
+        }
+      });
+
+      // 38. Optical vibration equal-intensity hues — Anuszkiewicz: hues race with slower horizontal panning
+      mk(function (ctx, t) {
+        let off = (t * 60) % 8;
+        for (let i = -1; i < 52; i++) {
+          let x = i * 8 - off;
+          ctx.fillStyle = i % 2 ? `hsl(${t * 80},90%,50%)` : `hsl(${120 + t * 80},90%,50%)`;
+          ctx.fillRect(x, 0, 8, S);
+        }
+      });
+
+      // 39. Surface-wide allover composition — field marks swarm with high contrast energy
+      mk(function (ctx, t) {
+        if (t === 0) {
+          ctx.fillStyle = "#111";
+          ctx.fillRect(0, 0, S, S);
+          for (let i = 0; i < 2000; i++) {
+            let x = Math.random() * S,
+              y = Math.random() * S;
+            ctx.strokeStyle = `hsl(${Math.random() * 360},80%,60%)`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + Math.random() * 12 - 6, y + Math.random() * 12 - 6);
+            ctx.stroke();
+          }
+          return;
+        }
+        ctx.fillStyle = "rgba(17,17,17,0.08)";
+        ctx.fillRect(0, 0, S, S);
+        for (let i = 0; i < 200; i++) {
+          let x = Math.random() * S,
+            y = Math.random() * S;
+          ctx.strokeStyle = `hsl(${Math.random() * 360},100%,65%)`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + Math.random() * 16 - 8, y + Math.random() * 16 - 8);
+          ctx.stroke();
+        }
+      });
+
+      // 40. Viewer-dependent activation — Soto/Cruz-Diez: diagonal checker interference, full canvas coverage
+      mk(function (ctx, t) {
+        const id = ctx.createImageData(S, S),
+          d = id.data;
+        const s1 = t * 5,
+          s2 = t * 3.7;
+        for (let y = 0; y < S; y++)
+          for (let x = 0; x < S; x++) {
+            let c1 = (x + y + Math.floor(s1 * 40)) % 20 < 10 ? 1 : 0;
+            let c2 = (x - y + S * 2 + Math.floor(s2 * 40)) % 16 < 8 ? 1 : 0;
+            let v1 = c1 * 255,
+              v2 = c2 * 255;
+            let idx = (y * S + x) * 4;
+            d[idx] = v1;
+            d[idx + 1] = (v1 + v2) >> 1;
+            d[idx + 2] = v2;
+            d[idx + 3] = 255;
+          }
+        ctx.putImageData(id, 0, 0);
+      });
+
+      /* ═══════════════════════════════════════════════
+         Grid setup, animation loop & tile rotation
+         ═══════════════════════════════════════════════ */
+
+      const grid = document.getElementById("grid");
+
+      // Apply responsive contain-layout based on mode
+      grid.style.gridTemplateColumns = `repeat(${COLS}, 1fr)`;
+      grid.style.width = `min(calc(100vw - clamp(8px, 3vw, 40px)), calc((100vh - clamp(8px, 3vw, 40px)) * ${COLS} / ${ROWS}))`;
+      if (!ALL_MODE) grid.style.maxWidth = "900px";
+      if (ALL_MODE) grid.classList.add("all-mode");
+
+      // Build tile slots
+      const slots = [];
+      for (let i = 0; i < SLOTS; i++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        const c = document.createElement("canvas");
+        c.width = S;
+        c.height = S;
+        tile.appendChild(c);
+        grid.appendChild(tile);
+        const slot = { tile, canvas: c, ctx: c.getContext("2d"), fnIdx: -1, t: 0, hovering: false };
+        if (ALL_MODE) {
+          tile.addEventListener("mouseenter", () => {
+            slot.hovering = true;
+          });
+          tile.addEventListener("mouseleave", () => {
+            slot.hovering = false;
+            slot.t = 0;
+          });
+        }
+        slots.push(slot);
+      }
+
+      // Appearance tracker
+      const appearances = new Array(allDrawFns.length).fill(0);
+      // In-flight: indices picked but not yet applied to a slot
+      const pending = new Set();
+
+      // Pick a draw-function index from the least-appeared set,
+      // excluding both currently visible and in-flight indices.
+      function pickNext() {
+        const visible = new Set(slots.map((s) => s.fnIdx));
+        const pool = [];
+        for (let i = 0; i < allDrawFns.length; i++) {
+          if (!visible.has(i) && !pending.has(i)) pool.push(i);
+        }
+        if (pool.length === 0) return -1;
+        const minApp = Math.min(...pool.map((i) => appearances[i]));
+        const best = pool.filter((i) => appearances[i] === minApp);
+        return best[Math.floor(Math.random() * best.length)];
+      }
+
+      // Initial assignment
+      if (ALL_MODE) {
+        // Direct 1:1 mapping — every draw function gets its own dedicated tile
+        for (let i = 0; i < SLOTS; i++) {
+          slots[i].fnIdx = i;
+          slots[i].t = 0;
+          appearances[i]++;
+        }
+      } else {
+        // Random shuffle for normal rotation mode
+        const indices = [...Array(allDrawFns.length).keys()];
+        for (let i = indices.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
+        for (let i = 0; i < SLOTS; i++) {
+          slots[i].fnIdx = indices[i];
+          slots[i].t = Math.random() * 10; // stagger start time
+          appearances[indices[i]]++;
+        }
+      }
+
+      // Animation loop — in all-mode, time only advances while the tile is hovered
+      (function animate() {
+        for (const s of slots) {
+          if (s.fnIdx >= 0) {
+            if (!ALL_MODE || s.hovering) s.t += 1 / 60;
+            allDrawFns[s.fnIdx](s.ctx, s.t);
+          }
+        }
+        requestAnimationFrame(animate);
+      })();
+
+      // Swap a random tile with fade-to-black transition
+      function swapTile() {
+        const newIdx = pickNext();
+        if (newIdx === -1) return;
+
+        // Claim immediately — prevents any concurrent timer from picking the same index
+        appearances[newIdx]++;
+        pending.add(newIdx);
+
+        const si = Math.floor(Math.random() * SLOTS);
+        const slot = slots[si];
+        const cv = slot.canvas;
+
+        // Phase 1 – fade to black
+        cv.style.transition = `filter ${BLINK_UP_MS}ms ease-in`;
+        cv.style.filter = "brightness(0)";
+
+        // Phase 2 – hold at black, swap the draw function
+        setTimeout(() => {
+          pending.delete(newIdx); // release from in-flight before applying
+          slot.fnIdx = newIdx;
+          slot.t = 0;
+
+          // Phase 3 – fade back to normal after hold
+          setTimeout(() => {
+            cv.style.transition = `filter ${BLINK_DOWN_MS}ms ease-out`;
+            cv.style.filter = "brightness(1)";
+          }, BLINK_HOLD_MS);
+        }, BLINK_UP_MS);
+      }
+
+      // Launch concurrent swap timers (normal mode only)
+      if (!ALL_MODE) {
+        for (let i = 0; i < SWAP_TIMERS; i++) {
+          (function tick() {
+            swapTile();
+            setTimeout(tick, SWAP_MIN_MS + Math.random() * (SWAP_MAX_MS - SWAP_MIN_MS));
+          })();
+        }
+      }
+    </script>
+  </body>
+</html>

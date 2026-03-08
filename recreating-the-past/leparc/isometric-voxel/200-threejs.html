@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      // --- Config ---
+      const N = 8;
+
+      // --- Scene setup ---
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      // --- Isometric orthographic camera ---
+      const aspect = window.innerWidth / window.innerHeight;
+      const viewSize = 12;
+      const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, -100, 100);
+
+      // True isometric angle: rotate 45° around Y, then ~35.264° down
+      camera.position.set(10, 10, 10);
+      camera.lookAt(N / 2, N / 2, N / 2);
+      camera.up.set(0, 0, 1);
+
+      // --- Controls ---
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableRotate = true;
+      controls.enablePan = true;
+      controls.enableZoom = true;
+      controls.target.set(N / 2, N / 2, N / 2);
+      controls.update();
+
+      // --- Build occupancy grid ---
+      const occ = new Set();
+      const cubes = [];
+
+      for (let z = 0; z < N; z++) {
+        for (let x = 0; x < N - z; x++) {
+          for (let y = 0; y < N - z; y++) {
+            cubes.push({ x, y, z });
+            occ.add(`${x},${y},${z}`);
+          }
+        }
+      }
+
+      const has = (x, y, z) => occ.has(`${x},${y},${z}`);
+
+      // --- Collect visible faces ---
+      // Each visible face is a quad. We track its 4 vertices and its face type.
+      // Face types: 'top' (z+), 'bottom' (z-), 'xp' (x+), 'xn' (x-), 'yp' (y+), 'yn' (y-)
+
+      const faces = [];
+
+      cubes.forEach((c) => {
+        const { x, y, z } = c;
+        // +Z top
+        if (!has(x, y, z + 1)) {
+          faces.push({
+            type: "top",
+            v: [
+              [x, y, z + 1],
+              [x + 1, y, z + 1],
+              [x + 1, y + 1, z + 1],
+              [x, y + 1, z + 1],
+            ],
+          });
+        }
+        // -Z bottom
+        if (!has(x, y, z - 1)) {
+          faces.push({
+            type: "bottom",
+            v: [
+              [x, y, z],
+              [x, y + 1, z],
+              [x + 1, y + 1, z],
+              [x + 1, y, z],
+            ],
+          });
+        }
+        // +X
+        if (!has(x + 1, y, z)) {
+          faces.push({
+            type: "xp",
+            v: [
+              [x + 1, y, z],
+              [x + 1, y, z + 1],
+              [x + 1, y + 1, z + 1],
+              [x + 1, y + 1, z],
+            ],
+          });
+        }
+        // -X
+        if (!has(x - 1, y, z)) {
+          faces.push({
+            type: "xn",
+            v: [
+              [x, y, z],
+              [x, y + 1, z],
+              [x, y + 1, z + 1],
+              [x, y, z + 1],
+            ],
+          });
+        }
+        // +Y
+        if (!has(x, y + 1, z)) {
+          faces.push({
+            type: "yp",
+            v: [
+              [x, y + 1, z],
+              [x, y + 1, z + 1],
+              [x + 1, y + 1, z + 1],
+              [x + 1, y + 1, z],
+            ],
+          });
+        }
+        // -Y
+        if (!has(x, y - 1, z)) {
+          faces.push({
+            type: "yn",
+            v: [
+              [x, y, z],
+              [x + 1, y, z],
+              [x + 1, y, z + 1],
+              [x, y, z + 1],
+            ],
+          });
+        }
+      });
+
+      // --- Build merged mesh for white faces ---
+      const faceGeom = new THREE.BufferGeometry();
+      const faceVerts = [];
+      const faceIndices = [];
+
+      faces.forEach((f) => {
+        const base = faceVerts.length / 3;
+        f.v.forEach((p) => faceVerts.push(p[0], p[1], p[2]));
+        // Two triangles for the quad
+        faceIndices.push(base, base + 1, base + 2);
+        faceIndices.push(base, base + 2, base + 3);
+      });
+
+      faceGeom.setAttribute("position", new THREE.Float32BufferAttribute(faceVerts, 3));
+      faceGeom.setIndex(faceIndices);
+      faceGeom.computeVertexNormals();
+
+      const faceMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+      const faceMesh = new THREE.Mesh(faceGeom, faceMat);
+      scene.add(faceMesh);
+
+      // --- Collect external edges only ---
+      // An edge is keyed by its two 3D endpoints (sorted).
+      // We track which face types border each edge.
+      // External = different face types meet, or only one face (boundary).
+
+      function ek(a, b) {
+        const ka = a.join(",");
+        const kb = b.join(",");
+        return ka < kb ? ka + "|" + kb : kb + "|" + ka;
+      }
+
+      const edgeMap = new Map();
+
+      faces.forEach((f) => {
+        for (let i = 0; i < f.v.length; i++) {
+          const a = f.v[i];
+          const b = f.v[(i + 1) % f.v.length];
+          const key = ek(a, b);
+          if (!edgeMap.has(key)) {
+            edgeMap.set(key, { a, b, types: new Set() });
+          }
+          edgeMap.get(key).types.add(f.type);
+        }
+      });
+
+      const edgeVerts = [];
+
+      edgeMap.forEach((e) => {
+        // Skip internal edges: same face type on both sides
+        if (e.types.size === 1) return;
+        edgeVerts.push(e.a[0], e.a[1], e.a[2]);
+        edgeVerts.push(e.b[0], e.b[1], e.b[2]);
+      });
+
+      const edgeGeom = new THREE.BufferGeometry();
+      edgeGeom.setAttribute("position", new THREE.Float32BufferAttribute(edgeVerts, 3));
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1 });
+      const edgeLines = new THREE.LineSegments(edgeGeom, edgeMat);
+      scene.add(edgeLines);
+
+      // --- Back walls (grid lines) ---
+      const wallMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+
+      // Wall at x=0 (YZ plane)
+      {
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          pts.push(0, i, 0, 0, i, N); // vertical lines
+          pts.push(0, 0, i, 0, N, i); // horizontal lines
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        scene.add(new THREE.LineSegments(g, wallMat));
+      }
+
+      // Wall at y=0 (XZ plane)
+      {
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          pts.push(i, 0, 0, i, 0, N); // vertical lines
+          pts.push(0, 0, i, N, 0, i); // horizontal lines
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        scene.add(new THREE.LineSegments(g, wallMat));
+      }
+
+      // --- Floor grid at z=0 ---
+      {
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          pts.push(i, 0, 0, i, N, 0);
+          pts.push(0, i, 0, N, i, 0);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        scene.add(new THREE.LineSegments(g, wallMat));
+      }
+
+      // --- Resize ---
+      window.addEventListener("resize", () => {
+        const a = window.innerWidth / window.innerHeight;
+        camera.left = -viewSize * a;
+        camera.right = viewSize * a;
+        camera.top = viewSize;
+        camera.bottom = -viewSize;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // --- Animate ---
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>

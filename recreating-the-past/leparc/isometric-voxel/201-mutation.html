@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: #888;
+        font-family: monospace;
+        font-size: 14px;
+        pointer-events: none;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="info">Click or Space to mutate</div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      const N = 8;
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      const aspect = window.innerWidth / window.innerHeight;
+      const viewSize = 12;
+      const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, -100, 100);
+      camera.position.set(10, 10, 10);
+      camera.lookAt(N / 2, N / 2, N / 2);
+      camera.up.set(0, 0, 1);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(N / 2, N / 2, N / 2);
+      controls.update();
+
+      // --- Occupancy grid ---
+      const occ = new Set();
+      const key = (x, y, z) => `${x},${y},${z}`;
+      const has = (x, y, z) => occ.has(key(x, y, z));
+
+      // Build initial pyramid
+      for (let z = 0; z < N; z++)
+        for (let x = 0; x < N - z; x++)
+          for (let y = 0; y < N - z; y++) {
+            occ.add(key(x, y, z));
+          }
+
+      // --- Logic ---
+      function isExposed(x, y, z) {
+        const dirs = [
+          [1, 0, 0],
+          [-1, 0, 0],
+          [0, 1, 0],
+          [0, -1, 0],
+          [0, 0, 1],
+          [0, 0, -1],
+        ];
+        for (const [dx, dy, dz] of dirs) {
+          if (!has(x + dx, y + dy, z + dz)) return true;
+        }
+        return false;
+      }
+
+      function isSupported(x, y, z) {
+        return z === 0 || has(x, y, z - 1);
+      }
+
+      function canRemove(x, y, z) {
+        if (!isExposed(x, y, z)) return false;
+        // Cannot remove if it supports a cube above
+        if (has(x, y, z + 1)) return false;
+        return true;
+      }
+
+      function canPlace(x, y, z) {
+        if (has(x, y, z)) return false;
+        if (x < 0 || x >= N || y < 0 || y >= N || z < 0 || z >= N) return false;
+        if (!isSupported(x, y, z)) return false;
+        return true;
+      }
+
+      function getRemovable() {
+        const result = [];
+        occ.forEach((k) => {
+          const [x, y, z] = k.split(",").map(Number);
+          if (canRemove(x, y, z)) result.push({ x, y, z });
+        });
+        return result;
+      }
+
+      function getPlaceable(excludeKey) {
+        const candidates = new Set();
+        occ.forEach((k) => {
+          const [x, y, z] = k.split(",").map(Number);
+          const dirs = [
+            [1, 0, 0],
+            [-1, 0, 0],
+            [0, 1, 0],
+            [0, -1, 0],
+            [0, 0, 1],
+            [0, 0, -1],
+          ];
+          for (const [dx, dy, dz] of dirs) {
+            const nx = x + dx,
+              ny = y + dy,
+              nz = z + dz;
+            const nk = key(nx, ny, nz);
+            if (nk === excludeKey) continue;
+            if (canPlace(nx, ny, nz)) candidates.add(nk);
+          }
+        });
+        // Also check ground level empty spots
+        for (let x = 0; x < N; x++) {
+          for (let y = 0; y < N; y++) {
+            if (canPlace(x, y, 0)) candidates.add(key(x, y, 0));
+          }
+        }
+        const result = [];
+        candidates.forEach((k) => {
+          const [x, y, z] = k.split(",").map(Number);
+          result.push({ x, y, z });
+        });
+        return result;
+      }
+
+      function mutate() {
+        const removable = getRemovable();
+        if (removable.length === 0) return false;
+
+        for (let attempt = 0; attempt < 50; attempt++) {
+          const ri = Math.floor(Math.random() * removable.length);
+          const rem = removable[ri];
+          const remKey = key(rem.x, rem.y, rem.z);
+
+          occ.delete(remKey);
+          const placeable = getPlaceable(remKey);
+
+          if (placeable.length > 0) {
+            const pi = Math.floor(Math.random() * placeable.length);
+            const plc = placeable[pi];
+            occ.add(key(plc.x, plc.y, plc.z));
+            return true;
+          }
+          occ.add(remKey);
+        }
+        return false;
+      }
+
+      // --- Rendering ---
+      let faceMesh = null;
+      let edgeLines = null;
+      const wallGroup = new THREE.Group();
+      scene.add(wallGroup);
+
+      function buildWalls() {
+        wallGroup.clear();
+        const wallMat = new THREE.LineBasicMaterial({ color: 0x333333 });
+        const addGrid = (pts) => {
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+          wallGroup.add(new THREE.LineSegments(g, wallMat));
+        };
+        let pX = [],
+          pY = [],
+          pZ = [];
+        for (let i = 0; i <= N; i++) {
+          pX.push(0, i, 0, 0, i, N, 0, 0, i, 0, N, i);
+          pY.push(i, 0, 0, i, 0, N, 0, 0, i, N, 0, i);
+          pZ.push(i, 0, 0, i, N, 0, 0, i, 0, N, i, 0);
+        }
+        addGrid(pX);
+        addGrid(pY);
+        addGrid(pZ);
+      }
+
+      function rebuildMesh() {
+        if (faceMesh) {
+          scene.remove(faceMesh);
+          faceMesh.geometry.dispose();
+        }
+        if (edgeLines) {
+          scene.remove(edgeLines);
+          edgeLines.geometry.dispose();
+        }
+
+        const faces = [];
+        const dirs6 = [
+          {
+            type: "zp",
+            d: [0, 0, 1],
+            v: (x, y, z) => [
+              [x, y, z + 1],
+              [x + 1, y, z + 1],
+              [x + 1, y + 1, z + 1],
+              [x, y + 1, z + 1],
+            ],
+          },
+          {
+            type: "zn",
+            d: [0, 0, -1],
+            v: (x, y, z) => [
+              [x, y, z],
+              [x, y + 1, z],
+              [x + 1, y + 1, z],
+              [x + 1, y, z],
+            ],
+          },
+          {
+            type: "xp",
+            d: [1, 0, 0],
+            v: (x, y, z) => [
+              [x + 1, y, z],
+              [x + 1, y, z + 1],
+              [x + 1, y + 1, z + 1],
+              [x + 1, y + 1, z],
+            ],
+          },
+          {
+            type: "xn",
+            d: [-1, 0, 0],
+            v: (x, y, z) => [
+              [x, y, z],
+              [x, y + 1, z],
+              [x, y + 1, z + 1],
+              [x, y, z + 1],
+            ],
+          },
+          {
+            type: "yp",
+            d: [0, 1, 0],
+            v: (x, y, z) => [
+              [x, y + 1, z],
+              [x, y + 1, z + 1],
+              [x + 1, y + 1, z + 1],
+              [x + 1, y + 1, z],
+            ],
+          },
+          {
+            type: "yn",
+            d: [0, -1, 0],
+            v: (x, y, z) => [
+              [x, y, z],
+              [x + 1, y, z],
+              [x + 1, y, z + 1],
+              [x, y, z + 1],
+            ],
+          },
+        ];
+
+        occ.forEach((k) => {
+          const [x, y, z] = k.split(",").map(Number);
+          for (const f of dirs6) {
+            if (!has(x + f.d[0], y + f.d[1], z + f.d[2])) {
+              faces.push({ type: f.type, v: f.v(x, y, z) });
+            }
+          }
+        });
+
+        const faceVerts = [],
+          faceIndices = [];
+        faces.forEach((f) => {
+          const base = faceVerts.length / 3;
+          f.v.forEach((p) => faceVerts.push(p[0], p[1], p[2]));
+          faceIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        });
+
+        const fGeom = new THREE.BufferGeometry();
+        fGeom.setAttribute("position", new THREE.Float32BufferAttribute(faceVerts, 3));
+        fGeom.setIndex(faceIndices);
+        fGeom.computeVertexNormals();
+        faceMesh = new THREE.Mesh(
+          fGeom,
+          new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            side: THREE.DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
+          })
+        );
+        scene.add(faceMesh);
+
+        const edgeMap = new Map();
+        faces.forEach((f) => {
+          for (let i = 0; i < f.v.length; i++) {
+            const a = f.v[i],
+              b = f.v[(i + 1) % f.v.length];
+            const k = a.join(",") < b.join(",") ? a.join(",") + "|" + b.join(",") : b.join(",") + "|" + a.join(",");
+            if (!edgeMap.has(k)) edgeMap.set(k, { a, b, types: new Set() });
+            edgeMap.get(k).types.add(f.type);
+          }
+        });
+
+        const edgeVerts = [];
+        edgeMap.forEach((e) => {
+          if (e.types.size > 1) {
+            edgeVerts.push(...e.a, ...e.b);
+          }
+        });
+
+        const eGeom = new THREE.BufferGeometry();
+        eGeom.setAttribute("position", new THREE.Float32BufferAttribute(edgeVerts, 3));
+        edgeLines = new THREE.LineSegments(eGeom, new THREE.LineBasicMaterial({ color: 0x000000 }));
+        scene.add(edgeLines);
+      }
+
+      function handleAction() {
+        if (mutate()) {
+          rebuildMesh();
+          document.getElementById("info").textContent = `Cubes: ${occ.size} | Click or Space to mutate`;
+        }
+      }
+
+      // --- Input ---
+      let clickStart = null;
+      renderer.domElement.addEventListener("pointerdown", (e) => (clickStart = { x: e.clientX, y: e.clientY }));
+      renderer.domElement.addEventListener("pointerup", (e) => {
+        if (!clickStart) return;
+        if (Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y) < 5) handleAction();
+        clickStart = null;
+      });
+
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          handleAction();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        const a = window.innerWidth / window.innerHeight;
+        camera.left = -viewSize * a;
+        camera.right = viewSize * a;
+        camera.top = viewSize;
+        camera.bottom = -viewSize;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      buildWalls();
+      rebuildMesh();
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>
