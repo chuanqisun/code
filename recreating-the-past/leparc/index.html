@@ -327,6 +327,8 @@
         uiHidden: false,
         uiHover: false,
         pattern: "checkerboard",
+        cameras: [],
+        cameraIndex: 0,
       };
 
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -588,12 +590,19 @@
 
       headBtn.onclick = async () => {
         try {
-          await ensureCamera(video);
-          state.mode = "head";
-          await tracker.start();
-          status("");
-          updateModeButtons();
-          applyUiVisibility();
+          if (state.mode === "head" && state.cameras.length > 1) {
+            // Cycle to next camera
+            state.cameraIndex = (state.cameraIndex + 1) % state.cameras.length;
+            await switchCamera(video, state.cameras[state.cameraIndex].deviceId);
+            updateModeButtons();
+          } else {
+            await ensureCamera(video);
+            state.mode = "head";
+            await tracker.start();
+            status("");
+            updateModeButtons();
+            applyUiVisibility();
+          }
         } catch (err) {
           status("camera denied");
           console.error(err);
@@ -709,6 +718,12 @@
         headBtn.classList.toggle("active", !isManual);
         mouseBtn.setAttribute("aria-pressed", isManual ? "true" : "false");
         headBtn.setAttribute("aria-pressed", !isManual ? "true" : "false");
+        if (!isManual && state.cameras.length > 0) {
+          const num = String(state.cameraIndex + 1).padStart(2, "0");
+          headBtn.textContent = `HUD Cam ${num}`;
+        } else {
+          headBtn.textContent = "HUD";
+        }
       }
 
       function status(text) {
@@ -739,6 +754,24 @@
       async function ensureCamera(videoEl) {
         if (videoEl.srcObject) return;
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+        // Enumerate cameras after first getUserMedia (labels require permission)
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        state.cameras = devices.filter((d) => d.kind === "videoinput");
+        // Find which camera we got
+        const activeTrack = stream.getVideoTracks()[0];
+        const activeId = activeTrack?.getSettings()?.deviceId;
+        const idx = state.cameras.findIndex((c) => c.deviceId === activeId);
+        state.cameraIndex = idx >= 0 ? idx : 0;
+      }
+
+      async function switchCamera(videoEl, deviceId) {
+        // Stop existing tracks
+        if (videoEl.srcObject) {
+          videoEl.srcObject.getTracks().forEach((t) => t.stop());
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } }, audio: false });
         videoEl.srcObject = stream;
         await videoEl.play();
       }
