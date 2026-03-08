@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html>
+  <body style="margin: 0; background: #111; overflow: hidden">
+    <canvas id="c"></canvas>
+
+    <div
+      id="ui"
+      style="
+        position: fixed;
+        left: 50%;
+        top: 12px;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        z-index: 10;
+      "
+    >
+      <div
+        id="bar"
+        style="
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          padding: 8px 10px;
+          background: rgba(0, 0, 0, 0.45);
+          border-radius: 999px;
+          color: #fff;
+          font: 12px sans-serif;
+        "
+      >
+        <select
+          id="patternSelect"
+          style="background: rgba(0, 0, 0, 0.5); color: #fff; border: none; border-radius: 6px; padding: 2px 6px; font: 12px sans-serif; cursor: pointer"
+        >
+          <option value="checkerboard">Checkerboard</option>
+          <option value="vertical-strips">Vertical Strips</option>
+          <option value="concentric-rings">Rings</option>
+          <option value="spiral">Spiral</option>
+        </select>
+        <button id="mouseBtn">Mouse</button>
+        <button id="headBtn">Head</button>
+        <button id="calBtn">Calibrate</button>
+        <button id="hideBtn">Hide</button>
+        <span id="status">mouse</span>
+      </div>
+      <video
+        id="video"
+        autoplay
+        playsinline
+        muted
+        style="width: 160px; height: 120px; object-fit: cover; background: #000; border-radius: 10px; opacity: 0.9; display: none"
+      ></video>
+    </div>
+
+    <script type="module">
+      import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      // --- Parameters ---
+      const BOARD_W = 400;
+      const BOARD_H = 400;
+      const INTERNAL_RES_SCALE = 2;
+      const BACKGROUND_OVERSCAN = 2.0;
+      const DROP_SIZE = 300;
+      const CONTACT_ANGLE = Math.PI * 0.38;
+      const REFRACT_SCALE = 85;
+      const CAMERA_SHIFT_MAX = 72;
+      const HEAD_GAIN_X = 42;
+      const HEAD_GAIN_Y = 42;
+      const HEAD_DISTANCE_NEAR = 0.16;
+      const HEAD_DISTANCE_FAR = 0.07;
+      const HEAD_PARALLAX_NEAR = 4.8;
+      const HEAD_PARALLAX_FAR = 2.4;
+      const COLS = 20;
+      const ROWS = 20;
+      const COLOR_A = "#2c2c2c";
+      const COLOR_B = "#f0e6d3";
+
+      const VIEW_W = BOARD_W * INTERNAL_RES_SCALE;
+      const VIEW_H = BOARD_H * INTERNAL_RES_SCALE;
+
+      const SRC_W = Math.ceil(VIEW_W * BACKGROUND_OVERSCAN);
+      const SRC_H = Math.ceil(VIEW_H * BACKGROUND_OVERSCAN);
+      const SRC_CX = SRC_W * 0.5;
+      const SRC_CY = SRC_H * 0.5;
+
+      const DROP_SIZE_HI = DROP_SIZE * INTERNAL_RES_SCALE;
+      const DROP_R = DROP_SIZE_HI * 0.5;
+      const DROP_CX = VIEW_W * 0.5;
+      const DROP_CY = VIEW_H * 0.5;
+
+      const a = DROP_R;
+      const theta = CONTACT_ANGLE;
+      const h = a * Math.tan(theta * 0.5);
+      const R = a / Math.sin(theta);
+
+      // --- Helpers / systems ---
+      class Smoother {
+        constructor(factor = 0.15) {
+          this.factor = factor;
+          this.currentValue = null;
+        }
+        next(target) {
+          if (this.currentValue === null) this.currentValue = target;
+          else this.currentValue += (target - this.currentValue) * this.factor;
+          return this.currentValue;
+        }
+        reset(value = null) {
+          this.currentValue = value;
+        }
+      }
+
+      class FaceTracker extends EventTarget {
+        static detectorPromise = null;
+
+        static preloadOnIdle() {
+          if ("requestIdleCallback" in window) requestIdleCallback(() => FaceTracker.preloadLibrary(), { timeout: 1000 });
+          else setTimeout(() => FaceTracker.preloadLibrary(), 1000);
+        }
+
+        static async preloadLibrary() {
+          if (this.detectorPromise) return this.detectorPromise;
+          this.detectorPromise = (async () => {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+            return FaceDetector.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+                delegate: "GPU",
+              },
+              runningMode: "VIDEO",
+            });
+          })();
+          return this.detectorPromise;
+        }
+
+        constructor(videoElement, smoothFactor = 0.3) {
+          super();
+          this.video = videoElement;
+          this.faceDetector = null;
+          this.running = false;
+          this.lastVideoTime = -1;
+          this.requestRef = null;
+          this.restingPoint = { x: 0, y: 0, eyeDistance: 0 };
+          this.isCalibrating = false;
+          this.calibrationData = [];
+          this.fps = 0;
+          this.lastFrameTime = 0;
+          this.smootherX = new Smoother(smoothFactor);
+          this.smootherY = new Smoother(smoothFactor);
+          this.smootherDistance = new Smoother(smoothFactor);
+        }
+
+        async initialize() {
+          if (this.faceDetector) return;
+          this.faceDetector = await FaceTracker.preloadLibrary();
+        }
+
+        async start() {
+          if (this.running) return;
+          await this.initialize();
+          this.running = true;
+          this.predict();
+          this.dispatchEvent(new CustomEvent("started"));
+        }
+
+        stop() {
+          if (!this.running) return;
+          this.running = false;
+          this.lastFrameTime = 0;
+          this.fps = 0;
+          this.smootherX.reset();
+          this.smootherY.reset();
+          this.smootherDistance.reset();
+          if (this.requestRef) cancelAnimationFrame(this.requestRef);
+          this.requestRef = null;
+          this.dispatchEvent(new CustomEvent("stopped"));
+        }
+
+        calibrate() {
+          if (!this.running) return;
+          this.isCalibrating = true;
+          this.calibrationData = [];
+          setTimeout(() => {
+            this.isCalibrating = false;
+            if (this.calibrationData.length) {
+              const sumX = this.calibrationData.reduce((a, p) => a + p.x, 0);
+              const sumY = this.calibrationData.reduce((a, p) => a + p.y, 0);
+              const sumD = this.calibrationData.reduce((a, p) => a + p.eyeDistance, 0);
+              this.restingPoint = {
+                x: sumX / this.calibrationData.length,
+                y: sumY / this.calibrationData.length,
+                eyeDistance: sumD / this.calibrationData.length,
+              };
+            }
+            this.dispatchEvent(new CustomEvent("calibrated", { detail: this.restingPoint }));
+          }, 1000);
+        }
+
+        predict() {
+          if (!this.running) return;
+
+          const t = performance.now();
+
+          if (this.lastFrameTime > 0) {
+            const delta = t - this.lastFrameTime;
+            const currentFps = 1000 / delta;
+            this.fps = this.fps * 0.9 + currentFps * 0.1;
+          }
+          this.lastFrameTime = t;
+          this.dispatchEvent(new CustomEvent("fps", { detail: { fps: this.fps } }));
+
+          if (this.video.currentTime !== this.lastVideoTime) {
+            this.lastVideoTime = this.video.currentTime;
+            const result = this.faceDetector.detectForVideo(this.video, t);
+
+            if (result.detections && result.detections.length > 0) {
+              const detection = result.detections[0];
+              if (detection.keypoints && detection.keypoints.length >= 2) {
+                const eye1 = detection.keypoints[0];
+                const eye2 = detection.keypoints[1];
+                const midX = (eye1.x + eye2.x) / 2;
+                const midY = (eye1.y + eye2.y) / 2;
+                const eyeDistance = hypot(eye1.x - eye2.x, eye1.y - eye2.y);
+
+                const rawX = (1 - midX) * 2 - 1;
+                const rawY = midY * 2 - 1;
+
+                if (this.isCalibrating) this.calibrationData.push({ x: rawX, y: rawY, eyeDistance });
+
+                const x = this.smootherX.next(rawX - this.restingPoint.x);
+                const y = this.smootherY.next(rawY - this.restingPoint.y);
+                const distance = this.smootherDistance.next(eyeDistance);
+
+                this.dispatchEvent(
+                  new CustomEvent("updated", {
+                    detail: { x, y, eyeDistance: distance },
+                  })
+                );
+              }
+            }
+          }
+
+          this.requestRef = requestAnimationFrame(() => this.predict());
+        }
+      }
+
+      // --- DOM ---
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const ui = document.getElementById("ui");
+      const bar = document.getElementById("bar");
+      const video = document.getElementById("video");
+      const mouseBtn = document.getElementById("mouseBtn");
+      const headBtn = document.getElementById("headBtn");
+      const calBtn = document.getElementById("calBtn");
+      const hideBtn = document.getElementById("hideBtn");
+      const statusEl = document.getElementById("status");
+      const patternSelect = document.getElementById("patternSelect");
+
+      // --- State ---
+      const state = {
+        mode: "mouse",
+        mouseNX: 0,
+        mouseNY: 0,
+        headX: 0,
+        headY: 0,
+        headEyeDistance: 0,
+        uiHidden: false,
+        uiHover: false,
+        dirty: true,
+        pattern: "checkerboard",
+      };
+
+      // --- High res imagery ---
+      const srcCanvas = document.createElement("canvas");
+      srcCanvas.width = SRC_W;
+      srcCanvas.height = SRC_H;
+      const sctx = srcCanvas.getContext("2d");
+
+      const outCanvas = document.createElement("canvas");
+      outCanvas.width = VIEW_W;
+      outCanvas.height = VIEW_H;
+      const octx = outCanvas.getContext("2d");
+
+      drawCheckerboard(sctx, SRC_W, SRC_H, COLS * BACKGROUND_OVERSCAN, ROWS * BACKGROUND_OVERSCAN, COLOR_A, COLOR_B);
+
+      let src = sctx.getImageData(0, 0, SRC_W, SRC_H);
+      const out = octx.createImageData(VIEW_W, VIEW_H);
+
+      // --- Tracking ---
+      const tracker = new FaceTracker(video, 0.22);
+      FaceTracker.preloadOnIdle();
+
+      tracker.addEventListener("updated", (e) => {
+        state.headX = clamp(e.detail.x, -1, 1);
+        state.headY = clamp(e.detail.y, -1, 1);
+        state.headEyeDistance = e.detail.eyeDistance;
+        state.dirty = true;
+      });
+      tracker.addEventListener("started", () => {
+        status("head");
+        applyUiVisibility();
+      });
+      tracker.addEventListener("stopped", () => {
+        status("mouse");
+        applyUiVisibility();
+      });
+      tracker.addEventListener("calibrated", () => status("head calibrated"));
+      tracker.addEventListener("fps", (e) => {
+        if (state.mode === "head") status(`head ${e.detail.fps.toFixed(0)} fps`);
+      });
+
+      // --- UI ---
+      ui.addEventListener("mouseenter", () => {
+        state.uiHover = true;
+        applyUiVisibility();
+      });
+      ui.addEventListener("mouseleave", () => {
+        state.uiHover = false;
+        applyUiVisibility();
+      });
+
+      hideBtn.onclick = () => {
+        state.uiHidden = !state.uiHidden;
+        hideBtn.textContent = state.uiHidden ? "Show" : "Hide";
+        applyUiVisibility();
+      };
+
+      mouseBtn.onclick = () => {
+        state.mode = "mouse";
+        state.mouseNX = 0;
+        state.mouseNY = 0;
+        tracker.stop();
+        status("mouse");
+        applyUiVisibility();
+        state.dirty = true;
+      };
+
+      headBtn.onclick = async () => {
+        try {
+          await ensureCamera(video);
+          state.mode = "head";
+          await tracker.start();
+          status("head");
+          applyUiVisibility();
+          state.dirty = true;
+        } catch (err) {
+          status("camera denied");
+          console.error(err);
+        }
+      };
+
+      calBtn.onclick = () => {
+        if (state.mode === "head") tracker.calibrate();
+      };
+
+      patternSelect.addEventListener("change", () => {
+        state.pattern = patternSelect.value;
+        applyPattern();
+      });
+
+      function applyPattern() {
+        sctx.clearRect(0, 0, SRC_W, SRC_H);
+        const cols = COLS * BACKGROUND_OVERSCAN;
+        const rows = ROWS * BACKGROUND_OVERSCAN;
+        switch (state.pattern) {
+          case "checkerboard":
+            drawCheckerboard(sctx, SRC_W, SRC_H, cols, rows, COLOR_A, COLOR_B);
+            break;
+          case "vertical-strips":
+            drawVerticalStrips(sctx, SRC_W, SRC_H, cols, COLOR_A, COLOR_B);
+            break;
+          case "concentric-rings":
+            drawConcentricRings(sctx, SRC_W, SRC_H, rows, COLOR_A, COLOR_B);
+            break;
+          case "spiral":
+            drawSpiral(sctx, SRC_W, SRC_H, rows, COLOR_A, COLOR_B);
+            break;
+        }
+        src = sctx.getImageData(0, 0, SRC_W, SRC_H);
+        state.dirty = true;
+      }
+
+      function applyUiVisibility() {
+        const visible = !state.uiHidden || state.uiHover;
+        bar.style.opacity = visible ? "1" : "0";
+        bar.style.pointerEvents = visible ? "auto" : "none";
+        const showVideo = visible && state.mode === "head" && !!video.srcObject;
+        video.style.display = showVideo ? "block" : "none";
+      }
+
+      // --- Input mapping ---
+      // full viewport mapping: entire canvas maps to [-1, 1] camera input
+      canvas.addEventListener("mousemove", (e) => {
+        if (state.mode !== "mouse") return;
+        const rect = canvas.getBoundingClientRect();
+        const px = (e.clientX - rect.left) / rect.width;
+        const py = (e.clientY - rect.top) / rect.height;
+        state.mouseNX = clamp(px * 2 - 1, -1, 1);
+        state.mouseNY = clamp(py * 2 - 1, -1, 1);
+        state.dirty = true;
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        if (state.mode !== "mouse") return;
+        state.mouseNX = 0;
+        state.mouseNY = 0;
+        state.dirty = true;
+      });
+
+      window.addEventListener("resize", resize);
+      resize();
+      applyUiVisibility();
+      tick();
+
+      // --- Render ---
+      function tick() {
+        if (state.dirty) {
+          renderDropletBoard(getViewShiftHi());
+          renderToScreen();
+          state.dirty = false;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      function renderDropletBoard(viewShift) {
+        const centerOffsetX = SRC_CX - DROP_CX;
+        const centerOffsetY = SRC_CY - DROP_CY;
+
+        for (let y = 0; y < VIEW_H; y++) {
+          for (let x = 0; x < VIEW_W; x++) {
+            const dx = x - DROP_CX;
+            const dy = y - DROP_CY;
+            const r2 = dx * dx + dy * dy;
+            const i = (y * VIEW_W + x) * 4;
+
+            if (r2 <= a * a) {
+              const z = capHeight(r2, R, h);
+              const nx = dx / R;
+              const ny = dy / R;
+              const strength = (z / h) * (REFRACT_SCALE * INTERNAL_RES_SCALE);
+
+              const sx = centerOffsetX + x - nx * strength + viewShift.x;
+              const sy = centerOffsetY + y - ny * strength + viewShift.y;
+
+              sampleBilinear(src.data, SRC_W, SRC_H, sx, sy, out.data, i);
+            } else {
+              const sx = centerOffsetX + x;
+              const sy = centerOffsetY + y;
+              sampleBilinear(src.data, SRC_W, SRC_H, sx, sy, out.data, i);
+            }
+          }
+        }
+
+        octx.putImageData(out, 0, 0);
+      }
+
+      function renderToScreen() {
+        const fit = getContainRect(canvas.width, canvas.height, BOARD_W, BOARD_H);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(outCanvas, fit.x, fit.y, fit.w, fit.h);
+      }
+
+      function getViewShiftHi() {
+        if (state.mode === "head") {
+          const parallax = headDistanceToParallax(state.headEyeDistance);
+          return {
+            x: state.headX * HEAD_GAIN_X * parallax * INTERNAL_RES_SCALE,
+            y: state.headY * HEAD_GAIN_Y * parallax * INTERNAL_RES_SCALE,
+          };
+        }
+        return {
+          x: state.mouseNX * CAMERA_SHIFT_MAX * INTERNAL_RES_SCALE,
+          y: state.mouseNY * CAMERA_SHIFT_MAX * INTERNAL_RES_SCALE,
+        };
+      }
+
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+        state.dirty = true;
+      }
+
+      function status(text) {
+        statusEl.textContent = `${text} · res ${INTERNAL_RES_SCALE}x`;
+      }
+
+      // --- low-level pure functions ---
+      function drawCheckerboard(ctx, w, h, cols, rows, a, b) {
+        const cellW = w / cols;
+        const cellH = h / rows;
+        for (let y = 0; y < rows; y++) {
+          for (let x = 0; x < cols; x++) {
+            ctx.fillStyle = (x + y) % 2 ? a : b;
+            ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+          }
+        }
+      }
+      function drawVerticalStrips(ctx, w, h, cols, a, b) {
+        const cellW = w / cols;
+        for (let x = 0; x < cols; x++) {
+          ctx.fillStyle = x % 2 ? a : b;
+          ctx.fillRect(x * cellW, 0, cellW, h);
+        }
+      }
+      function parseColor(hex) {
+        const v = parseInt(hex.replace("#", ""), 16);
+        return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+      }
+      function drawConcentricRings(ctx, w, h, rings, a, b) {
+        const cx = w * 0.5;
+        const cy = h * 0.5;
+        const maxR = Math.sqrt(cx * cx + cy * cy);
+        const ringW = maxR / rings;
+        const imgData = ctx.createImageData(w, h);
+        const colA = parseColor(a);
+        const colB = parseColor(b);
+        for (let py = 0; py < h; py++) {
+          for (let px = 0; px < w; px++) {
+            const dist = Math.sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+            const ring = Math.floor(dist / ringW);
+            const col = ring % 2 ? colA : colB;
+            const i = (py * w + px) * 4;
+            imgData.data[i] = col[0];
+            imgData.data[i + 1] = col[1];
+            imgData.data[i + 2] = col[2];
+            imgData.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      function drawSpiral(ctx, w, h, rings, a, b) {
+        const cx = w * 0.5;
+        const cy = h * 0.5;
+        const maxR = Math.sqrt(cx * cx + cy * cy);
+        const wavelength = maxR / rings;
+        const imgData = ctx.createImageData(w, h);
+        const colA = parseColor(a);
+        const colB = parseColor(b);
+        for (let py = 0; py < h; py++) {
+          for (let px = 0; px < w; px++) {
+            const dx = px - cx;
+            const dy = py - cy;
+            const angle = Math.atan2(dy, dx);
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const t = (((angle / (2 * Math.PI) + dist / wavelength) % 1) + 1) % 1;
+            const col = t < 0.5 ? colA : colB;
+            const i = (py * w + px) * 4;
+            imgData.data[i] = col[0];
+            imgData.data[i + 1] = col[1];
+            imgData.data[i + 2] = col[2];
+            imgData.data[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+      function getContainRect(sw, sh, aw, ah) {
+        const s = Math.min(sw / aw, sh / ah);
+        const w = aw * s;
+        const h = ah * s;
+        return { x: (sw - w) * 0.5, y: (sh - h) * 0.5, w, h };
+      }
+      function capHeight(r2, R, h) {
+        return Math.sqrt(R * R - r2) - (R - h);
+      }
+      function clamp(v, min, max) {
+        return v < min ? min : v > max ? max : v;
+      }
+      function clampInt(v, min, max) {
+        return v < min ? min : v > max ? max : v | 0;
+      }
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+      function invLerp(a, b, v) {
+        return (v - a) / (b - a);
+      }
+      function hypot(x, y) {
+        return Math.sqrt(x * x + y * y);
+      }
+      function headDistanceToParallax(eyeDistance) {
+        const t = clamp(invLerp(HEAD_DISTANCE_FAR, HEAD_DISTANCE_NEAR, eyeDistance), 0, 1);
+        return lerp(HEAD_PARALLAX_FAR, HEAD_PARALLAX_NEAR, t);
+      }
+      function sampleBilinear(data, w, h, x, y, out, oi) {
+        const x0 = clampInt(Math.floor(x), 0, w - 1);
+        const y0 = clampInt(Math.floor(y), 0, h - 1);
+        const x1 = clampInt(x0 + 1, 0, w - 1);
+        const y1 = clampInt(y0 + 1, 0, h - 1);
+        const tx = x - x0;
+        const ty = y - y0;
+
+        const i00 = (y0 * w + x0) * 4;
+        const i10 = (y0 * w + x1) * 4;
+        const i01 = (y1 * w + x0) * 4;
+        const i11 = (y1 * w + x1) * 4;
+
+        const w00 = (1 - tx) * (1 - ty);
+        const w10 = tx * (1 - ty);
+        const w01 = (1 - tx) * ty;
+        const w11 = tx * ty;
+
+        out[oi] = data[i00] * w00 + data[i10] * w10 + data[i01] * w01 + data[i11] * w11;
+        out[oi + 1] = data[i00 + 1] * w00 + data[i10 + 1] * w10 + data[i01 + 1] * w01 + data[i11 + 1] * w11;
+        out[oi + 2] = data[i00 + 2] * w00 + data[i10 + 2] * w10 + data[i01 + 2] * w01 + data[i11 + 2] * w11;
+        out[oi + 3] = 255;
+      }
+      async function ensureCamera(video) {
+        if (video.srcObject) return;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        video.srcObject = stream;
+        await video.play();
+      }
+    </script>
+  </body>
+</html>

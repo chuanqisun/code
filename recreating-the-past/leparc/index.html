@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100dvh;
+        background: #111;
+        overflow: hidden;
+        touch-action: none;
+        -webkit-overflow-scrolling: none;
+        overscroll-behavior: none;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100dvh;
+      }
+
+      #ui {
+        position: fixed;
+        left: 50%;
+        top: 12px;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        z-index: 10;
+      }
+
+      #bar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 10px;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 16px;
+        color: #fff;
+        font: 12px sans-serif;
+        max-width: calc(100vw - 32px);
+      }
+
+      #bar button {
+        cursor: pointer;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font: inherit;
+        transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #bar button.active {
+        background: #f0e6d3;
+        border-color: #f0e6d3;
+        color: #111;
+      }
+
+      #patternSelect {
+        background: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        padding: 4px 8px;
+        font: 14px sans-serif;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      @media (max-width: 480px) {
+        #bar {
+          border-radius: 12px;
+          padding: 6px 8px;
+          gap: 4px;
+        }
+        #bar button {
+          padding: 6px 10px;
+          font-size: 11px;
+        }
+        #patternSelect {
+          font-size: 11px;
+        }
+        #video {
+          width: 120px;
+          height: 90px;
+        }
+      }
+
+      #video {
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        width: 160px;
+        height: 120px;
+        object-fit: cover;
+        background: #000;
+        border-radius: 10px;
+        opacity: 0.9;
+        display: none;
+        z-index: 10;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <div id="ui">
+      <div id="bar">
+        <select id="patternSelect">
+          <option value="checkerboard">Checkerboard</option>
+          <option value="vertical-strips">Vertical Strips</option>
+          <option value="concentric-rings">Rings</option>
+          <option value="spiral">Spiral</option>
+        </select>
+        <button id="mouseBtn">Manual</button>
+        <button id="headBtn">HUD</button>
+        <button id="calBtn">Calibrate</button>
+        <button id="hideBtn">Hide</button>
+        <span id="status"></span>
+      </div>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+
+    <script type="module">
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+      import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      const BOARD_W = 400;
+      const BOARD_H = 400;
+      const DROP_SIZE = 300;
+      const CONTACT_ANGLE = Math.PI * 0.38;
+      const CAMERA_SHIFT_MAX = 0.72;
+      const HEAD_GAIN_X = 0.28;
+      const HEAD_GAIN_Y = 0.28;
+      const HEAD_PARALLAX = 3.6;
+      const CAMERA_Z = 2.15;
+      const BG_DEPTH = 0.85;
+      const COLS = 20;
+      const ROWS = 20;
+      const COLOR_A = new THREE.Color("#2c2c2c");
+      const COLOR_B = new THREE.Color("#f0e6d3");
+
+      const DROP_RADIUS = DROP_SIZE / BOARD_W;
+      const SPHERE_RADIUS = DROP_RADIUS / Math.sin(CONTACT_ANGLE);
+      const CAP_HEIGHT = DROP_RADIUS * Math.tan(CONTACT_ANGLE * 0.5);
+      const SPHERE_CENTER_Z = -(SPHERE_RADIUS - CAP_HEIGHT);
+
+      class Smoother {
+        constructor(factor = 0.15) {
+          this.factor = factor;
+          this.currentValue = null;
+        }
+        next(target) {
+          if (this.currentValue === null) this.currentValue = target;
+          else this.currentValue += (target - this.currentValue) * this.factor;
+          return this.currentValue;
+        }
+        reset(value = null) {
+          this.currentValue = value;
+        }
+      }
+
+      class FaceTracker extends EventTarget {
+        static detectorPromise = null;
+
+        static preloadOnIdle() {
+          if ("requestIdleCallback" in window) requestIdleCallback(() => FaceTracker.preloadLibrary(), { timeout: 1000 });
+          else setTimeout(() => FaceTracker.preloadLibrary(), 1000);
+        }
+
+        static async preloadLibrary() {
+          if (this.detectorPromise) return this.detectorPromise;
+          this.detectorPromise = (async () => {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+            return FaceDetector.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+                delegate: "GPU",
+              },
+              runningMode: "VIDEO",
+            });
+          })();
+          return this.detectorPromise;
+        }
+
+        constructor(videoElement, smoothFactor = 0.3) {
+          super();
+          this.video = videoElement;
+          this.faceDetector = null;
+          this.running = false;
+          this.lastVideoTime = -1;
+          this.requestRef = null;
+          this.restingPoint = { x: 0, y: 0, eyeDistance: 0 };
+          this.isCalibrating = false;
+          this.calibrationData = [];
+          this.fps = 0;
+          this.lastFrameTime = 0;
+          this.smootherX = new Smoother(smoothFactor);
+          this.smootherY = new Smoother(smoothFactor);
+          this.smootherDistance = new Smoother(smoothFactor);
+        }
+
+        async initialize() {
+          if (this.faceDetector) return;
+          this.faceDetector = await FaceTracker.preloadLibrary();
+        }
+
+        async start() {
+          if (this.running) return;
+          await this.initialize();
+          this.running = true;
+          this.predict();
+          this.dispatchEvent(new CustomEvent("started"));
+        }
+
+        stop() {
+          if (!this.running) return;
+          this.running = false;
+          this.lastFrameTime = 0;
+          this.fps = 0;
+          this.smootherX.reset();
+          this.smootherY.reset();
+          this.smootherDistance.reset();
+          if (this.requestRef) cancelAnimationFrame(this.requestRef);
+          this.requestRef = null;
+          this.dispatchEvent(new CustomEvent("stopped"));
+        }
+
+        calibrate() {
+          if (!this.running) return;
+          this.isCalibrating = true;
+          this.calibrationData = [];
+          setTimeout(() => {
+            this.isCalibrating = false;
+            if (this.calibrationData.length) {
+              const sumX = this.calibrationData.reduce((a, p) => a + p.x, 0);
+              const sumY = this.calibrationData.reduce((a, p) => a + p.y, 0);
+              const sumD = this.calibrationData.reduce((a, p) => a + p.eyeDistance, 0);
+              this.restingPoint = {
+                x: sumX / this.calibrationData.length,
+                y: sumY / this.calibrationData.length,
+                eyeDistance: sumD / this.calibrationData.length,
+              };
+            }
+            this.dispatchEvent(new CustomEvent("calibrated", { detail: this.restingPoint }));
+          }, 1000);
+        }
+
+        predict() {
+          if (!this.running) return;
+
+          const t = performance.now();
+
+          if (this.lastFrameTime > 0) {
+            const delta = t - this.lastFrameTime;
+            const currentFps = 1000 / delta;
+            this.fps = this.fps * 0.9 + currentFps * 0.1;
+          }
+          this.lastFrameTime = t;
+          this.dispatchEvent(new CustomEvent("fps", { detail: { fps: this.fps } }));
+
+          if (this.video.currentTime !== this.lastVideoTime) {
+            this.lastVideoTime = this.video.currentTime;
+            const result = this.faceDetector.detectForVideo(this.video, t);
+
+            if (result.detections && result.detections.length > 0) {
+              const detection = result.detections[0];
+              if (detection.keypoints && detection.keypoints.length >= 2) {
+                const eye1 = detection.keypoints[0];
+                const eye2 = detection.keypoints[1];
+                const midX = (eye1.x + eye2.x) / 2;
+                const midY = (eye1.y + eye2.y) / 2;
+                const eyeDistance = hypot(eye1.x - eye2.x, eye1.y - eye2.y);
+
+                const rawX = (1 - midX) * 2 - 1;
+                const rawY = midY * 2 - 1;
+
+                if (this.isCalibrating) this.calibrationData.push({ x: rawX, y: rawY, eyeDistance });
+
+                const x = this.smootherX.next(rawX - this.restingPoint.x);
+                const y = this.smootherY.next(rawY - this.restingPoint.y);
+                const distance = this.smootherDistance.next(eyeDistance);
+
+                this.dispatchEvent(
+                  new CustomEvent("updated", {
+                    detail: { x, y, eyeDistance: distance },
+                  })
+                );
+              }
+            }
+          }
+
+          this.requestRef = requestAnimationFrame(() => this.predict());
+        }
+      }
+
+      const canvas = document.getElementById("c");
+      const ui = document.getElementById("ui");
+      const bar = document.getElementById("bar");
+      const video = document.getElementById("video");
+      const mouseBtn = document.getElementById("mouseBtn");
+      const headBtn = document.getElementById("headBtn");
+      const calBtn = document.getElementById("calBtn");
+      const hideBtn = document.getElementById("hideBtn");
+      const statusEl = document.getElementById("status");
+      const patternSelect = document.getElementById("patternSelect");
+
+      const state = {
+        mode: "mouse",
+        mouseNX: 0,
+        mouseNY: 0,
+        headX: 0,
+        headY: 0,
+        uiHidden: false,
+        uiHover: false,
+        pattern: "checkerboard",
+      };
+
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setClearColor(0x111111, 1);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      const uniforms = {
+        uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) },
+        uViewShift: { value: new THREE.Vector2() },
+        uPattern: { value: 0 },
+        uCols: { value: COLS },
+        uRows: { value: ROWS },
+        uColorA: { value: COLOR_A.clone() },
+        uColorB: { value: COLOR_B.clone() },
+        uDropRadius: { value: DROP_RADIUS },
+        uSphereRadius: { value: SPHERE_RADIUS },
+        uSphereCenterZ: { value: SPHERE_CENTER_Z },
+        uCameraZ: { value: CAMERA_Z },
+        uBgDepth: { value: BG_DEPTH },
+        uIorRGB: { value: new THREE.Vector3(1.331, 1.333, 1.337) },
+        uEdgeSoftness: { value: 0.012 },
+        uTime: { value: 0 },
+      };
+
+      const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: /* glsl */ `
+					varying vec2 vUv;
+					void main() {
+						vUv = uv;
+						gl_Position = vec4(position.xy, 0.0, 1.0);
+					}
+				`,
+        fragmentShader: /* glsl */ `
+					precision highp float;
+
+					varying vec2 vUv;
+
+					uniform vec2 uResolution;
+					uniform vec2 uViewShift;
+					uniform int uPattern;
+					uniform float uCols;
+					uniform float uRows;
+					uniform vec3 uColorA;
+					uniform vec3 uColorB;
+					uniform float uDropRadius;
+					uniform float uSphereRadius;
+					uniform float uSphereCenterZ;
+					uniform float uCameraZ;
+					uniform float uBgDepth;
+					uniform vec3 uIorRGB;
+					uniform float uEdgeSoftness;
+					uniform float uTime;
+
+					const float PI = 3.141592653589793;
+          const float DROPLET_PARALLAX = 0.08;
+          const float BACKGROUND_PARALLAX = 0.14;
+
+					float saturate(float x) {
+						return clamp(x, 0.0, 1.0);
+					}
+
+					mat2 rot(float a) {
+						float s = sin(a);
+						float c = cos(a);
+						return mat2(c, -s, s, c);
+					}
+
+					vec2 getBoardCoord() {
+						vec2 pixel = gl_FragCoord.xy - 0.5 * uResolution;
+						float scale = min(uResolution.x, uResolution.y) * 0.5;
+						return pixel / scale;
+					}
+
+					vec3 patternAt(vec2 p) {
+						vec2 uv = p * 0.5 + 0.5;
+						vec2 grid = vec2(uv.x * uCols, uv.y * uRows);
+
+						if (uPattern == 0) {
+							float parity = mod(floor(grid.x) + floor(grid.y), 2.0);
+							return mix(uColorB, uColorA, parity);
+						}
+
+						if (uPattern == 1) {
+              float parity = mod(floor(grid.x * 2.0), 2.0);
+							return mix(uColorB, uColorA, parity);
+						}
+
+						if (uPattern == 2) {
+							float radius = length(p);
+							float maxRadius = sqrt(2.0);
+							float ring = floor(radius / (maxRadius / uRows));
+							float parity = mod(ring, 2.0);
+							return mix(uColorB, uColorA, parity);
+						}
+
+						vec2 q = p;
+						float wavelength = sqrt(2.0) / uRows;
+						float angle = atan(q.y, q.x);
+						float dist = length(q);
+						float t = fract(angle / (2.0 * PI) + dist / wavelength);
+						return mix(uColorA, uColorB, step(0.5, t));
+					}
+
+					bool intersectSphere(vec3 ro, vec3 rd, vec3 sc, float sr, out float tHit) {
+						vec3 oc = ro - sc;
+						float b = dot(oc, rd);
+						float c = dot(oc, oc) - sr * sr;
+						float h = b * b - c;
+						if (h < 0.0) return false;
+						h = sqrt(h);
+						float t0 = -b - h;
+						float t1 = -b + h;
+						tHit = t0 > 0.0 ? t0 : t1;
+						return tHit > 0.0;
+					}
+
+					vec2 traceBackground(vec2 board, float ior, out float dropletMask, out vec3 hitNormal, out float fresnelTerm) {
+						vec3 ro = vec3(uViewShift, uCameraZ);
+						vec3 rp = vec3(board, 0.0);
+						vec3 rd = normalize(rp - ro);
+						vec3 sphereCenter = vec3(0.0, 0.0, uSphereCenterZ);
+
+						dropletMask = 0.0;
+						hitNormal = vec3(0.0, 0.0, 1.0);
+						fresnelTerm = 0.0;
+
+						float tSphere;
+						if (intersectSphere(ro, rd, sphereCenter, uSphereRadius, tSphere)) {
+							vec3 topHit = ro + rd * tSphere;
+							if (topHit.z >= -0.0001) {
+								vec3 normal = normalize(topHit - sphereCenter);
+								vec3 rdWater = refract(rd, normal, 1.0 / ior);
+								if (length(rdWater) == 0.0) rdWater = reflect(rd, normal);
+
+								float tPlane = -topHit.z / rdWater.z;
+								vec3 planeHit = topHit + rdWater * tPlane;
+								vec3 rdOut = refract(rdWater, vec3(0.0, 0.0, 1.0), ior);
+								if (length(rdOut) == 0.0) rdOut = reflect(rdWater, vec3(0.0, 0.0, 1.0));
+
+								float tBg = (-uBgDepth - planeHit.z) / rdOut.z;
+								vec3 bgHit = planeHit + rdOut * tBg;
+
+								float edge = smoothstep(uDropRadius + uEdgeSoftness, uDropRadius - uEdgeSoftness, length(planeHit.xy));
+								dropletMask = edge;
+								hitNormal = normal;
+								fresnelTerm = pow(1.0 - max(dot(-rd, normal), 0.0), 5.0);
+								return mix(board, bgHit.xy, edge);
+							}
+						}
+
+						return board;
+					}
+
+					void main() {
+						vec2 board = getBoardCoord();
+						if (abs(board.x) > 1.0 || abs(board.y) > 1.0) {
+							gl_FragColor = vec4(vec3(0.0667), 1.0);
+							return;
+						}
+
+            vec2 dropletBoard = board - uViewShift * DROPLET_PARALLAX;
+            vec2 backgroundShift = -uViewShift * BACKGROUND_PARALLAX;
+            vec2 backgroundBoard = board + backgroundShift;
+
+						float maskG;
+						vec3 normal;
+						float fresnel;
+            vec2 sampleG = traceBackground(dropletBoard, uIorRGB.y, maskG, normal, fresnel);
+
+						float maskR;
+						vec3 normalR;
+						float fresnelR;
+            vec2 sampleR = traceBackground(dropletBoard, uIorRGB.x, maskR, normalR, fresnelR);
+
+						float maskB;
+						vec3 normalB;
+						float fresnelB;
+            vec2 sampleB = traceBackground(dropletBoard, uIorRGB.z, maskB, normalB, fresnelB);
+
+            vec3 refracted = vec3(
+              patternAt(sampleR + backgroundShift).r,
+              patternAt(sampleG + backgroundShift).g,
+              patternAt(sampleB + backgroundShift).b
+            );
+            vec3 base = patternAt(backgroundBoard);
+
+						float mask = maskG;
+						vec3 lightDir = normalize(vec3(-0.45, 0.7, 1.1));
+            vec3 viewDir = normalize(vec3(uViewShift - dropletBoard, uCameraZ));
+						float spec = pow(max(dot(reflect(-lightDir, normal), viewDir), 0.0), 84.0) * mask;
+            float rim = pow(saturate(1.0 - length(dropletBoard) / uDropRadius), 0.25);
+						float edgeGlow = pow(1.0 - saturate(abs(dot(normal, vec3(0.0, 0.0, 1.0)))), 2.0) * mask;
+
+						vec3 color = base;
+						color = mix(color, refracted, mask);
+						color *= 1.0 - 0.05 * mask + 0.03 * rim * mask;
+						color += vec3(1.0) * spec * 0.22;
+						color += vec3(1.0, 1.0, 1.0) * fresnel * 0.11;
+						color += vec3(0.88, 0.94, 1.0) * edgeGlow * 0.08;
+
+						gl_FragColor = vec4(color, 1.0);
+					}
+				`,
+      });
+
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+      scene.add(quad);
+
+      const tracker = new FaceTracker(video, 0.22);
+      FaceTracker.preloadOnIdle();
+
+      tracker.addEventListener("updated", (e) => {
+        state.headX = clamp(e.detail.x, -1, 1);
+        state.headY = clamp(e.detail.y, -1, 1);
+      });
+      tracker.addEventListener("started", () => {
+        status("");
+        updateModeButtons();
+        applyUiVisibility();
+      });
+      tracker.addEventListener("stopped", () => {
+        status("");
+        updateModeButtons();
+        applyUiVisibility();
+      });
+      tracker.addEventListener("calibrated", () => status("Calibrated"));
+      tracker.addEventListener("fps", (e) => {
+        if (state.mode === "head") status(`${e.detail.fps.toFixed(0)} fps`);
+      });
+
+      ui.addEventListener("mouseenter", () => {
+        state.uiHover = true;
+        applyUiVisibility();
+      });
+      ui.addEventListener("mouseleave", () => {
+        state.uiHover = false;
+        applyUiVisibility();
+      });
+
+      hideBtn.onclick = () => {
+        state.uiHidden = !state.uiHidden;
+        hideBtn.textContent = state.uiHidden ? "Show" : "Hide";
+        applyUiVisibility();
+      };
+
+      mouseBtn.onclick = () => {
+        state.mode = "mouse";
+        state.mouseNX = 0;
+        state.mouseNY = 0;
+        tracker.stop();
+        status("");
+        updateModeButtons();
+        applyUiVisibility();
+      };
+
+      headBtn.onclick = async () => {
+        try {
+          await ensureCamera(video);
+          state.mode = "head";
+          await tracker.start();
+          status("");
+          updateModeButtons();
+          applyUiVisibility();
+        } catch (err) {
+          status("camera denied");
+          console.error(err);
+        }
+      };
+
+      calBtn.onclick = () => {
+        if (state.mode === "head") tracker.calibrate();
+      };
+
+      patternSelect.addEventListener("change", () => {
+        state.pattern = patternSelect.value;
+        uniforms.uPattern.value = patternNameToIndex(state.pattern);
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (state.mode !== "mouse") return;
+        const px = e.clientX / innerWidth;
+        const py = e.clientY / innerHeight;
+        state.mouseNX = clamp(px * 2 - 1, -1, 1);
+        state.mouseNY = clamp(py * 2 - 1, -1, 1);
+      });
+
+      window.addEventListener("mouseleave", () => {
+        if (state.mode !== "mouse") return;
+        state.mouseNX = 0;
+        state.mouseNY = 0;
+      });
+
+      canvas.addEventListener(
+        "touchstart",
+        (e) => {
+          e.preventDefault();
+        },
+        { passive: false }
+      );
+
+      canvas.addEventListener(
+        "touchmove",
+        (e) => {
+          e.preventDefault();
+          if (state.mode !== "mouse") return;
+          const touch = e.touches[0];
+          const px = touch.clientX / innerWidth;
+          const py = touch.clientY / innerHeight;
+          state.mouseNX = clamp(px * 2 - 1, -1, 1);
+          state.mouseNY = clamp(py * 2 - 1, -1, 1);
+        },
+        { passive: false }
+      );
+
+      canvas.addEventListener(
+        "touchend",
+        (e) => {
+          e.preventDefault();
+          if (state.mode !== "mouse") return;
+          state.mouseNX = 0;
+          state.mouseNY = 0;
+        },
+        { passive: false }
+      );
+
+      window.addEventListener("resize", resize);
+
+      // Prevent iOS Safari bounce/overscroll
+      document.addEventListener(
+        "touchmove",
+        (e) => {
+          if (e.target === canvas) e.preventDefault();
+        },
+        { passive: false }
+      );
+
+      resize();
+      updateModeButtons();
+      applyUiVisibility();
+      uniforms.uPattern.value = patternNameToIndex(state.pattern);
+      status("");
+      renderer.setAnimationLoop(render);
+
+      function render(t) {
+        uniforms.uTime.value = t * 0.001;
+        uniforms.uViewShift.value.copy(getViewShift());
+        renderer.render(scene, camera);
+      }
+
+      function getViewShift() {
+        if (state.mode === "head") {
+          return new THREE.Vector2(state.headX * HEAD_GAIN_X * HEAD_PARALLAX, -state.headY * HEAD_GAIN_Y * HEAD_PARALLAX);
+        }
+        return new THREE.Vector2(-state.mouseNX * CAMERA_SHIFT_MAX, state.mouseNY * CAMERA_SHIFT_MAX);
+      }
+
+      function resize() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        renderer.setSize(w, h);
+        uniforms.uResolution.value.set(canvas.width, canvas.height);
+      }
+
+      function applyUiVisibility() {
+        const visible = !state.uiHidden || state.uiHover;
+        bar.style.opacity = visible ? "1" : "0";
+        bar.style.pointerEvents = visible ? "auto" : "none";
+        calBtn.style.display = state.mode === "head" ? "inline-flex" : "none";
+        const showVideo = visible && state.mode === "head" && !!video.srcObject;
+        video.style.display = showVideo ? "block" : "none";
+      }
+
+      function updateModeButtons() {
+        const isManual = state.mode === "mouse";
+        mouseBtn.classList.toggle("active", isManual);
+        headBtn.classList.toggle("active", !isManual);
+        mouseBtn.setAttribute("aria-pressed", isManual ? "true" : "false");
+        headBtn.setAttribute("aria-pressed", !isManual ? "true" : "false");
+      }
+
+      function status(text) {
+        statusEl.textContent = text;
+      }
+
+      function patternNameToIndex(name) {
+        switch (name) {
+          case "vertical-strips":
+            return 1;
+          case "concentric-rings":
+            return 2;
+          case "spiral":
+            return 3;
+          default:
+            return 0;
+        }
+      }
+
+      function clamp(v, min, max) {
+        return v < min ? min : v > max ? max : v;
+      }
+
+      function hypot(x, y) {
+        return Math.sqrt(x * x + y * y);
+      }
+
+      async function ensureCamera(videoEl) {
+        if (videoEl.srcObject) return;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        videoEl.srcObject = stream;
+        await videoEl.play();
+      }
+    </script>
+  </body>
+</html>

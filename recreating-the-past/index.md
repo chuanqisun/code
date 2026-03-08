@@ -4,7 +4,7 @@
 
 ### Read
 
-> Art in the academy and discourse of the academy, we are trained to find ways to speak of things that there are no words for but you know, it’s the power of colour, it’s phenomena is beyond words.   
+> Art in the academy and discourse of the academy, we are trained to find ways to speak of things that there are no words for but you know, it’s the power of colour, it’s phenomena is beyond words.  
 > — [Chromatic Symphony Interview with Odili Donald Odita](https://web.archive.org/web/20240616204839/https://www.stevenson.info/sites/default/files/2011_missla_libsekal_savvy_art_contemporary_african_2011.pdf)
 
 ### Watch
@@ -12,6 +12,16 @@
 - [Tutorial on patterning, loop, modulus, non-linearity](https://www.dropbox.com/s/vt316vg5tu8y6it/async_6_11.mp4?dl=0)
 
 ### Practice
+
+- Original
+  - still: https://www.moma.org/collection/works/80954
+  - video: https://youtu.be/yTo8Z59Idr0?si=UPs2Yjnm5PhXf2dT&t=989
+  - Image: ![Original](./leparc/original.webp)
+- Recreated:
+  - app: [Recreated (live experience)](./leparc/index.html)
+  - Image: ![Recreated](./leparc/recreated.webp)
+- Notes
+  - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64
 
 ## Week 3: Computational Typography
 

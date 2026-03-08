@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      // --- Parameters ---
+      const CANVAS_W = 400;
+      const CANVAS_H = 400;
+
+      const COLS = 20;
+      const ROWS = 20;
+      const COLOR_A = "#2c2c2c";
+      const COLOR_B = "#f0e6d3";
+
+      const DROP_SIZE = 300;
+      const DROP_RADIUS = DROP_SIZE * 0.5; // base radius a
+      const CONTACT_ANGLE = Math.PI * 0.38; // adjustable
+      const REFRACT_SCALE = 85; // stronger = more distortion
+
+      const DROP_CX = CANVAS_W * 0.5;
+      const DROP_CY = CANVAS_H * 0.5;
+
+      // --- Derived droplet geometry ---
+      const a = DROP_RADIUS;
+      const theta = CONTACT_ANGLE;
+      const h = a * Math.tan(theta * 0.5);
+      const R = a / Math.sin(theta);
+
+      // --- Setup ---
+      const canvas = document.getElementById("c");
+      canvas.width = CANVAS_W;
+      canvas.height = CANVAS_H;
+      const ctx = canvas.getContext("2d");
+
+      // --- Background checkerboard ---
+      const bg = document.createElement("canvas");
+      bg.width = CANVAS_W;
+      bg.height = CANVAS_H;
+      const bctx = bg.getContext("2d");
+
+      const cellW = CANVAS_W / COLS;
+      const cellH = CANVAS_H / ROWS;
+
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          bctx.fillStyle = (row + col) % 2 === 0 ? COLOR_A : COLOR_B;
+          bctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+        }
+      }
+
+      // --- Base image ---
+      ctx.drawImage(bg, 0, 0);
+
+      // --- Refraction pass ---
+      const src = bctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+      const out = ctx.createImageData(CANVAS_W, CANVAS_H);
+
+      for (let y = 0; y < CANVAS_H; y++) {
+        for (let x = 0; x < CANVAS_W; x++) {
+          const dx = x - DROP_CX;
+          const dy = y - DROP_CY;
+          const r2 = dx * dx + dy * dy;
+          const dstIndex = (y * CANVAS_W + x) * 4;
+
+          if (r2 <= a * a) {
+            const z = capHeight(r2, R, h);
+            const nx = dx / R;
+            const ny = dy / R;
+
+            const strength = (z / h) * REFRACT_SCALE;
+            const sx = x - nx * strength;
+            const sy = y - ny * strength;
+
+            const sampleIndex = (clampInt(sy, 0, CANVAS_H - 1) * CANVAS_W + clampInt(sx, 0, CANVAS_W - 1)) * 4;
+            out.data[dstIndex] = src.data[sampleIndex];
+            out.data[dstIndex + 1] = src.data[sampleIndex + 1];
+            out.data[dstIndex + 2] = src.data[sampleIndex + 2];
+            out.data[dstIndex + 3] = 255;
+          } else {
+            out.data[dstIndex] = src.data[dstIndex];
+            out.data[dstIndex + 1] = src.data[dstIndex + 1];
+            out.data[dstIndex + 2] = src.data[dstIndex + 2];
+            out.data[dstIndex + 3] = 255;
+          }
+        }
+      }
+
+      ctx.putImageData(out, 0, 0);
+
+      // low-level pure functions
+      function capHeight(r2, R, h) {
+        return Math.sqrt(R * R - r2) - (R - h);
+      }
+
+      function clampInt(v, min, max) {
+        return v < min ? min : v > max ? max : v | 0;
+      }
+    </script>
+  </body>
+</html>

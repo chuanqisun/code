@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      // --- Parameters ---
+      const COLS = 10;
+      const ROWS = 10;
+      const CANVAS_W = 400;
+      const CANVAS_H = 400;
+      const COLOR_A = "#2c2c2c";
+      const COLOR_B = "#f0e6d3";
+
+      // --- Setup ---
+      const canvas = document.getElementById("c");
+      canvas.width = CANVAS_W;
+      canvas.height = CANVAS_H;
+      const ctx = canvas.getContext("2d");
+
+      const cellW = CANVAS_W / COLS;
+      const cellH = CANVAS_H / ROWS;
+
+      // --- Draw ---
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          ctx.fillStyle = (row + col) % 2 === 0 ? COLOR_A : COLOR_B;
+          ctx.fillRect(col * cellW, row * cellH, cellW, cellH);
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+  <body style="margin: 0; background: #111; font-family: sans-serif">
+    <canvas id="c" width="400" height="400"></canvas>
+    <div style="position: fixed; left: 8px; top: 8px; display: flex; gap: 6px; align-items: center; color: #fff; font: 12px sans-serif">
+      <button id="mouseBtn">Mouse</button>
+      <button id="headBtn">Head</button>
+      <button id="calBtn">Calibrate</button>
+      <span id="status">mouse</span>
+    </div>
+    <video
+      id="video"
+      autoplay
+      playsinline
+      muted
+      style="position: fixed; right: 8px; top: 8px; width: 120px; height: 90px; object-fit: cover; opacity: 0.85; display: none"
+    ></video>
+
+    <script type="module">
+      import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+      class Smoother {
+        constructor(factor = 0.15) {
+          this.factor = factor;
+          this.currentValue = null;
+        }
+        next(target) {
+          if (this.currentValue === null) this.currentValue = target;
+          else this.currentValue += (target - this.currentValue) * this.factor;
+          return this.currentValue;
+        }
+        reset(value = null) {
+          this.currentValue = value;
+        }
+      }
+      class FaceTracker extends EventTarget {
+        static detectorPromise = null;
+        static preloadOnIdle() {
+          if ("requestIdleCallback" in window) requestIdleCallback(() => FaceTracker.preloadLibrary(), { timeout: 1000 });
+          else setTimeout(() => FaceTracker.preloadLibrary(), 1000);
+        }
+        static async preloadLibrary() {
+          if (this.detectorPromise) return this.detectorPromise;
+          this.detectorPromise = (async () => {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+            return FaceDetector.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+                delegate: "GPU",
+              },
+              runningMode: "VIDEO",
+            });
+          })();
+          return this.detectorPromise;
+        }
+        constructor(videoElement, smoothFactor = 0.3) {
+          super();
+          this.video = videoElement;
+          this.faceDetector = null;
+          this.running = false;
+          this.lastVideoTime = -1;
+          this.requestRef = null;
+          this.restingPoint = { x: 0, y: 0 };
+          this.isCalibrating = false;
+          this.calibrationData = [];
+          this.fps = 0;
+          this.lastFrameTime = 0;
+          this.smootherX = new Smoother(smoothFactor);
+          this.smootherY = new Smoother(smoothFactor);
+        }
+        async initialize() {
+          if (this.faceDetector) return;
+          this.faceDetector = await FaceTracker.preloadLibrary();
+        }
+        async start() {
+          if (this.running) return;
+          await this.initialize();
+          this.running = true;
+          this.predict();
+          this.dispatchEvent(new CustomEvent("started"));
+        }
+        stop() {
+          if (!this.running) return;
+          this.running = false;
+          this.lastFrameTime = 0;
+          this.fps = 0;
+          this.smootherX.reset();
+          this.smootherY.reset();
+          if (this.requestRef) cancelAnimationFrame(this.requestRef);
+          this.requestRef = null;
+          this.dispatchEvent(new CustomEvent("stopped"));
+        }
+        calibrate() {
+          if (!this.running) return;
+          this.isCalibrating = true;
+          this.calibrationData = [];
+          setTimeout(() => {
+            this.isCalibrating = false;
+            if (this.calibrationData.length) {
+              const sumX = this.calibrationData.reduce((a, p) => a + p.x, 0);
+              const sumY = this.calibrationData.reduce((a, p) => a + p.y, 0);
+              this.restingPoint = { x: sumX / this.calibrationData.length, y: sumY / this.calibrationData.length };
+            }
+            this.dispatchEvent(new CustomEvent("calibrated", { detail: this.restingPoint }));
+          }, 1000);
+        }
+        predict() {
+          if (!this.running) return;
+          const t = performance.now();
+          if (this.lastFrameTime > 0) {
+            const delta = t - this.lastFrameTime;
+            const currentFps = 1000 / delta;
+            this.fps = this.fps * 0.9 + currentFps * 0.1;
+          }
+          this.lastFrameTime = t;
+          this.dispatchEvent(new CustomEvent("fps", { detail: { fps: this.fps } }));
+          if (this.video.currentTime !== this.lastVideoTime) {
+            this.lastVideoTime = this.video.currentTime;
+            const result = this.faceDetector.detectForVideo(this.video, t);
+            if (result.detections && result.detections.length > 0) {
+              const detection = result.detections[0];
+              if (detection.keypoints && detection.keypoints.length >= 2) {
+                const eye1 = detection.keypoints[0];
+                const eye2 = detection.keypoints[1];
+                const midX = (eye1.x + eye2.x) / 2;
+                const midY = (eye1.y + eye2.y) / 2;
+                const rawX = (1 - midX) * 2 - 1;
+                const rawY = midY * 2 - 1;
+                if (this.isCalibrating) this.calibrationData.push({ x: rawX, y: rawY });
+                const x = this.smootherX.next(rawX - this.restingPoint.x);
+                const y = this.smootherY.next(rawY - this.restingPoint.y);
+                this.dispatchEvent(new CustomEvent("updated", { detail: { x, y } }));
+              }
+            }
+          }
+          this.requestRef = requestAnimationFrame(() => this.predict());
+        }
+      }
+
+      // --- Parameters ---
+      const W = 400,
+        H = 400;
+      const DROP_SIZE = 300;
+      const DROP_R = DROP_SIZE * 0.5;
+      const DROP_CX = W * 0.5;
+      const DROP_CY = H * 0.5;
+      const CONTACT_ANGLE = Math.PI * 0.38;
+      const REFRACT_SCALE = 85;
+      const CAMERA_SHIFT_MAX = 36;
+      const HEAD_GAIN_X = 42;
+      const HEAD_GAIN_Y = 42;
+      const COLS = 20,
+        ROWS = 20;
+      const COLOR_A = "#2c2c2c",
+        COLOR_B = "#f0e6d3";
+
+      const a = DROP_R;
+      const theta = CONTACT_ANGLE;
+      const h = a * Math.tan(theta * 0.5);
+      const R = a / Math.sin(theta);
+
+      // --- DOM ---
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const mouseBtn = document.getElementById("mouseBtn");
+      const headBtn = document.getElementById("headBtn");
+      const calBtn = document.getElementById("calBtn");
+      const statusEl = document.getElementById("status");
+      const video = document.getElementById("video");
+
+      // --- State ---
+      const state = {
+        mode: "mouse",
+        pointerX: DROP_CX,
+        pointerY: DROP_CY,
+        headX: 0,
+        headY: 0,
+        dirty: true,
+      };
+
+      // --- Static board ---
+      const boardCanvas = document.createElement("canvas");
+      boardCanvas.width = W;
+      boardCanvas.height = H;
+      const bctx = boardCanvas.getContext("2d");
+      const cellW = W / COLS;
+      const cellH = H / ROWS;
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          bctx.fillStyle = (x + y) % 2 ? COLOR_A : COLOR_B;
+          bctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+        }
+      }
+      const src = bctx.getImageData(0, 0, W, H);
+      const out = ctx.createImageData(W, H);
+
+      // --- Input systems ---
+      canvas.addEventListener("mousemove", (e) => {
+        if (state.mode !== "mouse") return;
+        const rect = canvas.getBoundingClientRect();
+        state.pointerX = (e.clientX - rect.left) * (canvas.width / rect.width);
+        state.pointerY = (e.clientY - rect.top) * (canvas.height / rect.height);
+        state.dirty = true;
+      });
+      canvas.addEventListener("mouseleave", () => {
+        if (state.mode !== "mouse") return;
+        state.pointerX = DROP_CX;
+        state.pointerY = DROP_CY;
+        state.dirty = true;
+      });
+
+      const tracker = new FaceTracker(video, 0.22);
+      FaceTracker.preloadOnIdle();
+
+      tracker.addEventListener("updated", (e) => {
+        state.headX = clamp(e.detail.x, -1, 1);
+        state.headY = clamp(e.detail.y, -1, 1);
+        state.dirty = true;
+      });
+      tracker.addEventListener("started", () => status("head"));
+      tracker.addEventListener("stopped", () => status("mouse"));
+      tracker.addEventListener("calibrated", () => status("head calibrated"));
+      tracker.addEventListener("fps", (e) => {
+        if (state.mode === "head") status(`head ${e.detail.fps.toFixed(0)} fps`);
+      });
+
+      // --- UI wiring ---
+      mouseBtn.onclick = async () => {
+        state.mode = "mouse";
+        state.pointerX = DROP_CX;
+        state.pointerY = DROP_CY;
+        tracker.stop();
+        video.style.display = "none";
+        status("mouse");
+        state.dirty = true;
+      };
+
+      headBtn.onclick = async () => {
+        try {
+          await ensureCamera(video);
+          video.style.display = "block";
+          state.mode = "head";
+          await tracker.start();
+          status("head");
+          state.dirty = true;
+        } catch (err) {
+          status("camera denied");
+          console.error(err);
+        }
+      };
+
+      calBtn.onclick = () => {
+        if (state.mode === "head") tracker.calibrate();
+      };
+
+      // --- Render loop ---
+      tick();
+      function tick() {
+        if (state.dirty) {
+          renderFrame(getViewShift());
+          state.dirty = false;
+        }
+        requestAnimationFrame(tick);
+      }
+
+      function getViewShift() {
+        if (state.mode === "head") {
+          return {
+            x: state.headX * HEAD_GAIN_X,
+            y: state.headY * HEAD_GAIN_Y,
+          };
+        }
+        return {
+          x: clamp((state.pointerX - DROP_CX) / a, -1, 1) * CAMERA_SHIFT_MAX,
+          y: clamp((state.pointerY - DROP_CY) / a, -1, 1) * CAMERA_SHIFT_MAX,
+        };
+      }
+
+      function renderFrame(viewShift) {
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            const dx = x - DROP_CX;
+            const dy = y - DROP_CY;
+            const r2 = dx * dx + dy * dy;
+            const i = (y * W + x) * 4;
+
+            if (r2 <= a * a) {
+              const z = capHeight(r2, R, h);
+              const nx = dx / R;
+              const ny = dy / R;
+              const strength = (z / h) * REFRACT_SCALE;
+              const sx = x - nx * strength + viewShift.x;
+              const sy = y - ny * strength + viewShift.y;
+              const si = (clampInt(sy, 0, H - 1) * W + clampInt(sx, 0, W - 1)) * 4;
+              out.data[i] = src.data[si];
+              out.data[i + 1] = src.data[si + 1];
+              out.data[i + 2] = src.data[si + 2];
+              out.data[i + 3] = 255;
+            } else {
+              out.data[i] = src.data[i];
+              out.data[i + 1] = src.data[i + 1];
+              out.data[i + 2] = src.data[i + 2];
+              out.data[i + 3] = 255;
+            }
+          }
+        }
+        ctx.putImageData(out, 0, 0);
+      }
+
+      function status(text) {
+        statusEl.textContent = text;
+      }
+
+      // low-level pure functions
+      function capHeight(r2, R, h) {
+        return Math.sqrt(R * R - r2) - (R - h);
+      }
+      function clamp(v, min, max) {
+        return v < min ? min : v > max ? max : v;
+      }
+      function clampInt(v, min, max) {
+        return v < min ? min : v > max ? max : v | 0;
+      }
+      async function ensureCamera(video) {
+        if (video.srcObject) return;
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        video.srcObject = stream;
+        await video.play();
+      }
+    </script>
+  </body>
+</html>
