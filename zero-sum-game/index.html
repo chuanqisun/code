@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #000;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      const N = 8;
+      const ANIM_DURATION = 200;
+      const RAISE_DELAY = 200;
+
+      const committedHeight = Array.from({ length: N }, () => new Array(N).fill(0));
+      for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) committedHeight[x][y] = Math.max(1, N - Math.max(x, y));
+
+      const displayHeight = Array.from({ length: N }, (_, x) => Array.from({ length: N }, (_, y) => committedHeight[x][y]));
+
+      const locked = Array.from({ length: N }, () => new Array(N).fill(false));
+      const animations = [];
+
+      function easeOutQuart(t) {
+        return 1 - Math.pow(1 - t, 4);
+      }
+
+      function dh(x, y) {
+        if (x < 0 || x >= N || y < 0 || y >= N) return 0;
+        return displayHeight[x][y];
+      }
+
+      function tryMutate() {
+        const removable = [];
+        for (let x = 0; x < N; x++) for (let y = 0; y < N; y++) if (!locked[x][y] && committedHeight[x][y] > 1) removable.push({ x, y });
+
+        if (removable.length === 0) return false;
+
+        for (let i = removable.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [removable[i], removable[j]] = [removable[j], removable[i]];
+        }
+
+        for (const rem of removable) {
+          const remH = committedHeight[rem.x][rem.y];
+
+          committedHeight[rem.x][rem.y] = remH - 1;
+
+          const placeable = [];
+          for (let x = 0; x < N; x++)
+            for (let y = 0; y < N; y++) {
+              if (x === rem.x && y === rem.y) continue;
+              if (locked[x][y]) continue;
+              if (committedHeight[x][y] < N) placeable.push({ x, y });
+            }
+
+          if (placeable.length > 0) {
+            const pi = Math.floor(Math.random() * placeable.length);
+            const plc = placeable[pi];
+            const plcOldH = committedHeight[plc.x][plc.y];
+
+            committedHeight[plc.x][plc.y] = plcOldH + 1;
+
+            locked[rem.x][rem.y] = true;
+            locked[plc.x][plc.y] = true;
+
+            const now = performance.now();
+
+            animations.push({
+              x: rem.x,
+              y: rem.y,
+              from: remH,
+              to: remH - 1,
+              startTime: now,
+              duration: ANIM_DURATION,
+            });
+
+            animations.push({
+              x: plc.x,
+              y: plc.y,
+              from: plcOldH,
+              to: plcOldH + 1,
+              startTime: now + ANIM_DURATION + RAISE_DELAY,
+              duration: ANIM_DURATION,
+            });
+
+            return true;
+          }
+
+          committedHeight[rem.x][rem.y] = remH;
+        }
+
+        return false;
+      }
+
+      function tryMutateAt(tx, ty) {
+        if (locked[tx][ty]) return false;
+        if (committedHeight[tx][ty] <= 1) return false;
+
+        const oldH = committedHeight[tx][ty];
+        committedHeight[tx][ty] = oldH - 1;
+
+        const placeable = [];
+        for (let x = 0; x < N; x++)
+          for (let y = 0; y < N; y++) {
+            if (x === tx && y === ty) continue;
+            if (locked[x][y]) continue;
+            if (committedHeight[x][y] < N) placeable.push({ x, y });
+          }
+
+        if (placeable.length === 0) {
+          committedHeight[tx][ty] = oldH;
+          return false;
+        }
+
+        const pi = Math.floor(Math.random() * placeable.length);
+        const plc = placeable[pi];
+        const plcOldH = committedHeight[plc.x][plc.y];
+        committedHeight[plc.x][plc.y] = plcOldH + 1;
+
+        locked[tx][ty] = true;
+        locked[plc.x][plc.y] = true;
+
+        const now = performance.now();
+
+        animations.push({
+          x: tx,
+          y: ty,
+          from: oldH,
+          to: oldH - 1,
+          startTime: now,
+          duration: ANIM_DURATION,
+        });
+
+        animations.push({
+          x: plc.x,
+          y: plc.y,
+          from: plcOldH,
+          to: plcOldH + 1,
+          startTime: now + ANIM_DURATION + RAISE_DELAY,
+          duration: ANIM_DURATION,
+        });
+
+        return true;
+      }
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      const aspect = window.innerWidth / window.innerHeight;
+      const viewSize = 12;
+      const camera = new THREE.OrthographicCamera(-viewSize * aspect, viewSize * aspect, viewSize, -viewSize, -100, 100);
+      camera.position.set(10, 10, 10);
+      camera.lookAt(N / 2, N / 2, N / 2);
+      camera.up.set(0, 0, 1);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(N / 2, N / 2, N / 2);
+      controls.update();
+
+      const mouseNDC = new THREE.Vector2();
+      let mouseOnScreen = false;
+      let hoveredCol = null;
+      let allColumnFaces = [];
+
+      const topMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+
+      const dotVertexShader = `
+  varying vec3 vWorldPos;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+      const dotFragmentShader = `
+  varying vec3 vWorldPos;
+  uniform float uScale;
+  uniform float uDotRadius;
+  void main() {
+    float u = vWorldPos.y;
+    float v = vWorldPos.z;
+    float cellSize = 1.0 / uScale;
+    vec2 cell = vec2(
+      fract(u / cellSize) - 0.5,
+      fract(v / cellSize) - 0.5
+    );
+    float dist = length(cell);
+    float r = uDotRadius / uScale;
+    float fw = fwidth(dist);
+    float alpha = 1.0 - smoothstep(r - fw, r + fw, dist);
+    vec3 col = mix(vec3(1.0), vec3(0.0), alpha);
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+      const dotMat = new THREE.ShaderMaterial({
+        vertexShader: dotVertexShader,
+        fragmentShader: dotFragmentShader,
+        uniforms: {
+          uScale: { value: 6.0 },
+          uDotRadius: { value: 0.8 },
+        },
+        side: THREE.DoubleSide,
+        extensions: { derivatives: true },
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+
+      const crossVertexShader = `
+  varying vec3 vWorldPos;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+      const crossFragmentShader = `
+  varying vec3 vWorldPos;
+  uniform float uSpacing;
+  uniform float uLineWidth;
+  void main() {
+    float u = vWorldPos.x;
+    float v = vWorldPos.z;
+    float d1 = u + v;
+    float d2 = u - v;
+    float m1 = abs(fract(d1 / uSpacing) - 0.5) * uSpacing;
+    float m2 = abs(fract(d2 / uSpacing) - 0.5) * uSpacing;
+    float hw = uLineWidth * 0.5;
+    float fw1 = fwidth(d1) * 0.5;
+    float fw2 = fwidth(d2) * 0.5;
+    float line1 = 1.0 - smoothstep(hw - fw1, hw + fw1, m1);
+    float line2 = 1.0 - smoothstep(hw - fw2, hw + fw2, m2);
+    float alpha = max(line1, line2);
+    vec3 col = mix(vec3(1.0), vec3(0.0), alpha);
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+      const crossMat = new THREE.ShaderMaterial({
+        vertexShader: crossVertexShader,
+        fragmentShader: crossFragmentShader,
+        uniforms: {
+          uSpacing: { value: 0.2 },
+          uLineWidth: { value: 0.02 },
+        },
+        side: THREE.DoubleSide,
+        extensions: { derivatives: true },
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+
+      const hatchVertexShader = `
+  varying vec3 vWorldPos;
+  void main() {
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+    vWorldPos = wp.xyz;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+
+      const hatchFragmentShader = `
+  varying vec3 vWorldPos;
+  uniform float uSpacing;
+  uniform float uLineWidth;
+  void main() {
+    float d = vWorldPos.x + vWorldPos.y + vWorldPos.z;
+    float m = abs(fract(d / uSpacing) - 0.5) * uSpacing;
+    float hw = uLineWidth * 0.5;
+    float fw = fwidth(d) * 0.5;
+    float line = 1.0 - smoothstep(hw - fw, hw + fw, m);
+    if (line < 0.1) discard;
+    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+  }
+`;
+
+      const hatchMat = new THREE.ShaderMaterial({
+        vertexShader: hatchVertexShader,
+        fragmentShader: hatchFragmentShader,
+        uniforms: {
+          uSpacing: { value: 0.1 },
+          uLineWidth: { value: 0.01 },
+        },
+        side: THREE.DoubleSide,
+        extensions: { derivatives: true },
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+      // Solid white bottom floor
+      const floorGeom = new THREE.PlaneGeometry(N, N);
+      const floorMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 2,
+        polygonOffsetUnits: 2,
+      });
+      const floorMesh = new THREE.Mesh(floorGeom, floorMat);
+      floorMesh.position.set(N / 2, N / 2, 0);
+      scene.add(floorMesh);
+
+      // Floor border edges
+      const floorEdgeVerts = [0, 0, 0, N, 0, 0, N, 0, 0, N, N, 0, N, N, 0, 0, N, 0, 0, N, 0, 0, 0, 0];
+      const floorEdgeGeom = new THREE.BufferGeometry();
+      floorEdgeGeom.setAttribute("position", new THREE.Float32BufferAttribute(floorEdgeVerts, 3));
+      scene.add(new THREE.LineSegments(floorEdgeGeom, edgeMat));
+
+      // Back walls (grid lines on two back walls)
+      function buildWalls() {
+        const wallMat = new THREE.LineBasicMaterial({ color: 0xaaaaaa });
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+          pts.push(0, i, 0, 0, i, N);
+          pts.push(0, 0, i, 0, N, i);
+          pts.push(i, 0, 0, i, 0, N);
+          pts.push(0, 0, i, N, 0, i);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        scene.add(new THREE.LineSegments(g, wallMat));
+      }
+
+      let topMesh = null,
+        dotMesh = null,
+        crossMesh = null,
+        edgeLines = null,
+        hoverMesh = null;
+
+      function rebuildMesh() {
+        if (topMesh) {
+          scene.remove(topMesh);
+          topMesh.geometry.dispose();
+        }
+        if (dotMesh) {
+          scene.remove(dotMesh);
+          dotMesh.geometry.dispose();
+        }
+        if (crossMesh) {
+          scene.remove(crossMesh);
+          crossMesh.geometry.dispose();
+        }
+        if (edgeLines) {
+          scene.remove(edgeLines);
+          edgeLines.geometry.dispose();
+        }
+        if (hoverMesh) {
+          scene.remove(hoverMesh);
+          hoverMesh.geometry.dispose();
+          hoverMesh = null;
+        }
+
+        const topFaces = [];
+        const dotFaces = [];
+        const crossFaces = [];
+        const allFaces = [];
+        const hoverFaces = [];
+        allColumnFaces = [];
+
+        for (let x = 0; x < N; x++) {
+          for (let y = 0; y < N; y++) {
+            const hh = displayHeight[x][y];
+            if (hh <= 1e-6) continue;
+
+            const isHovered = hoveredCol && x === hoveredCol.x && y === hoveredCol.y;
+
+            const tv = [
+              [x, y, hh],
+              [x + 1, y, hh],
+              [x + 1, y + 1, hh],
+              [x, y + 1, hh],
+            ];
+            topFaces.push({ v: tv });
+            allFaces.push({ type: "zp", v: tv });
+            if (isHovered) hoverFaces.push({ v: tv });
+            allColumnFaces.push({ col: { x, y }, v: tv });
+
+            // Bottom face at z=0 not needed since we have the floor
+
+            const dirs = [
+              {
+                dx: 1,
+                dy: 0,
+                type: "xp",
+                quad: (z0, z1) => [
+                  [x + 1, y, z0],
+                  [x + 1, y, z1],
+                  [x + 1, y + 1, z1],
+                  [x + 1, y + 1, z0],
+                ],
+              },
+              {
+                dx: -1,
+                dy: 0,
+                type: "xn",
+                quad: (z0, z1) => [
+                  [x, y, z0],
+                  [x, y + 1, z0],
+                  [x, y + 1, z1],
+                  [x, y, z1],
+                ],
+              },
+              {
+                dx: 0,
+                dy: 1,
+                type: "yp",
+                quad: (z0, z1) => [
+                  [x, y + 1, z0],
+                  [x, y + 1, z1],
+                  [x + 1, y + 1, z1],
+                  [x + 1, y + 1, z0],
+                ],
+              },
+              {
+                dx: 0,
+                dy: -1,
+                type: "yn",
+                quad: (z0, z1) => [
+                  [x, y, z0],
+                  [x + 1, y, z0],
+                  [x + 1, y, z1],
+                  [x, y, z1],
+                ],
+              },
+            ];
+
+            for (const d of dirs) {
+              const nh = dh(x + d.dx, y + d.dy);
+              if (hh > nh) {
+                const zBot = Math.max(0, nh);
+                const zTop = hh;
+                const splits = [zBot];
+                const lo = Math.ceil(zBot + 1e-9);
+                const hi = Math.floor(zTop - 1e-9);
+                for (let z = lo; z <= hi; z++) {
+                  if (z > zBot + 1e-6 && z < zTop - 1e-6) splits.push(z);
+                }
+                splits.push(zTop);
+
+                for (let i = 0; i < splits.length - 1; i++) {
+                  const z0 = splits[i],
+                    z1 = splits[i + 1];
+                  if (z1 - z0 < 1e-6) continue;
+                  const fv = d.quad(z0, z1);
+                  allFaces.push({ type: d.type, v: fv });
+                  if (d.type === "xp" || d.type === "xn") {
+                    dotFaces.push({ v: fv });
+                  } else {
+                    crossFaces.push({ v: fv });
+                  }
+                  if (isHovered) hoverFaces.push({ v: fv });
+                  allColumnFaces.push({ col: { x, y }, v: fv });
+                }
+              }
+            }
+          }
+        }
+
+        function buildGeom(faceList) {
+          const verts = [],
+            indices = [];
+          faceList.forEach((f) => {
+            const base = verts.length / 3;
+            f.v.forEach((p) => verts.push(p[0], p[1], p[2]));
+            indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+          });
+          const g = new THREE.BufferGeometry();
+          g.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+          g.setIndex(indices);
+          return g;
+        }
+
+        if (topFaces.length > 0) {
+          topMesh = new THREE.Mesh(buildGeom(topFaces), topMat);
+          scene.add(topMesh);
+        }
+
+        if (dotFaces.length > 0) {
+          dotMesh = new THREE.Mesh(buildGeom(dotFaces), dotMat);
+          scene.add(dotMesh);
+        }
+
+        if (crossFaces.length > 0) {
+          crossMesh = new THREE.Mesh(buildGeom(crossFaces), crossMat);
+          scene.add(crossMesh);
+        }
+
+        // External edges
+        const edgeMap = new Map();
+        function qv(v) {
+          return v.map((c) => Math.round(c * 1024) / 1024);
+        }
+
+        // Add floor as a face for edge detection
+        allFaces.push({
+          type: "floor",
+          v: [
+            [0, 0, 0],
+            [N, 0, 0],
+            [N, N, 0],
+            [0, N, 0],
+          ],
+        });
+
+        allFaces.forEach((f) => {
+          for (let i = 0; i < f.v.length; i++) {
+            const a = qv(f.v[i]),
+              b = qv(f.v[(i + 1) % f.v.length]);
+            const ka = a.join(","),
+              kb = b.join(",");
+            const k = ka < kb ? ka + "|" + kb : kb + "|" + ka;
+            if (!edgeMap.has(k)) edgeMap.set(k, { a, b, types: new Set() });
+            edgeMap.get(k).types.add(f.type);
+          }
+        });
+
+        const ev = [];
+        edgeMap.forEach((e) => {
+          // Skip floor-only boundary edges (the floor border is drawn separately)
+          if (e.types.size === 1 && e.types.has("floor")) return;
+          if (e.types.size > 1) {
+            ev.push(...e.a, ...e.b);
+          }
+        });
+
+        if (ev.length > 0) {
+          const eGeom = new THREE.BufferGeometry();
+          eGeom.setAttribute("position", new THREE.Float32BufferAttribute(ev, 3));
+          edgeLines = new THREE.LineSegments(eGeom, edgeMat);
+          scene.add(edgeLines);
+        }
+
+        if (hoverFaces.length > 0) {
+          hoverMesh = new THREE.Mesh(buildGeom(hoverFaces), hatchMat);
+          scene.add(hoverMesh);
+        }
+      }
+
+      renderer.domElement.addEventListener("pointermove", (e) => {
+        mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        mouseOnScreen = true;
+      });
+      renderer.domElement.addEventListener("pointerleave", () => {
+        mouseOnScreen = false;
+        hoveredCol = null;
+      });
+
+      let clickStart = null;
+      let autoInterval = setInterval(() => tryMutate(), 2 * (ANIM_DURATION + RAISE_DELAY));
+
+      function stopAutoAnimate() {
+        if (autoInterval !== null) {
+          clearInterval(autoInterval);
+          autoInterval = null;
+        }
+      }
+
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        mouseNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
+        mouseNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        mouseOnScreen = true;
+        updateHover();
+        clickStart = { x: e.clientX, y: e.clientY };
+      });
+      renderer.domElement.addEventListener("pointerup", (e) => {
+        if (!clickStart) return;
+        if (Math.hypot(e.clientX - clickStart.x, e.clientY - clickStart.y) < 5) {
+          if (hoveredCol) {
+            stopAutoAnimate();
+            tryMutateAt(hoveredCol.x, hoveredCol.y);
+          }
+        }
+        clickStart = null;
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          stopAutoAnimate();
+          tryMutate();
+        }
+      });
+
+      window.addEventListener("resize", () => {
+        const a = window.innerWidth / window.innerHeight;
+        camera.left = -viewSize * a;
+        camera.right = viewSize * a;
+        camera.top = viewSize;
+        camera.bottom = -viewSize;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      function updateAnimations(now) {
+        for (let i = animations.length - 1; i >= 0; i--) {
+          const a = animations[i];
+          const elapsed = now - a.startTime;
+          if (elapsed < 0) {
+            displayHeight[a.x][a.y] = a.from;
+            continue;
+          }
+          const t = Math.min(elapsed / a.duration, 1);
+          displayHeight[a.x][a.y] = a.from + (a.to - a.from) * easeOutQuart(t);
+          if (t >= 1) {
+            displayHeight[a.x][a.y] = a.to;
+            locked[a.x][a.y] = false;
+            animations.splice(i, 1);
+          }
+        }
+      }
+
+      buildWalls();
+
+      const _projV = new THREE.Vector3();
+      const _vpMat = new THREE.Matrix4();
+      const _pts2d = [
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+        { x: 0, y: 0 },
+      ];
+
+      function pointInPolygon(px, py, pts) {
+        let inside = false;
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+          const xi = pts[i].x,
+            yi = pts[i].y;
+          const xj = pts[j].x,
+            yj = pts[j].y;
+          if (yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+            inside = !inside;
+          }
+        }
+        return inside;
+      }
+
+      function updateHover() {
+        if (!mouseOnScreen) {
+          hoveredCol = null;
+          return;
+        }
+        if (allColumnFaces.length === 0) {
+          hoveredCol = null;
+          return;
+        }
+
+        _vpMat.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+
+        let bestCol = null;
+        let bestDepth = Infinity;
+
+        for (const f of allColumnFaces) {
+          let depthSum = 0;
+          for (let i = 0; i < 4; i++) {
+            const p = f.v[i];
+            _projV.set(p[0], p[1], p[2]).applyMatrix4(_vpMat);
+            _pts2d[i].x = _projV.x;
+            _pts2d[i].y = _projV.y;
+            depthSum += _projV.z;
+          }
+          const depth = depthSum * 0.25;
+          if (depth < bestDepth && pointInPolygon(mouseNDC.x, mouseNDC.y, _pts2d)) {
+            bestDepth = depth;
+            bestCol = f.col;
+          }
+        }
+
+        hoveredCol = bestCol;
+      }
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        updateAnimations(now);
+        updateHover();
+        rebuildMesh();
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate(performance.now());
+    </script>
+  </body>
+</html>
