@@ -101,7 +101,9 @@
     <script type="module">
       // ─── IMPORTS ──────────────────────────────────────────────────
       import { FONT, measureCharWidth, placeCaretEnd, createBox as createBoxEl } from "./edit.js";
+      import { createEventBus } from "./events.js";
       import { INITIAL_BOTS, ecologyLoop } from "./pool.js";
+      import { initSound } from "./sound.js";
       import { Bot } from "./bot.js";
 
       // ─── LOCAL HELPERS ────────────────────────────────────────────
@@ -112,6 +114,8 @@
       // ─── DOM REFS & STATE ─────────────────────────────────────────
       const workspace = document.getElementById("workspace");
       const cursorLayer = document.getElementById("cursorLayer");
+      const eventBus = createEventBus();
+      initSound(eventBus);
       const boxes = [];
       const bots = new Map();
       let boxSeq = 0;
@@ -120,13 +124,13 @@
 
       // ─── BOX CREATION WRAPPER ─────────────────────────────────────
       function createBox(left, top, text) {
-        const box = createBoxEl(++boxSeq, left, top, text, workspace);
+        const box = createBoxEl(++boxSeq, left, top, text, workspace, eventBus);
         boxes.push(box);
         return box;
       }
 
       // ─── BOT CONTEXT ──────────────────────────────────────────────
-      const botCtx = { boxes, cursorLayer, charW: CHAR_W, wsRect, createBox };
+      const botCtx = { boxes, cursorLayer, charW: CHAR_W, wsRect, createBox, eventBus };
 
       // ─── MAIN LOOPS ──────────────────────────────────────────────
       function spawnBot() {

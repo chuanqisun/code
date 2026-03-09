@@ -1,53 +1,27 @@
 import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
-import { PAD_X, acquireBox, canBotUseBox, findOpenSpot, getText, isHumanFocusedBox, pagePointForIndex, releaseBox, replaceRange, showClick } from "./edit.js";
-import { appendChunk, insertChunk, pickRange, randomPhrase, randomWords } from "./linguistics.js";
-import { moveHumanLike, randomEdgePoint } from "./movement.js";
+import { PAD_X, acquireBox, getText, isHumanFocusedBox, releaseBox } from "./edit.js";
+import { Executor } from "./executor.js";
+import { pickRange, randomWords } from "./linguistics.js";
+import { randomEdgePoint } from "./movement.js";
+import { RandomPlanner } from "./planner.js";
 import { BOT_LIFETIME_MAX, BOT_LIFETIME_MIN, BOT_RETIRE_CHECK_CHANCE } from "./pool.js";
-import {
-  ACTION_PAUSE_MAX,
-  ACTION_PAUSE_MIN,
-  BS_HESITATE_CHANCE,
-  BS_HESITATE_MAX,
-  BS_HESITATE_MIN,
-  BS_MAX,
-  BS_MIN,
-  CARET_SETTLE_MAX,
-  CARET_SETTLE_MIN,
-  DRAG_PAUSE_CHANCE,
-  DRAG_PAUSE_MAX,
-  DRAG_PAUSE_MIN,
-  DRAG_STEP_MAX,
-  DRAG_STEP_MIN,
-  SETTLE_AFTER_CLICK_MAX,
-  SETTLE_AFTER_CLICK_MIN,
-  SETTLE_BEFORE_CLICK_MAX,
-  SETTLE_BEFORE_CLICK_MIN,
-  humanKeyDelay,
-  sleep,
-} from "./scheduler.js";
+import { ACTION_PAUSE_MAX, ACTION_PAUSE_MIN, sleep } from "./scheduler.js";
 
 // ─── LOCAL HELPERS ────────────────────────────────────────────
 function rand(min, max) {
   return min + Math.random() * (max - min);
 }
-function clamp(v, a, b) {
-  return Math.max(a, Math.min(b, v));
-}
-function choice(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
 function chance(p) {
   return Math.random() < p;
 }
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
 
 // ─── BOT CLASS ────────────────────────────────────────────────
+// The bot is a cursor agent + lifecycle shell.
+// Planning is delegated to the Planner; execution to the Executor.
 export class Bot {
   /**
    * @param {number} id
-   * @param {{ boxes: Array, cursorLayer: HTMLElement, charW: number, wsRect: () => DOMRect, createBox: (x:number,y:number,text:string) => object }} ctx
+   * @param {{ boxes: Array, cursorLayer: HTMLElement, charW: number, wsRect: () => DOMRect, createBox: (x:number,y:number,text:string) => object, eventBus: object }} ctx
    */
   constructor(id, ctx) {
     this.id = id;
@@ -71,9 +45,13 @@ export class Bot {
     this.caretEl = document.createElement("div");
     this.caretEl.className = "bot-caret";
     this.overlayBox = null;
+
+    this.exec = new Executor(this, ctx);
+    this.planner = new RandomPlanner();
     this.updateCursor();
   }
 
+  // ─── Cursor agent interface ─────────────────────────────────
   updateCursor() {
     this.cursor.style.transform = `translate(${this.x}px,${this.y}px)`;
   }
@@ -123,113 +101,54 @@ export class Bot {
     this.selEl.style.width = Math.max(1, this.ctx.charW * (end - start)) + "px";
   }
 
-  async moveTo(x, y, precision) {
-    await moveHumanLike(this, x, y, precision);
+  // ─── Box lookup ─────────────────────────────────────────────
+  _findBox(boxId) {
+    return this.ctx.boxes.find((b) => b.id === boxId);
   }
 
-  async clickAt(x, y) {
-    this.setMode("arrow");
-    await this.moveTo(x, y, "click");
-    await sleep(rand(SETTLE_BEFORE_CLICK_MIN, SETTLE_BEFORE_CLICK_MAX));
-    showClick(x, y, this.ctx.cursorLayer);
-    await sleep(rand(SETTLE_AFTER_CLICK_MIN, SETTLE_AFTER_CLICK_MAX));
-  }
-
-  async placeCaret(box, index) {
-    if (!box.el.isConnected) return;
-    const p = pagePointForIndex(box, index, this.ctx.charW);
-    this.setMode("arrow");
-    await this.moveTo(p.x, p.y, "text");
-    await sleep(rand(SETTLE_BEFORE_CLICK_MIN, SETTLE_BEFORE_CLICK_MAX));
-    this.setMode("ibeam");
-    showClick(p.x, p.y, this.ctx.cursorLayer);
-    this.showCaret(box, index);
-    await sleep(rand(CARET_SETTLE_MIN, CARET_SETTLE_MAX));
-  }
-
-  async dragSelect(box, start, end) {
-    if (!box.el.isConnected) return;
-    if (end < start) [start, end] = [end, start];
-    const p0 = pagePointForIndex(box, start, this.ctx.charW);
-    this.setMode("ibeam");
-    await this.moveTo(p0.x, p0.y, "text");
-    await sleep(rand(10, 35));
-    showClick(p0.x, p0.y, this.ctx.cursorLayer);
-    await sleep(rand(15, 40));
-
-    const steps = Math.max(8, (end - start) * 3);
-    for (let i = 0; i <= steps; i++) {
-      if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      const t = i / steps;
-      const skew = t < 0.2 ? t * 1.8 : t < 0.75 ? 0.36 + (t - 0.2) * 0.9 : 0.86 + (t - 0.75) * 0.56;
-      const idx = Math.round(start + (end - start) * clamp(skew, 0, 1));
-      const p = pagePointForIndex(box, idx, this.ctx.charW);
-      this.x = lerp(this.x, p.x, rand(0.6, 1));
-      this.y = lerp(this.y, p.y, rand(0.6, 1));
-      this.updateCursor();
-      this.showSelection(box, start, idx);
-      if (chance(DRAG_PAUSE_CHANCE)) await sleep(rand(DRAG_PAUSE_MIN, DRAG_PAUSE_MAX));
-      await sleep(rand(DRAG_STEP_MIN, DRAG_STEP_MAX));
+  // ─── Command execution ─────────────────────────────────────
+  async executeCommand(cmd) {
+    switch (cmd.type) {
+      case "move":
+        return this._execMove(cmd);
+      case "create":
+        return this._execCreate(cmd);
+      case "append":
+        return this._execAppend(cmd);
+      case "insert":
+        return this._execInsert(cmd);
+      case "replace":
+        return this._execReplace(cmd);
+      case "delete":
+        return this._execDelete(cmd);
+      case "backspace":
+        return this._execBackspace(cmd);
     }
-    this.showSelection(box, start, end);
-    await sleep(rand(30, 70));
   }
 
-  async typeInto(box, index, text) {
-    let pos = index;
-    let prev = "";
-    this.setMode("ibeam");
-    this.showCaret(box, pos);
-    for (const ch of text) {
-      if (this.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
-      pos = replaceRange(box, pos, pos, ch);
-      this.showCaret(box, pos);
-      await sleep(humanKeyDelay(ch, prev));
-      prev = ch;
-    }
-    return pos;
-  }
-
-  async backspace(box, index, count) {
-    let pos = index;
-    this.setMode("ibeam");
-    this.showCaret(box, pos);
-    for (let i = 0; i < count; i++) {
-      if (this.retiring || !box.el.isConnected || isHumanFocusedBox(box) || pos <= 0) break;
-      pos = replaceRange(box, pos - 1, pos, "");
-      this.showCaret(box, pos);
-      let ms = rand(BS_MIN, BS_MAX);
-      if (chance(BS_HESITATE_CHANCE)) ms += rand(BS_HESITATE_MIN, BS_HESITATE_MAX);
-      await sleep(ms);
-    }
-    return pos;
-  }
-
-  async taskMoveOnly() {
-    const r = this.ctx.wsRect();
+  async _execMove(cmd) {
     this.setMode("arrow");
-    await this.moveTo(rand(r.left + 10, r.right - 20), rand(r.top + 10, r.bottom - 20), "travel");
+    await this.exec.moveTo(cmd.x, cmd.y, "travel");
     await sleep(rand(40, 180));
   }
 
-  async taskCreate() {
-    const { boxes, wsRect, createBox } = this.ctx;
-    const spot = findOpenSpot(boxes, wsRect());
+  async _execCreate(cmd) {
+    const { wsRect, createBox } = this.ctx;
     const r = wsRect();
-    await this.clickAt(r.left + spot.x, r.top + spot.y);
-    const box = createBox(spot.x, spot.y, "");
+    await this.exec.clickAt(r.left + cmd.x, r.top + cmd.y);
+    const box = createBox(cmd.x, cmd.y, "");
     if (!acquireBox(box, this.id)) return;
     try {
       await sleep(rand(20, 80));
-      await this.placeCaret(box, 0);
-      await this.typeInto(box, 0, randomPhrase(1, chance(0.5) ? 2 : 4));
+      await this.exec.placeCaret(box, 0);
+      await this.exec.typeInto(box, 0, cmd.text);
       if (chance(0.25) && getText(box).length > 3) {
         const [a, b] = pickRange(getText(box));
-        await this.dragSelect(box, a, b);
-        replaceRange(box, a, b, "");
+        await this.exec.dragSelect(box, a, b);
+        this.exec.deleteRange(box, a, b);
         this.showCaret(box, a);
         await sleep(rand(30, 70));
-        if (chance(0.7)) await this.typeInto(box, a, randomWords(1, 2));
+        if (chance(0.7)) await this.exec.typeInto(box, a, randomWords(1, 2));
       }
     } finally {
       releaseBox(box, this.id);
@@ -238,16 +157,13 @@ export class Bot {
     }
   }
 
-  async taskAppend() {
-    const { boxes } = this.ctx;
-    const pool = boxes.filter((b) => canBotUseBox(b, this.id));
-    if (!pool.length) return this.taskCreate();
-    const box = choice(pool);
-    if (!acquireBox(box, this.id)) return;
+  async _execAppend(cmd) {
+    const box = this._findBox(cmd.boxId);
+    if (!box || !acquireBox(box, this.id)) return;
     try {
       const t = getText(box);
-      await this.placeCaret(box, t.length);
-      await this.typeInto(box, t.length, appendChunk(t));
+      await this.exec.placeCaret(box, t.length);
+      await this.exec.typeInto(box, t.length, cmd.text);
     } finally {
       releaseBox(box, this.id);
       this.hideOverlay();
@@ -255,17 +171,12 @@ export class Bot {
     }
   }
 
-  async taskInsert() {
-    const { boxes } = this.ctx;
-    const pool = boxes.filter((b) => canBotUseBox(b, this.id));
-    if (!pool.length) return this.taskCreate();
-    const box = choice(pool);
-    if (!acquireBox(box, this.id)) return;
+  async _execInsert(cmd) {
+    const box = this._findBox(cmd.boxId);
+    if (!box || !acquireBox(box, this.id)) return;
     try {
-      const t = getText(box);
-      const index = t.length ? Math.floor(rand(0, t.length + 1)) : 0;
-      await this.placeCaret(box, index);
-      await this.typeInto(box, index, insertChunk());
+      await this.exec.placeCaret(box, cmd.index);
+      await this.exec.typeInto(box, cmd.index, cmd.text);
     } finally {
       releaseBox(box, this.id);
       this.hideOverlay();
@@ -273,20 +184,16 @@ export class Bot {
     }
   }
 
-  async taskReplace() {
-    const { boxes } = this.ctx;
-    const pool = boxes.filter((b) => canBotUseBox(b, this.id) && getText(b).length > 2);
-    if (!pool.length) return this.taskAppend();
-    const box = choice(pool);
-    if (!acquireBox(box, this.id)) return;
+  async _execReplace(cmd) {
+    const box = this._findBox(cmd.boxId);
+    if (!box || !acquireBox(box, this.id)) return;
     try {
-      const [a, b] = pickRange(getText(box));
-      await this.dragSelect(box, a, b);
+      await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      replaceRange(box, a, b, "");
-      this.showCaret(box, a);
+      this.exec.deleteRange(box, cmd.start, cmd.end);
+      this.showCaret(box, cmd.start);
       await sleep(rand(30, 70));
-      await this.typeInto(box, a, randomWords(1, chance(0.5) ? 1 : 2));
+      await this.exec.typeInto(box, cmd.start, cmd.text);
     } finally {
       releaseBox(box, this.id);
       this.hideOverlay();
@@ -294,18 +201,14 @@ export class Bot {
     }
   }
 
-  async taskDeleteSelection() {
-    const { boxes } = this.ctx;
-    const pool = boxes.filter((b) => canBotUseBox(b, this.id) && getText(b).length > 1);
-    if (!pool.length) return this.taskAppend();
-    const box = choice(pool);
-    if (!acquireBox(box, this.id)) return;
+  async _execDelete(cmd) {
+    const box = this._findBox(cmd.boxId);
+    if (!box || !acquireBox(box, this.id)) return;
     try {
-      const [a, b] = pickRange(getText(box));
-      await this.dragSelect(box, a, b);
+      await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      replaceRange(box, a, b, "");
-      this.showCaret(box, a);
+      this.exec.deleteRange(box, cmd.start, cmd.end);
+      this.showCaret(box, cmd.start);
       await sleep(rand(40, 90));
     } finally {
       releaseBox(box, this.id);
@@ -314,17 +217,12 @@ export class Bot {
     }
   }
 
-  async taskBackspace() {
-    const { boxes } = this.ctx;
-    const pool = boxes.filter((b) => canBotUseBox(b, this.id) && getText(b).length > 0);
-    if (!pool.length) return this.taskAppend();
-    const box = choice(pool);
-    if (!acquireBox(box, this.id)) return;
+  async _execBackspace(cmd) {
+    const box = this._findBox(cmd.boxId);
+    if (!box || !acquireBox(box, this.id)) return;
     try {
-      const t = getText(box);
-      const index = chance(0.6) ? t.length : Math.floor(rand(1, t.length + 1));
-      await this.placeCaret(box, index);
-      await this.backspace(box, index, Math.max(1, Math.floor(rand(1, Math.min(4, index) + 1))));
+      await this.exec.placeCaret(box, cmd.index);
+      await this.exec.backspace(box, cmd.index, cmd.count);
     } finally {
       releaseBox(box, this.id);
       this.hideOverlay();
@@ -332,29 +230,12 @@ export class Bot {
     }
   }
 
-  async takeAction() {
-    const { boxes } = this.ctx;
-    const usable = boxes.filter((b) => canBotUseBox(b, this.id));
-    const filled = usable.filter((b) => getText(b).length > 0);
-    const actions = ["move"];
-    if (boxes.length < 4 || chance(0.25)) actions.push("create");
-    if (usable.length) actions.push("append", "insert");
-    if (filled.length) actions.push("replace", "delete", "backspace", "append");
-    const action = choice(actions);
-    if (action === "create") return this.taskCreate();
-    if (action === "append") return this.taskAppend();
-    if (action === "insert") return this.taskInsert();
-    if (action === "replace") return this.taskReplace();
-    if (action === "delete") return this.taskDeleteSelection();
-    if (action === "backspace") return this.taskBackspace();
-    return this.taskMoveOnly();
-  }
-
+  // ─── Lifecycle ──────────────────────────────────────────────
   async depart() {
     this.hideOverlay();
     this.setMode("arrow");
     const p = randomEdgePoint(this.ctx.wsRect());
-    await this.moveTo(p.x, p.y, "travel");
+    await this.exec.moveTo(p.x, p.y, "travel");
     this.cursor.remove();
     this.selEl.remove();
     this.caretEl.remove();
@@ -368,7 +249,12 @@ export class Bot {
       }
       await sleep(rand(ACTION_PAUSE_MIN, ACTION_PAUSE_MAX));
       try {
-        await this.takeAction();
+        const cmd = this.planner.plan({
+          boxes: this.ctx.boxes,
+          botId: this.id,
+          wsRect: this.ctx.wsRect,
+        });
+        await this.executeCommand(cmd);
       } catch (_) {}
     }
     try {

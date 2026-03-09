@@ -116,9 +116,51 @@ export function scrubEditable(el) {
   }
 }
 
+// ─── Human input helpers ────────────────────────────────────────
+// Resolve the current caret/selection offset within a contentEditable element.
+function getSelectionOffsets(el) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return null;
+  const range = sel.getRangeAt(0);
+  // Walk text nodes to compute character offsets
+  function offsetIn(container, node, off) {
+    let count = 0;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      if (walker.currentNode === node) return count + off;
+      count += walker.currentNode.length;
+    }
+    return count;
+  }
+  const start = offsetIn(el, range.startContainer, range.startOffset);
+  const end = offsetIn(el, range.endContainer, range.endOffset);
+  return { start, end };
+}
+
+function setCaretOffset(el, offset) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let pos = 0;
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (pos + node.length >= offset) {
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.setStart(node, offset - pos);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return;
+    }
+    pos += node.length;
+  }
+  // Fallback: place at end
+  placeCaretEnd(el);
+}
+
 // ─── Box creation ───────────────────────────────────────────────
 // Returns a box object. Caller is responsible for tracking it (e.g. pushing to an array).
-export function createBox(id, left, top, text, workspace) {
+// eventBus is optional — when provided, human edits emit the same "edit" events as bot edits.
+export function createBox(id, left, top, text, workspace, eventBus) {
   const r = workspace.getBoundingClientRect();
   left = clamp(left, 6, Math.max(6, r.width - 40));
   top = clamp(top, 6, Math.max(6, r.height - 36));
@@ -138,14 +180,83 @@ export function createBox(id, left, top, text, workspace) {
   box.textEl.spellcheck = false;
   box.textEl.textContent = text || "";
   box.overlayEl.className = "overlay";
+
+  // ─── Unified input interceptor ──────────────────────────────
   box.textEl.addEventListener("beforeinput", (e) => {
-    if (e.inputType === "insertParagraph") e.preventDefault();
+    // Block newlines
+    if (e.inputType === "insertParagraph") {
+      e.preventDefault();
+      return;
+    }
+
+    const offsets = getSelectionOffsets(box.textEl);
+    if (!offsets) return;
+
+    // Handle the input types we care about
+    if (e.inputType === "insertText" || e.inputType === "insertCompositionText") {
+      const insertText = normalizeText(e.data || "");
+      if (!insertText) return;
+      e.preventDefault();
+      const newPos = replaceRange(box, offsets.start, offsets.end, insertText);
+      setCaretOffset(box.textEl, newPos);
+      eventBus?.emit("edit", { boxId: box.id, start: offsets.start, end: offsets.end, text: insertText, newPos });
+      return;
+    }
+
+    if (e.inputType === "deleteContentBackward") {
+      e.preventDefault();
+      const start = offsets.start === offsets.end ? Math.max(0, offsets.start - 1) : Math.min(offsets.start, offsets.end);
+      const end = Math.max(offsets.start, offsets.end);
+      if (start === end) return;
+      const newPos = replaceRange(box, start, end, "");
+      setCaretOffset(box.textEl, newPos);
+      eventBus?.emit("edit", { boxId: box.id, start, end, text: "", newPos });
+      return;
+    }
+
+    if (e.inputType === "deleteContentForward") {
+      e.preventDefault();
+      const start = Math.min(offsets.start, offsets.end);
+      const end = offsets.start === offsets.end ? Math.min(getText(box).length, offsets.end + 1) : Math.max(offsets.start, offsets.end);
+      if (start === end) return;
+      const newPos = replaceRange(box, start, end, "");
+      setCaretOffset(box.textEl, newPos);
+      eventBus?.emit("edit", { boxId: box.id, start, end, text: "", newPos });
+      return;
+    }
+
+    if (
+      e.inputType === "deleteByCut" ||
+      e.inputType === "deleteWordBackward" ||
+      e.inputType === "deleteWordForward" ||
+      e.inputType === "deleteSoftLineBackward" ||
+      e.inputType === "deleteSoftLineForward"
+    ) {
+      e.preventDefault();
+      const start = Math.min(offsets.start, offsets.end);
+      const end = Math.max(offsets.start, offsets.end);
+      if (start === end) return;
+      const newPos = replaceRange(box, start, end, "");
+      setCaretOffset(box.textEl, newPos);
+      eventBus?.emit("edit", { boxId: box.id, start, end, text: "", newPos });
+      return;
+    }
+
+    if (e.inputType === "insertFromPaste" || e.inputType === "insertFromDrop") {
+      e.preventDefault();
+      const raw = e.dataTransfer ? e.dataTransfer.getData("text/plain") : "";
+      const insertText = normalizeText(raw);
+      if (!insertText) return;
+      const newPos = replaceRange(box, offsets.start, offsets.end, insertText);
+      setCaretOffset(box.textEl, newPos);
+      eventBus?.emit("edit", { boxId: box.id, start: offsets.start, end: offsets.end, text: insertText, newPos });
+      return;
+    }
   });
-  box.textEl.addEventListener("paste", (e) => {
-    e.preventDefault();
-    insertTextAtSelection(normalizeText((e.clipboardData || window.clipboardData).getData("text")));
-  });
+
+  // Fallback scrub: catch anything the interceptor missed (e.g. composition edge cases)
   box.textEl.addEventListener("input", () => scrubEditable(box.textEl));
+
   box.el.appendChild(box.textEl);
   box.el.appendChild(box.overlayEl);
   workspace.appendChild(box.el);
