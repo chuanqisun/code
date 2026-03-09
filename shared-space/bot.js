@@ -230,7 +230,11 @@ export class Bot {
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
       // Rebase range through any concurrent edits during dragSelect
-      let [s, e] = ver !== box.doc.version ? box.doc.xfRange(cmd.start, cmd.end, ver) : [cmd.start, cmd.end];
+      let s = cmd.start;
+      let e = cmd.end;
+      if (ver !== box.doc.version) {
+        [s, e] = box.doc.xfRange(cmd.start, cmd.end, ver);
+      }
       const pos = this.exec.deleteRange(box, s, e);
       const ver2 = box.doc.version;
       this.showCaret(box, pos);
@@ -255,7 +259,11 @@ export class Bot {
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
       // Rebase range through any concurrent edits during dragSelect
-      let [s, e] = ver !== box.doc.version ? box.doc.xfRange(cmd.start, cmd.end, ver) : [cmd.start, cmd.end];
+      let s = cmd.start;
+      let e = cmd.end;
+      if (ver !== box.doc.version) {
+        [s, e] = box.doc.xfRange(cmd.start, cmd.end, ver);
+      }
       const pos = this.exec.deleteRange(box, s, e);
       this.showCaret(box, pos);
       await sleep(rand(40, 90));
