@@ -1,6 +1,8 @@
 // ─── edit.js ─── Text editing and DOM binding ───────────────────
-// Handles box creation, text manipulation, locking, caret/selection visuals.
+// Handles box creation, text manipulation, caret/selection visuals.
 // Functions receive DOM elements as parameters — no module-level globals.
+
+import { Doc } from "./document.js";
 
 // ─── Local helpers ──────────────────────────────────────────────
 function rand(min, max) {
@@ -30,20 +32,19 @@ export function measureCharWidth(font) {
 
 // ─── Text access ────────────────────────────────────────────────
 export function getText(box) {
-  return box.textEl.textContent || "";
+  return box.doc.text;
 }
 
 export function setText(box, text) {
-  box.textEl.textContent = normalizeText(text);
+  box.doc.text = normalizeText(text);
+  box.textEl.textContent = box.doc.text;
 }
 
-export function replaceRange(box, start, end, insertText) {
-  const t = getText(box);
-  start = clamp(start, 0, t.length);
-  end = clamp(end, 0, t.length);
-  if (end < start) [start, end] = [end, start];
-  setText(box, t.slice(0, start) + insertText + t.slice(end));
-  return start + insertText.length;
+/** Apply an edit through the Doc (OT-aware). Returns new cursor position. */
+export function applyEdit(box, start, end, insertText) {
+  const newPos = box.doc.apply(start, end, insertText);
+  box.textEl.textContent = box.doc.text;
+  return newPos;
 }
 
 // ─── Caret / index positioning ─────────────────────────────────
@@ -54,24 +55,15 @@ export function pagePointForIndex(box, index, charW) {
   return { x: rect.left + PAD_X + charW * index + 1, y: rect.top + PAD_Y + LINE_H * 0.55 };
 }
 
-// ─── Box locking ────────────────────────────────────────────────
+// ─── Box access ─────────────────────────────────────────────────
 export function isHumanFocusedBox(box) {
   const ae = document.activeElement;
   return !!(ae && ae.closest && ae.closest(".box") === box.el);
 }
 
-export function canBotUseBox(box, botId) {
-  return box && box.el.isConnected && !isHumanFocusedBox(box) && (!box.lock || box.lock === botId);
-}
-
-export function acquireBox(box, botId) {
-  if (!canBotUseBox(box, botId)) return false;
-  box.lock = botId;
-  return true;
-}
-
-export function releaseBox(box, botId) {
-  if (box && box.lock === botId) box.lock = null;
+/** Check if a bot can interact with a box (connected and not human-focused). */
+export function canBotUseBox(box) {
+  return box && box.el.isConnected && !isHumanFocusedBox(box);
 }
 
 // ─── Visual feedback ────────────────────────────────────────────
@@ -166,7 +158,7 @@ export function createBox(id, left, top, text, workspace, eventBus) {
   top = clamp(top, 6, Math.max(6, r.height - 36));
   const box = {
     id,
-    lock: null,
+    doc: new Doc(normalizeText(text || "")),
     el: document.createElement("div"),
     textEl: document.createElement("div"),
     overlayEl: document.createElement("div"),
@@ -197,7 +189,7 @@ export function createBox(id, left, top, text, workspace, eventBus) {
       const insertText = normalizeText(e.data || "");
       if (!insertText) return;
       e.preventDefault();
-      const newPos = replaceRange(box, offsets.start, offsets.end, insertText);
+      const newPos = applyEdit(box, offsets.start, offsets.end, insertText);
       setCaretOffset(box.textEl, newPos);
       eventBus?.emit("edit", { boxId: box.id, start: offsets.start, end: offsets.end, text: insertText, newPos });
       return;
@@ -208,7 +200,7 @@ export function createBox(id, left, top, text, workspace, eventBus) {
       const start = offsets.start === offsets.end ? Math.max(0, offsets.start - 1) : Math.min(offsets.start, offsets.end);
       const end = Math.max(offsets.start, offsets.end);
       if (start === end) return;
-      const newPos = replaceRange(box, start, end, "");
+      const newPos = applyEdit(box, start, end, "");
       setCaretOffset(box.textEl, newPos);
       eventBus?.emit("edit", { boxId: box.id, start, end, text: "", newPos });
       return;
@@ -217,9 +209,9 @@ export function createBox(id, left, top, text, workspace, eventBus) {
     if (e.inputType === "deleteContentForward") {
       e.preventDefault();
       const start = Math.min(offsets.start, offsets.end);
-      const end = offsets.start === offsets.end ? Math.min(getText(box).length, offsets.end + 1) : Math.max(offsets.start, offsets.end);
+      const end = offsets.start === offsets.end ? Math.min(box.doc.text.length, offsets.end + 1) : Math.max(offsets.start, offsets.end);
       if (start === end) return;
-      const newPos = replaceRange(box, start, end, "");
+      const newPos = applyEdit(box, start, end, "");
       setCaretOffset(box.textEl, newPos);
       eventBus?.emit("edit", { boxId: box.id, start, end, text: "", newPos });
       return;
@@ -236,7 +228,7 @@ export function createBox(id, left, top, text, workspace, eventBus) {
       const start = Math.min(offsets.start, offsets.end);
       const end = Math.max(offsets.start, offsets.end);
       if (start === end) return;
-      const newPos = replaceRange(box, start, end, "");
+      const newPos = applyEdit(box, start, end, "");
       setCaretOffset(box.textEl, newPos);
       eventBus?.emit("edit", { boxId: box.id, start, end, text: "", newPos });
       return;
@@ -247,7 +239,7 @@ export function createBox(id, left, top, text, workspace, eventBus) {
       const raw = e.dataTransfer ? e.dataTransfer.getData("text/plain") : "";
       const insertText = normalizeText(raw);
       if (!insertText) return;
-      const newPos = replaceRange(box, offsets.start, offsets.end, insertText);
+      const newPos = applyEdit(box, offsets.start, offsets.end, insertText);
       setCaretOffset(box.textEl, newPos);
       eventBus?.emit("edit", { boxId: box.id, start: offsets.start, end: offsets.end, text: insertText, newPos });
       return;

@@ -1,5 +1,5 @@
 import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
-import { PAD_X, acquireBox, getText, isHumanFocusedBox, releaseBox } from "./edit.js";
+import { PAD_X, canBotUseBox, getText, isHumanFocusedBox } from "./edit.js";
 import { Executor } from "./executor.js";
 import { pickRange, randomWords } from "./linguistics.js";
 import { randomEdgePoint } from "./movement.js";
@@ -42,6 +42,28 @@ export class Bot {
     this.caretEl.className = "bot-caret";
     this.overlayBox = null;
 
+    // Visual state for live rebasing when other agents edit the same box
+    this._vis = null; // { box, type:'caret'|'sel', index?, start?, end?, ver }
+
+    // Listen for edits so we can shift our overlay in real time
+    this._onEdit = ({ boxId }) => {
+      const v = this._vis;
+      if (!v || !v.box || v.box.id !== boxId) return;
+      if (v.ver === v.box.doc.version) return; // already up-to-date
+      const doc = v.box.doc;
+      if (v.type === "caret") {
+        v.index = doc.xfPos(v.index, v.ver);
+        v.ver = doc.version;
+        this._renderCaret(v.box, v.index);
+      } else {
+        v.start = doc.xfPos(v.start, v.ver, "left");
+        v.end = doc.xfPos(v.end, v.ver, "right");
+        v.ver = doc.version;
+        this._renderSel(v.box, v.start, v.end);
+      }
+    };
+    ctx.eventBus.on("edit", this._onEdit);
+
     this.exec = new Executor(this, ctx);
     this.planner = new RandomPlanner();
     this.updateCursor();
@@ -71,30 +93,44 @@ export class Bot {
   }
 
   hideOverlay() {
+    this._vis = null;
     this.selEl.style.display = "none";
     this.caretEl.style.display = "none";
   }
 
-  showCaret(box, index) {
-    if (!box || !box.el.isConnected) return;
-    this.attachOverlay(box);
+  // ─── Low-level renderers (no state update) ──────────────────
+  _renderCaret(box, index) {
     this.selEl.style.display = "none";
     this.caretEl.style.display = "block";
     this.caretEl.style.left = PAD_X + this.ctx.charW * index + "px";
   }
 
-  showSelection(box, start, end) {
-    if (!box || !box.el.isConnected) return;
-    this.attachOverlay(box);
+  _renderSel(box, start, end) {
     if (end < start) [start, end] = [end, start];
     if (start === end) {
-      this.showCaret(box, start);
+      this._renderCaret(box, start);
       return;
     }
     this.caretEl.style.display = "none";
     this.selEl.style.display = "block";
     this.selEl.style.left = PAD_X + this.ctx.charW * start + "px";
     this.selEl.style.width = Math.max(1, this.ctx.charW * (end - start)) + "px";
+  }
+
+  // ─── State-tracked overlay methods ──────────────────────────
+  showCaret(box, index) {
+    if (!box || !box.el.isConnected) return;
+    this.attachOverlay(box);
+    this._vis = { box, type: "caret", index, ver: box.doc.version };
+    this._renderCaret(box, index);
+  }
+
+  showSelection(box, start, end) {
+    if (!box || !box.el.isConnected) return;
+    this.attachOverlay(box);
+    if (end < start) [start, end] = [end, start];
+    this._vis = { box, type: "sel", start, end, ver: box.doc.version };
+    this._renderSel(box, start, end);
   }
 
   // ─── Box lookup ─────────────────────────────────────────────
@@ -133,7 +169,7 @@ export class Bot {
     const r = wsRect();
     await this.exec.clickAt(r.left + cmd.x, r.top + cmd.y);
     const box = createBox(cmd.x, cmd.y, "");
-    if (!acquireBox(box, this.id)) return;
+    if (!canBotUseBox(box)) return;
     try {
       await sleep(rand(20, 80));
       await this.exec.placeCaret(box, 0);
@@ -147,7 +183,6 @@ export class Bot {
         if (chance(0.7)) await this.exec.typeInto(box, a, randomWords(1, 2));
       }
     } finally {
-      releaseBox(box, this.id);
       this.hideOverlay();
       this.setMode("arrow");
     }
@@ -155,13 +190,13 @@ export class Bot {
 
   async _execAppend(cmd) {
     const box = this._findBox(cmd.boxId);
-    if (!box || !acquireBox(box, this.id)) return;
+    if (!box || !canBotUseBox(box)) return;
     try {
+      // Re-read current length at execution time (append always targets end)
       const t = getText(box);
       await this.exec.placeCaret(box, t.length);
       await this.exec.typeInto(box, t.length, cmd.text);
     } finally {
-      releaseBox(box, this.id);
       this.hideOverlay();
       this.setMode("arrow");
     }
@@ -169,12 +204,11 @@ export class Bot {
 
   async _execInsert(cmd) {
     const box = this._findBox(cmd.boxId);
-    if (!box || !acquireBox(box, this.id)) return;
+    if (!box || !canBotUseBox(box)) return;
     try {
       await this.exec.placeCaret(box, cmd.index);
       await this.exec.typeInto(box, cmd.index, cmd.text);
     } finally {
-      releaseBox(box, this.id);
       this.hideOverlay();
       this.setMode("arrow");
     }
@@ -182,7 +216,7 @@ export class Bot {
 
   async _execReplace(cmd) {
     const box = this._findBox(cmd.boxId);
-    if (!box || !acquireBox(box, this.id)) return;
+    if (!box || !canBotUseBox(box)) return;
     try {
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
@@ -191,7 +225,6 @@ export class Bot {
       await sleep(rand(30, 70));
       await this.exec.typeInto(box, cmd.start, cmd.text);
     } finally {
-      releaseBox(box, this.id);
       this.hideOverlay();
       this.setMode("arrow");
     }
@@ -199,7 +232,7 @@ export class Bot {
 
   async _execDelete(cmd) {
     const box = this._findBox(cmd.boxId);
-    if (!box || !acquireBox(box, this.id)) return;
+    if (!box || !canBotUseBox(box)) return;
     try {
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
@@ -207,7 +240,6 @@ export class Bot {
       this.showCaret(box, cmd.start);
       await sleep(rand(40, 90));
     } finally {
-      releaseBox(box, this.id);
       this.hideOverlay();
       this.setMode("arrow");
     }
@@ -215,12 +247,11 @@ export class Bot {
 
   async _execBackspace(cmd) {
     const box = this._findBox(cmd.boxId);
-    if (!box || !acquireBox(box, this.id)) return;
+    if (!box || !canBotUseBox(box)) return;
     try {
       await this.exec.placeCaret(box, cmd.index);
       await this.exec.backspace(box, cmd.index, cmd.count);
     } finally {
-      releaseBox(box, this.id);
       this.hideOverlay();
       this.setMode("arrow");
     }
@@ -230,6 +261,7 @@ export class Bot {
   async depart() {
     this.hideOverlay();
     this.setMode("arrow");
+    this.ctx.eventBus.off("edit", this._onEdit);
     const p = randomEdgePoint(this.ctx.wsRect());
     await this.exec.moveTo(p.x, p.y, "travel");
     this.cursor.remove();
@@ -245,12 +277,23 @@ export class Bot {
       }
       await sleep(rand(ACTION_PAUSE_MIN, ACTION_PAUSE_MAX));
       try {
-        const cmd = this.planner.plan({
+        // Read-plan-transform-execute: the planner returns a command
+        // planned against a snapshot version. Before execution, we
+        // transform indices through any edits that happened since.
+        const { cmd, boxId, version } = this.planner.plan({
           boxes: this.ctx.boxes,
           botId: this.id,
           wsRect: this.ctx.wsRect,
         });
-        await this.executeCommand(cmd);
+        // Transform the command if it targets a box and the doc has advanced
+        let finalCmd = cmd;
+        if (boxId != null) {
+          const box = this._findBox(boxId);
+          if (box && version != null) {
+            finalCmd = box.doc.xfCommand(cmd, version);
+          }
+        }
+        await this.executeCommand(finalCmd);
       } catch (_) {}
     }
     try {

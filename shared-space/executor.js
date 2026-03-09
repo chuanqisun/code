@@ -4,7 +4,7 @@
 //   showCaret(), showSelection() }
 // Emits "edit" events via the EventBus after every text mutation.
 
-import { isHumanFocusedBox, pagePointForIndex, replaceRange, showClick } from "./edit.js";
+import { applyEdit, isHumanFocusedBox, pagePointForIndex, showClick } from "./edit.js";
 import { humanKeyDelay } from "./keyboard.js";
 import { moveHumanLike } from "./movement.js";
 import { chance, clamp, rand, sleep } from "./timing.js";
@@ -50,7 +50,7 @@ export class Executor {
 
   // ─── Single mutation point — all text changes go through here ──
   _applyEdit(box, start, end, text) {
-    const newPos = replaceRange(box, start, end, text);
+    const newPos = applyEdit(box, start, end, text);
     this.bus?.emit("edit", { boxId: box.id, start, end, text, newPos });
     return newPos;
   }
