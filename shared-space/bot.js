@@ -5,15 +5,11 @@ import { pickRange, randomWords } from "./linguistics.js";
 import { randomEdgePoint } from "./movement.js";
 import { RandomPlanner } from "./planner.js";
 import { BOT_LIFETIME_MAX, BOT_LIFETIME_MIN, BOT_RETIRE_CHECK_CHANCE } from "./pool.js";
-import { ACTION_PAUSE_MAX, ACTION_PAUSE_MIN, sleep } from "./scheduler.js";
+import { chance, rand, sleep } from "./timing.js";
 
-// ─── LOCAL HELPERS ────────────────────────────────────────────
-function rand(min, max) {
-  return min + Math.random() * (max - min);
-}
-function chance(p) {
-  return Math.random() < p;
-}
+// ─── Action timing ────────────────────────────────────────────
+const ACTION_PAUSE_MIN = 30;
+const ACTION_PAUSE_MAX = 280;
 
 // ─── BOT CLASS ────────────────────────────────────────────────
 // The bot is a cursor agent + lifecycle shell.

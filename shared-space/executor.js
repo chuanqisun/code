@@ -5,41 +5,36 @@
 // Emits "edit" events via the EventBus after every text mutation.
 
 import { isHumanFocusedBox, pagePointForIndex, replaceRange, showClick } from "./edit.js";
+import { humanKeyDelay } from "./keyboard.js";
 import { moveHumanLike } from "./movement.js";
-import {
-  BS_HESITATE_CHANCE,
-  BS_HESITATE_MAX,
-  BS_HESITATE_MIN,
-  BS_MAX,
-  BS_MIN,
-  CARET_SETTLE_MAX,
-  CARET_SETTLE_MIN,
-  DRAG_PAUSE_CHANCE,
-  DRAG_PAUSE_MAX,
-  DRAG_PAUSE_MIN,
-  DRAG_STEP_MAX,
-  DRAG_STEP_MIN,
-  SETTLE_AFTER_CLICK_MAX,
-  SETTLE_AFTER_CLICK_MIN,
-  SETTLE_BEFORE_CLICK_MAX,
-  SETTLE_BEFORE_CLICK_MIN,
-  humanKeyDelay,
-  sleep,
-} from "./scheduler.js";
+import { chance, clamp, rand, sleep } from "./timing.js";
 
 // ─── Local helpers ──────────────────────────────────────────────
-function rand(min, max) {
-  return min + Math.random() * (max - min);
-}
-function clamp(v, a, b) {
-  return Math.max(a, Math.min(b, v));
-}
-function chance(p) {
-  return Math.random() < p;
-}
 function lerp(a, b, t) {
   return a + (b - a) * t;
 }
+
+// ─── Action timing ─────────────────────────────────────────────
+const SETTLE_BEFORE_CLICK_MIN = 8;
+const SETTLE_BEFORE_CLICK_MAX = 35;
+const SETTLE_AFTER_CLICK_MIN = 15;
+const SETTLE_AFTER_CLICK_MAX = 50;
+const CARET_SETTLE_MIN = 20;
+const CARET_SETTLE_MAX = 60;
+
+// ─── Backspace speed ───────────────────────────────────────────
+const BS_MIN = 25;
+const BS_MAX = 65;
+const BS_HESITATE_CHANCE = 0.12;
+const BS_HESITATE_MIN = 25;
+const BS_HESITATE_MAX = 60;
+
+// ─── Drag select speed ─────────────────────────────────────────
+const DRAG_STEP_MIN = 5;
+const DRAG_STEP_MAX = 14;
+const DRAG_PAUSE_CHANCE = 0.1;
+const DRAG_PAUSE_MIN = 8;
+const DRAG_PAUSE_MAX = 30;
 
 // ─── Executor ───────────────────────────────────────────────────
 export class Executor {
