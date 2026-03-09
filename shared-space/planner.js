@@ -8,7 +8,7 @@
 
 import { appendCmd, backspaceCmd, createCmd, deleteCmd, insertCmd, moveBoxCmd, moveCmd, replaceCmd } from "./commands.js";
 import { canBotUseBox, findOpenSpot } from "./edit.js";
-import { appendChunk, insertChunk, pickRange, randomPhrase, randomWords } from "./linguistics.js";
+import { appendChunk, insertChunk, pickRange, randomPhrase, randomWords, wordBoundaries } from "./linguistics.js";
 
 // ─── Local helpers ──────────────────────────────────────────────
 function rand(min, max) {
@@ -26,11 +26,23 @@ function snap(box) {
   return box.doc.read();
 }
 
+// ─── Overlap-aware range picker ─────────────────────────────────
+// Try up to `tries` random ranges, returning the first that doesn't
+// overlap with another bot's active lock. Falls back to the last
+// attempt if every try collides.
+function pickFreeRange(text, boxId, botId, isRangeFree, tries = 4) {
+  for (let i = 0; i < tries; i++) {
+    const [a, b] = pickRange(text);
+    if (!isRangeFree || isRangeFree(boxId, a, b, botId)) return [a, b];
+  }
+  return pickRange(text); // fallback
+}
+
 // ─── RandomPlanner ──────────────────────────────────────────────
 // plan(state) → { cmd, boxId, version }
-// state: { boxes, botId, wsRect }
+// state: { boxes, botId, wsRect, isRangeFree? }
 export class RandomPlanner {
-  plan({ boxes, botId, wsRect }) {
+  plan({ boxes, botId, wsRect, isRangeFree }) {
     const usable = boxes.filter((b) => canBotUseBox(b));
     const filled = usable.filter((b) => b.doc.text.length > 0);
 
@@ -59,7 +71,19 @@ export class RandomPlanner {
     if (action === "insert") {
       const box = choice(usable);
       const { text, version } = snap(box);
-      const index = text.length ? Math.floor(rand(0, text.length + 1)) : 0;
+      // Pick a word-boundary position to insert at
+      const bounds = wordBoundaries(text);
+      // Try a few boundaries to find one that doesn't overlap
+      let index = choice(bounds);
+      if (isRangeFree) {
+        for (let i = 0; i < 4; i++) {
+          const candidate = choice(bounds);
+          if (isRangeFree(box.id, candidate, candidate, botId)) {
+            index = candidate;
+            break;
+          }
+        }
+      }
       return { cmd: insertCmd(box.id, index, insertChunk()), boxId: box.id, version };
     }
 
@@ -72,7 +96,7 @@ export class RandomPlanner {
       }
       const box = choice(pool);
       const { text, version } = snap(box);
-      const [a, b] = pickRange(text);
+      const [a, b] = pickFreeRange(text, box.id, botId, isRangeFree);
       const newText = randomWords(1, chance(0.5) ? 1 : 2);
       return { cmd: replaceCmd(box.id, a, b, newText), boxId: box.id, version };
     }
@@ -86,7 +110,7 @@ export class RandomPlanner {
       }
       const box = choice(pool);
       const { text, version } = snap(box);
-      const [a, b] = pickRange(text);
+      const [a, b] = pickFreeRange(text, box.id, botId, isRangeFree);
       return { cmd: deleteCmd(box.id, a, b), boxId: box.id, version };
     }
 
@@ -99,8 +123,35 @@ export class RandomPlanner {
       }
       const box = choice(pool);
       const { text, version } = snap(box);
-      const index = chance(0.6) ? text.length : Math.floor(rand(1, text.length + 1));
-      const count = Math.max(1, Math.floor(rand(1, Math.min(4, index) + 1)));
+      // Delete back to the previous word boundary
+      const bounds = wordBoundaries(text);
+      const nonZero = bounds.filter((b) => b > 0);
+      if (!nonZero.length) {
+        return { cmd: appendCmd(box.id, appendChunk(text)), boxId: box.id, version };
+      }
+      // Try to find a backspace range that doesn't overlap
+      let index = chance(0.6) ? text.length : choice(nonZero);
+      let prevBound = 0;
+      for (const bnd of bounds) {
+        if (bnd < index) prevBound = bnd;
+        else break;
+      }
+      if (isRangeFree) {
+        for (let i = 0; i < 4; i++) {
+          const cand = chance(0.6) ? text.length : choice(nonZero);
+          let pb = 0;
+          for (const bnd of bounds) {
+            if (bnd < cand) pb = bnd;
+            else break;
+          }
+          if (isRangeFree(box.id, pb, cand, botId)) {
+            index = cand;
+            prevBound = pb;
+            break;
+          }
+        }
+      }
+      const count = Math.max(1, index - prevBound);
       return { cmd: backspaceCmd(box.id, index, count), boxId: box.id, version };
     }
 

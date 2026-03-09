@@ -2,6 +2,7 @@ import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
 import { PAD_X, canBotUseBox, getText, isHumanFocusedBox, moveBox } from "./edit.js";
 import { Executor } from "./executor.js";
 import { pickRange, randomWords } from "./linguistics.js";
+import { acquireLock, hasOverlap, isRangeFree, releaseAllLocks, releaseLock } from "./locks.js";
 import { randomEdgePoint } from "./movement.js";
 import { RandomPlanner } from "./planner.js";
 import { BOT_LIFETIME_MAX, BOT_LIFETIME_MIN, BOT_RETIRE_CHECK_CHANCE } from "./pool.js";
@@ -10,7 +11,24 @@ import { chance, rand, sleep } from "./timing.js";
 // ─── Action timing ────────────────────────────────────────────
 const ACTION_PAUSE_MIN = 30;
 const ACTION_PAUSE_MAX = 280;
-
+// ─── Extract the affected character range from a command ──────
+function cmdRange(cmd, box) {
+  switch (cmd.type) {
+    case "append": {
+      const len = box ? box.doc.text.length : 0;
+      return [len, len + (cmd.text?.length || 0)];
+    }
+    case "insert":
+      return [cmd.index, cmd.index + (cmd.text?.length || 0)];
+    case "replace":
+    case "delete":
+      return [cmd.start, cmd.end];
+    case "backspace":
+      return [Math.max(0, cmd.index - cmd.count), cmd.index];
+    default:
+      return null;
+  }
+}
 // ─── BOT CLASS ────────────────────────────────────────────────
 // The bot is a cursor agent + lifecycle shell.
 // Planning is delegated to the Planner; execution to the Executor.
@@ -297,6 +315,7 @@ export class Bot {
     this.hideOverlay();
     this.setMode("arrow");
     this.ctx.eventBus.off("edit", this._onEdit);
+    releaseAllLocks(this.id);
     const p = randomEdgePoint(this.ctx.wsRect());
     await this.exec.moveTo(p.x, p.y, "travel");
     this.cursor.remove();
@@ -319,6 +338,7 @@ export class Bot {
           boxes: this.ctx.boxes,
           botId: this.id,
           wsRect: this.ctx.wsRect,
+          isRangeFree: (bId, s, e, bid) => isRangeFree(bId, s, e, bid),
         });
         // Transform the command if it targets a box and the doc has advanced
         let finalCmd = cmd;
@@ -328,7 +348,28 @@ export class Bot {
             finalCmd = box.doc.xfCommand(cmd, version);
           }
         }
-        await this.executeCommand(finalCmd);
+
+        // Final overlap guard: skip if the transformed range collides
+        let lockedBoxId = null;
+        if (boxId != null && finalCmd.type !== "moveBox") {
+          const box = this._findBox(boxId);
+          if (box) {
+            const range = cmdRange(finalCmd, box);
+            if (range && hasOverlap(boxId, range[0], range[1], this.id)) {
+              continue; // another bot is active in this range — retry
+            }
+            if (range) {
+              acquireLock(boxId, range[0], range[1], this.id);
+              lockedBoxId = boxId;
+            }
+          }
+        }
+
+        try {
+          await this.executeCommand(finalCmd);
+        } finally {
+          if (lockedBoxId != null) releaseLock(lockedBoxId, this.id);
+        }
       } catch (_) {}
     }
     try {
