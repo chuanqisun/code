@@ -179,10 +179,10 @@ export class Bot {
       if (chance(0.25) && getText(box).length > 3) {
         const [a, b] = pickRange(getText(box));
         await this.exec.dragSelect(box, a, b);
-        this.exec.deleteRange(box, a, b);
-        this.showCaret(box, a);
+        const pos = this.exec.deleteRange(box, a, b);
+        this.showCaret(box, pos);
         await sleep(rand(30, 70));
-        if (chance(0.7)) await this.exec.typeInto(box, a, randomWords(1, 2));
+        if (chance(0.7)) await this.exec.typeInto(box, pos, randomWords(1, 2));
       }
     } finally {
       this.hideOverlay();
@@ -194,10 +194,10 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
-      // Re-read current length at execution time (append always targets end)
-      const t = getText(box);
-      await this.exec.placeCaret(box, t.length);
-      await this.exec.typeInto(box, t.length, cmd.text);
+      const len = getText(box).length;
+      await this.exec.placeCaret(box, len);
+      // Re-read length after animation — text may have changed
+      await this.exec.typeInto(box, getText(box).length, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -208,8 +208,14 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const ver = box.doc.version;
       await this.exec.placeCaret(box, cmd.index);
-      await this.exec.typeInto(box, cmd.index, cmd.text);
+      // Rebase index through any concurrent edits during placeCaret
+      let idx = cmd.index;
+      if (box.doc.version !== ver) {
+        idx = box.doc.xfPos(idx, ver);
+      }
+      await this.exec.typeInto(box, idx, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -220,12 +226,21 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const ver = box.doc.version;
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      this.exec.deleteRange(box, cmd.start, cmd.end);
-      this.showCaret(box, cmd.start);
+      // Rebase range through any concurrent edits during dragSelect
+      let [s, e] = ver !== box.doc.version ? box.doc.xfRange(cmd.start, cmd.end, ver) : [cmd.start, cmd.end];
+      const pos = this.exec.deleteRange(box, s, e);
+      const ver2 = box.doc.version;
+      this.showCaret(box, pos);
       await sleep(rand(30, 70));
-      await this.exec.typeInto(box, cmd.start, cmd.text);
+      // Rebase insertion point through any concurrent edits during sleep
+      let insertPos = pos;
+      if (box.doc.version !== ver2) {
+        insertPos = box.doc.xfPos(pos, ver2);
+      }
+      await this.exec.typeInto(box, insertPos, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -236,10 +251,13 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const ver = box.doc.version;
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      this.exec.deleteRange(box, cmd.start, cmd.end);
-      this.showCaret(box, cmd.start);
+      // Rebase range through any concurrent edits during dragSelect
+      let [s, e] = ver !== box.doc.version ? box.doc.xfRange(cmd.start, cmd.end, ver) : [cmd.start, cmd.end];
+      const pos = this.exec.deleteRange(box, s, e);
+      this.showCaret(box, pos);
       await sleep(rand(40, 90));
     } finally {
       this.hideOverlay();
@@ -251,8 +269,14 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const ver = box.doc.version;
       await this.exec.placeCaret(box, cmd.index);
-      await this.exec.backspace(box, cmd.index, cmd.count);
+      // Rebase index through any concurrent edits during placeCaret
+      let idx = cmd.index;
+      if (box.doc.version !== ver) {
+        idx = box.doc.xfPos(idx, ver);
+      }
+      await this.exec.backspace(box, idx, cmd.count);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -261,35 +285,40 @@ export class Bot {
 
   async _execMoveBox(cmd) {
     const box = this._findBox(cmd.boxId);
-    if (!box || !canBotUseBox(box)) return;
-    // Click on the box first
-    const boxRect = box.el.getBoundingClientRect();
-    const cx = boxRect.left + boxRect.width / 2;
-    const cy = boxRect.top + boxRect.height / 2;
-    await this.exec.clickAt(cx, cy);
-    box.el.classList.add("selected");
-    await sleep(rand(60, 150));
-    // Animate the box sliding to the new position
-    const r = this.ctx.wsRect();
-    const startLeft = box.el.offsetLeft;
-    const startTop = box.el.offsetTop;
-    const steps = Math.max(10, Math.floor(rand(15, 30)));
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      const curLeft = startLeft + (cmd.toX - startLeft) * ease;
-      const curTop = startTop + (cmd.toY - startTop) * ease;
-      box.el.style.left = curLeft + "px";
-      box.el.style.top = curTop + "px";
-      // Move cursor along with the box
-      this.x = r.left + curLeft + boxRect.width / 2;
-      this.y = r.top + curTop + boxRect.height / 2;
-      this.updateCursor();
-      await sleep(rand(8, 18));
+    if (!box || !canBotUseBox(box) || box._moving) return;
+    box._moving = true;
+    try {
+      // Click on the box first
+      const boxRect = box.el.getBoundingClientRect();
+      const cx = boxRect.left + boxRect.width / 2;
+      const cy = boxRect.top + boxRect.height / 2;
+      await this.exec.clickAt(cx, cy);
+      box.el.classList.add("selected");
+      await sleep(rand(60, 150));
+      // Animate the box sliding to the new position
+      const r = this.ctx.wsRect();
+      const startLeft = box.el.offsetLeft;
+      const startTop = box.el.offsetTop;
+      const steps = Math.max(10, Math.floor(rand(15, 30)));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const curLeft = startLeft + (cmd.toX - startLeft) * ease;
+        const curTop = startTop + (cmd.toY - startTop) * ease;
+        box.el.style.left = curLeft + "px";
+        box.el.style.top = curTop + "px";
+        // Move cursor along with the box
+        this.x = r.left + curLeft + boxRect.width / 2;
+        this.y = r.top + curTop + boxRect.height / 2;
+        this.updateCursor();
+        await sleep(rand(8, 18));
+      }
+      moveBox(box, cmd.toX, cmd.toY);
+      box.el.classList.remove("selected");
+      await sleep(rand(30, 80));
+    } finally {
+      box._moving = false;
     }
-    moveBox(box, cmd.toX, cmd.toY);
-    box.el.classList.remove("selected");
-    await sleep(rand(30, 80));
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────
