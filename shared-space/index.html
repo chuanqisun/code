@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shared Space</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #workspace {
+        position: absolute;
+        inset: 0;
+        background: #fff;
+        overflow: hidden;
+        user-select: text;
+      }
+      .box {
+        position: absolute;
+        display: inline-block;
+      }
+      .text {
+        min-width: 14px;
+        min-height: 28px;
+        padding: 5px 6px;
+        border: 1px dashed #bbb;
+        background: #fff;
+        white-space: pre;
+        outline: none;
+        font: 22px/28px monospace;
+      }
+      .overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .bot-sel {
+        position: absolute;
+        top: 7px;
+        height: 24px;
+        background: rgba(0, 120, 215, 0.28);
+        display: none;
+      }
+      .bot-caret {
+        position: absolute;
+        top: 5px;
+        width: 1px;
+        height: 28px;
+        background: #000;
+        display: none;
+      }
+      #cursorLayer {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 9999;
+      }
+      .bot-cursor {
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 24px;
+        height: 24px;
+        pointer-events: none;
+      }
+      .click {
+        position: fixed;
+        width: 12px;
+        height: 12px;
+        margin-left: -6px;
+        margin-top: -6px;
+        border: 1px solid #000;
+        border-radius: 999px;
+        pointer-events: none;
+        animation: pop 0.25s ease-out forwards;
+      }
+      @keyframes pop {
+        from {
+          opacity: 0.8;
+          transform: scale(0.6);
+        }
+        to {
+          opacity: 0;
+          transform: scale(1.8);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="workspace"></div>
+    <div id="cursorLayer"></div>
+
+    <script>
+      // ─── PARAMETERS ───────────────────────────────────────────────
+      const PAD_X = 6;
+      const PAD_Y = 5;
+      const LINE_H = 28;
+      const FONT = "22px monospace";
+      const MAX_BOTS = 50;
+      const INITIAL_BOTS = 4;
+
+      // Movement speed multipliers (lower = faster)
+      const BALLISTIC_MIN = 60;
+      const BALLISTIC_MAX = 420;
+      const BALLISTIC_PER_PX = 0.25;
+      const BALLISTIC_PER_ID = 55;
+      const CORRECTION_MIN = 30;
+      const CORRECTION_MAX = 120;
+      const CORRECTION_PER_PX = 0.9;
+
+      // Action timing (pauses between actions)
+      const ACTION_PAUSE_MIN = 30;
+      const ACTION_PAUSE_MAX = 280;
+      const SETTLE_BEFORE_CLICK_MIN = 8;
+      const SETTLE_BEFORE_CLICK_MAX = 35;
+      const SETTLE_AFTER_CLICK_MIN = 15;
+      const SETTLE_AFTER_CLICK_MAX = 50;
+      const CARET_SETTLE_MIN = 20;
+      const CARET_SETTLE_MAX = 60;
+
+      // Typing speed
+      const TYPE_BASE_MIN = 30;
+      const TYPE_BASE_MAX = 80;
+      const TYPE_SPACE_EXTRA_MIN = 10;
+      const TYPE_SPACE_EXTRA_MAX = 40;
+      const TYPE_PUNCT_EXTRA_MIN = 50;
+      const TYPE_PUNCT_EXTRA_MAX = 120;
+      const TYPE_HESITATE_CHANCE = 0.1;
+      const TYPE_HESITATE_MIN = 40;
+      const TYPE_HESITATE_MAX = 100;
+      const TYPE_LONG_PAUSE_CHANCE = 0.03;
+      const TYPE_LONG_PAUSE_MIN = 90;
+      const TYPE_LONG_PAUSE_MAX = 220;
+
+      // Backspace speed
+      const BS_MIN = 25;
+      const BS_MAX = 65;
+      const BS_HESITATE_CHANCE = 0.12;
+      const BS_HESITATE_MIN = 25;
+      const BS_HESITATE_MAX = 60;
+
+      // Drag select speed
+      const DRAG_STEP_MIN = 5;
+      const DRAG_STEP_MAX = 14;
+      const DRAG_PAUSE_CHANCE = 0.1;
+      const DRAG_PAUSE_MIN = 8;
+      const DRAG_PAUSE_MAX = 30;
+
+      // Bot lifecycle
+      const BOT_LIFETIME_MIN = 14000;
+      const BOT_LIFETIME_MAX = 100000;
+      const BOT_RETIRE_CHECK_CHANCE = 0.15;
+
+      // Ecology loop
+      const ECO_TICK_MIN = 200;
+      const ECO_TICK_MAX = 800;
+      const ECO_SPAWN_BASE = 0.6;
+      const ECO_SPAWN_LOW_BOOST = 0.18;
+      const ECO_SPAWN_BURST_CHANCE = 0.06;
+      const ECO_SPAWN_BURST_BOOST = 0.35;
+      const ECO_RETIRE_BASE = 0.04;
+      const ECO_RETIRE_HIGH_BOOST = 0.08;
+      const ECO_RETIRE_BURST_CHANCE = 0.04;
+      const ECO_RETIRE_BURST_BOOST = 0.18;
+      const ECO_MASS_SPAWN_CHANCE = 0.03;
+      const ECO_MASS_SPAWN_MIN = 1;
+      const ECO_MASS_SPAWN_MAX = 4;
+      const ECO_MASS_SPAWN_DELAY_MIN = 60;
+      const ECO_MASS_SPAWN_DELAY_MAX = 200;
+
+      // Word bank
+      const WORDS = [
+        "human",
+        "bot",
+        "shared",
+        "space",
+        "cursor",
+        "draft",
+        "edit",
+        "text",
+        "hello",
+        "note",
+        "tiny",
+        "blue",
+        "random",
+        "growing",
+        "canvas",
+        "alive",
+        "typing",
+        "select",
+        "delete",
+        "replace",
+        "move",
+        "click",
+        "future",
+        "signal",
+        "paper",
+        "soft",
+        "prompt",
+        "idea",
+        "loop",
+        "trace",
+        "shape",
+        "pixel",
+        "small",
+        "story",
+        "marker",
+        "world",
+        "flow",
+        "plain",
+        "quick",
+        "slow",
+        "thought",
+        "field",
+        "line",
+        "window",
+      ];
+
+      const ARROW_SVG = `<svg viewBox="0 0 28 28" width="24" height="24"><path d="M2 2 L2 20 L7.5 15 L11.5 25.5 L15 24 L11 13.5 L19 13.5 Z" fill="white" stroke="black" stroke-width="2" stroke-linejoin="round"/></svg>`;
+      const IBEAM_SVG = `<svg viewBox="0 0 24 24" width="20" height="24"><path d="M6 2H18V4H14V20H18V22H6V20H10V4H6Z" fill="black"/></svg>`;
+
+      // ─── STATE ────────────────────────────────────────────────────
+      const workspace = document.getElementById("workspace");
+      const cursorLayer = document.getElementById("cursorLayer");
+      const boxes = [];
+      const bots = new Map();
+      let boxSeq = 0;
+      let botSeq = 0;
+
+      const measureCanvas = document.createElement("canvas");
+      const measureCtx = measureCanvas.getContext("2d");
+      measureCtx.font = FONT;
+      const CHAR_W = measureCtx.measureText("M").width;
+
+      // ─── BOT CLASS ────────────────────────────────────────────────
+      class Bot {
+        constructor(id) {
+          this.id = id;
+          this.retiring = false;
+          this.mode = "arrow";
+          this.birth = performance.now();
+          this.maxLifetime = rand(BOT_LIFETIME_MIN, BOT_LIFETIME_MAX);
+
+          const p = randomEdgePoint();
+          this.x = p.x;
+          this.y = p.y;
+
+          this.cursor = document.createElement("div");
+          this.cursor.className = "bot-cursor";
+          this.cursor.innerHTML = ARROW_SVG;
+          cursorLayer.appendChild(this.cursor);
+
+          this.selEl = document.createElement("div");
+          this.selEl.className = "bot-sel";
+          this.caretEl = document.createElement("div");
+          this.caretEl.className = "bot-caret";
+          this.overlayBox = null;
+          this.updateCursor();
+        }
+
+        updateCursor() {
+          this.cursor.style.transform = `translate(${this.x}px,${this.y}px)`;
+        }
+
+        setMode(mode) {
+          if (this.mode === mode) return;
+          this.mode = mode;
+          this.cursor.innerHTML = mode === "ibeam" ? IBEAM_SVG : ARROW_SVG;
+          this.cursor.style.width = mode === "ibeam" ? "20px" : "24px";
+        }
+
+        attachOverlay(box) {
+          if (this.overlayBox !== box) {
+            this.hideOverlay();
+            if (box && box.overlayEl && box.el.isConnected) {
+              box.overlayEl.appendChild(this.selEl);
+              box.overlayEl.appendChild(this.caretEl);
+              this.overlayBox = box;
+            }
+          }
+        }
+
+        hideOverlay() {
+          this.selEl.style.display = "none";
+          this.caretEl.style.display = "none";
+        }
+
+        showCaret(box, index) {
+          if (!box || !box.el.isConnected) return;
+          this.attachOverlay(box);
+          this.selEl.style.display = "none";
+          this.caretEl.style.display = "block";
+          this.caretEl.style.left = PAD_X + CHAR_W * index + "px";
+        }
+
+        showSelection(box, start, end) {
+          if (!box || !box.el.isConnected) return;
+          this.attachOverlay(box);
+          if (end < start) [start, end] = [end, start];
+          if (start === end) {
+            this.showCaret(box, start);
+            return;
+          }
+          this.caretEl.style.display = "none";
+          this.selEl.style.display = "block";
+          this.selEl.style.left = PAD_X + CHAR_W * start + "px";
+          this.selEl.style.width = Math.max(1, CHAR_W * (end - start)) + "px";
+        }
+
+        async moveTo(x, y, precision) {
+          await moveHumanLike(this, x, y, precision);
+        }
+
+        async clickAt(x, y) {
+          this.setMode("arrow");
+          await this.moveTo(x, y, "click");
+          await sleep(rand(SETTLE_BEFORE_CLICK_MIN, SETTLE_BEFORE_CLICK_MAX));
+          showClick(x, y);
+          await sleep(rand(SETTLE_AFTER_CLICK_MIN, SETTLE_AFTER_CLICK_MAX));
+        }
+
+        async placeCaret(box, index) {
+          if (!box.el.isConnected) return;
+          const p = pagePointForIndex(box, index);
+          this.setMode("arrow");
+          await this.moveTo(p.x, p.y, "text");
+          await sleep(rand(SETTLE_BEFORE_CLICK_MIN, SETTLE_BEFORE_CLICK_MAX));
+          this.setMode("ibeam");
+          showClick(p.x, p.y);
+          this.showCaret(box, index);
+          await sleep(rand(CARET_SETTLE_MIN, CARET_SETTLE_MAX));
+        }
+
+        async dragSelect(box, start, end) {
+          if (!box.el.isConnected) return;
+          if (end < start) [start, end] = [end, start];
+          const p0 = pagePointForIndex(box, start);
+          this.setMode("ibeam");
+          await this.moveTo(p0.x, p0.y, "text");
+          await sleep(rand(10, 35));
+          showClick(p0.x, p0.y);
+          await sleep(rand(15, 40));
+
+          const steps = Math.max(8, (end - start) * 3);
+          for (let i = 0; i <= steps; i++) {
+            if (!box.el.isConnected || isHumanFocusedBox(box)) return;
+            const t = i / steps;
+            const skew = t < 0.2 ? t * 1.8 : t < 0.75 ? 0.36 + (t - 0.2) * 0.9 : 0.86 + (t - 0.75) * 0.56;
+            const idx = Math.round(start + (end - start) * clamp(skew, 0, 1));
+            const p = pagePointForIndex(box, idx);
+            this.x = lerp(this.x, p.x, rand(0.6, 1));
+            this.y = lerp(this.y, p.y, rand(0.6, 1));
+            this.updateCursor();
+            this.showSelection(box, start, idx);
+            if (chance(DRAG_PAUSE_CHANCE)) await sleep(rand(DRAG_PAUSE_MIN, DRAG_PAUSE_MAX));
+            await sleep(rand(DRAG_STEP_MIN, DRAG_STEP_MAX));
+          }
+          this.showSelection(box, start, end);
+          await sleep(rand(30, 70));
+        }
+
+        async typeInto(box, index, text) {
+          let pos = index;
+          let prev = "";
+          this.setMode("ibeam");
+          this.showCaret(box, pos);
+          for (const ch of text) {
+            if (this.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
+            pos = replaceRange(box, pos, pos, ch);
+            this.showCaret(box, pos);
+            await sleep(humanKeyDelay(ch, prev));
+            prev = ch;
+          }
+          return pos;
+        }
+
+        async backspace(box, index, count) {
+          let pos = index;
+          this.setMode("ibeam");
+          this.showCaret(box, pos);
+          for (let i = 0; i < count; i++) {
+            if (this.retiring || !box.el.isConnected || isHumanFocusedBox(box) || pos <= 0) break;
+            pos = replaceRange(box, pos - 1, pos, "");
+            this.showCaret(box, pos);
+            let ms = rand(BS_MIN, BS_MAX);
+            if (chance(BS_HESITATE_CHANCE)) ms += rand(BS_HESITATE_MIN, BS_HESITATE_MAX);
+            await sleep(ms);
+          }
+          return pos;
+        }
+
+        async taskMoveOnly() {
+          const r = wsRect();
+          this.setMode("arrow");
+          await this.moveTo(rand(r.left + 10, r.right - 20), rand(r.top + 10, r.bottom - 20), "travel");
+          await sleep(rand(40, 180));
+        }
+
+        async taskCreate() {
+          const spot = findOpenSpot();
+          const r = wsRect();
+          await this.clickAt(r.left + spot.x, r.top + spot.y);
+          const box = createBox(spot.x, spot.y, "");
+          if (!acquireBox(box, this.id)) return;
+          try {
+            await sleep(rand(20, 80));
+            await this.placeCaret(box, 0);
+            await this.typeInto(box, 0, randomPhrase(1, chance(0.5) ? 2 : 4));
+            if (chance(0.25) && getText(box).length > 3) {
+              const [a, b] = pickRange(getText(box));
+              await this.dragSelect(box, a, b);
+              replaceRange(box, a, b, "");
+              this.showCaret(box, a);
+              await sleep(rand(30, 70));
+              if (chance(0.7)) await this.typeInto(box, a, randomWords(1, 2));
+            }
+          } finally {
+            releaseBox(box, this.id);
+            this.hideOverlay();
+            this.setMode("arrow");
+          }
+        }
+
+        async taskAppend() {
+          const pool = boxes.filter((b) => canBotUseBox(b, this.id));
+          if (!pool.length) return this.taskCreate();
+          const box = choice(pool);
+          if (!acquireBox(box, this.id)) return;
+          try {
+            const t = getText(box);
+            await this.placeCaret(box, t.length);
+            await this.typeInto(box, t.length, appendChunk(t));
+          } finally {
+            releaseBox(box, this.id);
+            this.hideOverlay();
+            this.setMode("arrow");
+          }
+        }
+
+        async taskInsert() {
+          const pool = boxes.filter((b) => canBotUseBox(b, this.id));
+          if (!pool.length) return this.taskCreate();
+          const box = choice(pool);
+          if (!acquireBox(box, this.id)) return;
+          try {
+            const t = getText(box);
+            const index = t.length ? Math.floor(rand(0, t.length + 1)) : 0;
+            await this.placeCaret(box, index);
+            await this.typeInto(box, index, insertChunk());
+          } finally {
+            releaseBox(box, this.id);
+            this.hideOverlay();
+            this.setMode("arrow");
+          }
+        }
+
+        async taskReplace() {
+          const pool = boxes.filter((b) => canBotUseBox(b, this.id) && getText(b).length > 2);
+          if (!pool.length) return this.taskAppend();
+          const box = choice(pool);
+          if (!acquireBox(box, this.id)) return;
+          try {
+            const [a, b] = pickRange(getText(box));
+            await this.dragSelect(box, a, b);
+            if (!box.el.isConnected || isHumanFocusedBox(box)) return;
+            replaceRange(box, a, b, "");
+            this.showCaret(box, a);
+            await sleep(rand(30, 70));
+            await this.typeInto(box, a, randomWords(1, chance(0.5) ? 1 : 2));
+          } finally {
+            releaseBox(box, this.id);
+            this.hideOverlay();
+            this.setMode("arrow");
+          }
+        }
+
+        async taskDeleteSelection() {
+          const pool = boxes.filter((b) => canBotUseBox(b, this.id) && getText(b).length > 1);
+          if (!pool.length) return this.taskAppend();
+          const box = choice(pool);
+          if (!acquireBox(box, this.id)) return;
+          try {
+            const [a, b] = pickRange(getText(box));
+            await this.dragSelect(box, a, b);
+            if (!box.el.isConnected || isHumanFocusedBox(box)) return;
+            replaceRange(box, a, b, "");
+            this.showCaret(box, a);
+            await sleep(rand(40, 90));
+          } finally {
+            releaseBox(box, this.id);
+            this.hideOverlay();
+            this.setMode("arrow");
+          }
+        }
+
+        async taskBackspace() {
+          const pool = boxes.filter((b) => canBotUseBox(b, this.id) && getText(b).length > 0);
+          if (!pool.length) return this.taskAppend();
+          const box = choice(pool);
+          if (!acquireBox(box, this.id)) return;
+          try {
+            const t = getText(box);
+            const index = chance(0.6) ? t.length : Math.floor(rand(1, t.length + 1));
+            await this.placeCaret(box, index);
+            await this.backspace(box, index, Math.max(1, Math.floor(rand(1, Math.min(4, index) + 1))));
+          } finally {
+            releaseBox(box, this.id);
+            this.hideOverlay();
+            this.setMode("arrow");
+          }
+        }
+
+        async takeAction() {
+          const usable = boxes.filter((b) => canBotUseBox(b, this.id));
+          const filled = usable.filter((b) => getText(b).length > 0);
+          const actions = ["move"];
+          if (boxes.length < 4 || chance(0.25)) actions.push("create");
+          if (usable.length) actions.push("append", "insert");
+          if (filled.length) actions.push("replace", "delete", "backspace", "append");
+          const action = choice(actions);
+          if (action === "create") return this.taskCreate();
+          if (action === "append") return this.taskAppend();
+          if (action === "insert") return this.taskInsert();
+          if (action === "replace") return this.taskReplace();
+          if (action === "delete") return this.taskDeleteSelection();
+          if (action === "backspace") return this.taskBackspace();
+          return this.taskMoveOnly();
+        }
+
+        async depart() {
+          this.hideOverlay();
+          this.setMode("arrow");
+          const p = randomEdgePoint();
+          await this.moveTo(p.x, p.y, "travel");
+          this.cursor.remove();
+          this.selEl.remove();
+          this.caretEl.remove();
+        }
+
+        async loop() {
+          while (!this.retiring) {
+            if (performance.now() - this.birth > this.maxLifetime && chance(BOT_RETIRE_CHECK_CHANCE)) {
+              this.retiring = true;
+              break;
+            }
+            await sleep(rand(ACTION_PAUSE_MIN, ACTION_PAUSE_MAX));
+            try {
+              await this.takeAction();
+            } catch (_) {}
+          }
+          try {
+            await this.depart();
+          } catch (_) {}
+        }
+      }
+
+      // ─── MAIN LOOPS ───────────────────────────────────────────────
+      function spawnBot() {
+        const bot = new Bot(++botSeq);
+        bots.set(bot.id, bot);
+        bot.loop().finally(() => bots.delete(bot.id));
+      }
+
+      function activeBotCount() {
+        return [...bots.values()].filter((b) => !b.retiring).length;
+      }
+
+      async function ecologyLoop() {
+        while (true) {
+          // spawn
+          const count = activeBotCount();
+          if (count < MAX_BOTS) {
+            let p = ECO_SPAWN_BASE;
+            if (count <= 2) p += ECO_SPAWN_LOW_BOOST;
+            if (chance(ECO_SPAWN_BURST_CHANCE)) p += ECO_SPAWN_BURST_BOOST;
+            if (Math.random() < p) spawnBot();
+          }
+
+          // retire
+          const pool = [...bots.values()].filter((b) => !b.retiring);
+          if (pool.length > 1) {
+            let p = ECO_RETIRE_BASE;
+            if (pool.length >= 7) p += ECO_RETIRE_HIGH_BOOST;
+            if (chance(ECO_RETIRE_BURST_CHANCE)) p += ECO_RETIRE_BURST_BOOST;
+            if (Math.random() < p) choice(pool).retiring = true;
+          }
+
+          // occasional burst
+          if (chance(ECO_MASS_SPAWN_CHANCE) && activeBotCount() < 8) {
+            const n = Math.floor(rand(ECO_MASS_SPAWN_MIN, ECO_MASS_SPAWN_MAX + 1));
+            for (let i = 0; i < n; i++) {
+              if (activeBotCount() < MAX_BOTS) {
+                spawnBot();
+                await sleep(rand(ECO_MASS_SPAWN_DELAY_MIN, ECO_MASS_SPAWN_DELAY_MAX));
+              }
+            }
+          }
+
+          await sleep(rand(ECO_TICK_MIN, ECO_TICK_MAX));
+        }
+      }
+
+      // Human interaction
+      workspace.addEventListener("click", (e) => {
+        if (e.target !== workspace) return;
+        const r = wsRect();
+        const box = createBox(e.clientX - r.left, e.clientY - r.top, "");
+        box.textEl.focus();
+        placeCaretEnd(box.textEl);
+      });
+
+      // Start immediately
+      for (let i = 0; i < INITIAL_BOTS; i++) setTimeout(spawnBot, i * 150);
+      ecologyLoop();
+
+      // ─── MOVEMENT ENGINE ──────────────────────────────────────────
+      function humanEase(t) {
+        if (t < 0.08) return t * 4.5;
+        if (t < 0.7) return 0.36 + ((t - 0.08) / 0.62) * 0.54;
+        return 0.9 + (1 - Math.pow(1 - (t - 0.7) / 0.3, 2.6)) * 0.1;
+      }
+
+      async function animateSegment(bot, from, to, duration, bendScale, jitter) {
+        bendScale = bendScale ?? 1;
+        jitter = jitter ?? 0.08;
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const nx = -dy / d;
+        const ny = dx / d;
+        const bend = Math.min(120, d * rand(0.06, 0.18)) * (chance(0.5) ? -1 : 1) * bendScale;
+
+        const p1 = {
+          x: from.x + dx * rand(0.18, 0.3) + nx * bend * rand(0.3, 0.9),
+          y: from.y + dy * rand(0.18, 0.3) + ny * bend * rand(0.3, 0.9),
+        };
+        const p2 = {
+          x: from.x + dx * rand(0.68, 0.86) - nx * bend * rand(0.1, 0.5),
+          y: from.y + dy * rand(0.68, 0.86) - ny * bend * rand(0.1, 0.5),
+        };
+
+        const start = performance.now();
+        await new Promise((resolve) => {
+          const frame = (now) => {
+            const t = Math.min(1, (now - start) / duration);
+            const e = humanEase(t);
+            const omt = 1 - e;
+            const px = omt * omt * omt * from.x + 3 * omt * omt * e * p1.x + 3 * omt * e * e * p2.x + e * e * e * to.x;
+            const py = omt * omt * omt * from.y + 3 * omt * omt * e * p1.y + 3 * omt * e * e * p2.y + e * e * e * to.y;
+            const settle = 1 - e;
+            bot.x = px + rand(-jitter, jitter) * settle * d * 0.015;
+            bot.y = py + rand(-jitter, jitter) * settle * d * 0.015;
+            bot.updateCursor();
+            if (t < 1) requestAnimationFrame(frame);
+            else {
+              bot.x = to.x;
+              bot.y = to.y;
+              bot.updateCursor();
+              resolve();
+            }
+          };
+          requestAnimationFrame(frame);
+        });
+      }
+
+      async function moveHumanLike(bot, x, y, precision) {
+        precision = precision || "normal";
+        const from = { x: bot.x, y: bot.y };
+        const target = { x, y };
+        const D = distPt(from, target);
+        if (D < 1) return;
+
+        const width = precision === "text" ? 7 : precision === "click" ? 10 : 22;
+        const ID = Math.log2(D / width + 1);
+        const ballisticTime = clamp(BALLISTIC_MIN + ID * BALLISTIC_PER_ID + D * BALLISTIC_PER_PX, BALLISTIC_MIN, BALLISTIC_MAX);
+
+        let corrections;
+        if (precision === "travel") corrections = D < 180 ? 0 : chance(0.6) ? 1 : 0;
+        else if (precision === "text") corrections = D < 80 ? 1 : D < 250 ? (chance(0.65) ? 1 : 2) : chance(0.35) ? 2 : 3;
+        else corrections = D < 80 ? 1 : D < 250 ? (chance(0.7) ? 1 : 2) : chance(0.45) ? 2 : 3;
+
+        const nearRadiusBase = precision === "text" ? 0.065 : 0.05;
+        const nearRadius = corrections ? clamp(D * nearRadiusBase, 2.5, precision === "text" ? 20 : 16) : 0;
+        const angle = rand(0, Math.PI * 2);
+        const near = corrections
+          ? {
+              x: x + Math.cos(angle) * nearRadius,
+              y: y + Math.sin(angle) * nearRadius,
+            }
+          : target;
+
+        await animateSegment(bot, from, near, ballisticTime, 1, 0.12);
+        let current = { x: bot.x, y: bot.y };
+
+        for (let i = 0; i < corrections; i++) {
+          const remain = distPt(current, target);
+          const finalStep = i === corrections - 1;
+          const r = finalStep ? 0 : Math.max(0.7, remain * rand(0.18, 0.45));
+          const a = rand(0, Math.PI * 2);
+          const subTarget = finalStep ? target : { x: x + Math.cos(a) * r, y: y + Math.sin(a) * r };
+          if (chance(0.25)) await sleep(rand(5, 20));
+          await animateSegment(bot, current, subTarget, clamp(CORRECTION_MIN + remain * CORRECTION_PER_PX, CORRECTION_MIN, CORRECTION_MAX), 0.32, 0.03);
+          current = { x: bot.x, y: bot.y };
+        }
+      }
+
+      // ─── PURE HELPERS ─────────────────────────────────────────────
+      function rand(min, max) {
+        return min + Math.random() * (max - min);
+      }
+      function clamp(v, a, b) {
+        return Math.max(a, Math.min(b, v));
+      }
+      function choice(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+      function chance(p) {
+        return Math.random() < p;
+      }
+      function sleep(ms) {
+        return new Promise((r) => setTimeout(r, ms));
+      }
+      function normalizeText(s) {
+        return (s || "").replace(/\r?\n/g, " ");
+      }
+      function distPt(a, b) {
+        return Math.hypot(b.x - a.x, b.y - a.y);
+      }
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+      function wsRect() {
+        return workspace.getBoundingClientRect();
+      }
+
+      function randomEdgePoint() {
+        const r = wsRect();
+        const side = Math.floor(rand(0, 4));
+        if (side === 0) return { x: rand(r.left, r.right), y: r.top - rand(24, 80) };
+        if (side === 1) return { x: r.right + rand(24, 80), y: rand(r.top, r.bottom) };
+        if (side === 2) return { x: rand(r.left, r.right), y: r.bottom + rand(24, 80) };
+        return { x: r.left - rand(24, 80), y: rand(r.top, r.bottom) };
+      }
+
+      function getText(box) {
+        return box.textEl.textContent || "";
+      }
+      function setText(box, text) {
+        box.textEl.textContent = normalizeText(text);
+      }
+
+      function replaceRange(box, start, end, insertText) {
+        const t = getText(box);
+        start = clamp(start, 0, t.length);
+        end = clamp(end, 0, t.length);
+        if (end < start) [start, end] = [end, start];
+        setText(box, t.slice(0, start) + insertText + t.slice(end));
+        return start + insertText.length;
+      }
+
+      function pagePointForIndex(box, index) {
+        const rect = box.textEl.getBoundingClientRect();
+        const len = getText(box).length;
+        index = clamp(index, 0, len);
+        return { x: rect.left + PAD_X + CHAR_W * index + 1, y: rect.top + PAD_Y + LINE_H * 0.55 };
+      }
+
+      function isHumanFocusedBox(box) {
+        const ae = document.activeElement;
+        return !!(ae && ae.closest && ae.closest(".box") === box.el);
+      }
+
+      function canBotUseBox(box, botId) {
+        return box && box.el.isConnected && !isHumanFocusedBox(box) && (!box.lock || box.lock === botId);
+      }
+
+      function acquireBox(box, botId) {
+        if (!canBotUseBox(box, botId)) return false;
+        box.lock = botId;
+        return true;
+      }
+
+      function releaseBox(box, botId) {
+        if (box && box.lock === botId) box.lock = null;
+      }
+
+      function showClick(x, y) {
+        const d = document.createElement("div");
+        d.className = "click";
+        d.style.left = x + "px";
+        d.style.top = y + "px";
+        cursorLayer.appendChild(d);
+        setTimeout(() => d.remove(), 260);
+      }
+
+      function insertTextAtSelection(text) {
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const node = document.createTextNode(text);
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      function placeCaretEnd(el) {
+        el.focus();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+
+      function scrubEditable(el) {
+        const txt = normalizeText(el.textContent);
+        if (txt !== el.textContent) {
+          el.textContent = txt;
+          placeCaretEnd(el);
+        }
+      }
+
+      function createBox(left, top, text) {
+        const r = wsRect();
+        left = clamp(left, 6, Math.max(6, r.width - 40));
+        top = clamp(top, 6, Math.max(6, r.height - 36));
+        const box = {
+          id: ++boxSeq,
+          lock: null,
+          el: document.createElement("div"),
+          textEl: document.createElement("div"),
+          overlayEl: document.createElement("div"),
+        };
+        box.el.className = "box";
+        box.el._box = box;
+        box.el.style.left = left + "px";
+        box.el.style.top = top + "px";
+        box.textEl.className = "text";
+        box.textEl.contentEditable = "true";
+        box.textEl.spellcheck = false;
+        box.textEl.textContent = text || "";
+        box.overlayEl.className = "overlay";
+        box.textEl.addEventListener("beforeinput", (e) => {
+          if (e.inputType === "insertParagraph") e.preventDefault();
+        });
+        box.textEl.addEventListener("paste", (e) => {
+          e.preventDefault();
+          insertTextAtSelection(normalizeText((e.clipboardData || window.clipboardData).getData("text")));
+        });
+        box.textEl.addEventListener("input", () => scrubEditable(box.textEl));
+        box.el.appendChild(box.textEl);
+        box.el.appendChild(box.overlayEl);
+        workspace.appendChild(box.el);
+        boxes.push(box);
+        return box;
+      }
+
+      function findOpenSpot() {
+        const r = wsRect();
+        let best = null;
+        for (let i = 0; i < 40; i++) {
+          const x = rand(10, Math.max(10, r.width - 150));
+          const y = rand(10, Math.max(10, r.height - 40));
+          let score = rand(0, 30);
+          for (const box of boxes) {
+            if (!box.el.isConnected) continue;
+            const bx = box.el.offsetLeft,
+              by = box.el.offsetTop;
+            const bw = Math.max(90, box.el.offsetWidth),
+              bh = Math.max(30, box.el.offsetHeight);
+            const ox = Math.max(0, Math.min(x + 140, bx + bw) - Math.max(x, bx));
+            const oy = Math.max(0, Math.min(y + 34, by + bh) - Math.max(y, by));
+            score -= ox * oy * 3;
+            score += Math.min(200, Math.hypot(x + 70 - (bx + bw / 2), y + 17 - (by + bh / 2)));
+          }
+          if (!best || score > best.score) best = { x, y, score };
+        }
+        return best || { x: 20, y: 20 };
+      }
+
+      function randomWords(min, max) {
+        const n = Math.floor(rand(min || 1, (max || 3) + 1));
+        const out = [];
+        for (let i = 0; i < n; i++) out.push(choice(WORDS));
+        return out.join(" ");
+      }
+
+      function randomPhrase(min, max) {
+        let s = randomWords(min, max);
+        if (chance(0.22)) s += choice([".", "?", "!", "..."]);
+        return s;
+      }
+
+      function appendChunk(current) {
+        let s = randomPhrase(1, chance(0.5) ? 2 : 4);
+        if (current && !/\s$/.test(current) && /^[a-z]/i.test(s)) s = " " + s;
+        return s;
+      }
+
+      function insertChunk() {
+        return choice([randomWords(1, 2), " " + randomWords(1, 2), ", ", " and ", " the ", ". ", "..."]);
+      }
+
+      function pickRange(text) {
+        if (!text.length) return [0, 0];
+        const matches = [...text.matchAll(/[A-Za-z0-9']+/g)];
+        if (matches.length && chance(0.75)) {
+          const m = choice(matches);
+          return [m.index, m.index + m[0].length];
+        }
+        const a = Math.floor(rand(0, Math.max(1, text.length - 1)));
+        const b = Math.floor(rand(a + 1, Math.min(text.length, a + 1 + Math.min(8, text.length - a)) + 1));
+        return [a, b];
+      }
+
+      function humanKeyDelay(ch, prev) {
+        let ms = rand(TYPE_BASE_MIN, TYPE_BASE_MAX);
+        if (ch === " ") ms += rand(TYPE_SPACE_EXTRA_MIN, TYPE_SPACE_EXTRA_MAX);
+        if (".,!?".includes(ch)) ms += rand(TYPE_PUNCT_EXTRA_MIN, TYPE_PUNCT_EXTRA_MAX);
+        if (prev && ".,!?".includes(prev)) ms += rand(25, 60);
+        if (chance(TYPE_HESITATE_CHANCE)) ms += rand(TYPE_HESITATE_MIN, TYPE_HESITATE_MAX);
+        if (chance(TYPE_LONG_PAUSE_CHANCE)) ms += rand(TYPE_LONG_PAUSE_MIN, TYPE_LONG_PAUSE_MAX);
+        return clamp(ms, 20, 500);
+      }
+    </script>
+  </body>
+</html>

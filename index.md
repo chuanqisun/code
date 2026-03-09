@@ -75,6 +75,7 @@
 - [Shadowcast](./shadowcast/)
 - [Shanshui](./shanshui/)
 - [Shape display](./shape-display/)
+- [Shared Space](./shared-space/)
 - [Spaceship](./spaceship/)
 - [System Card](./sys-card/)
 - [Text Rain](./text-rain/)
