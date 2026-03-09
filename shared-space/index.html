@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shared Space</title>
     <style>
+      :root {
+        --selection-color: rgba(0, 120, 215, 0.4);
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -19,7 +23,7 @@
       #workspace {
         position: absolute;
         inset: 0;
-        background: #fff;
+        background: Canvas;
         overflow: hidden;
         user-select: text;
       }
@@ -31,12 +35,16 @@
         min-width: 14px;
         min-height: 28px;
         padding: 5px 6px;
-        border: 1px dashed #bbb;
-        background: #fff;
+        border: 1px dashed color-mix(in srgb, Canvas 70%, CanvasText 30%);
+        background: Canvas;
         white-space: pre-wrap;
         word-break: break-word;
         outline: none;
         font: 22px/28px monospace;
+
+        &::selection {
+          background: var(--selection-color);
+        }
       }
       .box.selected > .text {
         border-color: currentColor;
@@ -51,7 +59,7 @@
         position: absolute;
         top: 7px;
         height: 24px;
-        background: rgba(0, 120, 215, 0.28);
+        background: var(--selection-color);
         display: none;
       }
       .bot-caret {
@@ -82,7 +90,7 @@
         height: 12px;
         margin-left: -6px;
         margin-top: -6px;
-        border: 1px solid #000;
+        border: 1px solid CanvasText;
         border-radius: 999px;
         pointer-events: none;
         animation: pop 0.25s ease-out forwards;
