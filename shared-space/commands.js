@@ -29,3 +29,7 @@ export function backspaceCmd(boxId, index, count) {
 export function moveCmd(x, y) {
   return { type: "move", x, y };
 }
+
+export function moveBoxCmd(boxId, toX, toY) {
+  return { type: "moveBox", boxId, toX, toY };
+}

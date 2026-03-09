@@ -1,5 +1,5 @@
 import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
-import { PAD_X, canBotUseBox, getText, isHumanFocusedBox } from "./edit.js";
+import { PAD_X, canBotUseBox, getText, isHumanFocusedBox, moveBox } from "./edit.js";
 import { Executor } from "./executor.js";
 import { pickRange, randomWords } from "./linguistics.js";
 import { randomEdgePoint } from "./movement.js";
@@ -155,6 +155,8 @@ export class Bot {
         return this._execDelete(cmd);
       case "backspace":
         return this._execBackspace(cmd);
+      case "moveBox":
+        return this._execMoveBox(cmd);
     }
   }
 
@@ -255,6 +257,39 @@ export class Bot {
       this.hideOverlay();
       this.setMode("arrow");
     }
+  }
+
+  async _execMoveBox(cmd) {
+    const box = this._findBox(cmd.boxId);
+    if (!box || !canBotUseBox(box)) return;
+    // Click on the box first
+    const boxRect = box.el.getBoundingClientRect();
+    const cx = boxRect.left + boxRect.width / 2;
+    const cy = boxRect.top + boxRect.height / 2;
+    await this.exec.clickAt(cx, cy);
+    box.el.classList.add("selected");
+    await sleep(rand(60, 150));
+    // Animate the box sliding to the new position
+    const r = this.ctx.wsRect();
+    const startLeft = box.el.offsetLeft;
+    const startTop = box.el.offsetTop;
+    const steps = Math.max(10, Math.floor(rand(15, 30)));
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      const curLeft = startLeft + (cmd.toX - startLeft) * ease;
+      const curTop = startTop + (cmd.toY - startTop) * ease;
+      box.el.style.left = curLeft + "px";
+      box.el.style.top = curTop + "px";
+      // Move cursor along with the box
+      this.x = r.left + curLeft + boxRect.width / 2;
+      this.y = r.top + curTop + boxRect.height / 2;
+      this.updateCursor();
+      await sleep(rand(8, 18));
+    }
+    moveBox(box, cmd.toX, cmd.toY);
+    box.el.classList.remove("selected");
+    await sleep(rand(30, 80));
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────

@@ -13,7 +13,19 @@ function clamp(v, a, b) {
 }
 
 export function normalizeText(s) {
-  return (s || "").replace(/\r?\n/g, " ");
+  return (s || "").replace(/\r\n/g, "\n");
+}
+
+export function indexToRowCol(text, index) {
+  let row = 0,
+    col = 0;
+  for (let i = 0; i < index; i++) {
+    if (text[i] === "\n") {
+      row++;
+      col = 0;
+    } else col++;
+  }
+  return { row, col };
 }
 
 // ─── Layout constants ──────────────────────────────────────────
@@ -35,24 +47,33 @@ export function getText(box) {
   return box.doc.text;
 }
 
+/** Sync box.textEl content, ensuring trailing newlines render visibly */
+function syncTextEl(box) {
+  const t = box.doc.text;
+  // A trailing \n in textContent is invisible in contentEditable.
+  // Append a zero-width space so the browser creates the extra line.
+  box.textEl.textContent = t.endsWith("\n") ? t + "\u200B" : t;
+}
+
 export function setText(box, text) {
   box.doc.text = normalizeText(text);
-  box.textEl.textContent = box.doc.text;
+  syncTextEl(box);
 }
 
 /** Apply an edit through the Doc (OT-aware). Returns new cursor position. */
 export function applyEdit(box, start, end, insertText) {
   const newPos = box.doc.apply(start, end, insertText);
-  box.textEl.textContent = box.doc.text;
+  syncTextEl(box);
   return newPos;
 }
 
 // ─── Caret / index positioning ─────────────────────────────────
 export function pagePointForIndex(box, index, charW) {
   const rect = box.textEl.getBoundingClientRect();
-  const len = getText(box).length;
-  index = clamp(index, 0, len);
-  return { x: rect.left + PAD_X + charW * index + 1, y: rect.top + PAD_Y + LINE_H * 0.55 };
+  const text = getText(box);
+  index = clamp(index, 0, text.length);
+  const { row, col } = indexToRowCol(text, index);
+  return { x: rect.left + PAD_X + charW * col + 1, y: rect.top + PAD_Y + LINE_H * row + LINE_H * 0.55 };
 }
 
 // ─── Box access ─────────────────────────────────────────────────
@@ -101,16 +122,19 @@ export function placeCaretEnd(el) {
 }
 
 export function scrubEditable(el) {
-  const txt = normalizeText(el.textContent);
-  if (txt !== el.textContent) {
-    el.textContent = txt;
-    placeCaretEnd(el);
-  }
+  // no-op: multi-line content is valid now
+}
+
+/** Move a box to a new position */
+export function moveBox(box, left, top) {
+  box.el.style.left = left + "px";
+  box.el.style.top = top + "px";
+  box.el.style.zIndex = nextZIndex();
 }
 
 // ─── Human input helpers ────────────────────────────────────────
 // Resolve the current caret/selection offset within a contentEditable element.
-function getSelectionOffsets(el) {
+function getSelectionOffsets(el, maxLen) {
   const sel = window.getSelection();
   if (!sel || !sel.rangeCount) return null;
   const range = sel.getRangeAt(0);
@@ -124,8 +148,13 @@ function getSelectionOffsets(el) {
     }
     return count;
   }
-  const start = offsetIn(el, range.startContainer, range.startOffset);
-  const end = offsetIn(el, range.endContainer, range.endOffset);
+  let start = offsetIn(el, range.startContainer, range.startOffset);
+  let end = offsetIn(el, range.endContainer, range.endOffset);
+  // Clamp past any sentinel characters (e.g. trailing \u200B)
+  if (maxLen != null) {
+    start = Math.min(start, maxLen);
+    end = Math.min(end, maxLen);
+  }
   return { start, end };
 }
 
@@ -175,13 +204,18 @@ export function createBox(id, left, top, text, workspace, eventBus) {
 
   // ─── Unified input interceptor ──────────────────────────────
   box.textEl.addEventListener("beforeinput", (e) => {
-    // Block newlines
-    if (e.inputType === "insertParagraph") {
+    // Handle newlines
+    if (e.inputType === "insertParagraph" || e.inputType === "insertLineBreak") {
       e.preventDefault();
+      const offsets = getSelectionOffsets(box.textEl, box.doc.text.length);
+      if (!offsets) return;
+      const newPos = applyEdit(box, offsets.start, offsets.end, "\n");
+      setCaretOffset(box.textEl, newPos);
+      eventBus?.emit("edit", { boxId: box.id, start: offsets.start, end: offsets.end, text: "\n", newPos });
       return;
     }
 
-    const offsets = getSelectionOffsets(box.textEl);
+    const offsets = getSelectionOffsets(box.textEl, box.doc.text.length);
     if (!offsets) return;
 
     // Handle the input types we care about
@@ -249,10 +283,21 @@ export function createBox(id, left, top, text, workspace, eventBus) {
   // Fallback scrub: catch anything the interceptor missed (e.g. composition edge cases)
   box.textEl.addEventListener("input", () => scrubEditable(box.textEl));
 
+  // Bring box to front on focus (click-to-edit)
+  box.textEl.addEventListener("focus", () => {
+    box.el.style.zIndex = nextZIndex();
+  });
+
   box.el.appendChild(box.textEl);
   box.el.appendChild(box.overlayEl);
   workspace.appendChild(box.el);
   return box;
+}
+
+// ─── Z-index management ────────────────────────────────────────
+let _zCounter = 1;
+export function nextZIndex() {
+  return ++_zCounter;
 }
 
 // ─── Layout ─────────────────────────────────────────────────────

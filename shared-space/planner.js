@@ -6,7 +6,7 @@
 // RandomPlanner uses weighted random selection; future LLMPlanner will
 // implement the same plan() interface.
 
-import { appendCmd, backspaceCmd, createCmd, deleteCmd, insertCmd, moveCmd, replaceCmd } from "./commands.js";
+import { appendCmd, backspaceCmd, createCmd, deleteCmd, insertCmd, moveBoxCmd, moveCmd, replaceCmd } from "./commands.js";
 import { canBotUseBox, findOpenSpot } from "./edit.js";
 import { appendChunk, insertChunk, pickRange, randomPhrase, randomWords } from "./linguistics.js";
 
@@ -39,6 +39,7 @@ export class RandomPlanner {
     if (boxes.length < 4 || chance(0.25)) actions.push("create");
     if (usable.length) actions.push("append", "insert");
     if (filled.length) actions.push("replace", "delete", "backspace", "append");
+    if (usable.length && chance(0.12)) actions.push("moveBox");
 
     const action = choice(actions);
 
@@ -105,6 +106,12 @@ export class RandomPlanner {
 
     // default: move
     const rect = wsRect();
+    if (action === "moveBox") {
+      const box = choice(usable);
+      const toX = rand(10, Math.max(10, rect.width - 150));
+      const toY = rand(10, Math.max(10, rect.height - 40));
+      return { cmd: moveBoxCmd(box.id, toX, toY), boxId: null, version: null };
+    }
     return { cmd: moveCmd(rand(rect.left + 10, rect.right - 20), rand(rect.top + 10, rect.bottom - 20)), boxId: null, version: null };
   }
 }

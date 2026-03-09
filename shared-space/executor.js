@@ -4,7 +4,7 @@
 //   showCaret(), showSelection() }
 // Emits "edit" events via the EventBus after every text mutation.
 
-import { applyEdit, isHumanFocusedBox, pagePointForIndex, showClick } from "./edit.js";
+import { applyEdit, isHumanFocusedBox, nextZIndex, pagePointForIndex, showClick } from "./edit.js";
 import { humanKeyDelay } from "./keyboard.js";
 import { moveHumanLike } from "./movement.js";
 import { chance, clamp, rand, sleep } from "./timing.js";
@@ -78,6 +78,7 @@ export class Executor {
     await sleep(rand(SETTLE_BEFORE_CLICK_MIN, SETTLE_BEFORE_CLICK_MAX));
     this.agent.setMode("ibeam");
     showClick(p.x, p.y, this.ctx.cursorLayer);
+    box.el.style.zIndex = nextZIndex();
     this.agent.showCaret(box, index);
     await sleep(rand(CARET_SETTLE_MIN, CARET_SETTLE_MAX));
   }

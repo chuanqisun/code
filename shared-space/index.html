@@ -33,9 +33,14 @@
         padding: 5px 6px;
         border: 1px dashed #bbb;
         background: #fff;
-        white-space: pre;
+        white-space: pre-wrap;
+        word-break: break-word;
         outline: none;
         font: 22px/28px monospace;
+      }
+      .box.selected > .text {
+        border-color: #0078d7;
+        border-style: solid;
       }
       .overlay {
         position: absolute;
@@ -100,7 +105,7 @@
 
     <script type="module">
       // ─── IMPORTS ──────────────────────────────────────────────────
-      import { FONT, measureCharWidth, placeCaretEnd, createBox as createBoxEl } from "./edit.js";
+      import { FONT, measureCharWidth, placeCaretEnd, showClick, nextZIndex, createBox as createBoxEl } from "./edit.js";
       import { createEventBus } from "./events.js";
       import { INITIAL_BOTS, ecologyLoop } from "./pool.js";
       import { initSound } from "./sound.js";
@@ -143,13 +148,76 @@
         return [...bots.values()].filter((b) => !b.retiring).length;
       }
 
-      // Human interaction
+      // ─── HUMAN INTERACTION ───────────────────────────────────────
+
+      // Ripple on every human click
+      workspace.addEventListener("mousedown", (e) => {
+        showClick(e.clientX, e.clientY, cursorLayer);
+      });
+
+      // Click on empty space → create new box
       workspace.addEventListener("click", (e) => {
         if (e.target !== workspace) return;
         const r = wsRect();
         const box = createBox(e.clientX - r.left, e.clientY - r.top, "");
         box.textEl.focus();
         placeCaretEnd(box.textEl);
+      });
+
+      // ─── Selection & drag-to-move ─────────────────────────────────
+      let selectedBox = null;
+      let dragging = null; // { box, offsetX, offsetY }
+
+      function selectBox(box) {
+        if (selectedBox && selectedBox !== box) selectedBox.el.classList.remove("selected");
+        selectedBox = box;
+        if (box) {
+          box.el.classList.add("selected");
+          box.el.style.zIndex = nextZIndex();
+        }
+      }
+
+      // Click on a box → select it & bring to front
+      workspace.addEventListener("mousedown", (e) => {
+        const boxEl = e.target.closest(".box");
+        if (!boxEl) {
+          // Clicked empty space → deselect
+          if (selectedBox) {
+            selectedBox.el.classList.remove("selected");
+            selectedBox = null;
+          }
+          return;
+        }
+        const box = boxEl._box;
+        selectBox(box);
+
+        // Start drag if mousedown is near the border (within 8px of edge)
+        const rect = boxEl.getBoundingClientRect();
+        const mx = e.clientX,
+          my = e.clientY;
+        const insetL = mx - rect.left,
+          insetR = rect.right - mx;
+        const insetT = my - rect.top,
+          insetB = rect.bottom - my;
+        const EDGE = 10;
+        const nearBorder = insetL < EDGE || insetR < EDGE || insetT < EDGE || insetB < EDGE;
+        if (nearBorder) {
+          e.preventDefault(); // prevent text selection during drag
+          dragging = { box, offsetX: mx - rect.left, offsetY: my - rect.top };
+        }
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const r = wsRect();
+        const newLeft = e.clientX - r.left - dragging.offsetX;
+        const newTop = e.clientY - r.top - dragging.offsetY;
+        dragging.box.el.style.left = newLeft + "px";
+        dragging.box.el.style.top = newTop + "px";
+      });
+
+      window.addEventListener("mouseup", () => {
+        dragging = null;
       });
 
       // Start immediately
