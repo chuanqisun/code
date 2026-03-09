@@ -8,7 +8,7 @@
 
 import { appendCmd, backspaceCmd, createCmd, deleteCmd, insertCmd, moveBoxCmd, moveCmd, replaceCmd } from "./commands.js";
 import { canBotUseBox, findOpenSpot } from "./edit.js";
-import { appendChunk, insertChunk, pickRange, randomPhrase, randomWords } from "./linguistics.js";
+import { appendChunk, insertChunk, pickRange, randomPhrase, randomWords, snapToWordBoundary } from "./linguistics.js";
 
 // ─── Local helpers ──────────────────────────────────────────────
 function rand(min, max) {
@@ -59,8 +59,9 @@ export class RandomPlanner {
     if (action === "insert") {
       const box = choice(usable);
       const { text, version } = snap(box);
-      const index = text.length ? Math.floor(rand(0, text.length + 1)) : 0;
-      return { cmd: insertCmd(box.id, index, insertChunk()), boxId: box.id, version };
+      const rawIndex = text.length ? Math.floor(rand(0, text.length + 1)) : 0;
+      const index = snapToWordBoundary(text, rawIndex);
+      return { cmd: insertCmd(box.id, index, insertChunk(text, index)), boxId: box.id, version };
     }
 
     if (action === "replace") {
@@ -99,7 +100,11 @@ export class RandomPlanner {
       }
       const box = choice(pool);
       const { text, version } = snap(box);
-      const index = chance(0.6) ? text.length : Math.floor(rand(1, text.length + 1));
+      const rawIndex = chance(0.6) ? text.length : Math.floor(rand(1, text.length + 1));
+      const index = snapToWordBoundary(text, rawIndex);
+      if (index <= 0) {
+        return { cmd: appendCmd(box.id, appendChunk(text)), boxId: box.id, version };
+      }
       const count = Math.max(1, Math.floor(rand(1, Math.min(4, index) + 1)));
       return { cmd: backspaceCmd(box.id, index, count), boxId: box.id, version };
     }

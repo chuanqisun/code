@@ -87,6 +87,7 @@ export class Executor {
   async dragSelect(box, start, end) {
     if (!box.el.isConnected) return;
     if (end < start) [start, end] = [end, start];
+    let ver = box.doc.version;
     const p0 = pagePointForIndex(box, start, this.ctx.charW);
     this.agent.setMode("ibeam");
     await this.moveTo(p0.x, p0.y, "text");
@@ -94,9 +95,16 @@ export class Executor {
     showClick(p0.x, p0.y, this.ctx.cursorLayer);
     await sleep(rand(15, 40));
 
-    const steps = Math.max(8, (end - start) * 3);
+    const origSpan = end - start;
+    const steps = Math.max(8, origSpan * 3);
     for (let i = 0; i <= steps; i++) {
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
+      // Rebase through concurrent edits
+      if (box.doc.version !== ver) {
+        start = box.doc.xfPos(start, ver, "right");
+        end = box.doc.xfPos(end, ver, "right");
+        ver = box.doc.version;
+      }
       const t = i / steps;
       const skew = t < 0.2 ? t * 1.8 : t < 0.75 ? 0.36 + (t - 0.2) * 0.9 : 0.86 + (t - 0.75) * 0.56;
       const idx = Math.round(start + (end - start) * clamp(skew, 0, 1));
@@ -108,6 +116,11 @@ export class Executor {
       if (chance(DRAG_PAUSE_CHANCE)) await sleep(rand(DRAG_PAUSE_MIN, DRAG_PAUSE_MAX));
       await sleep(rand(DRAG_STEP_MIN, DRAG_STEP_MAX));
     }
+    // Final rebase before completing
+    if (box.doc.version !== ver) {
+      start = box.doc.xfPos(start, ver, "right");
+      end = box.doc.xfPos(end, ver, "right");
+    }
     this.agent.showSelection(box, start, end);
     await sleep(rand(30, 70));
   }
@@ -115,12 +128,19 @@ export class Executor {
   // ─── Typing ───────────────────────────────────────────────────
   async typeInto(box, index, text) {
     let pos = index;
+    let ver = box.doc.version;
     let prev = "";
     this.agent.setMode("ibeam");
     this.agent.showCaret(box, pos);
     for (const ch of text) {
       if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
+      // Rebase pos through any concurrent edits since our last mutation
+      if (box.doc.version !== ver) {
+        pos = box.doc.xfPos(pos, ver);
+        ver = box.doc.version;
+      }
       pos = this._applyEdit(box, pos, pos, ch);
+      ver = box.doc.version;
       this.agent.showCaret(box, pos);
       await sleep(humanKeyDelay(ch, prev));
       prev = ch;
@@ -131,11 +151,19 @@ export class Executor {
   // ─── Backspace ────────────────────────────────────────────────
   async backspace(box, index, count) {
     let pos = index;
+    let ver = box.doc.version;
     this.agent.setMode("ibeam");
     this.agent.showCaret(box, pos);
     for (let i = 0; i < count; i++) {
       if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box) || pos <= 0) break;
+      // Rebase pos through any concurrent edits since our last mutation
+      if (box.doc.version !== ver) {
+        pos = box.doc.xfPos(pos, ver);
+        ver = box.doc.version;
+      }
+      if (pos <= 0) break;
       pos = this._applyEdit(box, pos - 1, pos, "");
+      ver = box.doc.version;
       this.agent.showCaret(box, pos);
       let ms = rand(BS_MIN, BS_MAX);
       if (chance(BS_HESITATE_CHANCE)) ms += rand(BS_HESITATE_MIN, BS_HESITATE_MAX);
@@ -145,7 +173,26 @@ export class Executor {
   }
 
   // ─── Instant range delete (no animation, used after drag-select) ─
+  // Absorbs adjacent whitespace to prevent double-spaces or orphan spaces.
+  // Returns the actual deletion start position for caret placement.
   deleteRange(box, start, end) {
-    this._applyEdit(box, start, end, "");
+    const text = box.doc.text;
+    let s = Math.max(0, Math.min(start, text.length));
+    let e = Math.max(s, Math.min(end, text.length));
+    if (s === e) return s;
+
+    if (s > 0 && e < text.length && text[s - 1] === " " && text[e] === " ") {
+      // Middle: absorb one trailing space to collapse the double
+      e++;
+    } else if (s === 0 && e < text.length && text[e] === " ") {
+      // Start: absorb orphan leading space
+      e++;
+    } else if (e >= text.length && s > 0 && text[s - 1] === " ") {
+      // End: absorb orphan trailing space
+      s--;
+    }
+
+    this._applyEdit(box, s, e, "");
+    return s;
   }
 }
