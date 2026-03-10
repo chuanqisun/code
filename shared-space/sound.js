@@ -15,6 +15,8 @@ function playDeleteSound() {
 // ─── Wire to EventBus ───────────────────────────────────────────
 export function initSound(eventBus) {
   eventBus.on("edit", ({ text, start, end }) => {
+    // Bot edits emit only { boxId }; human edits include text/start/end
+    if (text == null) return;
     if (text.length === 1) {
       // Single character typed
       playKeystroke(text);

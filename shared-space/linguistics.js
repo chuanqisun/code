@@ -80,8 +80,33 @@ export function appendChunk(current) {
   return s;
 }
 
-export function insertChunk() {
-  return choice([randomWords(1, 2), " " + randomWords(1, 2), ", ", " and ", " the ", ". ", "..."]);
+export function insertChunk(text, index) {
+  text = text || "";
+  index = index ?? text.length;
+
+  const before = index > 0 ? text[index - 1] : "";
+  const after = index < text.length ? text[index] : "";
+
+  let chunk = randomWords(1, 2);
+
+  // Add a leading space when preceded by a word char or punctuation
+  if (index > 0 && /[\w.,!?;:…]/.test(before)) {
+    chunk = " " + chunk;
+  }
+  // Add a trailing space when followed by a word char
+  if (index < text.length && /\w/.test(after)) {
+    chunk = chunk + " ";
+  }
+
+  // Collapse double spaces at boundaries
+  if (/\s/.test(before) && chunk.startsWith(" ")) {
+    chunk = chunk.slice(1);
+  }
+  if (/\s/.test(after) && chunk.endsWith(" ")) {
+    chunk = chunk.slice(0, -1);
+  }
+
+  return chunk;
 }
 
 // ─── Word boundary utilities ────────────────────────────────
@@ -109,7 +134,8 @@ export function snapToWordBoundary(text, index) {
 // ─── Range selection (chooses what to edit) ─────────────────
 export function pickRange(text) {
   if (!text.length) return [0, 0];
-  const matches = [...text.matchAll(/[A-Za-z0-9']+/g)];
+  // Match words including any trailing punctuation (e.g. "hello," as one unit)
+  const matches = [...text.matchAll(/[A-Za-z0-9']+[.,!?;:…]*/g)];
   if (matches.length && chance(0.75)) {
     // Select one or more consecutive words
     const i0 = Math.floor(rand(0, matches.length));
