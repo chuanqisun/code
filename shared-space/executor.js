@@ -1,10 +1,14 @@
 // ─── executor.js ─── Animated edit execution ────────────────────
 // Performs cursor movement, text mutation, and visual feedback.
-// Operates on a cursor agent: { x, y, retiring, updateCursor(), setMode(),
-//   showCaret(), showSelection() }
+// Operates on a cursor agent: { x, y, retiring, updateCursor(),
+//   setMode(), showCaret(), showSelection(), lockSpan }
 // Emits "edit" events via the EventBus after every text mutation.
+//
+// With span-based locking the executor works inside the bot's own
+// lock <span> — no OT position transforms are needed.
 
-import { applyEdit, isHumanFocusedBox, nextZIndex, pagePointForIndex, showClick } from "./edit.js";
+import { applyEdit, isHumanFocusedBox, nextZIndex, pagePointForIndex, showClick, syncDocText } from "./edit.js";
+import { getSpanCharIndex } from "./locks.js";
 import { humanKeyDelay } from "./keyboard.js";
 import { moveHumanLike } from "./movement.js";
 import { chance, clamp, rand, sleep } from "./timing.js";
@@ -39,8 +43,8 @@ const DRAG_PAUSE_MAX = 30;
 // ─── Executor ───────────────────────────────────────────────────
 export class Executor {
   /**
-   * @param {object} agent  Cursor agent (Bot instance or any object satisfying the interface)
-   * @param {object} ctx    Shared context { charW, cursorLayer, eventBus, ... }
+   * @param {object} agent  Cursor agent (Bot instance)
+   * @param {object} ctx    Shared context { charW, cursorLayer, eventBus, … }
    */
   constructor(agent, ctx) {
     this.agent = agent;
@@ -48,11 +52,9 @@ export class Executor {
     this.bus = ctx.eventBus || null;
   }
 
-  // ─── Single mutation point — all text changes go through here ──
-  _applyEdit(box, start, end, text) {
-    const newPos = applyEdit(box, start, end, text);
-    this.bus?.emit("edit", { boxId: box.id, start, end, text, newPos });
-    return newPos;
+  // ─── Edit event helper ────────────────────────────────────────
+  _emitEdit(box) {
+    this.bus?.emit("edit", { boxId: box.id });
   }
 
   // ─── Cursor movement ─────────────────────────────────────────
@@ -69,7 +71,7 @@ export class Executor {
     await sleep(rand(SETTLE_AFTER_CLICK_MIN, SETTLE_AFTER_CLICK_MAX));
   }
 
-  // ─── Caret placement ─────────────────────────────────────────
+  // ─── Caret placement (acquires a lock span) ───────────────────
   async placeCaret(box, index) {
     if (!box.el.isConnected) return;
     const p = pagePointForIndex(box, index, this.ctx.charW);
@@ -104,59 +106,81 @@ export class Executor {
       this.agent.x = lerp(this.agent.x, p.x, rand(0.6, 1));
       this.agent.y = lerp(this.agent.y, p.y, rand(0.6, 1));
       this.agent.updateCursor();
-      this.agent.showSelection(box, start, idx);
+      // Render selection overlay visually (no lock yet)
+      this.agent._renderSel(box, start, idx);
       if (chance(DRAG_PAUSE_CHANCE)) await sleep(rand(DRAG_PAUSE_MIN, DRAG_PAUSE_MAX));
       await sleep(rand(DRAG_STEP_MIN, DRAG_STEP_MAX));
     }
+    // Final render + acquire the selection lock
     this.agent.showSelection(box, start, end);
     await sleep(rand(30, 70));
   }
 
-  // ─── Typing ───────────────────────────────────────────────────
-  async typeInto(box, index, text) {
-    let pos = index;
-    let ver = box.doc.version;
+  // ─── Typing (works inside the bot's lock span) ────────────────
+  async typeInto(box, text) {
+    const lockSpan = this.agent.lockSpan;
+    if (!lockSpan) return;
+
     let prev = "";
     this.agent.setMode("ibeam");
-    this.agent.showCaret(box, pos);
+
     for (const ch of text) {
       if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
-      // Rebase position through any concurrent edits since our last mutation
-      pos = box.doc.xfPos(pos, ver);
-      ver = box.doc.version;
-      pos = this._applyEdit(box, pos, pos, ch);
-      ver = box.doc.version;
-      this.agent.showCaret(box, pos);
+
+      // Append character to the lock span
+      lockSpan.textContent += ch;
+      syncDocText(box);
+      this._emitEdit(box);
+
+      // Update overlay caret at end of span content
+      const pos = getSpanCharIndex(box.textEl, lockSpan) + lockSpan.textContent.length;
+      this.agent._renderCaret(box, pos);
+
       await sleep(humanKeyDelay(ch, prev));
       prev = ch;
     }
-    return pos;
   }
 
-  // ─── Backspace ────────────────────────────────────────────────
-  async backspace(box, index, count) {
-    let pos = index;
-    let ver = box.doc.version;
+  // ─── Backspace (deletes text before the lock span) ────────────
+  async backspace(box, count) {
+    const lockSpan = this.agent.lockSpan;
+    if (!lockSpan) return;
+
     this.agent.setMode("ibeam");
-    this.agent.showCaret(box, pos);
+
     for (let i = 0; i < count; i++) {
       if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
-      // Rebase position through any concurrent edits since our last mutation
-      pos = box.doc.xfPos(pos, ver);
-      ver = box.doc.version;
-      if (pos <= 0) break;
-      pos = this._applyEdit(box, pos - 1, pos, "");
-      ver = box.doc.version;
-      this.agent.showCaret(box, pos);
+
+      // Find the text node immediately before our span
+      let prev = lockSpan.previousSibling;
+      if (!prev || prev.nodeType !== Node.TEXT_NODE || prev.length === 0) {
+        // Nothing to delete, or hit another span
+        break;
+      }
+      // Check the previous sibling isn't inside another bot's lock
+      if (prev.parentElement && prev.parentElement.classList?.contains("bot-lock")) break;
+
+      // Delete the last character
+      prev.textContent = prev.textContent.slice(0, -1);
+      if (prev.length === 0) prev.remove();
+      syncDocText(box);
+      this._emitEdit(box);
+
+      const pos = getSpanCharIndex(box.textEl, lockSpan);
+      this.agent._renderCaret(box, pos);
+
       let ms = rand(BS_MIN, BS_MAX);
       if (chance(BS_HESITATE_CHANCE)) ms += rand(BS_HESITATE_MIN, BS_HESITATE_MAX);
       await sleep(ms);
     }
-    return pos;
   }
 
-  // ─── Instant range delete (no animation, used after drag-select) ─
-  deleteRange(box, start, end) {
-    this._applyEdit(box, start, end, "");
+  // ─── Instant range delete (clear the lock span content) ───────
+  deleteRange(box) {
+    const lockSpan = this.agent.lockSpan;
+    if (!lockSpan) return;
+    lockSpan.textContent = "";
+    syncDocText(box);
+    this._emitEdit(box);
   }
 }

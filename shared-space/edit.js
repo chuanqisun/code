@@ -3,6 +3,7 @@
 // Functions receive DOM elements as parameters — no module-level globals.
 
 import { Doc } from "./document.js";
+import { releaseAllLocks } from "./locks.js";
 
 // ─── Local helpers ──────────────────────────────────────────────
 function rand(min, max) {
@@ -44,10 +45,22 @@ export function measureCharWidth(font) {
 
 // ─── Text access ────────────────────────────────────────────────
 export function getText(box) {
-  return box.doc.text;
+  // textContent ignores span tags — always gives the plain text
+  let t = box.textEl.textContent || "";
+  // Strip trailing ZWS sentinel
+  if (t.endsWith("\u200B")) t = t.slice(0, -1);
+  return t;
 }
 
-/** Sync box.textEl content, ensuring trailing newlines render visibly */
+/**
+ * Sync doc.text from the DOM (called after bot span operations).
+ */
+export function syncDocText(box) {
+  box.doc.text = getText(box);
+}
+
+/** Sync box.textEl content, ensuring trailing newlines render visibly.
+ *  Only safe to call when NO lock spans are present (human editing). */
 function syncTextEl(box) {
   const t = box.doc.text;
   // A trailing \n in textContent is invisible in contentEditable.
@@ -55,12 +68,24 @@ function syncTextEl(box) {
   box.textEl.textContent = t.endsWith("\n") ? t + "\u200B" : t;
 }
 
+/**
+ * Re-sync text rendering.  When no lock spans remain this is a
+ * simple textContent write.  When spans are present it is a no-op
+ * — the DOM is already up to date.
+ */
+export function safeSyncTextEl(box) {
+  if (!box.textEl.querySelector(".bot-lock")) {
+    syncTextEl(box);
+  }
+}
+
 export function setText(box, text) {
   box.doc.text = normalizeText(text);
   syncTextEl(box);
 }
 
-/** Apply an edit through the Doc (OT-aware). Returns new cursor position. */
+/** Apply an edit to doc.text and sync DOM.
+ *  Used for human edits (no lock spans present). */
 export function applyEdit(box, start, end, insertText) {
   const newPos = box.doc.apply(start, end, insertText);
   syncTextEl(box);
@@ -284,7 +309,11 @@ export function createBox(id, left, top, text, workspace, eventBus) {
   box.textEl.addEventListener("input", () => scrubEditable(box.textEl));
 
   // Bring box to front on focus (click-to-edit)
+  // Unwrap all bot lock spans so the human edits plain text
   box.textEl.addEventListener("focus", () => {
+    releaseAllLocks(box.textEl);
+    syncDocText(box);
+    syncTextEl(box);
     box.el.style.zIndex = nextZIndex();
   });
 

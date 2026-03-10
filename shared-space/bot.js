@@ -1,7 +1,8 @@
 import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
-import { PAD_X, canBotUseBox, getText, isHumanFocusedBox, moveBox } from "./edit.js";
+import { PAD_X, canBotUseBox, getText, isHumanFocusedBox, moveBox, safeSyncTextEl, syncDocText } from "./edit.js";
 import { Executor } from "./executor.js";
 import { pickRange, randomWords } from "./linguistics.js";
+import { acquireCaretLock, acquireSelectionLock, getSpanCharIndex, isRangeFree, releaseLock } from "./locks.js";
 import { randomEdgePoint } from "./movement.js";
 import { RandomPlanner } from "./planner.js";
 import { BOT_LIFETIME_MAX, BOT_LIFETIME_MIN, BOT_RETIRE_CHECK_CHANCE } from "./pool.js";
@@ -13,6 +14,10 @@ const ACTION_PAUSE_MAX = 280;
 // ─── BOT CLASS ────────────────────────────────────────────────
 // The bot is a cursor agent + lifecycle shell.
 // Planning is delegated to the Planner; execution to the Executor.
+//
+// Lock spans in the DOM replace OT for conflict resolution.
+// When a bot places its cursor it acquires a <span> lock; other
+// bots see the span and avoid that region.
 export class Bot {
   /**
    * @param {number} id
@@ -41,24 +46,22 @@ export class Bot {
     this.caretEl.className = "bot-caret";
     this.overlayBox = null;
 
-    // Visual state for live rebasing when other agents edit the same box
-    this._vis = null; // { box, type:'caret'|'sel', index?, start?, end?, ver }
+    /** @type {HTMLSpanElement|null} Current lock span inside a textEl */
+    this.lockSpan = null;
 
-    // Listen for edits so we can shift our overlay in real time
+    // Re-render overlay when another agent edits the same box.
+    // With span locking the DOM handles position shifts — we just
+    // need to re-read the span's character index.
     this._onEdit = ({ boxId }) => {
-      const v = this._vis;
-      if (!v || !v.box || v.box.id !== boxId) return;
-      if (v.ver === v.box.doc.version) return; // already up-to-date
-      const doc = v.box.doc;
-      if (v.type === "caret") {
-        v.index = doc.xfPos(v.index, v.ver);
-        v.ver = doc.version;
-        this._renderCaret(v.box, v.index);
+      if (!this.lockSpan || !this.overlayBox || this.overlayBox.id !== boxId) return;
+      if (!this.overlayBox.textEl.contains(this.lockSpan)) return;
+
+      const spanIdx = getSpanCharIndex(this.overlayBox.textEl, this.lockSpan);
+      const spanLen = this.lockSpan.textContent?.length || 0;
+      if (spanLen === 0) {
+        this._renderCaret(this.overlayBox, spanIdx);
       } else {
-        v.start = doc.xfPos(v.start, v.ver, "left");
-        v.end = doc.xfPos(v.end, v.ver, "right");
-        v.ver = doc.version;
-        this._renderSel(v.box, v.start, v.end);
+        this._renderSel(this.overlayBox, spanIdx, spanIdx + spanLen);
       }
     };
     ctx.eventBus.on("edit", this._onEdit);
@@ -92,7 +95,13 @@ export class Bot {
   }
 
   hideOverlay() {
-    this._vis = null;
+    // Release lock span if we have one
+    if (this.lockSpan && this.overlayBox) {
+      releaseLock(this.overlayBox.textEl, this.id);
+      syncDocText(this.overlayBox);
+      safeSyncTextEl(this.overlayBox);
+      this.lockSpan = null;
+    }
     this.selEl.style.display = "none";
     this.caretEl.style.display = "none";
   }
@@ -117,18 +126,31 @@ export class Bot {
   }
 
   // ─── State-tracked overlay methods ──────────────────────────
+  /** Place a caret lock and render the overlay. */
   showCaret(box, index) {
     if (!box || !box.el.isConnected) return;
     this.attachOverlay(box);
-    this._vis = { box, type: "caret", index, ver: box.doc.version };
+
+    // Acquire lock only if we don't already have one for this box
+    if (!this.lockSpan || !box.textEl.contains(this.lockSpan)) {
+      this.lockSpan = acquireCaretLock(box.textEl, index, this.id);
+    }
     this._renderCaret(box, index);
   }
 
+  /** Acquire a selection lock and render the overlay. */
   showSelection(box, start, end) {
     if (!box || !box.el.isConnected) return;
     this.attachOverlay(box);
     if (end < start) [start, end] = [end, start];
-    this._vis = { box, type: "sel", start, end, ver: box.doc.version };
+
+    // Release existing lock and acquire selection lock
+    if (this.lockSpan) {
+      releaseLock(box.textEl, this.id);
+      syncDocText(box);
+      this.lockSpan = null;
+    }
+    this.lockSpan = acquireSelectionLock(box.textEl, start, end, this.id);
     this._renderSel(box, start, end);
   }
 
@@ -174,16 +196,17 @@ export class Bot {
     try {
       await sleep(rand(20, 80));
       await this.exec.placeCaret(box, 0);
-      await this.exec.typeInto(box, 0, cmd.text);
+      await this.exec.typeInto(box, cmd.text);
       if (chance(0.25) && getText(box).length > 3) {
-        const [a, b] = pickRange(getText(box));
-        const vSel = box.doc.version;
+        const text = getText(box);
+        const [a, b] = pickRange(text);
+        if (!isRangeFree(box.textEl, a, b, this.id)) return;
         await this.exec.dragSelect(box, a, b);
-        const [sa, sb] = box.doc.xfRange(a, b, vSel);
-        this.exec.deleteRange(box, sa, sb);
-        this.showCaret(box, sa);
+        this.exec.deleteRange(box);
+        const spanIdx = this.lockSpan ? getSpanCharIndex(box.textEl, this.lockSpan) : a;
+        this._renderCaret(box, spanIdx);
         await sleep(rand(30, 70));
-        if (chance(0.7)) await this.exec.typeInto(box, sa, randomWords(1, 2));
+        if (chance(0.7)) await this.exec.typeInto(box, randomWords(1, 2));
       }
     } finally {
       this.hideOverlay();
@@ -197,8 +220,7 @@ export class Bot {
     try {
       const t = getText(box);
       await this.exec.placeCaret(box, t.length);
-      // Re-read current length (text may have changed during animation)
-      await this.exec.typeInto(box, getText(box).length, cmd.text);
+      await this.exec.typeInto(box, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -208,10 +230,10 @@ export class Bot {
   async _execInsert(cmd) {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
+    if (!isRangeFree(box.textEl, cmd.index, cmd.index, this.id)) return;
     try {
-      const v0 = box.doc.version;
       await this.exec.placeCaret(box, cmd.index);
-      await this.exec.typeInto(box, box.doc.xfPos(cmd.index, v0), cmd.text);
+      await this.exec.typeInto(box, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -221,15 +243,15 @@ export class Bot {
   async _execReplace(cmd) {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
+    if (!isRangeFree(box.textEl, cmd.start, cmd.end, this.id)) return;
     try {
-      const v0 = box.doc.version;
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      const [s, e] = box.doc.xfRange(cmd.start, cmd.end, v0);
-      this.exec.deleteRange(box, s, e);
-      this.showCaret(box, s);
+      this.exec.deleteRange(box);
+      const spanIdx = this.lockSpan ? getSpanCharIndex(box.textEl, this.lockSpan) : cmd.start;
+      this._renderCaret(box, spanIdx);
       await sleep(rand(30, 70));
-      await this.exec.typeInto(box, s, cmd.text);
+      await this.exec.typeInto(box, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -239,13 +261,13 @@ export class Bot {
   async _execDelete(cmd) {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
+    if (!isRangeFree(box.textEl, cmd.start, cmd.end, this.id)) return;
     try {
-      const v0 = box.doc.version;
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      const [s, e] = box.doc.xfRange(cmd.start, cmd.end, v0);
-      this.exec.deleteRange(box, s, e);
-      this.showCaret(box, s);
+      this.exec.deleteRange(box);
+      const spanIdx = this.lockSpan ? getSpanCharIndex(box.textEl, this.lockSpan) : cmd.start;
+      this._renderCaret(box, spanIdx);
       await sleep(rand(40, 90));
     } finally {
       this.hideOverlay();
@@ -256,10 +278,10 @@ export class Bot {
   async _execBackspace(cmd) {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
+    if (!isRangeFree(box.textEl, Math.max(0, cmd.index - cmd.count), cmd.index, this.id)) return;
     try {
-      const v0 = box.doc.version;
       await this.exec.placeCaret(box, cmd.index);
-      await this.exec.backspace(box, box.doc.xfPos(cmd.index, v0), cmd.count);
+      await this.exec.backspace(box, cmd.count);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -319,21 +341,13 @@ export class Bot {
       }
       await sleep(rand(ACTION_PAUSE_MIN, ACTION_PAUSE_MAX));
       try {
-        const { cmd, boxId, version } = this.planner.plan({
+        const { cmd } = this.planner.plan({
           boxes: this.ctx.boxes,
           botId: this.id,
           wsRect: this.ctx.wsRect,
         });
-        // Transform the command if it targets a box and the doc has advanced
-        let finalCmd = cmd;
-        if (boxId != null) {
-          const box = this._findBox(boxId);
-          if (box && version != null) {
-            finalCmd = box.doc.xfCommand(cmd, version);
-          }
-        }
 
-        await this.executeCommand(finalCmd);
+        await this.executeCommand(cmd);
       } catch (_) {}
     }
     try {
