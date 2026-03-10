@@ -11,6 +11,40 @@ import { chance, rand, sleep } from "./timing.js";
 // ─── Action timing ────────────────────────────────────────────
 const ACTION_PAUSE_MIN = 30;
 const ACTION_PAUSE_MAX = 280;
+
+// ─── Whitespace cleanup ───────────────────────────────────────
+// Removes one adjacent space around an empty lock span to prevent
+// double spaces after deletion or backspace.
+function _cleanupAdjacentWhitespace(span) {
+  const prev = span.previousSibling;
+  const next = span.nextSibling;
+
+  const prevIsText = prev && prev.nodeType === Node.TEXT_NODE;
+  const nextIsText = next && next.nodeType === Node.TEXT_NODE;
+
+  // Both sides are text nodes — collapse double space
+  if (prevIsText && nextIsText) {
+    if (prev.textContent.endsWith(" ") && next.textContent.startsWith(" ")) {
+      next.textContent = next.textContent.slice(1);
+      if (!next.textContent) next.remove();
+      return;
+    }
+  }
+
+  // Leading orphan space (span is at the very start)
+  if (!prev && nextIsText && next.textContent.startsWith(" ")) {
+    next.textContent = next.textContent.slice(1);
+    if (!next.textContent) next.remove();
+    return;
+  }
+
+  // Trailing orphan space (span is at the very end)
+  if (!next && prevIsText && prev.textContent.endsWith(" ")) {
+    prev.textContent = prev.textContent.slice(0, -1);
+    if (!prev.textContent) prev.remove();
+  }
+}
+
 // ─── BOT CLASS ────────────────────────────────────────────────
 // The bot is a cursor agent + lifecycle shell.
 // Planning is delegated to the Planner; execution to the Executor.
@@ -100,6 +134,11 @@ export class Bot {
   hideOverlay() {
     // Release lock span if we have one
     if (this.lockSpan && this.overlayBox) {
+      // If the lock span is empty (pure deletion or backspace),
+      // clean up adjacent whitespace to avoid double spaces
+      if (!this.lockSpan.textContent) {
+        _cleanupAdjacentWhitespace(this.lockSpan);
+      }
       releaseLock(this.overlayBox.textEl, this.id);
       syncDocText(this.overlayBox);
       safeSyncTextEl(this.overlayBox);

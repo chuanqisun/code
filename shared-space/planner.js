@@ -55,7 +55,7 @@ export class RandomPlanner {
       const text = getText(box);
       const bounds = wordBoundaries(text);
       const index = choice(bounds);
-      return { cmd: insertCmd(box.id, index, insertChunk()), boxId: box.id };
+      return { cmd: insertCmd(box.id, index, insertChunk(text, index)), boxId: box.id };
     }
 
     if (action === "replace") {
