@@ -11,6 +11,10 @@
 //   - Deletion cannot enter another bot's span
 //   - Selection cannot overlap with another bot's span
 
+// ─── Lock type constants ─────────────────────────────────────────
+export const LOCK_CARET = "caret";
+export const LOCK_SELECTION = "selection";
+
 // ─── Text-node walking ──────────────────────────────────────────
 
 /**
@@ -70,7 +74,7 @@ export function acquireCaretLock(textEl, index, botId) {
   const span = document.createElement("span");
   span.className = "bot-lock";
   span.dataset.botId = String(botId);
-  span.dataset.lockType = "caret";
+  span.dataset.lockType = LOCK_CARET;
 
   const tp = findTextPosition(textEl, index);
   if (tp) {
@@ -111,7 +115,7 @@ export function acquireSelectionLock(textEl, start, end, botId) {
   const span = document.createElement("span");
   span.className = "bot-lock";
   span.dataset.botId = String(botId);
-  span.dataset.lockType = "selection";
+  span.dataset.lockType = LOCK_SELECTION;
 
   try {
     range.surroundContents(span);

@@ -8,7 +8,7 @@
 // lock <span> — no OT position transforms are needed.
 
 import { applyEdit, isHumanFocusedBox, nextZIndex, pagePointForIndex, showClick, syncDocText } from "./edit.js";
-import { getSpanCharIndex } from "./locks.js";
+import { getSpanCharIndex, LOCK_CARET } from "./locks.js";
 import { humanKeyDelay } from "./keyboard.js";
 import { moveHumanLike } from "./movement.js";
 import { chance, clamp, rand, sleep } from "./timing.js";
@@ -158,7 +158,7 @@ export class Executor {
         break;
       }
       // Check the previous sibling isn't inside another bot's lock
-      if (prev.parentElement && prev.parentElement.classList?.contains("bot-lock")) break;
+      if (prev.parentElement?.closest(".bot-lock")) break;
 
       // Delete the last character
       prev.textContent = prev.textContent.slice(0, -1);
@@ -181,7 +181,7 @@ export class Executor {
     if (!lockSpan) return;
     lockSpan.textContent = "";
     // After clearing, the lock behaves like a caret
-    lockSpan.dataset.lockType = "caret";
+    lockSpan.dataset.lockType = LOCK_CARET;
     syncDocText(box);
     this._emitEdit(box);
   }

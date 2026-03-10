@@ -2,7 +2,7 @@ import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
 import { PAD_X, canBotUseBox, getText, isHumanFocusedBox, moveBox, safeSyncTextEl, syncDocText } from "./edit.js";
 import { Executor } from "./executor.js";
 import { pickRange, randomWords } from "./linguistics.js";
-import { acquireCaretLock, acquireSelectionLock, getSpanCharIndex, isRangeFree, releaseLock } from "./locks.js";
+import { acquireCaretLock, acquireSelectionLock, getSpanCharIndex, isRangeFree, LOCK_CARET, releaseLock } from "./locks.js";
 import { randomEdgePoint } from "./movement.js";
 import { RandomPlanner } from "./planner.js";
 import { BOT_LIFETIME_MAX, BOT_LIFETIME_MIN, BOT_RETIRE_CHECK_CHANCE } from "./pool.js";
@@ -59,7 +59,7 @@ export class Bot {
       const spanIdx = getSpanCharIndex(this.overlayBox.textEl, this.lockSpan);
       const spanLen = this.lockSpan.textContent?.length || 0;
 
-      if (this.lockSpan.dataset.lockType === "caret") {
+      if (this.lockSpan.dataset.lockType === LOCK_CARET) {
         // Caret locks render at the end of typed content
         this._renderCaret(this.overlayBox, spanIdx + spanLen);
       } else {
@@ -233,6 +233,8 @@ export class Bot {
   async _execInsert(cmd) {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
+    // Early conflict check — avoids expensive cursor animation.
+    // The actual lock acquisition in placeCaret also checks internally.
     if (!isRangeFree(box.textEl, cmd.index, cmd.index, this.id)) return;
     try {
       await this.exec.placeCaret(box, cmd.index);
