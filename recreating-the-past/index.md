@@ -18,16 +18,17 @@
 | ![Original](./leparc/original.webp)                     | ![Recreated](./leparc/recreated.webp)              |
 
 - Notes
-  - [Live](./leparc/index.html), [Recording](https://www.youtube.com/shorts/zkKdvdRDc64), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/leparc/index.html),
-  - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64
-  - Op Art creates movement without movement
-  - Body movement can further enhance the effect and make the art participatory, as seen in the MoMA Responsive Eyes exhibition (1965)
-  - If we think of Op Art as the snapshot of a lensing effect, recreating the entire lens setup might allow us to experience the full environment that inspired the artist and reveal novel snapshots that the artist might have missed
-  - Adding caustic effect to add realism
-  - Tweak of parallax effect to make it feel natural
-  - Process: [Checkerboard](./leparc/100-checker.html), [Basic Distortion](./leparc/200-droplet.html), [Interaction](./leparc/300-interactive.html), [Head tracking](./leparc/400-head-tracking.html)
-  - I ported from Canvas API to Three.js in order to use shader for more realsitic rendering. However, the psychological effect of Op Art can be felt without realistic rendering.
-  - Extras: [Pattern and Color studies](./leparc/bridget-riley/100-pattern-study-colored.html), [Tiling studies](https://code.chuanqisun.com/zero-sum-game/)
+  - [Live](https://code.chuanqisun.com/recreating-the-past/leparc/index.html), [Recording](https://www.youtube.com/shorts/zkKdvdRDc64), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/leparc/index.html),  
+  - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64  
+  - I discovered [Karl Gerstner](https://buffaloakg.org/artworks/k19654-lens-picture-no-15)’s work after the project, which is closer to what I did.  
+  - Op Art creates movement without movement  
+  - But body movement can enhance the effect and make the art participatory, as seen in the MoMA Responsive Eyes exhibition (1965)  
+  - If we think of Op Art as the snapshot of a lens interacting with a pattern, recreating the entire lens setup might allow us to experience the full environment that inspired the artist and reveal novel snapshots that the artist might have missed  
+  - Adding caustic effect to add realism  
+  - Tweak of parallax effect to make it feel natural on a flat screen  
+  - Process: [Checkerboard](https://code.chuanqisun.com/recreating-the-past/leparc/100-checker.html), [Basic Distortion](https://code.chuanqisun.com/recreating-the-past/leparc/200-droplet.html), [Interaction](https://code.chuanqisun.com/recreating-the-past/leparc/300-interactive.html), [Head tracking](https://code.chuanqisun.com/recreating-the-past/leparc/400-head-tracking.html)  
+  - I ported from Canvas API to Three.js in order to use shader for more realistic rendering. However, the psychological effect of Op Art can be felt without realistic rendering.  
+  - Extras: [Pattern and Color studies](https://code.chuanqisun.com/recreating-the-past/leparc/bridget-riley/100-pattern-study-colored.html), [Tiling studies](https://code.chuanqisun.com/zero-sum-game/)
 
 ## Week 3: Computational Typography
 
