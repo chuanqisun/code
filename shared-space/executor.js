@@ -180,6 +180,8 @@ export class Executor {
     const lockSpan = this.agent.lockSpan;
     if (!lockSpan) return;
     lockSpan.textContent = "";
+    // After clearing, the lock behaves like a caret
+    lockSpan.dataset.lockType = "caret";
     syncDocText(box);
     this._emitEdit(box);
   }

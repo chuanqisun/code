@@ -58,9 +58,12 @@ export class Bot {
 
       const spanIdx = getSpanCharIndex(this.overlayBox.textEl, this.lockSpan);
       const spanLen = this.lockSpan.textContent?.length || 0;
-      if (spanLen === 0) {
-        this._renderCaret(this.overlayBox, spanIdx);
+
+      if (this.lockSpan.dataset.lockType === "caret") {
+        // Caret locks render at the end of typed content
+        this._renderCaret(this.overlayBox, spanIdx + spanLen);
       } else {
+        // Selection locks render over their content
         this._renderSel(this.overlayBox, spanIdx, spanIdx + spanLen);
       }
     };

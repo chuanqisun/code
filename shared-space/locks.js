@@ -70,6 +70,7 @@ export function acquireCaretLock(textEl, index, botId) {
   const span = document.createElement("span");
   span.className = "bot-lock";
   span.dataset.botId = String(botId);
+  span.dataset.lockType = "caret";
 
   const tp = findTextPosition(textEl, index);
   if (tp) {
@@ -110,6 +111,7 @@ export function acquireSelectionLock(textEl, start, end, botId) {
   const span = document.createElement("span");
   span.className = "bot-lock";
   span.dataset.botId = String(botId);
+  span.dataset.lockType = "selection";
 
   try {
     range.surroundContents(span);
