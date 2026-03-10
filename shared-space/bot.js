@@ -2,7 +2,6 @@ import { ARROW_SVG, IBEAM_SVG } from "./cursors.js";
 import { PAD_X, canBotUseBox, getText, isHumanFocusedBox, moveBox } from "./edit.js";
 import { Executor } from "./executor.js";
 import { pickRange, randomWords } from "./linguistics.js";
-import { acquireLock, hasOverlap, isRangeFree, releaseAllLocks, releaseLock } from "./locks.js";
 import { randomEdgePoint } from "./movement.js";
 import { RandomPlanner } from "./planner.js";
 import { BOT_LIFETIME_MAX, BOT_LIFETIME_MIN, BOT_RETIRE_CHECK_CHANCE } from "./pool.js";
@@ -11,24 +10,6 @@ import { chance, rand, sleep } from "./timing.js";
 // ─── Action timing ────────────────────────────────────────────
 const ACTION_PAUSE_MIN = 30;
 const ACTION_PAUSE_MAX = 280;
-// ─── Extract the affected character range from a command ──────
-function cmdRange(cmd, box) {
-  switch (cmd.type) {
-    case "append": {
-      const len = box ? box.doc.text.length : 0;
-      return [len, len + (cmd.text?.length || 0)];
-    }
-    case "insert":
-      return [cmd.index, cmd.index + (cmd.text?.length || 0)];
-    case "replace":
-    case "delete":
-      return [cmd.start, cmd.end];
-    case "backspace":
-      return [Math.max(0, cmd.index - cmd.count), cmd.index];
-    default:
-      return null;
-  }
-}
 // ─── BOT CLASS ────────────────────────────────────────────────
 // The bot is a cursor agent + lifecycle shell.
 // Planning is delegated to the Planner; execution to the Executor.
@@ -196,11 +177,13 @@ export class Bot {
       await this.exec.typeInto(box, 0, cmd.text);
       if (chance(0.25) && getText(box).length > 3) {
         const [a, b] = pickRange(getText(box));
+        const vSel = box.doc.version;
         await this.exec.dragSelect(box, a, b);
-        this.exec.deleteRange(box, a, b);
-        this.showCaret(box, a);
+        const [sa, sb] = box.doc.xfRange(a, b, vSel);
+        this.exec.deleteRange(box, sa, sb);
+        this.showCaret(box, sa);
         await sleep(rand(30, 70));
-        if (chance(0.7)) await this.exec.typeInto(box, a, randomWords(1, 2));
+        if (chance(0.7)) await this.exec.typeInto(box, sa, randomWords(1, 2));
       }
     } finally {
       this.hideOverlay();
@@ -212,10 +195,10 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
-      // Re-read current length at execution time (append always targets end)
       const t = getText(box);
       await this.exec.placeCaret(box, t.length);
-      await this.exec.typeInto(box, t.length, cmd.text);
+      // Re-read current length (text may have changed during animation)
+      await this.exec.typeInto(box, getText(box).length, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -226,8 +209,9 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const v0 = box.doc.version;
       await this.exec.placeCaret(box, cmd.index);
-      await this.exec.typeInto(box, cmd.index, cmd.text);
+      await this.exec.typeInto(box, box.doc.xfPos(cmd.index, v0), cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -238,12 +222,14 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const v0 = box.doc.version;
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      this.exec.deleteRange(box, cmd.start, cmd.end);
-      this.showCaret(box, cmd.start);
+      const [s, e] = box.doc.xfRange(cmd.start, cmd.end, v0);
+      this.exec.deleteRange(box, s, e);
+      this.showCaret(box, s);
       await sleep(rand(30, 70));
-      await this.exec.typeInto(box, cmd.start, cmd.text);
+      await this.exec.typeInto(box, s, cmd.text);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -254,10 +240,12 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const v0 = box.doc.version;
       await this.exec.dragSelect(box, cmd.start, cmd.end);
       if (!box.el.isConnected || isHumanFocusedBox(box)) return;
-      this.exec.deleteRange(box, cmd.start, cmd.end);
-      this.showCaret(box, cmd.start);
+      const [s, e] = box.doc.xfRange(cmd.start, cmd.end, v0);
+      this.exec.deleteRange(box, s, e);
+      this.showCaret(box, s);
       await sleep(rand(40, 90));
     } finally {
       this.hideOverlay();
@@ -269,8 +257,9 @@ export class Bot {
     const box = this._findBox(cmd.boxId);
     if (!box || !canBotUseBox(box)) return;
     try {
+      const v0 = box.doc.version;
       await this.exec.placeCaret(box, cmd.index);
-      await this.exec.backspace(box, cmd.index, cmd.count);
+      await this.exec.backspace(box, box.doc.xfPos(cmd.index, v0), cmd.count);
     } finally {
       this.hideOverlay();
       this.setMode("arrow");
@@ -315,7 +304,6 @@ export class Bot {
     this.hideOverlay();
     this.setMode("arrow");
     this.ctx.eventBus.off("edit", this._onEdit);
-    releaseAllLocks(this.id);
     const p = randomEdgePoint(this.ctx.wsRect());
     await this.exec.moveTo(p.x, p.y, "travel");
     this.cursor.remove();
@@ -331,14 +319,10 @@ export class Bot {
       }
       await sleep(rand(ACTION_PAUSE_MIN, ACTION_PAUSE_MAX));
       try {
-        // Read-plan-transform-execute: the planner returns a command
-        // planned against a snapshot version. Before execution, we
-        // transform indices through any edits that happened since.
         const { cmd, boxId, version } = this.planner.plan({
           boxes: this.ctx.boxes,
           botId: this.id,
           wsRect: this.ctx.wsRect,
-          isRangeFree: (bId, s, e, bid) => isRangeFree(bId, s, e, bid),
         });
         // Transform the command if it targets a box and the doc has advanced
         let finalCmd = cmd;
@@ -349,27 +333,7 @@ export class Bot {
           }
         }
 
-        // Final overlap guard: skip if the transformed range collides
-        let lockedBoxId = null;
-        if (boxId != null && finalCmd.type !== "moveBox") {
-          const box = this._findBox(boxId);
-          if (box) {
-            const range = cmdRange(finalCmd, box);
-            if (range && hasOverlap(boxId, range[0], range[1], this.id)) {
-              continue; // another bot is active in this range — retry
-            }
-            if (range) {
-              acquireLock(boxId, range[0], range[1], this.id);
-              lockedBoxId = boxId;
-            }
-          }
-        }
-
-        try {
-          await this.executeCommand(finalCmd);
-        } finally {
-          if (lockedBoxId != null) releaseLock(lockedBoxId, this.id);
-        }
+        await this.executeCommand(finalCmd);
       } catch (_) {}
     }
     try {

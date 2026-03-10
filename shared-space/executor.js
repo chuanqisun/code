@@ -115,12 +115,17 @@ export class Executor {
   // ─── Typing ───────────────────────────────────────────────────
   async typeInto(box, index, text) {
     let pos = index;
+    let ver = box.doc.version;
     let prev = "";
     this.agent.setMode("ibeam");
     this.agent.showCaret(box, pos);
     for (const ch of text) {
       if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
+      // Rebase position through any concurrent edits since our last mutation
+      pos = box.doc.xfPos(pos, ver);
+      ver = box.doc.version;
       pos = this._applyEdit(box, pos, pos, ch);
+      ver = box.doc.version;
       this.agent.showCaret(box, pos);
       await sleep(humanKeyDelay(ch, prev));
       prev = ch;
@@ -131,11 +136,17 @@ export class Executor {
   // ─── Backspace ────────────────────────────────────────────────
   async backspace(box, index, count) {
     let pos = index;
+    let ver = box.doc.version;
     this.agent.setMode("ibeam");
     this.agent.showCaret(box, pos);
     for (let i = 0; i < count; i++) {
-      if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box) || pos <= 0) break;
+      if (this.agent.retiring || !box.el.isConnected || isHumanFocusedBox(box)) break;
+      // Rebase position through any concurrent edits since our last mutation
+      pos = box.doc.xfPos(pos, ver);
+      ver = box.doc.version;
+      if (pos <= 0) break;
       pos = this._applyEdit(box, pos - 1, pos, "");
+      ver = box.doc.version;
       this.agent.showCaret(box, pos);
       let ms = rand(BS_MIN, BS_MAX);
       if (chance(BS_HESITATE_CHANCE)) ms += rand(BS_HESITATE_MIN, BS_HESITATE_MAX);
