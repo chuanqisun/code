@@ -54,6 +54,7 @@
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
 - [Groq transcription](./groq-transcription/)
+- [Groupthink](https://chuanqisun.github.io/groupthink/)
 - [Hand-box binding](./hand-box-binding/)
 - [Hand orientation](./hand-orientation/)
 - [Head tracking](./head-tracking/)
