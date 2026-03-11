@@ -2,6 +2,7 @@
 
 ## Tools
 
+- [Audio trim](./audio-trim/)
 - [Audio visualizer](./audio-visualizer/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [Color Analyzer](./color-analyzer/)
