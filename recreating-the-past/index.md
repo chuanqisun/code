@@ -18,6 +18,12 @@
 >
 > — [Art and Technology: The Panacea That Failed](https://monoskop.org/images/4/4e/Burnham_Jack_1980_Art_and_Technology_The_Panacea_That_Failed.pdf), by Jack Burnham
 
+### Watch
+
+- [Pixel manipulation, convolution matrix](https://www.dropbox.com/s/j0qm8fo5y5lbvf9/async_6_18.mp4?dl=0)
+
+### Practice
+
 ## Week 4: Pattern
 
 ### Read
