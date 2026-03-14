@@ -1,5 +1,23 @@
 # Recreating The Past
 
+## Week 5: Pixels
+
+### Read
+
+> If there is a teleological function to art, quite likely it is to lead
+> us back to our psychological origins, to exhaust our material illusions by
+> forcing us to understand the reality of mythic experience, for myths are
+> merely the mental constructs we devise for our perception of the world,
+> having particular properties isomorphic with the physical world. Yet
+> increasingly we sense the fragility of art, the fact that modern rationalism
+> tends to denude it of its most precious characteristic, its "believability."
+>
+> As with Norbert Wiener's comparison
+> of the ancient Jewish myth of the man-made Golem with cybernetic technology,
+> I envisioned the resolution of art and technology in the creation of life itself.
+>
+> — [Art and Technology: The Panacea That Failed](https://monoskop.org/images/4/4e/Burnham_Jack_1980_Art_and_Technology_The_Panacea_That_Failed.pdf), by Jack Burnham
+
 ## Week 4: Pattern
 
 ### Read
@@ -18,16 +36,16 @@
 | ![Original](./leparc/original.webp)                     | ![Recreated](./leparc/recreated.webp)              |
 
 - Notes
-  - [Live](https://code.chuanqisun.com/recreating-the-past/leparc/index.html), [Recording](https://www.youtube.com/shorts/zkKdvdRDc64), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/leparc/index.html),  
-  - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64  
-  - I discovered [Karl Gerstner](https://buffaloakg.org/artworks/k19654-lens-picture-no-15)’s work after the project, which is closer to what I did.  
-  - Op Art creates movement without movement  
-  - But body movement can enhance the effect and make the art participatory, as seen in the MoMA Responsive Eyes exhibition (1965)  
-  - If we think of Op Art as the snapshot of a lens interacting with a pattern, recreating the entire lens setup might allow us to experience the full environment that inspired the artist and reveal novel snapshots that the artist might have missed  
-  - Adding caustic effect to add realism  
-  - Tweak of parallax effect to make it feel natural on a flat screen  
-  - Process: [Checkerboard](https://code.chuanqisun.com/recreating-the-past/leparc/100-checker.html), [Basic Distortion](https://code.chuanqisun.com/recreating-the-past/leparc/200-droplet.html), [Interaction](https://code.chuanqisun.com/recreating-the-past/leparc/300-interactive.html), [Head tracking](https://code.chuanqisun.com/recreating-the-past/leparc/400-head-tracking.html)  
-  - I ported from Canvas API to Three.js in order to use shader for more realistic rendering. However, the psychological effect of Op Art can be felt without realistic rendering.  
+  - [Live](https://code.chuanqisun.com/recreating-the-past/leparc/index.html), [Recording](https://www.youtube.com/shorts/zkKdvdRDc64), [Code](https://github.com/chuanqisun/code/tree/master/recreating-the-past/leparc/index.html),
+  - Source: Julio Le Parc, Instability through Movement of the Spectator 1962-64
+  - I discovered [Karl Gerstner](https://buffaloakg.org/artworks/k19654-lens-picture-no-15)’s work after the project, which is closer to what I did.
+  - Op Art creates movement without movement
+  - But body movement can enhance the effect and make the art participatory, as seen in the MoMA Responsive Eyes exhibition (1965)
+  - If we think of Op Art as the snapshot of a lens interacting with a pattern, recreating the entire lens setup might allow us to experience the full environment that inspired the artist and reveal novel snapshots that the artist might have missed
+  - Adding caustic effect to add realism
+  - Tweak of parallax effect to make it feel natural on a flat screen
+  - Process: [Checkerboard](https://code.chuanqisun.com/recreating-the-past/leparc/100-checker.html), [Basic Distortion](https://code.chuanqisun.com/recreating-the-past/leparc/200-droplet.html), [Interaction](https://code.chuanqisun.com/recreating-the-past/leparc/300-interactive.html), [Head tracking](https://code.chuanqisun.com/recreating-the-past/leparc/400-head-tracking.html)
+  - I ported from Canvas API to Three.js in order to use shader for more realistic rendering. However, the psychological effect of Op Art can be felt without realistic rendering.
   - Extras: [Pattern and Color studies](https://code.chuanqisun.com/recreating-the-past/leparc/bridget-riley/100-pattern-study-colored.html), [Tiling studies](https://code.chuanqisun.com/zero-sum-game/)
 
 ## Week 3: Computational Typography
