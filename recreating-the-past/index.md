@@ -30,12 +30,12 @@
 
 - Notes
   - Source: Lillian Schwartz, _Olympiad_, 1971. Image courtesy The Henry Ford Museum.
-  - The human form was not easy to recreated. Given the Olympiad concept, I used 2026 Winter Olympics pictogram as starting point
+  - The human form was not easy to recreate. Given the Olympiad concept, I used 2026 Winter Olympics pictogram as starting point
   - First tried extracting the skeleton as vector and dilate the vector. But as outlines merge, vector math became impossible.
   - Then I switched from vector dilation to convolution matrix dilation. Also, instead of dilate with animation, I only render the final frame after N iterations
   - Added coloring and fading effect to be visually interesting. Used oklch color space to ensure consistent lightness
   - Future work: need to add pixelation effect
-  - Process: [Erode/dilate matrix](./schwartz/olympics/001-erode-dilate.html), [Outline detection (failed)](./schwartz/olympics/100-outline.html), [Vector dilattion (bad idea)](./schwartz/olympics/101-naive-dilate.html), [Convolution dilation](./schwartz/olympics/102-convolution.html), [Concentric outlining](./schwartz/olympics/103-concentric-dilation.html), [Batch render](./schwartz/olympics/109-wasm-bw.html)
+  - Process: [Erode/dilate matrix](./schwartz/olympics/001-erode-dilate.html), [Outline detection (failed)](./schwartz/olympics/100-outline.html), [Vector dilation (bad idea)](./schwartz/olympics/101-naive-dilate.html), [Convolution dilation](./schwartz/olympics/102-convolution.html), [Concentric outlining](./schwartz/olympics/103-concentric-dilation.html), [Batch render](./schwartz/olympics/109-wasm-bw.html)
   - Extras: [Color palette tool](./schwartz/olympics/200-color-palette.html), [Dance, don't walk](./schwartz/walkman/104-reactive-pulse.html)
 
 ## Week 4: Pattern
