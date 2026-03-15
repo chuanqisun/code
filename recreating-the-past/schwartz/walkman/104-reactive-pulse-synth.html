@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Walking Human – Ripple Contour Fill + Ground Pulse</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      canvas {
+        display: block;
+        width: min(100vw, calc(100vh * 9 / 16));
+        height: min(100vh, calc(100vw * 16 / 9));
+        aspect-ratio: 9 / 16;
+        background: #000;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+      const PARAMS = {
+        viewport: {
+          width: 900,
+          height: 1600,
+          pixelRatio: Math.min(devicePixelRatio, 2),
+        },
+        camera: {
+          fov: 40,
+          near: 0.1,
+          far: 200,
+          position: new THREE.Vector3(0, 16, 25),
+          target: new THREE.Vector3(0, 5, 0),
+        },
+        autoOrbit: {
+          enabled: true,
+          angle: Math.PI,
+          radius: 30,
+          height: 16,
+          speed: 0.35,
+        },
+        model: {
+          url: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb",
+          scaleToHeight: 2.2,
+        },
+        walk: {
+          bpm: 126,
+          sourceClipBpm: 116,
+        },
+        audio: {
+          enabled: true,
+          masterVolume: 0.18,
+          swing: 0.03,
+          phaseShiftBeats: 0.035,
+          rootHz: 43.65,
+          notePattern: [0, 7, 10, -2],
+          lowpassBaseHz: 280,
+          lowpassAccentHz: 1100,
+          pumpFloor: 0.28,
+          pumpDepth: 0.72,
+          pumpCurve: 1.8,
+          noteGlide: 0.09,
+          detuneLfoHz: 0.18,
+          detuneLfoDepth: 12,
+          filterLfoHz: 0.031,
+          filterLfoDepth: 420,
+          shimmerHz: 0.083,
+          shimmerDepth: 0.18,
+        },
+        waves: {
+          cyclesPerMinute: 90,
+          beatsPerBand: 1,
+          bandSize: 0.006,
+          lineThickness: 0.002,
+        },
+        color: {
+          cyclesPerMinute: -20,
+          spatialFrequency: 8.0,
+          saturation: 1.0,
+          value: 1.0,
+        },
+        ground: {
+          enabled: true,
+          size: 180,
+          divisions: 60,
+          color: 0x444444,
+          opacity: 0.6,
+          heightOffset: 1.1,
+          fadeDistance: 18,
+          lineWidthPx: 1.5, // grid line width in pixels; uniform thickness regardless of distance
+          lineAA: 1.5, // edge softness in pixels
+        },
+        footPulse: {
+          speed: 14.0,
+          decay: 2,
+          intensity: 15.0,
+          ringCount: 3,
+          ringGap: 1,
+          ringWidth: 0.1,
+          strokeWidthPx: 1,
+          maxPulses: 8,
+          footHeightThreshold: 1,
+          forwardBackOffset: -0.2,
+          leftRightOffset: 0.25,
+          timeOffset: 0.1,
+          cooldown: 0.25,
+        },
+      };
+
+      /* ── renderer ──────────────────────────────────── */
+      const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+      document.body.appendChild(renderer.domElement);
+
+      /* ── camera / controls ─────────────────────────── */
+      const camera = new THREE.PerspectiveCamera(PARAMS.camera.fov, PARAMS.viewport.width / PARAMS.viewport.height, PARAMS.camera.near, PARAMS.camera.far);
+      camera.position.copy(PARAMS.camera.position);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.copy(PARAMS.camera.target);
+
+      let autoOrbit = PARAMS.autoOrbit.enabled;
+      let autoAngle = PARAMS.autoOrbit.angle;
+
+      function stopAutoOrbit() {
+        autoOrbit = false;
+      }
+      controls.addEventListener("start", stopAutoOrbit);
+
+      /* ── scene ─────────────────────────────────────── */
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+      const flatWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      const clock = new THREE.Clock();
+      let mixer = null;
+      let characterModel = null;
+
+      /* ── audio ─────────────────────────────────────── */
+      let audioContext = null;
+      let audioStarted = false;
+      let synthMaster = null;
+      let synthFilter = null;
+      let synthPulseGain = null;
+      let synthLfo = null;
+      let synthLfoGain = null;
+      let synthFilterLfo = null;
+      let synthFilterLfoGain = null;
+      let synthOscillators = [];
+      let nextStepTime = 0;
+      let currentStep = 0;
+      const audioLeadTime = 0.1;
+      const audioLookahead = 0.18;
+
+      const audioHint = document.createElement("button");
+      audioHint.textContent = "Tap to enable synth";
+      Object.assign(audioHint.style, {
+        position: "fixed",
+        left: "50%",
+        bottom: "24px",
+        transform: "translateX(-50%)",
+        zIndex: "10",
+        padding: "10px 16px",
+        border: "1px solid rgba(255,255,255,0.25)",
+        borderRadius: "999px",
+        background: "rgba(0,0,0,0.7)",
+        color: "#fff",
+        font: "600 12px/1 system-ui, sans-serif",
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        cursor: "pointer",
+      });
+      document.body.appendChild(audioHint);
+
+      function hzWithSemitoneOffset(baseHz, semitones) {
+        return baseHz * Math.pow(2, semitones / 12);
+      }
+
+      function createOsc(type, frequency, gainValue, detune = 0) {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = type;
+        osc.frequency.value = frequency;
+        osc.detune.value = detune;
+        gain.gain.value = gainValue;
+        osc.connect(gain);
+        gain.connect(synthFilter);
+        osc.start();
+        synthOscillators.push({ osc, type });
+      }
+
+      function setupAudio() {
+        if (!AudioContextClass || audioContext) return;
+
+        audioContext = new AudioContextClass();
+        synthMaster = audioContext.createGain();
+        synthFilter = audioContext.createBiquadFilter();
+        synthPulseGain = audioContext.createGain();
+        synthLfo = audioContext.createOscillator();
+        synthLfoGain = audioContext.createGain();
+        synthFilterLfo = audioContext.createOscillator();
+        synthFilterLfoGain = audioContext.createGain();
+
+        synthFilter.type = "lowpass";
+        synthFilter.frequency.value = PARAMS.audio.lowpassBaseHz;
+        synthFilter.Q.value = 8;
+
+        synthPulseGain.gain.value = PARAMS.audio.pumpFloor;
+        synthMaster.gain.value = PARAMS.audio.masterVolume;
+
+        synthFilter.connect(synthPulseGain);
+        synthPulseGain.connect(synthMaster);
+        synthMaster.connect(audioContext.destination);
+
+        synthLfo.type = "triangle";
+        synthLfo.frequency.value = PARAMS.audio.detuneLfoHz;
+        synthLfoGain.gain.value = PARAMS.audio.detuneLfoDepth;
+        synthLfo.connect(synthLfoGain);
+        synthLfoGain.connect(synthFilter.detune);
+        synthLfo.start();
+
+        synthFilterLfo.type = "sine";
+        synthFilterLfo.frequency.value = PARAMS.audio.filterLfoHz;
+        synthFilterLfoGain.gain.value = PARAMS.audio.filterLfoDepth;
+        synthFilterLfo.connect(synthFilterLfoGain);
+        synthFilterLfoGain.connect(synthFilter.frequency);
+        synthFilterLfo.start();
+
+        createOsc("sawtooth", PARAMS.audio.rootHz, 0.22, -7);
+        createOsc("sawtooth", PARAMS.audio.rootHz, 0.18, 7);
+        createOsc("square", PARAMS.audio.rootHz * 0.5, 0.08, 0);
+
+        nextStepTime = audioContext.currentTime + audioLeadTime;
+      }
+
+      function setSynthFrequency(freq, time) {
+        for (const { osc, type } of synthOscillators) {
+          const ratio = type === "square" ? 0.5 : 1.0;
+          osc.frequency.cancelScheduledValues(time);
+          osc.frequency.setTargetAtTime(freq * ratio, time, PARAMS.audio.noteGlide);
+        }
+      }
+
+      function pumpValue(phase, time, stepIndex) {
+        const base = Math.max(0, Math.sin(Math.PI * phase));
+        const shaped = Math.pow(base, PARAMS.audio.pumpCurve);
+        const longWave = 0.72 + 0.28 * Math.sin(time * Math.PI * 0.21 + stepIndex * 0.37);
+        const shimmer = 0.88 + PARAMS.audio.shimmerDepth * Math.sin(time * Math.PI * 2.0 * PARAMS.audio.shimmerHz + stepIndex * 0.61);
+        return PARAMS.audio.pumpFloor + PARAMS.audio.pumpDepth * shaped * longWave * shimmer;
+      }
+
+      function triggerSynthPulse(stepTime) {
+        const stepIndex = currentStep % PARAMS.audio.notePattern.length;
+        const semitone = PARAMS.audio.notePattern[stepIndex];
+        const freq = hzWithSemitoneOffset(PARAMS.audio.rootHz, semitone);
+        const accent = stepIndex === 0 ? 1.0 : 0.82;
+        const secondsPerBeat = 60 / PARAMS.walk.bpm;
+        const subdivisions = 8;
+        const slice = secondsPerBeat / subdivisions;
+
+        setSynthFrequency(freq, stepTime);
+
+        const pulse = synthPulseGain.gain;
+        const filter = synthFilter.frequency;
+
+        pulse.cancelScheduledValues(stepTime);
+        for (let i = 0; i <= subdivisions; i++) {
+          const phase = i / subdivisions;
+          const timePoint = stepTime + phase * secondsPerBeat;
+          const value = pumpValue(phase, timePoint, stepIndex) * accent;
+          if (i === 0) {
+            pulse.setValueAtTime(value, timePoint);
+          } else {
+            pulse.linearRampToValueAtTime(value, timePoint);
+          }
+        }
+
+        filter.cancelScheduledValues(stepTime);
+        for (let i = 0; i <= subdivisions; i++) {
+          const phase = i / subdivisions;
+          const timePoint = stepTime + i * slice;
+          const pump = pumpValue(phase, timePoint, stepIndex);
+          const harmonic = 0.5 + 0.5 * Math.sin(timePoint * Math.PI * 2.0 * 0.13 + stepIndex * 0.9);
+          const cutoff = PARAMS.audio.lowpassBaseHz + (PARAMS.audio.lowpassAccentHz - PARAMS.audio.lowpassBaseHz) * pump * (0.65 + 0.35 * harmonic) * accent;
+          if (i === 0) {
+            filter.setValueAtTime(cutoff, timePoint);
+          } else {
+            filter.linearRampToValueAtTime(cutoff, timePoint);
+          }
+        }
+
+        synthMaster.gain.cancelScheduledValues(stepTime);
+        synthMaster.gain.setValueAtTime(PARAMS.audio.masterVolume, stepTime);
+
+        currentStep += 1;
+      }
+
+      function scheduleAudio() {
+        if (!audioStarted || !audioContext || audioContext.state !== "running") return;
+
+        const secondsPerBeat = 60 / PARAMS.walk.bpm;
+        const phaseShiftSeconds = PARAMS.audio.phaseShiftBeats * secondsPerBeat;
+        while (nextStepTime < audioContext.currentTime + audioLookahead) {
+          const swingOffset = currentStep % 2 === 1 ? PARAMS.audio.swing * secondsPerBeat : 0;
+          triggerSynthPulse(nextStepTime + swingOffset - phaseShiftSeconds);
+          nextStepTime += secondsPerBeat;
+        }
+      }
+
+      async function startAudio() {
+        if (!PARAMS.audio.enabled || !AudioContextClass) return;
+        setupAudio();
+        if (!audioContext) return;
+        if (audioContext.state !== "running") {
+          await audioContext.resume();
+        }
+        audioStarted = true;
+        nextStepTime = Math.max(nextStepTime, audioContext.currentTime + audioLeadTime);
+        audioHint.style.display = "none";
+      }
+
+      audioHint.addEventListener("click", () => {
+        startAudio().catch(console.error);
+      });
+
+      window.addEventListener(
+        "pointerdown",
+        () => {
+          if (!audioStarted) startAudio().catch(console.error);
+        },
+        { once: true }
+      );
+
+      /* ── foot tracking ─────────────────────────────── */
+      let leftFootBone = null,
+        rightFootBone = null;
+      let leftFootWasDown = false,
+        rightFootWasDown = false;
+      let leftLastPulseTime = -100,
+        rightLastPulseTime = -100;
+
+      const _footWorld = new THREE.Vector3();
+      const _charForward = new THREE.Vector3();
+      const _charRight = new THREE.Vector3();
+      const _offset = new THREE.Vector3();
+
+      const pulses = [];
+      for (let i = 0; i < PARAMS.footPulse.maxPulses; i++) {
+        pulses.push({ x: 0, z: 0, birthTime: -100 });
+      }
+      let pulseIndex = 0;
+
+      function addPulse(x, z, time) {
+        pulses[pulseIndex].x = x;
+        pulses[pulseIndex].z = z;
+        pulses[pulseIndex].birthTime = time;
+        pulseIndex = (pulseIndex + 1) % PARAMS.footPulse.maxPulses;
+      }
+
+      function getCharacterAxes() {
+        if (!characterModel) {
+          _charForward.set(0, 0, -1);
+          _charRight.set(1, 0, 0);
+          return;
+        }
+        _charForward.set(0, 0, -1).applyQuaternion(characterModel.quaternion).setY(0).normalize();
+        _charRight.set(1, 0, 0).applyQuaternion(characterModel.quaternion).setY(0).normalize();
+      }
+
+      function getOffsetPosition(bone, side) {
+        bone.getWorldPosition(_footWorld);
+        getCharacterAxes();
+        _offset.set(0, 0, 0);
+        _offset.addScaledVector(_charForward, PARAMS.footPulse.forwardBackOffset);
+        _offset.addScaledVector(_charRight, PARAMS.footPulse.leftRightOffset * side);
+        _footWorld.add(_offset);
+        return _footWorld;
+      }
+
+      function checkFoot(bone, wasDown, lastPulseTime, side, time) {
+        if (!bone) return { wasDown, lastPulseTime };
+        const pos = getOffsetPosition(bone, side);
+        const groundY = PARAMS.ground.heightOffset;
+        const threshold = groundY + PARAMS.footPulse.footHeightThreshold;
+        const isDown = pos.y <= threshold;
+        const cooldownOk = time - lastPulseTime >= PARAMS.footPulse.cooldown;
+        if (isDown && !wasDown && cooldownOk) {
+          addPulse(pos.x, pos.z, time);
+          lastPulseTime = time;
+        }
+        return { wasDown: isDown, lastPulseTime };
+      }
+
+      /* ── ground ring material ──────────────────────── */
+      const groundGridMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(PARAMS.ground.color) },
+          uOpacity: { value: PARAMS.ground.opacity },
+          uFadeDistance: { value: PARAMS.ground.fadeDistance },
+          uTime: { value: 0 },
+          uPulseSpeed: { value: PARAMS.footPulse.speed },
+          uPulseDecay: { value: PARAMS.footPulse.decay },
+          uPulseIntensity: { value: PARAMS.footPulse.intensity },
+          uPulseRingCount: { value: PARAMS.footPulse.ringCount },
+          uPulseRingGap: { value: PARAMS.footPulse.ringGap },
+          uPulseRingWidth: { value: PARAMS.footPulse.ringWidth },
+          uPulseStrokeWidthPx: { value: PARAMS.footPulse.strokeWidthPx },
+          uPulseTimeOffset: { value: PARAMS.footPulse.timeOffset },
+          uPulseCount: { value: PARAMS.footPulse.maxPulses },
+          uPulseOrigins: { value: [] },
+          uPulseBirths: { value: [] },
+          // dynamic color uniforms (synced from contour color each frame)
+          uColorCyclesPerMinute: { value: PARAMS.color.cyclesPerMinute },
+          uColorSpatialFrequency: { value: PARAMS.color.spatialFrequency },
+          uColorSaturation: { value: PARAMS.color.saturation },
+          uColorValue: { value: PARAMS.color.value },
+        },
+        vertexShader: `
+    varying vec3 vWorldPos;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+        fragmentShader: `
+    #define MAX_PULSES 8
+
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    uniform float uFadeDistance;
+
+    uniform float uTime;
+    uniform float uPulseSpeed;
+    uniform float uPulseDecay;
+    uniform float uPulseIntensity;
+    uniform float uPulseRingCount;
+    uniform float uPulseRingGap;
+    uniform float uPulseRingWidth;
+    uniform float uPulseStrokeWidthPx;
+    uniform float uPulseTimeOffset;
+    uniform int uPulseCount;
+    uniform vec3 uPulseOrigins[MAX_PULSES];
+    uniform float uPulseBirths[MAX_PULSES];
+
+    uniform float uColorCyclesPerMinute;
+    uniform float uColorSpatialFrequency;
+    uniform float uColorSaturation;
+    uniform float uColorValue;
+
+    varying vec3 vWorldPos;
+
+    vec3 hsv2rgb(vec3 c) {
+      vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+      rgb = rgb * rgb * (3.0 - 2.0 * rgb);
+      return c.z * mix(vec3(1.0), rgb, c.y);
+    }
+
+    float ringStroke(float radiusDelta, float strokeWidthPx) {
+      float fw = max(fwidth(radiusDelta), 1e-4);
+      float halfWidth = fw * strokeWidthPx * 0.5;
+      float aa = fw;
+      return 1.0 - smoothstep(halfWidth, halfWidth + aa, abs(radiusDelta));
+    }
+
+    void main() {
+      float dist = length(vWorldPos.xz);
+      float fade = 1.0 - smoothstep(uFadeDistance * 0.5, uFadeDistance, dist);
+
+      vec3 baseCol = uColor * uOpacity * 0.18 * fade;
+
+      vec3 pulseAccum = vec3(0.0);
+      for (int i = 0; i < MAX_PULSES; i++) {
+        if (i >= uPulseCount) break;
+        float shiftedAge = uTime - uPulseBirths[i] - uPulseTimeOffset;
+        if (shiftedAge < 0.0) continue;
+
+        float eucDist = length(vWorldPos.xz - uPulseOrigins[i].xz);
+        float pulse = 0.0;
+
+        if (shiftedAge < 0.0 || shiftedAge > uPulseDecay) continue;
+        float timeFade = max(0.0, 1.0 - shiftedAge / uPulseDecay);
+        timeFade *= timeFade;
+
+        for (int ringIndex = 0; ringIndex < 16; ringIndex++) {
+          if (float(ringIndex) >= uPulseRingCount) break;
+
+          float ringRadius = shiftedAge * uPulseSpeed + float(ringIndex) * uPulseRingGap;
+
+          float ring = ringStroke(eucDist - ringRadius, uPulseStrokeWidthPx);
+          pulse = max(pulse, ring * timeFade);
+        }
+
+        float colorCPS = uColorCyclesPerMinute / 60.0;
+        float hue = fract(-uTime * colorCPS);
+        vec3 pulseColor = hsv2rgb(vec3(hue, uColorSaturation, uColorValue));
+
+        pulseAccum += pulseColor * pulse * uPulseIntensity * fade;
+      }
+
+      vec3 finalCol = baseCol + pulseAccum;
+      float alpha = max(uOpacity * 0.18 * fade, clamp(length(pulseAccum), 0.0, 1.0));
+      if (alpha < 0.005) discard;
+
+      gl_FragColor = vec4(finalCol, min(alpha, 1.0));
+    }
+  `,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const origins = [];
+      const births = [];
+      for (let i = 0; i < PARAMS.footPulse.maxPulses; i++) {
+        origins.push(new THREE.Vector3(0, 0, 0));
+        births.push(-100);
+      }
+      groundGridMaterial.uniforms.uPulseOrigins.value = origins;
+      groundGridMaterial.uniforms.uPulseBirths.value = births;
+
+      const groundPlane = new THREE.Mesh(new THREE.PlaneGeometry(PARAMS.ground.size, PARAMS.ground.size), groundGridMaterial);
+      groundPlane.rotation.x = -Math.PI / 2;
+      groundPlane.position.y = PARAMS.ground.heightOffset;
+      groundPlane.visible = PARAMS.ground.enabled;
+      groundPlane.renderOrder = -1;
+      scene.add(groundPlane);
+
+      const groundScene = new THREE.Scene();
+      groundScene.background = new THREE.Color(0x000000);
+      const groundClone = groundPlane.clone();
+      groundClone.material = groundGridMaterial;
+      groundScene.add(groundClone);
+
+      /* ── render targets ────────────────────────────── */
+      let rtW = Math.round(PARAMS.viewport.width * PARAMS.viewport.pixelRatio);
+      let rtH = Math.round(PARAMS.viewport.height * PARAMS.viewport.pixelRatio);
+
+      function makeRT(type = THREE.UnsignedByteType, format = THREE.RGBAFormat) {
+        return new THREE.WebGLRenderTarget(rtW, rtH, {
+          minFilter: THREE.NearestFilter,
+          magFilter: THREE.NearestFilter,
+          format,
+          type,
+          depthBuffer: false,
+        });
+      }
+
+      const silhouetteRT = makeRT();
+
+      const jfaA = new THREE.WebGLRenderTarget(rtW, rtH, {
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+        depthBuffer: false,
+      });
+      const jfaB = jfaA.clone();
+
+      const groundRT = new THREE.WebGLRenderTarget(rtW, rtH, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+        depthBuffer: true,
+      });
+
+      /* ── fullscreen helpers ────────────────────────── */
+      const fsQuadGeo = new THREE.PlaneGeometry(2, 2);
+      const fsQuadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      function makePass(fragmentShader, uniforms) {
+        const mat = new THREE.ShaderMaterial({
+          uniforms,
+          vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+          fragmentShader,
+          depthTest: false,
+          depthWrite: false,
+        });
+        return new THREE.Mesh(fsQuadGeo, mat);
+      }
+
+      /* ── JFA seed pass ─────────────────────────────── */
+      const jfaSeedPass = makePass(
+        `
+  uniform sampler2D tSilhouette;
+  uniform vec2 resolution;
+  varying vec2 vUv;
+  void main() {
+    vec2 texel = 1.0 / resolution;
+    float c = texture2D(tSilhouette, vUv).r;
+    float l = texture2D(tSilhouette, vUv + vec2(-texel.x, 0.0)).r;
+    float r = texture2D(tSilhouette, vUv + vec2( texel.x, 0.0)).r;
+    float t = texture2D(tSilhouette, vUv + vec2(0.0,  texel.y)).r;
+    float b = texture2D(tSilhouette, vUv + vec2(0.0, -texel.y)).r;
+    bool edge = c > 0.5 && (l < 0.5 || r < 0.5 || t < 0.5 || b < 0.5);
+    gl_FragColor = edge ? vec4(vUv, 0.0, 1.0) : vec4(-1.0, -1.0, 0.0, 1.0);
+  }
+`,
+        {
+          tSilhouette: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+        }
+      );
+
+      /* ── JFA step pass ─────────────────────────────── */
+      const jfaStepPass = makePass(
+        `
+  uniform sampler2D tJFA;
+  uniform vec2 resolution;
+  uniform float uStep;
+  varying vec2 vUv;
+  void main() {
+    vec2 texel = 1.0 / resolution;
+    float bestDist = 1e10;
+    vec2 bestSeed = vec2(-1.0);
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 offset = vec2(float(x), float(y)) * uStep * texel;
+        vec2 s = texture2D(tJFA, vUv + offset).rg;
+        if (s.x < 0.0) continue;
+        float d = distance(vUv, s);
+        if (d < bestDist) {
+          bestDist = d;
+          bestSeed = s;
+        }
+      }
+    }
+    gl_FragColor = vec4(bestSeed, 0.0, 1.0);
+  }
+`,
+        {
+          tJFA: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+          uStep: { value: 1.0 },
+        }
+      );
+
+      /* ── final composite pass ──────────────────────── */
+      const contourPass = makePass(
+        `
+  uniform sampler2D tJFA;
+  uniform sampler2D tSilhouette;
+  uniform sampler2D tGround;
+  uniform vec2 resolution;
+
+  uniform float bandSize;
+  uniform float lineThickness;
+  uniform float time;
+
+  uniform float waveCyclesPerMinute;
+  uniform float waveBandsPerCycle;
+
+  uniform float colorCyclesPerMinute;
+  uniform float colorSpatialFrequency;
+  uniform float colorSaturation;
+  uniform float colorValue;
+
+  varying vec2 vUv;
+
+  vec3 hsv2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    rgb = rgb * rgb * (3.0 - 2.0 * rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+  }
+
+  void main() {
+    float mask = texture2D(tSilhouette, vUv).r;
+    vec4 groundCol = texture2D(tGround, vUv);
+
+    if (mask < 0.5) {
+      gl_FragColor = vec4(groundCol.rgb, 1.0);
+      return;
+    }
+
+    vec2 texel = 1.0 / resolution;
+    float l = texture2D(tSilhouette, vUv + vec2(-texel.x, 0.0)).r;
+    float r = texture2D(tSilhouette, vUv + vec2( texel.x, 0.0)).r;
+    float t = texture2D(tSilhouette, vUv + vec2(0.0,  texel.y)).r;
+    float b = texture2D(tSilhouette, vUv + vec2(0.0, -texel.y)).r;
+    float outline = (l < 0.5 || r < 0.5 || t < 0.5 || b < 0.5) ? 1.0 : 0.0;
+
+    vec2 seed = texture2D(tJFA, vUv).rg;
+    float dist = (seed.x < 0.0) ? 0.0 : distance(vUv, seed);
+
+    float cycle = bandSize * max(1.0, waveBandsPerCycle) * 2.0;
+    float waveCyclesPerSecond = waveCyclesPerMinute / 60.0;
+    float rippleDist = dist + time * waveCyclesPerSecond * cycle;
+    float phase = mod(rippleDist, cycle);
+
+    float line = phase < lineThickness ? 1.0 : 0.0;
+    float centerFill = dist < lineThickness ? 1.0 : 0.0;
+    float drawMask = max(outline, max(line, centerFill));
+
+    float colorCyclesPerSecond = colorCyclesPerMinute / 60.0;
+    float hue = fract(dist * colorSpatialFrequency - time * colorCyclesPerSecond);
+    vec3 rainbow = hsv2rgb(vec3(hue, colorSaturation, colorValue));
+
+    gl_FragColor = vec4(rainbow * drawMask, 1.0);
+  }
+`,
+        {
+          tJFA: { value: null },
+          tSilhouette: { value: null },
+          tGround: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+          bandSize: { value: PARAMS.waves.bandSize },
+          lineThickness: { value: PARAMS.waves.lineThickness },
+          time: { value: 0 },
+          waveCyclesPerMinute: { value: PARAMS.waves.cyclesPerMinute },
+          waveBandsPerCycle: { value: PARAMS.waves.beatsPerBand },
+          colorCyclesPerMinute: { value: PARAMS.color.cyclesPerMinute },
+          colorSpatialFrequency: { value: PARAMS.color.spatialFrequency },
+          colorSaturation: { value: PARAMS.color.saturation },
+          colorValue: { value: PARAMS.color.value },
+        }
+      );
+
+      /* ── helper scene ──────────────────────────────── */
+      const helperScene = new THREE.Scene();
+      helperScene.add(jfaSeedPass);
+      helperScene.add(jfaStepPass);
+      helperScene.add(contourPass);
+
+      function runFullscreen(mesh, target) {
+        jfaSeedPass.visible = false;
+        jfaStepPass.visible = false;
+        contourPass.visible = false;
+        mesh.visible = true;
+        renderer.setRenderTarget(target);
+        renderer.render(helperScene, fsQuadCam);
+        renderer.setRenderTarget(null);
+        mesh.visible = false;
+      }
+
+      /* ── responsive 9:16 contain ───────────────────── */
+      function resize() {
+        const ww = window.innerWidth;
+        const wh = window.innerHeight;
+        const aspect = 9 / 16;
+
+        let drawW = ww;
+        let drawH = drawW / aspect;
+
+        if (drawH > wh) {
+          drawH = wh;
+          drawW = drawH * aspect;
+        }
+
+        renderer.setPixelRatio(PARAMS.viewport.pixelRatio);
+        renderer.setSize(drawW, drawH, false);
+
+        rtW = Math.round(drawW * PARAMS.viewport.pixelRatio);
+        rtH = Math.round(drawH * PARAMS.viewport.pixelRatio);
+
+        camera.aspect = drawW / drawH;
+        camera.updateProjectionMatrix();
+
+        silhouetteRT.setSize(rtW, rtH);
+        jfaA.setSize(rtW, rtH);
+        jfaB.setSize(rtW, rtH);
+        groundRT.setSize(rtW, rtH);
+
+        const res = new THREE.Vector2(rtW, rtH);
+        jfaSeedPass.material.uniforms.resolution.value.copy(res);
+        jfaStepPass.material.uniforms.resolution.value.copy(res);
+        contourPass.material.uniforms.resolution.value.copy(res);
+      }
+      window.addEventListener("resize", resize);
+
+      /* ── sync params ───────────────────────────────── */
+      function syncGroundParams() {
+        const g = PARAMS.ground;
+        groundPlane.visible = g.enabled;
+        groundClone.visible = g.enabled;
+        groundPlane.position.y = g.heightOffset;
+        groundClone.position.y = g.heightOffset;
+
+        const mat = groundGridMaterial.uniforms;
+        mat.uColor.value.set(g.color);
+        mat.uOpacity.value = g.opacity;
+        mat.uFadeDistance.value = g.fadeDistance;
+
+        const fp = PARAMS.footPulse;
+        mat.uPulseSpeed.value = fp.speed;
+        mat.uPulseDecay.value = fp.decay;
+        mat.uPulseIntensity.value = fp.intensity;
+        mat.uPulseRingCount.value = fp.ringCount;
+        mat.uPulseRingGap.value = fp.ringGap;
+        mat.uPulseRingWidth.value = fp.ringWidth;
+        mat.uPulseStrokeWidthPx.value = fp.strokeWidthPx;
+        mat.uPulseTimeOffset.value = fp.timeOffset;
+
+        // sync dynamic color params to ground shader
+        mat.uColorCyclesPerMinute.value = PARAMS.color.cyclesPerMinute;
+        mat.uColorSpatialFrequency.value = PARAMS.color.spatialFrequency;
+        mat.uColorSaturation.value = PARAMS.color.saturation;
+        mat.uColorValue.value = PARAMS.color.value;
+
+        const currentSize = groundPlane.geometry.parameters.width;
+        if (Math.abs(currentSize - g.size) > 0.01) {
+          groundPlane.geometry.dispose();
+          groundPlane.geometry = new THREE.PlaneGeometry(g.size, g.size);
+          groundClone.geometry.dispose();
+          groundClone.geometry = groundPlane.geometry;
+        }
+      }
+
+      /* ── find foot bones ───────────────────────────── */
+      function findFootBones(model) {
+        const candidates = { left: [], right: [] };
+        model.traverse((o) => {
+          const n = (o.name || "").toLowerCase();
+          let isLeft = false,
+            isRight = false;
+          let score = 0;
+          if (n.includes("left") || n.match(/[._]l($|[._\d])/) || n.match(/^l[._]/)) isLeft = true;
+          if (n.includes("right") || n.match(/[._]r($|[._\d])/) || n.match(/^r[._]/)) isRight = true;
+          if (n.includes("foot")) score = 10;
+          else if (n.includes("toe")) score = 5;
+          else if (n.includes("ankle")) score = 3;
+          if (score > 0 && isLeft) candidates.left.push({ bone: o, score });
+          if (score > 0 && isRight) candidates.right.push({ bone: o, score });
+        });
+        candidates.left.sort((a, b) => b.score - a.score);
+        candidates.right.sort((a, b) => b.score - a.score);
+        leftFootBone = candidates.left.length ? candidates.left[0].bone : null;
+        rightFootBone = candidates.right.length ? candidates.right[0].bone : null;
+        if (leftFootBone) console.log("Left foot bone:", leftFootBone.name);
+        if (rightFootBone) console.log("Right foot bone:", rightFootBone.name);
+      }
+
+      /* ── load model ────────────────────────────────── */
+      new GLTFLoader().load(
+        PARAMS.model.url,
+        (gltf) => {
+          const model = gltf.scene;
+          model.name = "character";
+          characterModel = model;
+          scene.add(model);
+
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          const s = PARAMS.model.scaleToHeight / Math.max(size.y, 0.001);
+
+          model.scale.setScalar(s);
+          model.position.y -= box.min.y * s;
+          model.position.x -= center.x * s;
+          model.position.z -= center.z * s;
+
+          model.traverse((o) => {
+            if (o.isMesh) o.material = flatWhite;
+          });
+
+          findFootBones(model);
+
+          if (gltf.animations.length) {
+            mixer = new THREE.AnimationMixer(model);
+            const clip = gltf.animations.find((c) => /walk/i.test(c.name)) || gltf.animations[0];
+            mixer.clipAction(clip).play();
+          }
+        },
+        undefined,
+        console.error
+      );
+
+      resize();
+
+      window.PARAMS = PARAMS;
+
+      /* ── render loop ───────────────────────────────── */
+      renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+        const t = clock.elapsedTime;
+
+        scheduleAudio();
+
+        if (mixer) {
+          const walkScale = PARAMS.walk.bpm / PARAMS.walk.sourceClipBpm;
+          mixer.update(dt * walkScale);
+        }
+
+        {
+          const resL = checkFoot(leftFootBone, leftFootWasDown, leftLastPulseTime, -1, t);
+          leftFootWasDown = resL.wasDown;
+          leftLastPulseTime = resL.lastPulseTime;
+        }
+        {
+          const resR = checkFoot(rightFootBone, rightFootWasDown, rightLastPulseTime, +1, t);
+          rightFootWasDown = resR.wasDown;
+          rightLastPulseTime = resR.lastPulseTime;
+        }
+
+        for (let i = 0; i < PARAMS.footPulse.maxPulses; i++) {
+          origins[i].set(pulses[i].x, 0, pulses[i].z);
+          births[i] = pulses[i].birthTime;
+        }
+
+        if (autoOrbit) {
+          autoAngle += dt * PARAMS.autoOrbit.speed;
+          camera.position.set(Math.cos(autoAngle) * PARAMS.autoOrbit.radius, PARAMS.autoOrbit.height, Math.sin(autoAngle) * PARAMS.autoOrbit.radius);
+          camera.lookAt(controls.target);
+        }
+
+        controls.update();
+        syncGroundParams();
+
+        groundGridMaterial.uniforms.uTime.value = t;
+
+        /* 1. silhouette (no ground) */
+        groundPlane.visible = false;
+        renderer.setRenderTarget(silhouetteRT);
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(null);
+        groundPlane.visible = PARAMS.ground.enabled;
+
+        /* 2. ground grid */
+        renderer.setRenderTarget(groundRT);
+        renderer.setClearColor(0x000000, 0);
+        renderer.clear();
+        renderer.render(groundScene, camera);
+        renderer.setRenderTarget(null);
+
+        /* 3. JFA seed */
+        jfaSeedPass.material.uniforms.tSilhouette.value = silhouetteRT.texture;
+        runFullscreen(jfaSeedPass, jfaA);
+
+        /* 4. JFA flood */
+        const maxDim = Math.max(rtW, rtH);
+        let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
+        let src = jfaA,
+          dst = jfaB;
+
+        while (stepSize >= 1) {
+          jfaStepPass.material.uniforms.tJFA.value = src.texture;
+          jfaStepPass.material.uniforms.uStep.value = stepSize;
+          runFullscreen(jfaStepPass, dst);
+          const tmp = src;
+          src = dst;
+          dst = tmp;
+          stepSize = Math.floor(stepSize / 2);
+        }
+
+        /* 5. composite */
+        contourPass.material.uniforms.tJFA.value = src.texture;
+        contourPass.material.uniforms.tSilhouette.value = silhouetteRT.texture;
+        contourPass.material.uniforms.tGround.value = groundRT.texture;
+        contourPass.material.uniforms.time.value = t;
+
+        contourPass.material.uniforms.bandSize.value = PARAMS.waves.bandSize;
+        contourPass.material.uniforms.lineThickness.value = PARAMS.waves.lineThickness;
+        contourPass.material.uniforms.waveCyclesPerMinute.value = PARAMS.waves.cyclesPerMinute;
+        contourPass.material.uniforms.waveBandsPerCycle.value = PARAMS.waves.beatsPerBand;
+
+        contourPass.material.uniforms.colorCyclesPerMinute.value = PARAMS.color.cyclesPerMinute;
+        contourPass.material.uniforms.colorSpatialFrequency.value = PARAMS.color.spatialFrequency;
+        contourPass.material.uniforms.colorSaturation.value = PARAMS.color.saturation;
+        contourPass.material.uniforms.colorValue.value = PARAMS.color.value;
+
+        contourPass.visible = true;
+        renderer.setRenderTarget(null);
+        renderer.render(helperScene, fsQuadCam);
+        contourPass.visible = false;
+      });
+    </script>
+  </body>
+</html>
