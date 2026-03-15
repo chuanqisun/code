@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Incremental Dilating Skeleton Outline</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        display: grid;
+        place-items: center;
+        font-family: Arial, sans-serif;
+      }
+      body {
+        position: relative;
+      }
+      canvas {
+        display: block;
+        max-width: 95vw;
+        max-height: 95vh;
+        image-rendering: pixelated;
+      }
+      .controls {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        z-index: 1;
+      }
+      .controls input {
+        width: 88px;
+        padding: 4px 6px;
+      }
+      .controls button {
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label for="frameInput">Frame</label>
+      <input id="frameInput" type="number" min="0" step="1" value="0" />
+      <label for="opacityInput">Opacity</label>
+      <input id="opacityInput" type="number" min="0" max="1" step="0.05" value="1" />
+      <label for="offsetInput">Offset</label>
+      <input id="offsetInput" type="number" step="1" value="0" />
+      <button id="renderButton" type="button">Render</button>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+      (async function () {
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const frameInput = document.getElementById("frameInput");
+        const opacityInput = document.getElementById("opacityInput");
+        const offsetInput = document.getElementById("offsetInput");
+        const renderButton = document.getElementById("renderButton");
+        const searchParams = new URLSearchParams(window.location.search);
+
+        const url = "./data/01.jpg";
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        });
+        URL.revokeObjectURL(url);
+
+        const maxSide = 700;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+
+        canvas.width = w;
+        canvas.height = h;
+
+        const srcCanvas = document.createElement("canvas");
+        srcCanvas.width = w;
+        srcCanvas.height = h;
+        const sctx = srcCanvas.getContext("2d");
+        sctx.drawImage(img, 0, 0, w, h);
+
+        const imageData = sctx.getImageData(0, 0, w, h);
+        const branches = extractSkeletonBranches(imageData, {
+          threshold: 179,
+          minBranchLength: 12,
+          simplifyEpsilon: 1,
+        });
+
+        const baseSeedMask = rasterizeBranches(branches, w, h);
+
+        const ringCanvas = document.createElement("canvas");
+        ringCanvas.width = w;
+        ringCanvas.height = h;
+        const ringCtx = ringCanvas.getContext("2d");
+
+        const backgroundColor = "#0f1630";
+        const primaryColor = "#7aa2ff";
+        const ringThickness = 1; // 1px ring
+        const gapSize = 3; // 4px gap
+        const period = ringThickness + gapSize; // 5px total cycle
+
+        function renderFrame(frameIndex) {
+          const targetFrame = Math.max(0, Math.floor(Number(frameIndex) || 0));
+          const initialOpacity = clamp01(Number(opacityInput.value) || 0);
+          const initialOffset = Math.trunc(Number(offsetInput.value) || 0);
+          searchParams.set("frame", String(targetFrame));
+          searchParams.set("opacity", String(initialOpacity));
+          searchParams.set("offset", String(initialOffset));
+          window.history.replaceState({}, "", `${window.location.pathname}?${searchParams.toString()}`);
+
+          const seedMask = offsetMask(baseSeedMask, initialOffset, w, h);
+          let currentMask = seedMask.slice();
+          const maskCache = [seedMask.slice()];
+
+          function ensureDilatedTo(n) {
+            while (maskCache.length <= n) {
+              currentMask = dilateOnce(currentMask, w, h);
+              maskCache.push(currentMask.slice());
+            }
+          }
+
+          ctx.fillStyle = backgroundColor;
+          ctx.fillRect(0, 0, w, h);
+
+          ringCtx.clearRect(0, 0, w, h);
+          drawMaskTransparent(ringCtx, seedMask, w, h, primaryColor, initialOpacity);
+          ctx.drawImage(ringCanvas, 0, 0);
+
+          for (let dilation = 1; dilation <= targetFrame; dilation++) {
+            ensureDilatedTo(dilation);
+            const posInCycle = dilation % period;
+            if (posInCycle >= ringThickness) continue;
+
+            const ring = subtractMask(maskCache[dilation], maskCache[dilation - 1]);
+            const blend = targetFrame === 0 ? 1 : dilation / targetFrame;
+            const ringColor = mixColors(primaryColor, backgroundColor, blend);
+            ringCtx.clearRect(0, 0, w, h);
+            drawMaskTransparent(ringCtx, ring, w, h, ringColor);
+            ctx.drawImage(ringCanvas, 0, 0);
+          }
+        }
+
+        const initialFrame = Math.max(0, Math.floor(Number(searchParams.get("frame") ?? 0) || 0));
+        const initialOpacity = clamp01(Number(searchParams.get("opacity") ?? 1));
+        const initialOffset = Math.trunc(Number(searchParams.get("offset") ?? 0) || 0);
+        frameInput.value = String(initialFrame);
+        opacityInput.value = String(initialOpacity);
+        offsetInput.value = String(initialOffset);
+        renderButton.addEventListener("click", () => renderFrame(frameInput.value));
+        [frameInput, opacityInput, offsetInput].forEach((input) => {
+          input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") renderFrame(frameInput.value);
+          });
+        });
+
+        renderFrame(initialFrame);
+      })();
+
+      function rasterizeBranches(branches, w, h) {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        for (const pts of branches) {
+          if (pts.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.stroke();
+        }
+
+        const data = ctx.getImageData(0, 0, w, h).data;
+        const mask = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) mask[i] = data[i * 4 + 3] > 0 ? 1 : 0;
+        return mask;
+      }
+
+      function dilateOnce(mask, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let on = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w) continue;
+                if (mask[ny * w + nx]) {
+                  on = 1;
+                  break;
+                }
+              }
+              if (on) break;
+            }
+            out[y * w + x] = on;
+          }
+        }
+        return out;
+      }
+
+      function erodeOnce(mask, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let on = 1;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) {
+                on = 0;
+                break;
+              }
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w || !mask[ny * w + nx]) {
+                  on = 0;
+                  break;
+                }
+              }
+              if (!on) break;
+            }
+            out[y * w + x] = on;
+          }
+        }
+        return out;
+      }
+
+      function offsetMask(mask, offset, w, h) {
+        let out = mask.slice();
+        const steps = Math.abs(offset);
+        const transform = offset >= 0 ? dilateOnce : erodeOnce;
+        for (let i = 0; i < steps; i++) out = transform(out, w, h);
+        return out;
+      }
+
+      function subtractMask(a, b) {
+        const out = new Uint8Array(a.length);
+        for (let i = 0; i < a.length; i++) out[i] = a[i] && !b[i] ? 1 : 0;
+        return out;
+      }
+
+      function drawMaskTransparent(ctx, mask, w, h, color, alpha = 1) {
+        const rgb = hexToRgb(color);
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        const opacity = Math.round(clamp01(alpha) * 255);
+        for (let i = 0; i < mask.length; i++) {
+          if (!mask[i]) continue;
+          const j = i * 4;
+          d[j] = rgb.r;
+          d[j + 1] = rgb.g;
+          d[j + 2] = rgb.b;
+          d[j + 3] = opacity;
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      function clamp01(value) {
+        return Math.max(0, Math.min(1, value));
+      }
+
+      function hexToRgb(hex) {
+        const s = hex.replace("#", "");
+        return {
+          r: parseInt(s.slice(0, 2), 16),
+          g: parseInt(s.slice(2, 4), 16),
+          b: parseInt(s.slice(4, 6), 16),
+        };
+      }
+
+      function mixColors(fromHex, toHex, t) {
+        const from = hexToRgb(fromHex);
+        const to = hexToRgb(toHex);
+        const clamped = Math.max(0, Math.min(1, t));
+        return rgbToHex({
+          r: Math.round(from.r + (to.r - from.r) * clamped),
+          g: Math.round(from.g + (to.g - from.g) * clamped),
+          b: Math.round(from.b + (to.b - from.b) * clamped),
+        });
+      }
+
+      function rgbToHex({ r, g, b }) {
+        const toHex = (value) => value.toString(16).padStart(2, "0");
+        return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+      }
+    </script>
+
+    <script>
+      function extractSkeletonBranches(imageData, options = {}) {
+        const threshold = options.threshold ?? 200;
+        const minBranchLength = options.minBranchLength ?? 8;
+        const simplifyEpsilon = options.simplifyEpsilon ?? 1.5;
+
+        const w = imageData.width;
+        const h = imageData.height;
+        const data = imageData.data;
+
+        const idx = (x, y) => y * w + x;
+        const bin = new Uint8Array(w * h);
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const i4 = (y * w + x) * 4;
+            const r = data[i4];
+            const g = data[i4 + 1];
+            const b = data[i4 + 2];
+            const a = data[i4 + 3];
+            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            bin[idx(x, y)] = a > 0 && lum >= threshold ? 1 : 0;
+          }
+        }
+
+        function neighbors(x, y) {
+          const p2 = y > 0 ? bin[idx(x, y - 1)] : 0;
+          const p3 = x < w - 1 && y > 0 ? bin[idx(x + 1, y - 1)] : 0;
+          const p4 = x < w - 1 ? bin[idx(x + 1, y)] : 0;
+          const p5 = x < w - 1 && y < h - 1 ? bin[idx(x + 1, y + 1)] : 0;
+          const p6 = y < h - 1 ? bin[idx(x, y + 1)] : 0;
+          const p7 = x > 0 && y < h - 1 ? bin[idx(x - 1, y + 1)] : 0;
+          const p8 = x > 0 ? bin[idx(x - 1, y)] : 0;
+          const p9 = x > 0 && y > 0 ? bin[idx(x - 1, y - 1)] : 0;
+          return [p2, p3, p4, p5, p6, p7, p8, p9];
+        }
+
+        const marker = new Uint8Array(w * h);
+        let changed = true;
+
+        while (changed) {
+          changed = false;
+          marker.fill(0);
+
+          for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+              const i = idx(x, y);
+              if (!bin[i]) continue;
+              const [p2, p3, p4, p5, p6, p7, p8, p9] = neighbors(x, y);
+              const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+              const A =
+                (p2 === 0 && p3 === 1) +
+                (p3 === 0 && p4 === 1) +
+                (p4 === 0 && p5 === 1) +
+                (p5 === 0 && p6 === 1) +
+                (p6 === 0 && p7 === 1) +
+                (p7 === 0 && p8 === 1) +
+                (p8 === 0 && p9 === 1) +
+                (p9 === 0 && p2 === 1);
+              if (B >= 2 && B <= 6 && A === 1 && p2 * p4 * p6 === 0 && p4 * p6 * p8 === 0) marker[i] = 1;
+            }
+          }
+
+          for (let i = 0; i < bin.length; i++) {
+            if (marker[i]) {
+              bin[i] = 0;
+              changed = true;
+            }
+          }
+
+          marker.fill(0);
+
+          for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+              const i = idx(x, y);
+              if (!bin[i]) continue;
+              const [p2, p3, p4, p5, p6, p7, p8, p9] = neighbors(x, y);
+              const B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
+              const A =
+                (p2 === 0 && p3 === 1) +
+                (p3 === 0 && p4 === 1) +
+                (p4 === 0 && p5 === 1) +
+                (p5 === 0 && p6 === 1) +
+                (p6 === 0 && p7 === 1) +
+                (p7 === 0 && p8 === 1) +
+                (p8 === 0 && p9 === 1) +
+                (p9 === 0 && p2 === 1);
+              if (B >= 2 && B <= 6 && A === 1 && p2 * p4 * p8 === 0 && p2 * p6 * p8 === 0) marker[i] = 1;
+            }
+          }
+
+          for (let i = 0; i < bin.length; i++) {
+            if (marker[i]) {
+              bin[i] = 0;
+              changed = true;
+            }
+          }
+        }
+
+        function getNeighborsOn(x, y) {
+          const out = [];
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+              if (bin[idx(nx, ny)]) out.push({ x: nx, y: ny });
+            }
+          }
+          return out;
+        }
+
+        const degree = new Uint8Array(w * h);
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            if (!bin[idx(x, y)]) continue;
+            degree[idx(x, y)] = getNeighborsOn(x, y).length;
+          }
+        }
+
+        function isNode(x, y) {
+          return degree[idx(x, y)] !== 2;
+        }
+
+        const visitedEdge = new Set();
+        const edgeKey = (x1, y1, x2, y2) => `${x1},${y1}-${x2},${y2}`;
+        const branches = [];
+
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            if (!bin[idx(x, y)] || !isNode(x, y)) continue;
+
+            for (const n of getNeighborsOn(x, y)) {
+              const k1 = edgeKey(x, y, n.x, n.y);
+              const k2 = edgeKey(n.x, n.y, x, y);
+              if (visitedEdge.has(k1) || visitedEdge.has(k2)) continue;
+
+              const pts = [{ x, y }];
+              let px = x,
+                py = y;
+              let cx = n.x,
+                cy = n.y;
+
+              visitedEdge.add(k1);
+              visitedEdge.add(k2);
+
+              while (true) {
+                pts.push({ x: cx, y: cy });
+                if (isNode(cx, cy)) break;
+
+                const nexts = getNeighborsOn(cx, cy).filter((p) => !(p.x === px && p.y === py));
+                if (nexts.length === 0) break;
+
+                const nn = nexts[0];
+                const e1 = edgeKey(cx, cy, nn.x, nn.y);
+                const e2 = edgeKey(nn.x, nn.y, cx, cy);
+                if (visitedEdge.has(e1) || visitedEdge.has(e2)) break;
+
+                visitedEdge.add(e1);
+                visitedEdge.add(e2);
+
+                px = cx;
+                py = cy;
+                cx = nn.x;
+                cy = nn.y;
+              }
+
+              if (pts.length >= minBranchLength) {
+                branches.push(simplifyPath(pts, simplifyEpsilon));
+              }
+            }
+          }
+        }
+
+        return branches;
+
+        function simplifyPath(points, epsilon) {
+          if (points.length < 3) return points;
+
+          function distToSegment(p, a, b) {
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            if (dx === 0 && dy === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+            let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy);
+            t = Math.max(0, Math.min(1, t));
+            const qx = a.x + t * dx;
+            const qy = a.y + t * dy;
+            return Math.hypot(p.x - qx, p.y - qy);
+          }
+
+          function rdp(pts) {
+            let maxDist = 0;
+            let split = 0;
+            const a = pts[0];
+            const b = pts[pts.length - 1];
+
+            for (let i = 1; i < pts.length - 1; i++) {
+              const d = distToSegment(pts[i], a, b);
+              if (d > maxDist) {
+                maxDist = d;
+                split = i;
+              }
+            }
+
+            if (maxDist > epsilon) {
+              const left = rdp(pts.slice(0, split + 1));
+              const right = rdp(pts.slice(split));
+              return left.slice(0, -1).concat(right);
+            }
+
+            return [a, b];
+          }
+
+          return rdp(points);
+        }
+      }
+    </script>
+  </body>
+</html>

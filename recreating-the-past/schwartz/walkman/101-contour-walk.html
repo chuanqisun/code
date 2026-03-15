@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Walking Human – Contour Offset Fill</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: fixed;
+        bottom: 10px;
+        left: 12px;
+        color: #fff;
+        opacity: 0.6;
+        font: 12px/1.4 system-ui, sans-serif;
+        pointer-events: none;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="info">Loading…</div>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+      const W = innerWidth,
+        H = innerHeight;
+      const PX = Math.min(devicePixelRatio, 2);
+
+      /* ── renderer ──────────────────────────────────── */
+      const renderer = new THREE.WebGLRenderer({ antialias: false });
+      renderer.setSize(W, H);
+      renderer.setPixelRatio(PX);
+      document.body.appendChild(renderer.domElement);
+
+      /* ── camera / controls ─────────────────────────── */
+      const camera = new THREE.PerspectiveCamera(100, W / H, 0.1, 100);
+      camera.position.set(4.8, 1.15, 0.0); // side view
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 6.0, 0);
+
+      /* auto-orbit until user interacts */
+      let autoOrbit = true;
+      let autoAngle = Math.PI; // start from side/profile
+      const autoRadius = 10;
+      const autoHeight = 10;
+      const autoSpeed = 0.6;
+
+      function stopAutoOrbit() {
+        autoOrbit = false;
+      }
+      renderer.domElement.addEventListener("pointerdown", stopAutoOrbit, { passive: true });
+      renderer.domElement.addEventListener("wheel", stopAutoOrbit, { passive: true });
+      window.addEventListener("keydown", stopAutoOrbit, { passive: true });
+
+      /* ── scene ─────────────────────────────────────── */
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+      const flatWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      const clock = new THREE.Clock();
+      let mixer = null;
+
+      /* ── render targets ────────────────────────────── */
+      const rtW = Math.round(W * PX),
+        rtH = Math.round(H * PX);
+
+      function makeRT(type = THREE.UnsignedByteType, format = THREE.RGBAFormat) {
+        return new THREE.WebGLRenderTarget(rtW, rtH, {
+          minFilter: THREE.NearestFilter,
+          magFilter: THREE.NearestFilter,
+          format,
+          type,
+          depthBuffer: false,
+        });
+      }
+
+      const silhouetteRT = makeRT();
+
+      const jfaType = THREE.FloatType;
+      const jfaA = new THREE.WebGLRenderTarget(rtW, rtH, {
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        format: THREE.RGBAFormat,
+        type: jfaType,
+        depthBuffer: false,
+      });
+      const jfaB = jfaA.clone();
+
+      /* ── full-screen quad helper ───────────────────── */
+      const fsQuadGeo = new THREE.PlaneGeometry(2, 2);
+      const fsQuadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      function makePass(fragmentShader, uniforms) {
+        const mat = new THREE.ShaderMaterial({
+          uniforms,
+          vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`,
+          fragmentShader,
+          depthTest: false,
+          depthWrite: false,
+        });
+        return new THREE.Mesh(fsQuadGeo, mat);
+      }
+
+      /* ── JFA seed pass ─────────────────────────────── */
+      const jfaSeedPass = makePass(
+        /* glsl */ `
+  uniform sampler2D tSilhouette;
+  uniform vec2 resolution;
+  varying vec2 vUv;
+  void main(){
+    vec2 texel = 1.0 / resolution;
+    float c = texture2D(tSilhouette, vUv).r;
+    float l = texture2D(tSilhouette, vUv + vec2(-texel.x, 0.0)).r;
+    float r = texture2D(tSilhouette, vUv + vec2( texel.x, 0.0)).r;
+    float t = texture2D(tSilhouette, vUv + vec2(0.0,  texel.y)).r;
+    float b = texture2D(tSilhouette, vUv + vec2(0.0, -texel.y)).r;
+    bool edge = c > 0.5 && (l < 0.5 || r < 0.5 || t < 0.5 || b < 0.5);
+    if(edge){
+      gl_FragColor = vec4(vUv, 0.0, 1.0);
+    } else {
+      gl_FragColor = vec4(-1.0, -1.0, 0.0, 1.0);
+    }
+  }
+`,
+        {
+          tSilhouette: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+        }
+      );
+
+      /* ── JFA step pass ─────────────────────────────── */
+      const jfaStepPass = makePass(
+        /* glsl */ `
+  uniform sampler2D tJFA;
+  uniform vec2 resolution;
+  uniform float uStep;
+  varying vec2 vUv;
+  void main(){
+    vec2 texel = 1.0 / resolution;
+    float bestDist = 1e10;
+    vec2 bestSeed = vec2(-1.0);
+    for(int y=-1; y<=1; y++){
+      for(int x=-1; x<=1; x++){
+        vec2 offset = vec2(float(x), float(y)) * uStep * texel;
+        vec2 s = texture2D(tJFA, vUv + offset).rg;
+        if(s.x < 0.0) continue;
+        float d = distance(vUv, s);
+        if(d < bestDist){ bestDist = d; bestSeed = s; }
+      }
+    }
+    gl_FragColor = vec4(bestSeed, 0.0, 1.0);
+  }
+`,
+        {
+          tJFA: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+          uStep: { value: 1.0 },
+        }
+      );
+
+      /* ── final contour-line pass ───────────────────── */
+      const contourPass = makePass(
+        /* glsl */ `
+  uniform sampler2D tJFA;
+  uniform sampler2D tSilhouette;
+  uniform vec2 resolution;
+  uniform float lineSpacing;
+  uniform float lineWidth;
+  varying vec2 vUv;
+  void main(){
+    float mask = texture2D(tSilhouette, vUv).r;
+    if(mask < 0.5){ gl_FragColor = vec4(0.0,0.0,0.0,1.0); return; }
+
+    vec2 seed = texture2D(tJFA, vUv).rg;
+    float dist = (seed.x < 0.0) ? 0.0 : distance(vUv, seed);
+
+    float phase = mod(dist, lineSpacing);
+    float line = 1.0 - smoothstep(lineWidth * 0.5, lineWidth * 1.2, min(phase, lineSpacing - phase));
+
+    gl_FragColor = vec4(vec3(line), 1.0);
+  }
+`,
+        {
+          tJFA: { value: null },
+          tSilhouette: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+          lineSpacing: { value: 0.012 },
+          lineWidth: { value: 0.002 },
+        }
+      );
+
+      /* ── helper scene ──────────────────────────────── */
+      const helperScene = new THREE.Scene();
+      helperScene.add(jfaSeedPass);
+      helperScene.add(jfaStepPass);
+      helperScene.add(contourPass);
+
+      function runFullscreen(mesh, target) {
+        jfaSeedPass.visible = false;
+        jfaStepPass.visible = false;
+        contourPass.visible = false;
+        mesh.visible = true;
+        renderer.setRenderTarget(target);
+        renderer.render(helperScene, fsQuadCam);
+        renderer.setRenderTarget(null);
+        mesh.visible = false;
+      }
+
+      /* ── load model ────────────────────────────────── */
+      const MODEL_URL = "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb";
+
+      new GLTFLoader().load(
+        MODEL_URL,
+        (gltf) => {
+          const model = gltf.scene;
+          scene.add(model);
+
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          const s = 2.0 / Math.max(size.y, 0.001);
+          model.scale.setScalar(s);
+          model.position.y -= box.min.y * s;
+          model.position.x -= center.x * s;
+          model.position.z -= center.z * s;
+
+          model.traverse((o) => {
+            if (o.isMesh) o.material = flatWhite;
+          });
+
+          if (gltf.animations.length) {
+            mixer = new THREE.AnimationMixer(model);
+            const clip = gltf.animations.find((c) => /walk/i.test(c.name)) || gltf.animations[0];
+            mixer.clipAction(clip).play();
+            document.getElementById("info").textContent = ``;
+          }
+        },
+        (xhr) => {
+          document.getElementById("info").textContent = `Loading… ${((xhr.loaded / (xhr.total || 1)) * 100) | 0}%`;
+        },
+        (err) => {
+          console.error(err);
+          document.getElementById("info").textContent = "Load failed";
+        }
+      );
+
+      /* ── render loop ───────────────────────────────── */
+      renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+        if (mixer) mixer.update(dt);
+
+        if (autoOrbit) {
+          autoAngle += dt * autoSpeed;
+          camera.position.set(Math.cos(autoAngle) * autoRadius, autoHeight, Math.sin(autoAngle) * autoRadius);
+          camera.lookAt(controls.target);
+        }
+
+        controls.update();
+
+        renderer.setRenderTarget(silhouetteRT);
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(null);
+
+        jfaSeedPass.material.uniforms.tSilhouette.value = silhouetteRT.texture;
+        runFullscreen(jfaSeedPass, jfaA);
+
+        const maxDim = Math.max(rtW, rtH);
+        let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
+        let src = jfaA,
+          dst = jfaB;
+
+        while (stepSize >= 1) {
+          jfaStepPass.material.uniforms.tJFA.value = src.texture;
+          jfaStepPass.material.uniforms.uStep.value = stepSize;
+          runFullscreen(jfaStepPass, dst);
+          const tmp = src;
+          src = dst;
+          dst = tmp;
+          stepSize = Math.floor(stepSize / 2);
+        }
+
+        contourPass.material.uniforms.tJFA.value = src.texture;
+        contourPass.material.uniforms.tSilhouette.value = silhouetteRT.texture;
+
+        contourPass.visible = true;
+        jfaSeedPass.visible = false;
+        jfaStepPass.visible = false;
+        renderer.render(helperScene, fsQuadCam);
+        contourPass.visible = false;
+      });
+
+      /* ── resize ────────────────────────────────────── */
+      addEventListener("resize", () => {
+        const w = innerWidth,
+          h = innerHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+
+        const rw = Math.round(w * PX),
+          rh = Math.round(h * PX);
+        silhouetteRT.setSize(rw, rh);
+        jfaA.setSize(rw, rh);
+        jfaB.setSize(rw, rh);
+
+        const res = new THREE.Vector2(rw, rh);
+        jfaSeedPass.material.uniforms.resolution.value.copy(res);
+        jfaStepPass.material.uniforms.resolution.value.copy(res);
+        contourPass.material.uniforms.resolution.value.copy(res);
+      });
+    </script>
+  </body>
+</html>

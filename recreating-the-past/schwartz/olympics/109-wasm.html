@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Olympics Ring Grid</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #050505;
+        --panel: #0d0d0d;
+        --border: rgba(255, 255, 255, 0.08);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.58);
+        --gap: clamp(8px, 1.2vw, 16px);
+        --radius: 14px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        padding: clamp(10px, 2vw, 24px);
+      }
+
+      main {
+        width: min(100%, 1600px);
+        margin: 0 auto;
+      }
+
+      header {
+        margin-bottom: clamp(12px, 2vw, 22px);
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .header-copy {
+        min-width: 0;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(18px, 2vw, 32px);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: clamp(12px, 1vw, 15px);
+      }
+
+      .download-button {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+      }
+
+      .download-button:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      .download-button:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--gap);
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        min-width: 0;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+      }
+
+      .canvas-wrap {
+        aspect-ratio: 1 / 1;
+        display: grid;
+        place-items: center;
+        padding: clamp(6px, 1vw, 12px);
+        background: radial-gradient(circle at top, rgba(255, 255, 255, 0.05), transparent 55%), #000;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        image-rendering: pixelated;
+      }
+
+      .meta {
+        padding: 10px 12px 12px;
+      }
+
+      .index {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .name {
+        margin: 0;
+        font-size: clamp(11px, 0.95vw, 14px);
+        line-height: 1.3;
+      }
+
+      @media (max-width: 720px) {
+        body {
+          padding: 8px;
+        }
+
+        header {
+          align-items: stretch;
+        }
+
+        .download-button {
+          width: 100%;
+        }
+
+        .meta {
+          padding: 8px;
+        }
+
+        .name {
+          font-size: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="header-copy">
+          <h1>Olympics Grid</h1>
+          <p>Sixteen source images rendered with the direct convolution ring treatment.</p>
+        </div>
+        <button class="download-button" id="download-all" type="button">Download all</button>
+      </header>
+      <section class="grid" id="grid" aria-label="Olympics image grid"></section>
+    </main>
+
+    <script src="../../02-maeda/process/wabt-1.0.39.js"></script>
+    <script id="wasm-source" type="text/plain">
+      (module
+        (memory (export "memory") 1)
+
+        (func (export "threshold_rgba_to_mask")
+          (param $src i32) (param $pixelCount i32) (param $threshold i32) (param $dst i32)
+          (local $i i32)
+          (local $srcOff i32)
+          (local $r i32)
+          (local $g i32)
+          (local $b i32)
+          (local $a i32)
+          (local $lum f32)
+          (block $done
+            (loop $loop
+              (br_if $done (i32.ge_u (local.get $i) (local.get $pixelCount)))
+              (local.set $srcOff (i32.add (local.get $src) (i32.shl (local.get $i) (i32.const 2))))
+              (local.set $r (i32.load8_u (local.get $srcOff)))
+              (local.set $g (i32.load8_u (i32.add (local.get $srcOff) (i32.const 1))))
+              (local.set $b (i32.load8_u (i32.add (local.get $srcOff) (i32.const 2))))
+              (local.set $a (i32.load8_u (i32.add (local.get $srcOff) (i32.const 3))))
+              (local.set $lum
+                (f32.add
+                  (f32.add
+                    (f32.mul (f32.convert_i32_u (local.get $r)) (f32.const 0.2126))
+                    (f32.mul (f32.convert_i32_u (local.get $g)) (f32.const 0.7152))
+                  )
+                  (f32.mul (f32.convert_i32_u (local.get $b)) (f32.const 0.0722))
+                )
+              )
+              (i32.store8
+                (i32.add (local.get $dst) (local.get $i))
+                (select
+                  (i32.const 1)
+                  (i32.const 0)
+                  (i32.and
+                    (i32.gt_u (local.get $a) (i32.const 0))
+                    (f32.ge (local.get $lum) (f32.convert_i32_u (local.get $threshold)))
+                  )
+                )
+              )
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br $loop)
+            )
+          )
+        )
+
+        (func (export "dilate_once")
+          (param $src i32) (param $dst i32) (param $w i32) (param $h i32)
+          (local $x i32) (local $y i32) (local $dx i32) (local $dy i32)
+          (local $nx i32) (local $ny i32) (local $on i32)
+          (block $yDone
+            (loop $yLoop
+              (br_if $yDone (i32.ge_u (local.get $y) (local.get $h)))
+              (local.set $x (i32.const 0))
+              (block $xDone
+                (loop $xLoop
+                  (br_if $xDone (i32.ge_u (local.get $x) (local.get $w)))
+                  (local.set $on (i32.const 0))
+                  (local.set $dy (i32.const -1))
+                  (block $neighborDone
+                    (block $afterNeighbors
+                      (loop $dyLoop
+                        (br_if $afterNeighbors (i32.gt_s (local.get $dy) (i32.const 1)))
+                        (local.set $ny (i32.add (local.get $y) (local.get $dy)))
+                        (if (i32.and (i32.ge_s (local.get $ny) (i32.const 0)) (i32.lt_s (local.get $ny) (local.get $h)))
+                          (then
+                            (local.set $dx (i32.const -1))
+                            (block $nextDy
+                              (loop $dxLoop
+                                (br_if $nextDy (i32.gt_s (local.get $dx) (i32.const 1)))
+                                (local.set $nx (i32.add (local.get $x) (local.get $dx)))
+                                (if (i32.and (i32.ge_s (local.get $nx) (i32.const 0)) (i32.lt_s (local.get $nx) (local.get $w)))
+                                  (then
+                                    (if
+                                      (i32.load8_u
+                                        (i32.add
+                                          (local.get $src)
+                                          (i32.add (i32.mul (local.get $ny) (local.get $w)) (local.get $nx))
+                                        )
+                                      )
+                                      (then
+                                        (local.set $on (i32.const 1))
+                                        (br $neighborDone)
+                                      )
+                                    )
+                                  )
+                                )
+                                (local.set $dx (i32.add (local.get $dx) (i32.const 1)))
+                                (br $dxLoop)
+                              )
+                            )
+                          )
+                        )
+                        (local.set $dy (i32.add (local.get $dy) (i32.const 1)))
+                        (br $dyLoop)
+                      )
+                    )
+                  )
+                  (i32.store8
+                    (i32.add (local.get $dst) (i32.add (i32.mul (local.get $y) (local.get $w)) (local.get $x)))
+                    (local.get $on)
+                  )
+                  (local.set $x (i32.add (local.get $x) (i32.const 1)))
+                  (br $xLoop)
+                )
+              )
+              (local.set $y (i32.add (local.get $y) (i32.const 1)))
+              (br $yLoop)
+            )
+          )
+        )
+
+        (func (export "erode_once")
+          (param $src i32) (param $dst i32) (param $w i32) (param $h i32)
+          (local $x i32) (local $y i32) (local $dx i32) (local $dy i32)
+          (local $nx i32) (local $ny i32) (local $on i32)
+          (block $yDone
+            (loop $yLoop
+              (br_if $yDone (i32.ge_u (local.get $y) (local.get $h)))
+              (local.set $x (i32.const 0))
+              (block $xDone
+                (loop $xLoop
+                  (br_if $xDone (i32.ge_u (local.get $x) (local.get $w)))
+                  (local.set $on (i32.const 1))
+                  (local.set $dy (i32.const -1))
+                  (block $neighborDone
+                    (block $afterNeighbors
+                      (loop $dyLoop
+                        (br_if $afterNeighbors (i32.gt_s (local.get $dy) (i32.const 1)))
+                        (local.set $ny (i32.add (local.get $y) (local.get $dy)))
+                        (if
+                          (i32.or (i32.lt_s (local.get $ny) (i32.const 0)) (i32.ge_s (local.get $ny) (local.get $h)))
+                          (then
+                            (local.set $on (i32.const 0))
+                            (br $neighborDone)
+                          )
+                        )
+                        (local.set $dx (i32.const -1))
+                        (block $nextDy
+                          (loop $dxLoop
+                            (br_if $nextDy (i32.gt_s (local.get $dx) (i32.const 1)))
+                            (local.set $nx (i32.add (local.get $x) (local.get $dx)))
+                            (if
+                              (i32.or (i32.lt_s (local.get $nx) (i32.const 0)) (i32.ge_s (local.get $nx) (local.get $w)))
+                              (then
+                                (local.set $on (i32.const 0))
+                                (br $neighborDone)
+                              )
+                            )
+                            (if
+                              (i32.eqz
+                                (i32.load8_u
+                                  (i32.add
+                                    (local.get $src)
+                                    (i32.add (i32.mul (local.get $ny) (local.get $w)) (local.get $nx))
+                                  )
+                                )
+                              )
+                              (then
+                                (local.set $on (i32.const 0))
+                                (br $neighborDone)
+                              )
+                            )
+                            (local.set $dx (i32.add (local.get $dx) (i32.const 1)))
+                            (br $dxLoop)
+                          )
+                        )
+                        (local.set $dy (i32.add (local.get $dy) (i32.const 1)))
+                        (br $dyLoop)
+                      )
+                    )
+                  )
+                  (i32.store8
+                    (i32.add (local.get $dst) (i32.add (i32.mul (local.get $y) (local.get $w)) (local.get $x)))
+                    (local.get $on)
+                  )
+                  (local.set $x (i32.add (local.get $x) (i32.const 1)))
+                  (br $xLoop)
+                )
+              )
+              (local.set $y (i32.add (local.get $y) (i32.const 1)))
+              (br $yLoop)
+            )
+          )
+        )
+
+        (func (export "subtract_mask")
+          (param $a i32) (param $b i32) (param $out i32) (param $len i32)
+          (local $i i32)
+          (local $limit i32)
+          (local $va v128)
+          (local $vb v128)
+          (local $ones v128)
+          (local.set $limit (i32.and (local.get $len) (i32.const -16)))
+          (local.set $ones (v128.const i8x16 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1))
+          (block $done
+            (block $tail
+              (loop $simd
+                (br_if $tail (i32.ge_u (local.get $i) (local.get $limit)))
+                (local.set $va (v128.load (i32.add (local.get $a) (local.get $i))))
+                (local.set $vb (v128.load (i32.add (local.get $b) (local.get $i))))
+                (v128.store
+                  (i32.add (local.get $out) (local.get $i))
+                  (v128.and (local.get $va) (v128.xor (local.get $vb) (local.get $ones)))
+                )
+                (local.set $i (i32.add (local.get $i) (i32.const 16)))
+                (br $simd)
+              )
+            )
+            (loop $scalar
+              (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+              (i32.store8
+                (i32.add (local.get $out) (local.get $i))
+                (i32.and
+                  (i32.load8_u (i32.add (local.get $a) (local.get $i)))
+                  (i32.xor (i32.load8_u (i32.add (local.get $b) (local.get $i))) (i32.const 1))
+                )
+              )
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br $scalar)
+            )
+          )
+        )
+
+        (func (export "fill_rgba")
+          (param $dst i32) (param $pixelCount i32) (param $rgba i32)
+          (local $i i32)
+          (local $limit i32)
+          (local $vec v128)
+          (local.set $limit (i32.and (local.get $pixelCount) (i32.const -4)))
+          (local.set $vec (i32x4.splat (local.get $rgba)))
+          (block $done
+            (block $tail
+              (loop $simd
+                (br_if $tail (i32.ge_u (local.get $i) (local.get $limit)))
+                (v128.store
+                  (i32.add (local.get $dst) (i32.shl (local.get $i) (i32.const 2)))
+                  (local.get $vec)
+                )
+                (local.set $i (i32.add (local.get $i) (i32.const 4)))
+                (br $simd)
+              )
+            )
+            (loop $scalar
+              (br_if $done (i32.ge_u (local.get $i) (local.get $pixelCount)))
+              (i32.store
+                (i32.add (local.get $dst) (i32.shl (local.get $i) (i32.const 2)))
+                (local.get $rgba)
+              )
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br $scalar)
+            )
+          )
+        )
+
+        (func (export "composite_mask")
+          (param $buffer i32) (param $mask i32) (param $len i32)
+          (param $r i32) (param $g i32) (param $b i32) (param $alpha i32)
+          (local $i i32)
+          (local $j i32)
+          (local $inv i32)
+          (local $mix i32)
+          (local.set $inv (i32.sub (i32.const 255) (local.get $alpha)))
+          (block $done
+            (loop $loop
+              (br_if $done (i32.ge_u (local.get $i) (local.get $len)))
+              (if (i32.load8_u (i32.add (local.get $mask) (local.get $i)))
+                (then
+                  (local.set $j (i32.shl (local.get $i) (i32.const 2)))
+                  (local.set $mix
+                    (i32.add
+                      (i32.mul (i32.load8_u (i32.add (local.get $buffer) (local.get $j))) (local.get $inv))
+                      (i32.mul (local.get $r) (local.get $alpha))
+                    )
+                  )
+                  (i32.store8
+                    (i32.add (local.get $buffer) (local.get $j))
+                    (i32.div_u (i32.add (i32.mul (local.get $mix) (i32.const 2)) (i32.const 255)) (i32.const 510))
+                  )
+                  (local.set $mix
+                    (i32.add
+                      (i32.mul (i32.load8_u (i32.add (local.get $buffer) (i32.add (local.get $j) (i32.const 1)))) (local.get $inv))
+                      (i32.mul (local.get $g) (local.get $alpha))
+                    )
+                  )
+                  (i32.store8
+                    (i32.add (local.get $buffer) (i32.add (local.get $j) (i32.const 1)))
+                    (i32.div_u (i32.add (i32.mul (local.get $mix) (i32.const 2)) (i32.const 255)) (i32.const 510))
+                  )
+                  (local.set $mix
+                    (i32.add
+                      (i32.mul (i32.load8_u (i32.add (local.get $buffer) (i32.add (local.get $j) (i32.const 2)))) (local.get $inv))
+                      (i32.mul (local.get $b) (local.get $alpha))
+                    )
+                  )
+                  (i32.store8
+                    (i32.add (local.get $buffer) (i32.add (local.get $j) (i32.const 2)))
+                    (i32.div_u (i32.add (i32.mul (local.get $mix) (i32.const 2)) (i32.const 255)) (i32.const 510))
+                  )
+                  (i32.store8 (i32.add (local.get $buffer) (i32.add (local.get $j) (i32.const 3))) (i32.const 255))
+                )
+              )
+              (local.set $i (i32.add (local.get $i) (i32.const 1)))
+              (br $loop)
+            )
+          )
+        )
+      )
+    </script>
+
+    <script>
+      const DEFAULT_CONFIG = {
+        frame: 200,
+        skeletonOpacity: 1,
+        ringOpacity: 1,
+        fade: 1,
+        offset: 6,
+        ringThickness: 6,
+        gapSize: 6,
+        fg: "#ffffff",
+        bg: "#000000",
+        threshold: 182,
+        maxSide: 640,
+      };
+
+      let wasmOpsPromise;
+      let renderedItems = [];
+
+      (async function init() {
+        const downloadButton = document.getElementById("download-all");
+        if (downloadButton) {
+          downloadButton.disabled = true;
+          downloadButton.addEventListener("click", () => {
+            downloadAllOutputs(downloadButton).catch((error) => {
+              console.error(error);
+              alert(`Download failed: ${error.message}`);
+              updateDownloadButton(downloadButton, false);
+            });
+          });
+        }
+
+        const wasmOps = await getWasmImageOps();
+        const grid = document.getElementById("grid");
+        const [imageResponse, paletteResponse] = await Promise.all([fetch("./image-index.json"), fetch("./color-palette.json")]);
+        const images = (await imageResponse.json()).slice(0, 16);
+        const palette = await paletteResponse.json();
+
+        const items = await Promise.all(
+          images.map(async (entry, index) => {
+            const fileName = `${String(index + 1).padStart(2, "0")}.jpg`;
+            const image = await loadImage(`./data/${fileName}`);
+            const paletteEntry = palette[index % palette.length] || {
+              fg: DEFAULT_CONFIG.fg,
+              bg: DEFAULT_CONFIG.bg,
+            };
+            const output = render(
+              image,
+              {
+                ...DEFAULT_CONFIG,
+                fg: paletteEntry.fg,
+                bg: paletteEntry.bg,
+              },
+              wasmOps
+            );
+            return {
+              entry,
+              output,
+              index,
+              fileName,
+              colors: paletteEntry,
+              downloadName: buildDownloadName(index, entry.name),
+            };
+          })
+        );
+
+        renderedItems = items;
+
+        for (const item of items) {
+          const card = document.createElement("article");
+          card.className = "card";
+
+          const canvasWrap = document.createElement("div");
+          canvasWrap.className = "canvas-wrap";
+
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = item.output.width;
+          canvas.height = item.output.height;
+          ctx.putImageData(item.output, 0, 0);
+          canvas.setAttribute("aria-label", item.entry.name);
+          canvas.dataset.downloadName = item.downloadName;
+          canvas.style.background = item.colors.bg;
+
+          canvasWrap.style.background = `radial-gradient(circle at top, rgba(255, 255, 255, 0.05), transparent 55%), ${item.colors.bg}`;
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.innerHTML = `
+						<span class="index">${String(item.index + 1).padStart(2, "0")}</span>
+						<p class="name" style="color: ${escapeHtml(item.colors.fg)};">${escapeHtml(item.entry.name)}</p>
+					`;
+
+          canvasWrap.appendChild(canvas);
+          card.appendChild(canvasWrap);
+          card.appendChild(meta);
+          grid.appendChild(card);
+        }
+
+        updateDownloadButton(downloadButton, false);
+      })().catch((error) => {
+        document.body.innerHTML = `<pre style="padding:16px;color:#fff;white-space:pre-wrap;">${escapeHtml(String(error))}</pre>`;
+        console.error(error);
+      });
+
+      async function downloadAllOutputs(button) {
+        if (!renderedItems.length) {
+          throw new Error("No rendered outputs available yet.");
+        }
+
+        updateDownloadButton(button, true);
+
+        for (const item of renderedItems) {
+          const blob = await imageDataToBlob(item.output);
+          triggerDownload(blob, item.downloadName);
+          await wait(120);
+        }
+
+        updateDownloadButton(button, false);
+      }
+
+      function updateDownloadButton(button, isBusy) {
+        if (!button) return;
+        button.disabled = isBusy || !renderedItems.length;
+        button.textContent = isBusy ? "Preparing…" : "Download all";
+      }
+
+      function imageDataToBlob(imageData) {
+        return new Promise((resolve, reject) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = imageData.width;
+          canvas.height = imageData.height;
+          const ctx = canvas.getContext("2d");
+          ctx.putImageData(imageData, 0, 0);
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+              return;
+            }
+            reject(new Error("Failed to encode PNG."));
+          }, "image/png");
+        });
+      }
+
+      function triggerDownload(blob, fileName) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+
+      function buildDownloadName(index, name) {
+        const safeName =
+          String(name)
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "output";
+        return `${String(index + 1).padStart(2, "0")}-${safeName}.png`;
+      }
+
+      function wait(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+          image.src = src;
+        });
+      }
+
+      async function getWasmImageOps() {
+        if (!wasmOpsPromise) {
+          wasmOpsPromise = createWasmImageOps();
+        }
+        return wasmOpsPromise;
+      }
+
+      async function createWasmImageOps() {
+        if (typeof WabtModule !== "function") {
+          throw new Error("WABT compiler failed to load.");
+        }
+
+        const wabt = await WabtModule();
+        const source = document.getElementById("wasm-source")?.textContent?.trim();
+        if (!source) {
+          throw new Error("Missing inline WASM source.");
+        }
+
+        const parsed = wabt.parseWat("olympics-simd.wat", source, { simd: true });
+        parsed.validate({ simd: true });
+        const { buffer } = parsed.toBinary({ log: false, write_debug_names: false });
+        parsed.destroy();
+
+        const { instance } = await WebAssembly.instantiate(buffer, {});
+        const wasm = instance.exports;
+
+        return {
+          wasm,
+          ensureMemory(byteLength) {
+            const current = wasm.memory.buffer.byteLength;
+            if (current >= byteLength) return;
+            wasm.memory.grow(Math.ceil((byteLength - current) / 65536));
+          },
+        };
+      }
+
+      function render(image, config = {}, wasmOps) {
+        const settings = { ...DEFAULT_CONFIG, ...config };
+        const source = normalizeImageSource(image, settings.maxSide);
+        const { width: w, height: h, imageData } = source;
+        const fg = hexToRgb(settings.fg);
+        const bg = hexToRgb(settings.bg);
+        const targetFrame = Math.max(0, Math.floor(settings.frame));
+        const skeletonOpacity = clamp01(settings.skeletonOpacity);
+        const ringStartOpacity = clamp01(settings.ringOpacity);
+        const fade = Math.max(0, Number(settings.fade) || 0);
+        const offset = Math.floor(Number(settings.offset) || 0);
+        const ringThickness = Math.max(0, Math.floor(Number(settings.ringThickness) || 0));
+        const gapSize = Math.max(0, Math.floor(Number(settings.gapSize) || 0));
+        const period = Math.max(1, ringThickness + gapSize);
+
+        const pixelCount = w * h;
+        const rgbaBytes = pixelCount * 4;
+        const srcPtr = 0;
+        const outPtr = srcPtr + rgbaBytes;
+        const seedPtr = outPtr + rgbaBytes;
+        const prevPtr = seedPtr + pixelCount;
+        const currPtr = prevPtr + pixelCount;
+        const ringPtr = currPtr + pixelCount;
+        const outerPtr = ringPtr + pixelCount;
+        const totalBytes = outerPtr + pixelCount;
+
+        wasmOps.ensureMemory(totalBytes);
+
+        const heapU8 = new Uint8Array(wasmOps.wasm.memory.buffer);
+        heapU8.set(imageData.data, srcPtr);
+
+        wasmOps.wasm.threshold_rgba_to_mask(srcPtr, pixelCount, settings.threshold, seedPtr);
+        wasmOps.wasm.fill_rgba(outPtr, pixelCount, packRgba(bg.r, bg.g, bg.b, 255));
+        wasmOps.wasm.composite_mask(outPtr, seedPtr, pixelCount, fg.r, fg.g, fg.b, Math.round(skeletonOpacity * 255));
+
+        initializeOffsetMask(wasmOps.wasm, heapU8, seedPtr, prevPtr, currPtr, pixelCount, w, h, offset);
+
+        for (let dilation = 1; dilation <= targetFrame; dilation++) {
+          wasmOps.wasm.dilate_once(prevPtr, currPtr, w, h);
+          const posInCycle = dilation % period;
+          if (ringThickness > 0 && posInCycle < ringThickness) {
+            const progress = targetFrame === 0 ? 0 : (dilation - 1) / targetFrame;
+            const ringOpacity = ringStartOpacity * Math.max(0, 1 - fade * progress);
+            wasmOps.wasm.subtract_mask(currPtr, prevPtr, ringPtr, pixelCount);
+            wasmOps.wasm.subtract_mask(ringPtr, seedPtr, outerPtr, pixelCount);
+            wasmOps.wasm.composite_mask(outPtr, outerPtr, pixelCount, fg.r, fg.g, fg.b, Math.round(ringOpacity * 255));
+          }
+          heapU8.copyWithin(prevPtr, currPtr, currPtr + pixelCount);
+        }
+
+        const outputBytes = new Uint8ClampedArray(rgbaBytes);
+        outputBytes.set(new Uint8ClampedArray(wasmOps.wasm.memory.buffer, outPtr, rgbaBytes));
+        return new ImageData(outputBytes, w, h);
+      }
+
+      function initializeOffsetMask(wasm, heapU8, seedPtr, prevPtr, currPtr, pixelCount, w, h, offset) {
+        heapU8.copyWithin(prevPtr, seedPtr, seedPtr + pixelCount);
+        if (offset === 0) return;
+
+        const morph = offset > 0 ? wasm.dilate_once : wasm.erode_once;
+        for (let i = 0; i < Math.abs(offset); i++) {
+          morph(prevPtr, currPtr, w, h);
+          heapU8.copyWithin(prevPtr, currPtr, currPtr + pixelCount);
+        }
+      }
+
+      function normalizeImageSource(image, maxSide = 700) {
+        if (image instanceof ImageData) {
+          return {
+            width: image.width,
+            height: image.height,
+            imageData: image,
+          };
+        }
+
+        const width = image.videoWidth || image.naturalWidth || image.width;
+        const height = image.videoHeight || image.naturalHeight || image.height;
+        const scale = Math.min(1, maxSide / Math.max(width, height));
+        const w = Math.max(1, Math.round(width * scale));
+        const h = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0, w, h);
+
+        return {
+          width: w,
+          height: h,
+          imageData: ctx.getImageData(0, 0, w, h),
+        };
+      }
+
+      function clamp01(value) {
+        return Math.max(0, Math.min(1, value));
+      }
+
+      function packRgba(r, g, b, a = 255) {
+        return ((a & 255) << 24) | ((b & 255) << 16) | ((g & 255) << 8) | (r & 255);
+      }
+
+      function hexToRgb(hex) {
+        const s = hex.replace("#", "");
+        return {
+          r: parseInt(s.slice(0, 2), 16),
+          g: parseInt(s.slice(2, 4), 16),
+          b: parseInt(s.slice(4, 6), 16),
+        };
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => {
+          const map = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          };
+          return map[char];
+        });
+      }
+    </script>
+  </body>
+</html>

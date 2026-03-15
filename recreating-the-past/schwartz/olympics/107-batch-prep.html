@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Direct Convolution Rings</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        display: grid;
+        place-items: center;
+        font-family: Arial, sans-serif;
+      }
+      body {
+        position: relative;
+      }
+      canvas {
+        display: block;
+        max-width: 95vw;
+        max-height: 95vh;
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+
+    <script>
+      const DEFAULT_CONFIG = {
+        frame: 200,
+        skeletonOpacity: 0,
+        ringOpacity: 1,
+        fade: 1.2,
+        offset: 0,
+        ringThickness: 4,
+        gapSize: 4,
+        fg: "#ffffff",
+        bg: "#000000",
+        threshold: 182,
+        maxSide: 700,
+      };
+
+      (async function () {
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        const url = "./data/02.jpg";
+        const img = new Image();
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        });
+        URL.revokeObjectURL(url);
+
+        const output = render(img, DEFAULT_CONFIG);
+        canvas.width = output.width;
+        canvas.height = output.height;
+        ctx.putImageData(output, 0, 0);
+      })();
+
+      function render(image, config = {}) {
+        const settings = { ...DEFAULT_CONFIG, ...config };
+        const source = normalizeImageSource(image, settings.maxSide);
+        const { width: w, height: h, imageData } = source;
+        const seedMask = thresholdImageToMask(imageData, {
+          threshold: settings.threshold,
+        });
+        const fg = hexToRgb(settings.fg);
+        const bg = hexToRgb(settings.bg);
+        const targetFrame = Math.max(0, Math.floor(settings.frame));
+        const skeletonOpacity = clamp01(settings.skeletonOpacity);
+        const ringStartOpacity = clamp01(settings.ringOpacity);
+        const fade = Math.max(0, Number(settings.fade) || 0);
+        const offset = Math.floor(Number(settings.offset) || 0);
+        const ringThickness = Math.max(0, Math.floor(Number(settings.ringThickness) || 0));
+        const gapSize = Math.max(0, Math.floor(Number(settings.gapSize) || 0));
+        const period = Math.max(1, ringThickness + gapSize);
+
+        let currentMask = seedMask.slice();
+        const maskCache = [seedMask.slice()];
+        let currentErodedMask = seedMask.slice();
+        const erodedMaskCache = [seedMask.slice()];
+
+        function ensureDilatedTo(n) {
+          while (maskCache.length <= n) {
+            currentMask = dilateOnce(currentMask, w, h);
+            maskCache.push(currentMask.slice());
+          }
+        }
+
+        function ensureErodedTo(n) {
+          while (erodedMaskCache.length <= n) {
+            currentErodedMask = erodeOnce(currentErodedMask, w, h);
+            erodedMaskCache.push(currentErodedMask.slice());
+          }
+        }
+
+        function getOffsetMask(stepOffset) {
+          if (stepOffset > 0) {
+            ensureDilatedTo(stepOffset);
+            return maskCache[stepOffset];
+          }
+
+          if (stepOffset < 0) {
+            ensureErodedTo(-stepOffset);
+            return erodedMaskCache[-stepOffset];
+          }
+
+          return seedMask;
+        }
+
+        const out = createSolidImageData(w, h, bg);
+        const baseMask = getOffsetMask(offset);
+        compositeMask(out.data, baseMask, fg, skeletonOpacity);
+
+        let previousMask = baseMask;
+        for (let dilation = 1; dilation <= targetFrame; dilation++) {
+          const currentRingMask = dilateOnce(previousMask, w, h);
+          const posInCycle = dilation % period;
+          if (ringThickness > 0 && posInCycle < ringThickness) {
+            const ring = subtractMask(currentRingMask, previousMask);
+            const progress = targetFrame === 0 ? 0 : (dilation - 1) / targetFrame;
+            const ringOpacity = ringStartOpacity * Math.max(0, 1 - fade * progress);
+            compositeMask(out.data, ring, fg, ringOpacity);
+          }
+          previousMask = currentRingMask;
+        }
+
+        return out;
+      }
+
+      function thresholdImageToMask(imageData, options = {}) {
+        const threshold = options.threshold ?? 200;
+        const w = imageData.width;
+        const h = imageData.height;
+        const data = imageData.data;
+        const mask = new Uint8Array(w * h);
+
+        for (let i = 0; i < w * h; i++) {
+          const i4 = i * 4;
+          const r = data[i4];
+          const g = data[i4 + 1];
+          const b = data[i4 + 2];
+          const a = data[i4 + 3];
+          const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          mask[i] = a > 0 && lum >= threshold ? 1 : 0;
+        }
+
+        return mask;
+      }
+
+      function dilateOnce(mask, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let on = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w) continue;
+                if (mask[ny * w + nx]) {
+                  on = 1;
+                  break;
+                }
+              }
+              if (on) break;
+            }
+            out[y * w + x] = on;
+          }
+        }
+        return out;
+      }
+
+      function erodeOnce(mask, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let on = 1;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) {
+                on = 0;
+                break;
+              }
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w || !mask[ny * w + nx]) {
+                  on = 0;
+                  break;
+                }
+              }
+              if (!on) break;
+            }
+            out[y * w + x] = on;
+          }
+        }
+        return out;
+      }
+
+      function subtractMask(a, b) {
+        const out = new Uint8Array(a.length);
+        for (let i = 0; i < a.length; i++) out[i] = a[i] && !b[i] ? 1 : 0;
+        return out;
+      }
+
+      function normalizeImageSource(image, maxSide = 700) {
+        if (image instanceof ImageData) {
+          return {
+            width: image.width,
+            height: image.height,
+            imageData: image,
+          };
+        }
+
+        const width = image.videoWidth || image.naturalWidth || image.width;
+        const height = image.videoHeight || image.naturalHeight || image.height;
+        const scale = Math.min(1, maxSide / Math.max(width, height));
+        const w = Math.max(1, Math.round(width * scale));
+        const h = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0, w, h);
+
+        return {
+          width: w,
+          height: h,
+          imageData: ctx.getImageData(0, 0, w, h),
+        };
+      }
+
+      function createSolidImageData(w, h, color) {
+        const image = new ImageData(w, h);
+        const d = image.data;
+        for (let i = 0; i < d.length; i += 4) {
+          d[i] = color.r;
+          d[i + 1] = color.g;
+          d[i + 2] = color.b;
+          d[i + 3] = 255;
+        }
+        return image;
+      }
+
+      function compositeMask(buffer, mask, color, alpha = 1) {
+        const opacity = clamp01(alpha);
+        if (opacity <= 0) return;
+
+        for (let i = 0; i < mask.length; i++) {
+          if (!mask[i]) continue;
+          const j = i * 4;
+          buffer[j] = Math.round(buffer[j] * (1 - opacity) + color.r * opacity);
+          buffer[j + 1] = Math.round(buffer[j + 1] * (1 - opacity) + color.g * opacity);
+          buffer[j + 2] = Math.round(buffer[j + 2] * (1 - opacity) + color.b * opacity);
+          buffer[j + 3] = 255;
+        }
+      }
+
+      function clamp01(value) {
+        return Math.max(0, Math.min(1, value));
+      }
+
+      function hexToRgb(hex) {
+        const s = hex.replace("#", "");
+        return {
+          r: parseInt(s.slice(0, 2), 16),
+          g: parseInt(s.slice(2, 4), 16),
+          b: parseInt(s.slice(4, 6), 16),
+        };
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Walking Human – Screen-Space Silhouette Outline</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+      canvas {
+        display: block;
+      }
+      #info {
+        position: fixed;
+        bottom: 10px;
+        left: 12px;
+        color: #fff;
+        opacity: 0.6;
+        font: 12px/1.4 system-ui, sans-serif;
+        pointer-events: none;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="info">Loading…</div>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+
+      /* ================================================================
+   The idea:
+   1. Render the character as a flat white shape on black → RT
+   2. Run a Sobel / Laplacian edge-detect shader on that RT
+      → only the outer contour (silhouette) survives
+   3. Show the result on a black background
+   ================================================================ */
+
+      const W = innerWidth,
+        H = innerHeight;
+
+      /* ── renderer ──────────────────────────────────── */
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(W, H);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      document.body.appendChild(renderer.domElement);
+
+      /* ── camera / controls ─────────────────────────── */
+      const camera = new THREE.PerspectiveCamera(32, W / H, 0.1, 100);
+      camera.position.set(0, 5.0, 25);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 5, 0);
+
+      /* ── scene (character rendered as flat white) ──── */
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const flatWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      const clock = new THREE.Clock();
+      let mixer = null;
+
+      /* ── post-processing: edge detect ──────────────── */
+      const edgeShader = {
+        uniforms: {
+          tDiffuse: { value: null },
+          resolution: { value: new THREE.Vector2(W * devicePixelRatio, H * devicePixelRatio) },
+          thickness: { value: 1.5 },
+        },
+        vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+  `,
+        fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform vec2 resolution;
+    uniform float thickness;
+    varying vec2 vUv;
+
+    float lum(vec2 uv){ return dot(texture2D(tDiffuse, uv).rgb, vec3(0.333)); }
+
+    void main(){
+      vec2 texel = thickness / resolution;
+
+      // 3×3 Sobel
+      float tl = lum(vUv + vec2(-texel.x,  texel.y));
+      float  t = lum(vUv + vec2(     0.0,  texel.y));
+      float tr = lum(vUv + vec2( texel.x,  texel.y));
+      float  l = lum(vUv + vec2(-texel.x,      0.0));
+      float  r = lum(vUv + vec2( texel.x,      0.0));
+      float bl = lum(vUv + vec2(-texel.x, -texel.y));
+      float  b = lum(vUv + vec2(     0.0, -texel.y));
+      float br = lum(vUv + vec2( texel.x, -texel.y));
+
+      float gx = tl + 2.0*l + bl - tr - 2.0*r - br;
+      float gy = tl + 2.0*t + tr - bl - 2.0*b - br;
+      float edge = sqrt(gx*gx + gy*gy);
+
+      edge = smoothstep(0.05, 0.4, edge);
+
+      gl_FragColor = vec4(vec3(edge), 1.0);
+    }
+  `,
+      };
+
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const edgePass = new ShaderPass(edgeShader);
+      composer.addPass(edgePass);
+
+      /* ── load model ────────────────────────────────── */
+      const MODEL_URL = "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb";
+
+      new GLTFLoader().load(
+        MODEL_URL,
+        (gltf) => {
+          const model = gltf.scene;
+          scene.add(model);
+
+          /* normalise size */
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          const s = 2.0 / Math.max(size.y, 0.001);
+          model.scale.setScalar(s);
+          model.position.y -= box.min.y * s;
+          model.position.x -= center.x * s;
+          model.position.z -= center.z * s;
+
+          /* override every mesh material → flat white (silhouette mask) */
+          model.traverse((o) => {
+            if (o.isMesh) o.material = flatWhite;
+          });
+
+          /* play walk animation */
+          if (gltf.animations.length) {
+            mixer = new THREE.AnimationMixer(model);
+            const clip = gltf.animations.find((c) => /walk/i.test(c.name)) || gltf.animations[0];
+            mixer.clipAction(clip).play();
+            document.getElementById("info").textContent = `"${clip.name}" — drag to orbit · pure screen-space silhouette`;
+          }
+        },
+        (xhr) => {
+          document.getElementById("info").textContent = `Loading… ${((xhr.loaded / (xhr.total || 1)) * 100) | 0}%`;
+        },
+        (err) => {
+          console.error(err);
+          document.getElementById("info").textContent = "Load failed";
+        }
+      );
+
+      /* ── render loop ───────────────────────────────── */
+      renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+        if (mixer) mixer.update(dt);
+        controls.update();
+        composer.render();
+      });
+
+      /* ── resize ────────────────────────────────────── */
+      addEventListener("resize", () => {
+        const w = innerWidth,
+          h = innerHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        composer.setSize(w, h);
+        edgePass.uniforms.resolution.value.set(w * devicePixelRatio, h * devicePixelRatio);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OKHCL 16-Color Palette Generator</title>
+    <style>
+      :root {
+        --bg: #000000;
+        --panel: #0f0f12;
+        --text: #f2f2f2;
+        --muted: #a8a8b3;
+        --border: #24242b;
+        --accent: #ffffff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .toolbar {
+        margin-top: 20px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .control-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        background: #17171c;
+        border-radius: 12px;
+      }
+      .control-label {
+        font-size: 13px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .control-value {
+        min-width: 42px;
+        text-align: right;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      input[type="range"] {
+        width: 150px;
+      }
+      button {
+        border: 1px solid var(--border);
+        background: #17171c;
+        color: var(--text);
+        padding: 10px 14px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:hover {
+        background: #202028;
+      }
+      .status {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .grid {
+        margin-top: 24px;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 14px;
+      }
+      @media (max-width: 800px) {
+        .grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 480px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .swatch {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        background: var(--panel);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+      }
+      .color-box {
+        height: 120px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        padding: 12px;
+      }
+      .chip-label {
+        background: rgba(0, 0, 0, 0.45);
+        color: white;
+        padding: 6px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        backdrop-filter: blur(6px);
+      }
+      .swatch-meta {
+        padding: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
+      .swatch-meta-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .hex {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 14px;
+      }
+      .hex-label {
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .hex-row {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .copy-btn {
+        padding: 7px 10px;
+        font-size: 12px;
+        border-radius: 10px;
+      }
+      .preview {
+        margin-top: 28px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        background: #09090b;
+      }
+      .preview-title {
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .preview-row {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        gap: 10px;
+      }
+      @media (max-width: 800px) {
+        .preview-row {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+      }
+      .preview-pill {
+        border-radius: 999px;
+        height: 44px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .bg-preview {
+        margin-top: 14px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        margin-top: 18px;
+        background: #0c0c10;
+        color: #fafafa;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        resize: vertical;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>OKHCL 16-Color Palette</h1>
+      <p>Distinct, vibrant colors tuned to look great on a black background.</p>
+
+      <div class="toolbar">
+        <button id="generateBtn">Generate Palette</button>
+        <button id="downloadBtn">Download HEX (.txt)</button>
+        <button id="copyAllBtn">Copy All HEX</button>
+        <label class="control-group" for="bgBrightnessRange">
+          <span class="control-label">BG Lightness</span>
+          <input id="bgBrightnessRange" type="range" min="2" max="25" step="1" value="10" />
+          <span class="control-value" id="bgBrightnessValue">L 0.10</span>
+        </label>
+        <span class="status" id="status">Ready</span>
+      </div>
+
+      <div class="preview">
+        <div class="preview-title">Palette Preview on Black</div>
+        <div class="preview-row" id="previewRow"></div>
+        <div class="preview-title bg-preview">Matching Backgrounds</div>
+        <div class="preview-row" id="backgroundPreviewRow"></div>
+        <textarea id="hexOutput" readonly></textarea>
+      </div>
+
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <script>
+      const grid = document.getElementById("grid");
+      const previewRow = document.getElementById("previewRow");
+      const backgroundPreviewRow = document.getElementById("backgroundPreviewRow");
+      const hexOutput = document.getElementById("hexOutput");
+      const statusEl = document.getElementById("status");
+      const bgBrightnessRange = document.getElementById("bgBrightnessRange");
+      const bgBrightnessValue = document.getElementById("bgBrightnessValue");
+
+      let backgroundBrightness = Number(bgBrightnessRange.value) / 100;
+
+      function clamp(x, min, max) {
+        return Math.min(max, Math.max(min, x));
+      }
+
+      // OKLab/OKLCH conversion based on Björn Ottosson's formulas.
+      function oklchToSrgbHex(L, C, hDeg) {
+        const h = (hDeg * Math.PI) / 180;
+        const a_ = C * Math.cos(h);
+        const b_ = C * Math.sin(h);
+
+        const l_ = L + 0.3963377774 * a_ + 0.2158037573 * b_;
+        const m_ = L - 0.1055613458 * a_ - 0.0638541728 * b_;
+        const s_ = L - 0.0894841775 * a_ - 1.291485548 * b_;
+
+        const l = l_ * l_ * l_;
+        const m = m_ * m_ * m_;
+        const s = s_ * s_ * s_;
+
+        let r = +4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s;
+        let g = -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s;
+        let b = -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s;
+
+        function gamma(u) {
+          return u <= 0.0031308 ? 12.92 * u : 1.055 * Math.pow(u, 1 / 2.4) - 0.055;
+        }
+
+        if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) return null;
+        r = gamma(r);
+        g = gamma(g);
+        b = gamma(b);
+
+        if (r < 0 || r > 1 || g < 0 || g > 1 || b < 0 || b > 1) return null;
+
+        const R = Math.round(clamp(r, 0, 1) * 255);
+        const G = Math.round(clamp(g, 0, 1) * 255);
+        const B = Math.round(clamp(b, 0, 1) * 255);
+
+        return (
+          "#" +
+          [R, G, B]
+            .map((v) => v.toString(16).padStart(2, "0"))
+            .join("")
+            .toUpperCase()
+        );
+      }
+
+      function relativeLuminance(hex) {
+        const [r, g, b] = hex.match(/[A-Fa-f0-9]{2}/g).map((v) => parseInt(v, 16) / 255);
+        const f = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+        const R = f(r),
+          G = f(g),
+          B = f(b);
+        return 0.2126 * R + 0.7152 * G + 0.0722 * B;
+      }
+
+      function contrastOnBlack(hex) {
+        return (relativeLuminance(hex) + 0.05) / 0.05;
+      }
+
+      // Generate a background color with the exact same hue as fg,
+      // at a low OKLCH lightness controlled by the slider.
+      // Finds the maximum in-gamut chroma at the given L and h.
+      function generateNearBlackBackground(h, targetL = backgroundBrightness) {
+        const L = clamp(targetL, 0.02, 0.25);
+
+        // Find the maximum in-gamut chroma at this lightness and hue.
+        // Binary search for the gamut boundary.
+        let lo = 0,
+          hi = 0.4;
+        for (let step = 0; step < 20; step++) {
+          const mid = (lo + hi) / 2;
+          if (oklchToSrgbHex(L, mid, h) !== null) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+
+        const hex = oklchToSrgbHex(L, lo, h);
+        if (hex) {
+          return { hex, L, C: lo, h };
+        }
+
+        // Fallback: achromatic at the target lightness
+        const fallback = oklchToSrgbHex(L, 0, h) || "#080808";
+        return { hex: fallback, L, C: 0, h };
+      }
+
+      function generatePalette() {
+        const result = [];
+        const used = new Set();
+
+        for (let i = 0; i < 16; i++) {
+          const h = ((i * 360) / 16 + (i % 2 ? 6 : -6) + 360) % 360;
+
+          // Search for a strong in-gamut color that pops on black.
+          let picked = null;
+          for (let L = 0.82; L >= 0.6 && !picked; L -= 0.02) {
+            for (let C = 0.28; C >= 0.1 && !picked; C -= 0.01) {
+              const hex = oklchToSrgbHex(L, C, h);
+              if (!hex) continue;
+              if (used.has(hex)) continue;
+              if (hex.toUpperCase() === "#000000" || hex.toUpperCase() === "#FFFFFF") continue;
+              if (contrastOnBlack(hex) < 5.5) continue;
+              picked = { hex, L, C, h };
+            }
+          }
+
+          // Fallback if needed.
+          if (!picked) {
+            for (let L = 0.78; L >= 0.55 && !picked; L -= 0.01) {
+              for (let C = 0.09; C <= 0.24 && !picked; C += 0.01) {
+                const hex = oklchToSrgbHex(L, C, h);
+                if (!hex) continue;
+                if (used.has(hex)) continue;
+                if (hex.toUpperCase() === "#000000" || hex.toUpperCase() === "#FFFFFF") continue;
+                if (contrastOnBlack(hex) < 4.8) continue;
+                picked = { hex, L, C, h };
+              }
+            }
+          }
+
+          if (picked) {
+            const background = generateNearBlackBackground(picked.h, backgroundBrightness);
+            used.add(picked.hex);
+            result.push({ ...picked, background });
+          }
+        }
+
+        return result;
+      }
+
+      function renderPalette(palette) {
+        grid.innerHTML = "";
+        previewRow.innerHTML = "";
+        backgroundPreviewRow.innerHTML = "";
+
+        palette.forEach((item, idx) => {
+          const card = document.createElement("div");
+          card.className = "swatch";
+
+          const box = document.createElement("div");
+          box.className = "color-box";
+          box.style.background = item.hex;
+
+          const label = document.createElement("div");
+          label.className = "chip-label";
+          label.textContent = `Color ${idx + 1}`;
+
+          box.appendChild(label);
+
+          const meta = document.createElement("div");
+          meta.className = "swatch-meta";
+
+          const hexStack = document.createElement("div");
+          hexStack.className = "swatch-meta-stack";
+
+          const fgRow = document.createElement("div");
+          fgRow.className = "hex-row";
+
+          const fgLabel = document.createElement("div");
+          fgLabel.className = "hex-label";
+          fgLabel.textContent = "Foreground";
+
+          const fgHex = document.createElement("div");
+          fgHex.className = "hex";
+          fgHex.textContent = item.hex;
+
+          fgRow.appendChild(fgLabel);
+          fgRow.appendChild(fgHex);
+
+          const bgRow = document.createElement("div");
+          bgRow.className = "hex-row";
+
+          const bgLabel = document.createElement("div");
+          bgLabel.className = "hex-label";
+          bgLabel.textContent = "Background";
+
+          const bgHex = document.createElement("div");
+          bgHex.className = "hex";
+          bgHex.textContent = item.background.hex;
+
+          bgRow.appendChild(bgLabel);
+          bgRow.appendChild(bgHex);
+
+          hexStack.appendChild(fgRow);
+          hexStack.appendChild(bgRow);
+
+          const copyBtn = document.createElement("button");
+          copyBtn.className = "copy-btn";
+          copyBtn.textContent = "Copy Pair";
+          copyBtn.addEventListener("click", async () => {
+            await navigator.clipboard.writeText(`FG ${item.hex}\nBG ${item.background.hex}`);
+            statusEl.textContent = `Copied ${item.hex} / ${item.background.hex}`;
+          });
+
+          meta.appendChild(hexStack);
+          meta.appendChild(copyBtn);
+
+          card.appendChild(box);
+          card.appendChild(meta);
+          grid.appendChild(card);
+
+          const pill = document.createElement("div");
+          pill.className = "preview-pill";
+          pill.style.background = item.hex;
+          previewRow.appendChild(pill);
+
+          const backgroundPill = document.createElement("div");
+          backgroundPill.className = "preview-pill";
+          backgroundPill.style.background = item.background.hex;
+          backgroundPreviewRow.appendChild(backgroundPill);
+        });
+
+        hexOutput.value = JSON.stringify(
+          palette.map((p) => ({
+            fg: p.hex,
+            bg: p.background.hex,
+          })),
+          null,
+          2
+        );
+      }
+
+      async function downloadPalette() {
+        const content = hexOutput.value.trim();
+        if (!content) return;
+        const filename = "okhcl-palette-16.json";
+        await window.writeonlyFS.writeFile(filename, content);
+        statusEl.textContent = `Saved ${filename}`;
+      }
+
+      async function copyAll() {
+        const content = hexOutput.value.trim();
+        if (!content) return;
+        await navigator.clipboard.writeText(content);
+        statusEl.textContent = "Copied full palette";
+      }
+
+      let currentPalette = [];
+
+      function regenerate() {
+        currentPalette = generatePalette();
+        renderPalette(currentPalette);
+        statusEl.textContent = `Generated ${currentPalette.length} colors`;
+      }
+
+      function updateBackgroundBrightness() {
+        backgroundBrightness = Number(bgBrightnessRange.value) / 100;
+        bgBrightnessValue.textContent = `L ${backgroundBrightness.toFixed(2)}`;
+        regenerate();
+      }
+
+      document.getElementById("generateBtn").addEventListener("click", regenerate);
+      document.getElementById("downloadBtn").addEventListener("click", downloadPalette);
+      document.getElementById("copyAllBtn").addEventListener("click", copyAll);
+      bgBrightnessRange.addEventListener("input", updateBackgroundBrightness);
+
+      bgBrightnessValue.textContent = `L ${(Number(bgBrightnessRange.value) / 100).toFixed(2)}`;
+      regenerate();
+    </script>
+  </body>
+</html>

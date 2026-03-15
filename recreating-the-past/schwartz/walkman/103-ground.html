@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Walking Human – Ripple Contour Fill + Ground Grid</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      canvas {
+        display: block;
+        width: min(100vw, calc(100vh * 9 / 16));
+        height: min(100vh, calc(100vw * 16 / 9));
+        aspect-ratio: 9 / 16;
+        background: #000;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+      /* =========================================================
+   PARAMETERS
+   ========================================================= */
+      const PARAMS = {
+        viewport: {
+          width: 900,
+          height: 1600,
+          pixelRatio: Math.min(devicePixelRatio, 2),
+        },
+
+        camera: {
+          fov: 40,
+          near: 0.1,
+          far: 100,
+          position: new THREE.Vector3(0, 12, 25),
+          target: new THREE.Vector3(0, 6, 0),
+        },
+
+        autoOrbit: {
+          enabled: true,
+          angle: Math.PI,
+          radius: 20,
+          height: 14,
+          speed: 0.35,
+        },
+
+        model: {
+          url: "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb",
+          scaleToHeight: 2.2,
+        },
+
+        walk: {
+          bpm: 116,
+          sourceClipBpm: 116,
+        },
+
+        waves: {
+          cyclesPerMinute: 90,
+          beatsPerBand: 1,
+          bandSize: 0.005,
+        },
+
+        color: {
+          cyclesPerMinute: -20,
+          spatialFrequency: 8.0,
+          saturation: 1.0,
+          value: 1.0,
+        },
+
+        ground: {
+          enabled: true,
+          size: 40, // total plane dimension (size × size)
+          divisions: 40, // number of grid cells per axis
+          color: 0x444444, // grid line color
+          opacity: 0.6, // grid line opacity
+          heightOffset: 1.1, // Y position (below model feet)
+          fadeDistance: 18, // grid fades out at this radius
+        },
+      };
+
+      /* ── renderer ──────────────────────────────────── */
+      const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+      document.body.appendChild(renderer.domElement);
+
+      /* ── camera / controls ─────────────────────────── */
+      const camera = new THREE.PerspectiveCamera(PARAMS.camera.fov, PARAMS.viewport.width / PARAMS.viewport.height, PARAMS.camera.near, PARAMS.camera.far);
+      camera.position.copy(PARAMS.camera.position);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.copy(PARAMS.camera.target);
+
+      /* auto-orbit */
+      let autoOrbit = PARAMS.autoOrbit.enabled;
+      let autoAngle = PARAMS.autoOrbit.angle;
+
+      function stopAutoOrbit() {
+        autoOrbit = false;
+      }
+      renderer.domElement.addEventListener("pointerdown", stopAutoOrbit, { passive: true });
+      renderer.domElement.addEventListener("wheel", stopAutoOrbit, { passive: true });
+      window.addEventListener("keydown", stopAutoOrbit, { passive: true });
+
+      /* ── scene ─────────────────────────────────────── */
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+      const flatWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      const clock = new THREE.Clock();
+      let mixer = null;
+
+      /* ── ground grid ───────────────────────────────── */
+      const groundGridMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(PARAMS.ground.color) },
+          uOpacity: { value: PARAMS.ground.opacity },
+          uGridSize: { value: PARAMS.ground.size },
+          uDivisions: { value: PARAMS.ground.divisions },
+          uFadeDistance: { value: PARAMS.ground.fadeDistance },
+        },
+        vertexShader: `
+    varying vec3 vWorldPos;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+        fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uOpacity;
+    uniform float uGridSize;
+    uniform float uDivisions;
+    uniform float uFadeDistance;
+    varying vec3 vWorldPos;
+
+    void main() {
+      float cellSize = uGridSize / uDivisions;
+      vec2 coord = vWorldPos.xz / cellSize;
+      vec2 grid = abs(fract(coord - 0.5) - 0.5);
+      vec2 line = fwidth(coord) * 1.5;
+      vec2 g = smoothstep(line, vec2(0.0), grid);
+      float mask = max(g.x, g.y);
+
+      float dist = length(vWorldPos.xz);
+      float fade = 1.0 - smoothstep(uFadeDistance * 0.5, uFadeDistance, dist);
+
+      float alpha = mask * uOpacity * fade;
+      if (alpha < 0.01) discard;
+
+      gl_FragColor = vec4(uColor, alpha);
+    }
+  `,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const groundPlane = new THREE.Mesh(new THREE.PlaneGeometry(PARAMS.ground.size, PARAMS.ground.size), groundGridMaterial);
+      groundPlane.rotation.x = -Math.PI / 2;
+      groundPlane.position.y = PARAMS.ground.heightOffset;
+      groundPlane.visible = PARAMS.ground.enabled;
+      groundPlane.renderOrder = -1;
+
+      /* We add the grid to the main scene but need to hide it
+   when rendering the silhouette mask, so we toggle it. */
+      scene.add(groundPlane);
+
+      /* ── render targets ────────────────────────────── */
+      let rtW = Math.round(PARAMS.viewport.width * PARAMS.viewport.pixelRatio);
+      let rtH = Math.round(PARAMS.viewport.height * PARAMS.viewport.pixelRatio);
+
+      function makeRT(type = THREE.UnsignedByteType, format = THREE.RGBAFormat) {
+        return new THREE.WebGLRenderTarget(rtW, rtH, {
+          minFilter: THREE.NearestFilter,
+          magFilter: THREE.NearestFilter,
+          format,
+          type,
+          depthBuffer: false,
+        });
+      }
+
+      const silhouetteRT = makeRT();
+
+      const jfaA = new THREE.WebGLRenderTarget(rtW, rtH, {
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+        depthBuffer: false,
+      });
+      const jfaB = jfaA.clone();
+
+      /* ── fullscreen helpers ────────────────────────── */
+      const fsQuadGeo = new THREE.PlaneGeometry(2, 2);
+      const fsQuadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      function makePass(fragmentShader, uniforms) {
+        const mat = new THREE.ShaderMaterial({
+          uniforms,
+          vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+          fragmentShader,
+          depthTest: false,
+          depthWrite: false,
+        });
+        return new THREE.Mesh(fsQuadGeo, mat);
+      }
+
+      /* ── JFA seed pass ─────────────────────────────── */
+      const jfaSeedPass = makePass(
+        `
+  uniform sampler2D tSilhouette;
+  uniform vec2 resolution;
+  varying vec2 vUv;
+  void main() {
+    vec2 texel = 1.0 / resolution;
+    float c = texture2D(tSilhouette, vUv).r;
+    float l = texture2D(tSilhouette, vUv + vec2(-texel.x, 0.0)).r;
+    float r = texture2D(tSilhouette, vUv + vec2( texel.x, 0.0)).r;
+    float t = texture2D(tSilhouette, vUv + vec2(0.0,  texel.y)).r;
+    float b = texture2D(tSilhouette, vUv + vec2(0.0, -texel.y)).r;
+    bool edge = c > 0.5 && (l < 0.5 || r < 0.5 || t < 0.5 || b < 0.5);
+    gl_FragColor = edge ? vec4(vUv, 0.0, 1.0) : vec4(-1.0, -1.0, 0.0, 1.0);
+  }
+`,
+        {
+          tSilhouette: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+        }
+      );
+
+      /* ── JFA step pass ─────────────────────────────── */
+      const jfaStepPass = makePass(
+        `
+  uniform sampler2D tJFA;
+  uniform vec2 resolution;
+  uniform float uStep;
+  varying vec2 vUv;
+  void main() {
+    vec2 texel = 1.0 / resolution;
+    float bestDist = 1e10;
+    vec2 bestSeed = vec2(-1.0);
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 offset = vec2(float(x), float(y)) * uStep * texel;
+        vec2 s = texture2D(tJFA, vUv + offset).rg;
+        if (s.x < 0.0) continue;
+        float d = distance(vUv, s);
+        if (d < bestDist) {
+          bestDist = d;
+          bestSeed = s;
+        }
+      }
+    }
+    gl_FragColor = vec4(bestSeed, 0.0, 1.0);
+  }
+`,
+        {
+          tJFA: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+          uStep: { value: 1.0 },
+        }
+      );
+
+      /* ── final composite pass (contour + ground) ───── */
+      const compositeRT = makeRT();
+
+      /* render the ground grid into its own RT so we can composite */
+      const groundRT = new THREE.WebGLRenderTarget(rtW, rtH, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+        depthBuffer: true,
+      });
+
+      const contourPass = makePass(
+        `
+  uniform sampler2D tJFA;
+  uniform sampler2D tSilhouette;
+  uniform sampler2D tGround;
+  uniform vec2 resolution;
+
+  uniform float bandSize;
+  uniform float time;
+
+  uniform float waveCyclesPerMinute;
+  uniform float waveBandsPerCycle;
+
+  uniform float colorCyclesPerMinute;
+  uniform float colorSpatialFrequency;
+  uniform float colorSaturation;
+  uniform float colorValue;
+
+  varying vec2 vUv;
+
+  vec3 hsv2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    rgb = rgb * rgb * (3.0 - 2.0 * rgb);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+  }
+
+  void main() {
+    float mask = texture2D(tSilhouette, vUv).r;
+    vec4 groundCol = texture2D(tGround, vUv);
+
+    if (mask < 0.5) {
+      // outside silhouette: show ground or black
+      gl_FragColor = vec4(groundCol.rgb * groundCol.a, 1.0);
+      return;
+    }
+
+    vec2 texel = 1.0 / resolution;
+    float l = texture2D(tSilhouette, vUv + vec2(-texel.x, 0.0)).r;
+    float r = texture2D(tSilhouette, vUv + vec2( texel.x, 0.0)).r;
+    float t = texture2D(tSilhouette, vUv + vec2(0.0,  texel.y)).r;
+    float b = texture2D(tSilhouette, vUv + vec2(0.0, -texel.y)).r;
+    float outline = (l < 0.5 || r < 0.5 || t < 0.5 || b < 0.5) ? 1.0 : 0.0;
+
+    vec2 seed = texture2D(tJFA, vUv).rg;
+    float dist = (seed.x < 0.0) ? 0.0 : distance(vUv, seed);
+
+    float cycle = bandSize * max(1.0, waveBandsPerCycle) * 2.0;
+    float waveCyclesPerSecond = waveCyclesPerMinute / 60.0;
+    float rippleDist = dist + time * waveCyclesPerSecond * cycle;
+    float phase = mod(rippleDist, cycle);
+
+    float line = phase < bandSize ? 1.0 : 0.0;
+    float centerFill = dist < bandSize ? 1.0 : 0.0;
+    float drawMask = max(outline, max(line, centerFill));
+
+    float colorCyclesPerSecond = colorCyclesPerMinute / 60.0;
+    float hue = fract(dist * colorSpatialFrequency - time * colorCyclesPerSecond);
+    vec3 rainbow = hsv2rgb(vec3(hue, colorSaturation, colorValue));
+
+    gl_FragColor = vec4(rainbow * drawMask, 1.0);
+  }
+`,
+        {
+          tJFA: { value: null },
+          tSilhouette: { value: null },
+          tGround: { value: null },
+          resolution: { value: new THREE.Vector2(rtW, rtH) },
+
+          bandSize: { value: PARAMS.waves.bandSize },
+          time: { value: 0 },
+
+          waveCyclesPerMinute: { value: PARAMS.waves.cyclesPerMinute },
+          waveBandsPerCycle: { value: PARAMS.waves.beatsPerBand },
+
+          colorCyclesPerMinute: { value: PARAMS.color.cyclesPerMinute },
+          colorSpatialFrequency: { value: PARAMS.color.spatialFrequency },
+          colorSaturation: { value: PARAMS.color.saturation },
+          colorValue: { value: PARAMS.color.value },
+        }
+      );
+
+      /* ── helper scene ──────────────────────────────── */
+      const helperScene = new THREE.Scene();
+      helperScene.add(jfaSeedPass);
+      helperScene.add(jfaStepPass);
+      helperScene.add(contourPass);
+
+      function runFullscreen(mesh, target) {
+        jfaSeedPass.visible = false;
+        jfaStepPass.visible = false;
+        contourPass.visible = false;
+        mesh.visible = true;
+        renderer.setRenderTarget(target);
+        renderer.render(helperScene, fsQuadCam);
+        renderer.setRenderTarget(null);
+        mesh.visible = false;
+      }
+
+      /* ground-only scene for rendering grid separately */
+      const groundScene = new THREE.Scene();
+      groundScene.background = new THREE.Color(0x000000);
+      const groundClone = groundPlane.clone();
+      groundClone.material = groundGridMaterial;
+      groundScene.add(groundClone);
+
+      /* ── responsive 9:16 contain ───────────────────── */
+      function resize() {
+        const ww = window.innerWidth;
+        const wh = window.innerHeight;
+        const aspect = 9 / 16;
+
+        let drawW = ww;
+        let drawH = drawW / aspect;
+
+        if (drawH > wh) {
+          drawH = wh;
+          drawW = drawH * aspect;
+        }
+
+        renderer.setPixelRatio(PARAMS.viewport.pixelRatio);
+        renderer.setSize(drawW, drawH, false);
+
+        rtW = Math.round(drawW * PARAMS.viewport.pixelRatio);
+        rtH = Math.round(drawH * PARAMS.viewport.pixelRatio);
+
+        camera.aspect = drawW / drawH;
+        camera.updateProjectionMatrix();
+
+        silhouetteRT.setSize(rtW, rtH);
+        jfaA.setSize(rtW, rtH);
+        jfaB.setSize(rtW, rtH);
+        groundRT.setSize(rtW, rtH);
+
+        const res = new THREE.Vector2(rtW, rtH);
+        jfaSeedPass.material.uniforms.resolution.value.copy(res);
+        jfaStepPass.material.uniforms.resolution.value.copy(res);
+        contourPass.material.uniforms.resolution.value.copy(res);
+      }
+      window.addEventListener("resize", resize);
+
+      /* ── sync ground params each frame ─────────────── */
+      function syncGroundParams() {
+        const g = PARAMS.ground;
+        groundPlane.visible = g.enabled;
+        groundClone.visible = g.enabled;
+        groundPlane.position.y = g.heightOffset;
+        groundClone.position.y = g.heightOffset;
+
+        const mat = groundGridMaterial.uniforms;
+        mat.uColor.value.set(g.color);
+        mat.uOpacity.value = g.opacity;
+        mat.uGridSize.value = g.size;
+        mat.uDivisions.value = g.divisions;
+        mat.uFadeDistance.value = g.fadeDistance;
+
+        // resize geometry if size changed
+        const currentSize = groundPlane.geometry.parameters.width;
+        if (Math.abs(currentSize - g.size) > 0.01) {
+          groundPlane.geometry.dispose();
+          groundPlane.geometry = new THREE.PlaneGeometry(g.size, g.size);
+          groundClone.geometry.dispose();
+          groundClone.geometry = groundPlane.geometry;
+        }
+      }
+
+      /* ── load model ────────────────────────────────── */
+      new GLTFLoader().load(
+        PARAMS.model.url,
+        (gltf) => {
+          const model = gltf.scene;
+          model.name = "character";
+          scene.add(model);
+
+          const box = new THREE.Box3().setFromObject(model);
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const center = new THREE.Vector3();
+          box.getCenter(center);
+          const s = PARAMS.model.scaleToHeight / Math.max(size.y, 0.001);
+
+          model.scale.setScalar(s);
+          model.position.y -= box.min.y * s;
+          model.position.x -= center.x * s;
+          model.position.z -= center.z * s;
+
+          model.traverse((o) => {
+            if (o.isMesh) o.material = flatWhite;
+          });
+
+          if (gltf.animations.length) {
+            mixer = new THREE.AnimationMixer(model);
+            const clip = gltf.animations.find((c) => /walk/i.test(c.name)) || gltf.animations[0];
+            mixer.clipAction(clip).play();
+          }
+        },
+        undefined,
+        console.error
+      );
+
+      resize();
+
+      /* ── runtime controls ──────────────────────────── */
+      window.PARAMS = PARAMS;
+      window.setWalkBPM = (v) => (PARAMS.walk.bpm = v);
+      window.setWaveCPM = (v) => (PARAMS.waves.cyclesPerMinute = v);
+      window.setColorCPM = (v) => (PARAMS.color.cyclesPerMinute = v);
+
+      /* ── render loop ───────────────────────────────── */
+      renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+        const t = clock.elapsedTime;
+
+        if (mixer) {
+          const walkScale = PARAMS.walk.bpm / PARAMS.walk.sourceClipBpm;
+          mixer.update(dt * walkScale);
+        }
+
+        if (autoOrbit) {
+          autoAngle += dt * PARAMS.autoOrbit.speed;
+          camera.position.set(Math.cos(autoAngle) * PARAMS.autoOrbit.radius, PARAMS.autoOrbit.height, Math.sin(autoAngle) * PARAMS.autoOrbit.radius);
+          camera.lookAt(controls.target);
+        }
+
+        controls.update();
+        syncGroundParams();
+
+        /* 1. render silhouette (character only, no ground) */
+        groundPlane.visible = false;
+        renderer.setRenderTarget(silhouetteRT);
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(null);
+        groundPlane.visible = PARAMS.ground.enabled;
+
+        /* 2. render ground grid separately */
+        renderer.setRenderTarget(groundRT);
+        renderer.setClearColor(0x000000, 0);
+        renderer.clear();
+        renderer.render(groundScene, camera);
+        renderer.setRenderTarget(null);
+
+        /* 3. JFA seed */
+        jfaSeedPass.material.uniforms.tSilhouette.value = silhouetteRT.texture;
+        runFullscreen(jfaSeedPass, jfaA);
+
+        /* 4. JFA flood */
+        const maxDim = Math.max(rtW, rtH);
+        let stepSize = Math.pow(2, Math.ceil(Math.log2(maxDim)) - 1);
+        let src = jfaA,
+          dst = jfaB;
+
+        while (stepSize >= 1) {
+          jfaStepPass.material.uniforms.tJFA.value = src.texture;
+          jfaStepPass.material.uniforms.uStep.value = stepSize;
+          runFullscreen(jfaStepPass, dst);
+          const tmp = src;
+          src = dst;
+          dst = tmp;
+          stepSize = Math.floor(stepSize / 2);
+        }
+
+        /* 5. composite: contour lines + ground */
+        contourPass.material.uniforms.tJFA.value = src.texture;
+        contourPass.material.uniforms.tSilhouette.value = silhouetteRT.texture;
+        contourPass.material.uniforms.tGround.value = groundRT.texture;
+        contourPass.material.uniforms.time.value = t;
+
+        contourPass.material.uniforms.bandSize.value = PARAMS.waves.bandSize;
+        contourPass.material.uniforms.waveCyclesPerMinute.value = PARAMS.waves.cyclesPerMinute;
+        contourPass.material.uniforms.waveBandsPerCycle.value = PARAMS.waves.beatsPerBand;
+
+        contourPass.material.uniforms.colorCyclesPerMinute.value = PARAMS.color.cyclesPerMinute;
+        contourPass.material.uniforms.colorSpatialFrequency.value = PARAMS.color.spatialFrequency;
+        contourPass.material.uniforms.colorSaturation.value = PARAMS.color.saturation;
+        contourPass.material.uniforms.colorValue.value = PARAMS.color.value;
+
+        contourPass.visible = true;
+        renderer.setRenderTarget(null);
+        renderer.render(helperScene, fsQuadCam);
+        contourPass.visible = false;
+      });
+    </script>
+  </body>
+</html>
