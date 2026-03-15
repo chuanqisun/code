@@ -36,7 +36,7 @@
   - Then I switched from vector dilation to convolution matrix dilation. Also, instead of dilate with animation, I only render the final frame after N iterations
   - Added coloring and fading effect to be visually interesting. Used oklch color space to ensure consistent lightness
   - Future work: need to add pixelation effect
-  - Process: [Erode/dilate matrix](./schwartz/olympics/001-erode-dilate.html), [Outline detection (failed)](./schwartz/olympics/100-outline.html), [Vector dilation (bad idea)](./schwartz/olympics/101-naive-dilate.html), [Convolution dilation](./schwartz/olympics/102-convolution.html), [Concentric outlining](./schwartz/olympics/103-concentric-dilation.html), [Batch render](./schwartz/olympics/109-wasm-bw.html)
+  - Process: [Erode/dilate matrix](./schwartz/olympics/001-erode-dilate.html), [Outline detection (failed)](./schwartz/olympics/100-outline.html), [Vector dilation (bad idea)](./schwartz/olympics/101-naive-dilate.html), [Convolution dilation](./schwartz/olympics/102-convolution.html), [Concentric outlining](./schwartz/olympics/103-concentric-dilation.html), [Batch render (takes about 10 seconds)](./schwartz/olympics/109-wasm-bw.html)
   - Extras: [Dance, don't walk (live demo)](./schwartz/walkman/105-reactive-pulse-synth.html), [Color palette tool](./schwartz/olympics/200-color-palette.html)
 
 ## Week 4: Pattern
