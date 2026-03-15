@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Erode / Dilate Demo</title>
+    <style>
+      body {
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family: Arial, sans-serif;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+      .wrap {
+        text-align: center;
+      }
+      canvas {
+        border: 1px solid #444;
+        background: #000;
+        image-rendering: pixelated;
+        width: 480px;
+        height: 480px;
+        display: block;
+        margin: 0 auto 16px;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      button {
+        padding: 10px 16px;
+        font-size: 16px;
+        cursor: pointer;
+        border: none;
+        border-radius: 8px;
+      }
+      .note {
+        margin-top: 12px;
+        color: #aaa;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <canvas id="canvas" width="64" height="64"></canvas>
+      <div class="controls">
+        <button id="dilateBtn">Dilate</button>
+        <button id="erodeBtn">Erode</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div class="note">White pixels are "on". Dilate grows them outward. Erode shrinks them inward.</div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const W = canvas.width;
+      const H = canvas.height;
+
+      let mask = makeSquareOutlineMask(W, H);
+
+      function makeSquareOutlineMask(w, h) {
+        const m = new Uint8Array(w * h);
+        const left = 18,
+          right = 45,
+          top = 18,
+          bottom = 45;
+        const thickness = 6;
+
+        for (let y = top; y <= bottom; y++) {
+          for (let x = left; x <= right; x++) {
+            const onBorder = x < left + thickness || x > right - thickness || y < top + thickness || y > bottom - thickness;
+
+            if (onBorder) m[y * w + x] = 1;
+          }
+        }
+        return m;
+      }
+
+      function dilateOnce(mask, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let on = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w) continue;
+                if (mask[ny * w + nx]) {
+                  on = 1;
+                  break;
+                }
+              }
+              if (on) break;
+            }
+            out[y * w + x] = on;
+          }
+        }
+        return out;
+      }
+
+      function erodeOnce(mask, w, h) {
+        const out = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let on = 1;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) {
+                on = 0;
+                break;
+              }
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w || !mask[ny * w + nx]) {
+                  on = 0;
+                  break;
+                }
+              }
+              if (!on) break;
+            }
+            out[y * w + x] = on;
+          }
+        }
+        return out;
+      }
+
+      function drawMask(mask, w, h) {
+        const image = ctx.createImageData(w, h);
+        const d = image.data;
+
+        for (let i = 0; i < mask.length; i++) {
+          const j = i * 4;
+          const v = mask[i] ? 255 : 0;
+          d[j] = v;
+          d[j + 1] = v;
+          d[j + 2] = v;
+          d[j + 3] = 255;
+        }
+
+        ctx.putImageData(image, 0, 0);
+      }
+
+      document.getElementById("dilateBtn").addEventListener("click", () => {
+        mask = dilateOnce(mask, W, H);
+        drawMask(mask, W, H);
+      });
+
+      document.getElementById("erodeBtn").addEventListener("click", () => {
+        mask = erodeOnce(mask, W, H);
+        drawMask(mask, W, H);
+      });
+
+      document.getElementById("resetBtn").addEventListener("click", () => {
+        mask = makeSquareOutlineMask(W, H);
+        drawMask(mask, W, H);
+      });
+
+      drawMask(mask, W, H);
+    </script>
+  </body>
+</html>
