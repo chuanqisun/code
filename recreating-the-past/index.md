@@ -24,6 +24,14 @@
 
 ### Practice
 
+| [Original](https://www.youtube.com/watch?v=faqnx54amFE) | [Recreated](./schwartz/index.html)      |
+| ------------------------------------------------------- | --------------------------------------- |
+| ![Original](./schwartz/original.webp)                   | ![Recreated](./schwartz/recreated.webp) |
+
+- Notes
+  - Source: Lillian Schwartz, _Olympiad_, 1971. Image courtesy The Henry Ford Museum.
+  -
+
 ## Week 4: Pattern
 
 ### Read
