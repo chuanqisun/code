@@ -24,11 +24,12 @@
 
 ### Practice
 
-| [Original](https://www.youtube.com/watch?v=faqnx54amFE) | [Recreated](./schwartz/index.html)      |
-| ------------------------------------------------------- | --------------------------------------- |
-| ![Original](./schwartz/original.webp)                   | ![Recreated](./schwartz/recreated.webp) |
+| [Original (video)](https://www.youtube.com/watch?v=faqnx54amFE) | [Recreated (static)](./schwartz/index.html) |
+| --------------------------------------------------------------- | ------------------------------------------- |
+| ![Original](./schwartz/original.webp)                           | ![Recreated](./schwartz/recreated.webp)     |
 
 - Notes
+  - [Web](./schwartz/index.html), [Code (generator)](https://github.com/chuanqisun/code/tree/master/recreating-the-past/schwartz/olympics/109-wasm-color.html)
   - Source: Lillian Schwartz, _Olympiad_, 1971. Image courtesy The Henry Ford Museum.
   - The human form was not easy to recreate. Given the Olympiad concept, I used 2026 Winter Olympics pictogram as starting point
   - First tried extracting the skeleton as vector and dilate the vector. But as outlines merge, vector math became impossible.
