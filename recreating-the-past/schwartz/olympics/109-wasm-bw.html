@@ -175,7 +175,7 @@
       <section class="grid" id="grid" aria-label="Olympics image grid"></section>
     </main>
 
-    <script src="../../02-maeda/process/wabt-1.0.39.js"></script>
+    <script src="../../maeda/wabt-1.0.39.js"></script>
     <script id="wasm-source" type="text/plain">
       (module
         (memory (export "memory") 1)
@@ -520,35 +520,15 @@
 
         const wasmOps = await getWasmImageOps();
         const grid = document.getElementById("grid");
-        const [imageResponse, paletteResponse] = await Promise.all([fetch("./image-index.json"), fetch("./color-palette.json")]);
-        const images = (await imageResponse.json()).slice(0, 16);
-        const palette = await paletteResponse.json();
+        const response = await fetch("./image-index.json");
+        const images = (await response.json()).slice(0, 16);
 
         const items = await Promise.all(
           images.map(async (entry, index) => {
             const fileName = `${String(index + 1).padStart(2, "0")}.jpg`;
             const image = await loadImage(`./data/${fileName}`);
-            const paletteEntry = palette[index % palette.length] || {
-              fg: DEFAULT_CONFIG.fg,
-              bg: DEFAULT_CONFIG.bg,
-            };
-            const output = render(
-              image,
-              {
-                ...DEFAULT_CONFIG,
-                fg: paletteEntry.fg,
-                bg: paletteEntry.bg,
-              },
-              wasmOps
-            );
-            return {
-              entry,
-              output,
-              index,
-              fileName,
-              colors: paletteEntry,
-              downloadName: buildDownloadName(index, entry.name),
-            };
+            const output = render(image, DEFAULT_CONFIG, wasmOps);
+            return { entry, output, index, fileName, downloadName: buildDownloadName(index, entry.name) };
           })
         );
 
@@ -568,15 +548,12 @@
           ctx.putImageData(item.output, 0, 0);
           canvas.setAttribute("aria-label", item.entry.name);
           canvas.dataset.downloadName = item.downloadName;
-          canvas.style.background = item.colors.bg;
-
-          canvasWrap.style.background = `radial-gradient(circle at top, rgba(255, 255, 255, 0.05), transparent 55%), ${item.colors.bg}`;
 
           const meta = document.createElement("div");
           meta.className = "meta";
           meta.innerHTML = `
 						<span class="index">${String(item.index + 1).padStart(2, "0")}</span>
-						<p class="name" style="color: ${escapeHtml(item.colors.fg)};">${escapeHtml(item.entry.name)}</p>
+						<p class="name">${escapeHtml(item.entry.name)}</p>
 					`;
 
           canvasWrap.appendChild(canvas);
