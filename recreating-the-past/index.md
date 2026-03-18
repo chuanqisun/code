@@ -1,5 +1,19 @@
 # Recreating The Past
 
+## Week 6: Images
+
+### Read
+
+> This is Art
+>
+> — [Art for the Ages: An Image Gallery](http://playtime.pem.org/art-for-the-ages-an-image-gallery/), on Claire Hentschker's artwork
+
+### Watch
+
+- [Averaging, face detection](https://www.dropbox.com/s/evs3f2dkl7ct3rf/async_6_25.mp4?dl=0)
+
+### Practice
+
 ## Week 5: Pixels
 
 ### Read
