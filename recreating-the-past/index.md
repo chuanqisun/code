@@ -14,9 +14,9 @@
 
 ### Practice
 
-| [Original](http://playtime.pem.org/art-for-the-ages-an-image-gallery/) | [Recreated](./salavon/demo.html)       |
-| ---------------------------------------------------------------------- | -------------------------------------- |
-| ![Original](./salavon/original.webp)                                   | ![Recreated](./salavon/recreated.webp) |
+| [Original](http://salavon.com/work/Class/) | [Recreated](./salavon/demo.html)       |
+| ------------------------------------------ | -------------------------------------- |
+| ![Original](./salavon/original.webp)       | ![Recreated](./salavon/recreated.webp) |
 
 - Notes
   - [Generator](./salavon/index.html), [Demo](./salavon/demo.html), [Code (generator)](https://github.com/chuanqisun/code/tree/master/recreating-the-past/salavon/index.html)
