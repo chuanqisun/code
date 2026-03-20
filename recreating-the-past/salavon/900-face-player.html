@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>face sequence player</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+      font: 14px/1.4 monospace;
+      background: black;
+      color: color-mix(in srgb, Canvas 50%, CanvasText 50%);
+    }
+    #app {
+      width: min(100%, 60rem);
+      margin: 0 auto;
+    }
+    button,
+    canvas {
+      font: inherit;
+    }
+    #row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    #views {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    .panel {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1 / 1;
+      background: black;
+      border: 1px solid color-mix(in srgb, Canvas 90%, CanvasText 10%);
+    }
+    @media (max-width: 40rem) {
+      #views {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div id="app">
+    <div id="row">
+      <button id="pick">pick directory</button>
+      <span id="status">no directory selected</span>
+    </div>
+
+    <div id="views">
+      <div class="panel">
+        <div>current</div>
+        <canvas id="current" width="512" height="512"></canvas>
+      </div>
+      <div class="panel">
+        <div>avg</div>
+        <canvas id="average" width="512" height="512"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const pickBtn = document.getElementById("pick");
+    const statusEl = document.getElementById("status");
+    const currentCanvas = document.getElementById("current");
+    const averageCanvas = document.getElementById("average");
+    const currentCtx = currentCanvas.getContext("2d", { alpha: false });
+    const averageCtx = averageCanvas.getContext("2d", { alpha: false });
+
+    const W = 512,
+      H = 512;
+    const CONTRAST = 1.6;
+
+    let timer = null;
+    let bitmaps = [];
+    let resetEvery = 0;
+
+    const srcCanvas = document.createElement("canvas");
+    srcCanvas.width = W;
+    srcCanvas.height = H;
+    const srcCtx = srcCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+    const avgCanvas = document.createElement("canvas");
+    avgCanvas.width = W;
+    avgCanvas.height = H;
+    const avgCtx = avgCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+    let avgFloat = new Float32Array(W * H * 4);
+    let frameCount = 0;
+
+    function clearVisible() {
+      currentCtx.fillStyle = "#000";
+      currentCtx.fillRect(0, 0, W, H);
+      averageCtx.fillStyle = "#000";
+      averageCtx.fillRect(0, 0, W, H);
+    }
+
+    function resetAverage() {
+      avgFloat.fill(0);
+      frameCount = 0;
+      avgCtx.fillStyle = "#000";
+      avgCtx.fillRect(0, 0, W, H);
+      averageCtx.fillStyle = "#000";
+      averageCtx.fillRect(0, 0, W, H);
+    }
+
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      for (const bmp of bitmaps) bmp.close?.();
+      bitmaps = [];
+      resetEvery = 0;
+      resetAverage();
+      clearVisible();
+    }
+
+    function clamp255(x) {
+      return x < 0 ? 0 : x > 255 ? 255 : x;
+    }
+
+    function contrast255(x, amount) {
+      return clamp255((x - 128) * amount + 128);
+    }
+
+    function updateAverageWith(bitmap) {
+      if (resetEvery > 0 && frameCount >= resetEvery) resetAverage();
+
+      srcCtx.clearRect(0, 0, W, H);
+      srcCtx.drawImage(bitmap, 0, 0, W, H);
+
+      const src = srcCtx.getImageData(0, 0, W, H);
+      const s = src.data;
+
+      const k = frameCount;
+      const a = k / (k + 1);
+      const b = 1 / (k + 1);
+
+      for (let i = 0; i < s.length; i += 4) {
+        avgFloat[i + 0] = avgFloat[i + 0] * a + s[i + 0] * b;
+        avgFloat[i + 1] = avgFloat[i + 1] * a + s[i + 1] * b;
+        avgFloat[i + 2] = avgFloat[i + 2] * a + s[i + 2] * b;
+        avgFloat[i + 3] = 255;
+      }
+
+      const out = avgCtx.createImageData(W, H);
+      const d = out.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i + 0] = contrast255(avgFloat[i + 0], CONTRAST);
+        d[i + 1] = contrast255(avgFloat[i + 1], CONTRAST);
+        d[i + 2] = contrast255(avgFloat[i + 2], CONTRAST);
+        d[i + 3] = 255;
+      }
+      avgCtx.putImageData(out, 0, 0);
+      frameCount++;
+    }
+
+    function drawFrame(bitmap) {
+      currentCtx.clearRect(0, 0, W, H);
+      currentCtx.drawImage(bitmap, 0, 0, W, H);
+
+      updateAverageWith(bitmap);
+
+      averageCtx.clearRect(0, 0, W, H);
+      averageCtx.drawImage(avgCanvas, 0, 0);
+    }
+
+    function updateStatus() {
+      statusEl.textContent = `loaded ${bitmaps.length} frame(s), average frame ${frameCount}/${resetEvery || 0}`;
+    }
+
+    function startPlayback() {
+      if (!bitmaps.length) return;
+      let i = 0;
+      drawFrame(bitmaps[0]);
+      updateStatus();
+      timer = setInterval(() => {
+        i = (i + 1) % bitmaps.length;
+        drawFrame(bitmaps[i]);
+        updateStatus();
+      }, 100);
+    }
+
+    async function loadFaceSequence(dirHandle) {
+      const found = [];
+      const re = /^face-(\d+)\.png$/i;
+
+      for await (const [name, handle] of dirHandle.entries()) {
+        if (handle.kind !== "file") continue;
+        const m = name.match(re);
+        if (!m) continue;
+        found.push({ n: Number(m[1]), handle });
+      }
+
+      found.sort((a, b) => a.n - b.n);
+
+      const contiguous = [];
+      for (let i = 0; i < found.length; i++) {
+        if (found[i].n !== i + 1) break;
+        contiguous.push(found[i]);
+      }
+
+      if (!contiguous.length) {
+        throw new Error("no contiguous face-1.png ... face-N.png sequence found");
+      }
+
+      const loaded = [];
+      for (const item of contiguous) {
+        const file = await item.handle.getFile();
+        const bmp = await createImageBitmap(file);
+        loaded.push(bmp);
+      }
+      return loaded;
+    }
+
+    pickBtn.addEventListener("click", async () => {
+      stop();
+      try {
+        const dirHandle = await window.showDirectoryPicker();
+        statusEl.textContent = "scanning...";
+        bitmaps = await loadFaceSequence(dirHandle);
+        resetEvery = bitmaps.length;
+        resetAverage();
+        updateStatus();
+        startPlayback();
+      } catch (err) {
+        statusEl.textContent = err?.message || "cancelled";
+      }
+    });
+
+    clearVisible();
+  </script>
+</html>

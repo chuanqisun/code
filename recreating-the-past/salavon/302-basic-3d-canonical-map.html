@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face Mesh Feed</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f1efe8;
+        --panel: rgba(252, 249, 242, 0.9);
+        --panel-strong: #fffdf7;
+        --ink: #1b1a17;
+        --muted: #6d655b;
+        --accent: #cc5c2d;
+        --accent-soft: rgba(204, 92, 45, 0.14);
+        --line: rgba(27, 26, 23, 0.12);
+        --shadow: 0 24px 60px rgba(57, 45, 21, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top left, rgba(204, 92, 45, 0.18), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(35, 79, 134, 0.12), transparent 28%), linear-gradient(180deg, #f7f4ed 0%, var(--bg) 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.22;
+        background-image: linear-gradient(rgba(27, 26, 23, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(27, 26, 23, 0.03) 1px, transparent 1px);
+        background-size: 28px 28px;
+      }
+
+      .app {
+        position: relative;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 32px 20px 48px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.3fr 0.9fr;
+        gap: 20px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+      }
+
+      .camera-panel {
+        padding: 18px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        border-radius: 22px;
+        background: #0d0d0c;
+        aspect-ratio: 4 / 3;
+      }
+
+      video,
+      .overlay,
+      .flash {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      video,
+      .overlay {
+        object-fit: cover;
+      }
+
+      video {
+        transform: scaleX(-1);
+      }
+
+      .overlay {
+        pointer-events: none;
+      }
+
+      .flash {
+        pointer-events: none;
+        background: rgba(255, 255, 255, 0.88);
+        opacity: 0;
+        transition: opacity 160ms ease;
+      }
+
+      .flash.active {
+        opacity: 1;
+      }
+
+      .hud {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: start;
+        padding: 16px 4px 0;
+      }
+
+      .eyebrow {
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 12px;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 5vw, 4.4rem);
+        line-height: 0.93;
+        font-weight: 600;
+        max-width: 8ch;
+      }
+
+      .lede {
+        max-width: 28ch;
+        color: var(--muted);
+        font-size: 1.05rem;
+        line-height: 1.45;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: flex-end;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 14px 22px;
+        font: inherit;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .primary {
+        background: var(--ink);
+        color: #f8f4ea;
+        box-shadow: 0 12px 24px rgba(27, 26, 23, 0.22);
+      }
+
+      .secondary {
+        background: var(--accent-soft);
+        color: var(--ink);
+      }
+
+      .status-panel {
+        padding: 22px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .status-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .status-card {
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 14px 16px;
+      }
+
+      .status-card strong {
+        display: block;
+        font-size: 0.92rem;
+        margin-bottom: 6px;
+      }
+
+      .status-card span {
+        color: var(--muted);
+        line-height: 1.4;
+      }
+
+      .feed-shell {
+        margin-top: 22px;
+        padding: 22px;
+      }
+
+      .feed-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .feed-head h2 {
+        font-size: clamp(1.6rem, 3vw, 2.6rem);
+        line-height: 1;
+      }
+
+      .feed-head p {
+        color: var(--muted);
+        max-width: 40ch;
+      }
+
+      .feed {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 18px;
+      }
+
+      .empty-state {
+        border: 1px dashed rgba(27, 26, 23, 0.24);
+        border-radius: 22px;
+        padding: 28px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.32);
+      }
+
+      .feed-card {
+        overflow: hidden;
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: var(--panel-strong);
+        box-shadow: 0 18px 36px rgba(57, 45, 21, 0.12);
+        animation: rise 280ms ease;
+      }
+
+      .feed-media {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        background: linear-gradient(135deg, rgba(204, 92, 45, 0.08), rgba(35, 79, 134, 0.08));
+      }
+
+      .feed-media img,
+      .feed-media canvas {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        display: block;
+        object-fit: cover;
+        background: #f6f1e7;
+      }
+
+      .feed-copy {
+        padding: 14px 16px 16px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .feed-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 0.92rem;
+      }
+
+      .feed-meta strong {
+        font-weight: 600;
+      }
+
+      .feed-copy span,
+      .feed-copy p {
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .mesh-note {
+        font-size: 0.9rem;
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(12px) scale(0.985);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @media (max-width: 1040px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        .controls {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .app {
+          padding: 16px 14px 32px;
+        }
+
+        .hud,
+        .feed-head,
+        .feed-meta {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero">
+        <section class="panel camera-panel">
+          <div class="stage">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlay" class="overlay"></canvas>
+            <div id="flash" class="flash"></div>
+          </div>
+          <div class="hud">
+            <div>
+              <div class="eyebrow">Live Face Mesh</div>
+              <h1>Capture a face and archive its wireframe.</h1>
+            </div>
+            <div class="controls">
+              <button id="startButton" class="secondary">Start Camera</button>
+              <button id="captureButton" class="primary" disabled>Capture Face</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel status-panel">
+          <div>
+            <div class="eyebrow">Status</div>
+            <p class="lede">The page tracks a single face, frames the detected region, then stores a crop and a mesh rendering into the feed below.</p>
+          </div>
+          <div class="status-grid">
+            <div class="status-card">
+              <strong>Detector</strong>
+              <span id="modelStatus">Loading MediaPipe face landmarker…</span>
+            </div>
+            <div class="status-card">
+              <strong>Camera</strong>
+              <span id="cameraStatus">Idle</span>
+            </div>
+            <div class="status-card">
+              <strong>Capture Readiness</strong>
+              <span id="captureStatus">Waiting for a face in frame</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel feed-shell">
+        <div class="feed-head">
+          <div>
+            <div class="eyebrow">Face Feed</div>
+            <h2>Snapshots + Meshes</h2>
+          </div>
+          <p>Each saved card contains the cropped face region from the camera and a perspective mesh projection built from the live 478-point landmark set.</p>
+        </div>
+        <div id="feed" class="feed">
+          <div id="emptyState" class="empty-state">Start the camera, align one face in the frame, and use Capture Face to append a new entry.</div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+      const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+      const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+      const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm";
+      const CAPTURE_SIZE = 320;
+
+      const webcam = document.getElementById("webcam");
+      const overlay = document.getElementById("overlay");
+      const overlayCtx = overlay.getContext("2d");
+      const startButton = document.getElementById("startButton");
+      const captureButton = document.getElementById("captureButton");
+      const modelStatus = document.getElementById("modelStatus");
+      const cameraStatus = document.getElementById("cameraStatus");
+      const captureStatus = document.getElementById("captureStatus");
+      const feed = document.getElementById("feed");
+      const emptyState = document.getElementById("emptyState");
+      const flash = document.getElementById("flash");
+
+      const drawingUtils = new DrawingUtils(overlayCtx);
+      const offscreen = document.createElement("canvas");
+      const offscreenCtx = offscreen.getContext("2d");
+
+      let faceLandmarker = null;
+      let canonicalMesh = null;
+      let stream = null;
+      let animationFrameId = 0;
+      let lastVideoTime = -1;
+      let latestResult = null;
+      let latestFaceRecord = null;
+      let feedCount = 0;
+
+      async function initLandmarker() {
+        try {
+          canonicalMesh = await fetch("canonical-mesh.json").then((r) => r.json());
+          const resolver = await FilesetResolver.forVisionTasks(WASM_URL);
+          faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+            baseOptions: {
+              modelAssetPath: MODEL_URL,
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numFaces: 1,
+            outputFaceBlendshapes: false,
+            outputFacialTransformationMatrixes: true,
+            minFaceDetectionConfidence: 0.55,
+            minFacePresenceConfidence: 0.55,
+            minTrackingConfidence: 0.55,
+          });
+          modelStatus.textContent = "Model ready";
+          startButton.disabled = false;
+        } catch (error) {
+          console.error(error);
+          modelStatus.textContent = "Model failed to load. Check network access for the CDN and MediaPipe assets.";
+        }
+      }
+
+      async function startCamera() {
+        if (!faceLandmarker) {
+          return;
+        }
+
+        if (stream) {
+          stopCamera();
+          return;
+        }
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "user",
+              width: { ideal: 1280 },
+              height: { ideal: 960 },
+            },
+            audio: false,
+          });
+
+          webcam.srcObject = stream;
+          await webcam.play();
+          syncCanvasSize();
+          cameraStatus.textContent = "Live";
+          startButton.textContent = "Stop Camera";
+          runDetectionLoop();
+        } catch (error) {
+          console.error(error);
+          cameraStatus.textContent = "Camera access denied or unavailable";
+        }
+      }
+
+      function stopCamera() {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = 0;
+        }
+
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        latestResult = null;
+        latestFaceRecord = null;
+        captureButton.disabled = true;
+        captureStatus.textContent = "Waiting for a face in frame";
+        cameraStatus.textContent = "Idle";
+        startButton.textContent = "Start Camera";
+
+        if (stream) {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+          stream = null;
+        }
+
+        webcam.srcObject = null;
+      }
+
+      function syncCanvasSize() {
+        const width = webcam.videoWidth || 1280;
+        const height = webcam.videoHeight || 960;
+        overlay.width = width;
+        overlay.height = height;
+        offscreen.width = width;
+        offscreen.height = height;
+      }
+
+      function runDetectionLoop() {
+        if (!stream) {
+          return;
+        }
+
+        syncCanvasSize();
+        detectFrame();
+        animationFrameId = requestAnimationFrame(runDetectionLoop);
+      }
+
+      function detectFrame() {
+        if (!faceLandmarker || webcam.readyState < 2) {
+          return;
+        }
+
+        if (webcam.currentTime === lastVideoTime) {
+          renderOverlay();
+          return;
+        }
+
+        lastVideoTime = webcam.currentTime;
+        latestResult = faceLandmarker.detectForVideo(webcam, performance.now());
+        updateFaceRecord();
+        renderOverlay();
+      }
+
+      function updateFaceRecord() {
+        const landmarks = latestResult?.faceLandmarks?.[0];
+        if (!landmarks || !landmarks.length) {
+          latestFaceRecord = null;
+          captureButton.disabled = true;
+          captureStatus.textContent = "Waiting for a face in frame";
+          return;
+        }
+
+        const bounds = getFaceBounds(landmarks, webcam.videoWidth, webcam.videoHeight);
+        latestFaceRecord = {
+          landmarks,
+          bounds,
+          matrix: latestResult?.facialTransformationMatrixes?.[0]?.data ?? null,
+        };
+        captureButton.disabled = false;
+        captureStatus.textContent = `Face ready · ${Math.round(bounds.width)} x ${Math.round(bounds.height)} px crop`;
+      }
+
+      function getFaceBounds(landmarks, width, height) {
+        let minX = 1;
+        let minY = 1;
+        let maxX = 0;
+        let maxY = 0;
+
+        for (const point of landmarks) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
+
+        const paddingX = (maxX - minX) * 0.22;
+        const paddingY = (maxY - minY) * 0.28;
+        const left = clamp((minX - paddingX) * width, 0, width);
+        const top = clamp((minY - paddingY) * height, 0, height);
+        const right = clamp((maxX + paddingX) * width, 0, width);
+        const bottom = clamp((maxY + paddingY) * height, 0, height);
+
+        return {
+          left,
+          top,
+          width: Math.max(1, right - left),
+          height: Math.max(1, bottom - top),
+          centerX: (left + right) * 0.5,
+          centerY: (top + bottom) * 0.5,
+        };
+      }
+
+      function renderOverlay() {
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+        if (!latestFaceRecord) {
+          return;
+        }
+
+        const { landmarks, bounds } = latestFaceRecord;
+        overlayCtx.save();
+        overlayCtx.translate(overlay.width, 0);
+        overlayCtx.scale(-1, 1);
+
+        overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.72)";
+        overlayCtx.lineWidth = 2;
+        overlayCtx.strokeRect(bounds.left, bounds.top, bounds.width, bounds.height);
+
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
+          color: "rgba(255, 113, 61, 0.65)",
+          lineWidth: 1,
+        });
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, {
+          color: "rgba(255, 255, 255, 0.92)",
+          lineWidth: 2,
+        });
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {
+          color: "rgba(255, 247, 242, 0.9)",
+          lineWidth: 1.2,
+        });
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {
+          color: "rgba(104, 201, 255, 0.9)",
+          lineWidth: 1.5,
+        });
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
+          color: "rgba(104, 201, 255, 0.9)",
+          lineWidth: 1.5,
+        });
+        overlayCtx.restore();
+      }
+
+      function captureFace() {
+        if (!latestFaceRecord || webcam.readyState < 2) {
+          return;
+        }
+
+        if (emptyState) {
+          emptyState.remove();
+        }
+
+        offscreenCtx.save();
+        offscreenCtx.clearRect(0, 0, offscreen.width, offscreen.height);
+        offscreenCtx.translate(offscreen.width, 0);
+        offscreenCtx.scale(-1, 1);
+        offscreenCtx.drawImage(webcam, 0, 0, offscreen.width, offscreen.height);
+        offscreenCtx.restore();
+
+        const faceCanvas = document.createElement("canvas");
+        faceCanvas.width = CAPTURE_SIZE;
+        faceCanvas.height = CAPTURE_SIZE;
+        const faceCtx = faceCanvas.getContext("2d");
+
+        const source = squareCrop(latestFaceRecord.bounds, offscreen.width, offscreen.height);
+        faceCtx.drawImage(offscreen, source.left, source.top, source.size, source.size, 0, 0, CAPTURE_SIZE, CAPTURE_SIZE);
+
+        const meshCanvas = document.createElement("canvas");
+        meshCanvas.width = CAPTURE_SIZE;
+        meshCanvas.height = CAPTURE_SIZE;
+        renderMeshCard(meshCanvas, latestFaceRecord.landmarks, latestFaceRecord.matrix, offscreen);
+
+        const card = document.createElement("article");
+        card.className = "feed-card";
+
+        const faceImage = document.createElement("img");
+        faceImage.src = faceCanvas.toDataURL("image/png");
+        faceImage.alt = "Captured face crop";
+
+        const media = document.createElement("div");
+        media.className = "feed-media";
+        media.append(faceImage, meshCanvas);
+
+        const copy = document.createElement("div");
+        copy.className = "feed-copy";
+
+        const meta = document.createElement("div");
+        meta.className = "feed-meta";
+        const stamp = new Date();
+        feedCount += 1;
+        meta.innerHTML = `<strong>Face ${String(feedCount).padStart(2, "0")}</strong><span>${stamp.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })}</span>`;
+
+        const note = document.createElement("p");
+        note.className = "mesh-note";
+        note.textContent = `Crop ${Math.round(source.size)} px square · ${latestFaceRecord.landmarks.length} landmarks projected`;
+
+        copy.append(meta, note);
+        card.append(media, copy);
+        feed.prepend(card);
+        pulseFlash();
+      }
+
+      function squareCrop(bounds, width, height) {
+        const size = Math.max(bounds.width, bounds.height);
+        const left = clamp(bounds.centerX - size / 2, 0, width - size);
+        const top = clamp(bounds.centerY - size / 2, 0, height - size);
+        return { left, top, size };
+      }
+
+      function renderMeshCard(canvas, landmarks, matrix, sourceCanvas) {
+        const ctx = canvas.getContext("2d");
+        const width = canvas.width;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
+
+        const gradient = ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, "#fcfaf4");
+        gradient.addColorStop(1, "#ece3d5");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        if (!canonicalMesh) return;
+
+        const tess = FaceLandmarker.FACE_LANDMARKS_TESSELATION;
+        const srcW = sourceCanvas.width;
+        const srcH = sourceCanvas.height;
+
+        for (let i = 0; i + 2 < tess.length; i += 3) {
+          const idx0 = tess[i].start;
+          const idx1 = tess[i].end;
+          const idx2 = tess[i + 1].end;
+
+          // Source coords from detected landmarks (mirrored offscreen)
+          const s0 = { x: (1 - landmarks[idx0].x) * srcW, y: landmarks[idx0].y * srcH };
+          const s1 = { x: (1 - landmarks[idx1].x) * srcW, y: landmarks[idx1].y * srcH };
+          const s2 = { x: (1 - landmarks[idx2].x) * srcW, y: landmarks[idx2].y * srcH };
+
+          // Destination coords from canonical mesh
+          const d0 = { x: canonicalMesh[idx0].x * width, y: canonicalMesh[idx0].y * height };
+          const d1 = { x: canonicalMesh[idx1].x * width, y: canonicalMesh[idx1].y * height };
+          const d2 = { x: canonicalMesh[idx2].x * width, y: canonicalMesh[idx2].y * height };
+
+          drawTexturedTriangle(ctx, sourceCanvas, s0, s1, s2, d0, d1, d2);
+        }
+
+        // Subtle wireframe overlay
+        ctx.strokeStyle = "rgba(24, 22, 20, 0.08)";
+        ctx.lineWidth = 0.3;
+        for (const conn of tess) {
+          const a = { x: canonicalMesh[conn.start].x * width, y: canonicalMesh[conn.start].y * height };
+          const b = { x: canonicalMesh[conn.end].x * width, y: canonicalMesh[conn.end].y * height };
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+
+      function drawTexturedTriangle(ctx, img, s0, s1, s2, d0, d1, d2) {
+        const denom = (s0.x - s2.x) * (s1.y - s2.y) - (s1.x - s2.x) * (s0.y - s2.y);
+        if (Math.abs(denom) < 1e-6) return;
+
+        const a = ((d0.x - d2.x) * (s1.y - s2.y) - (d1.x - d2.x) * (s0.y - s2.y)) / denom;
+        const b = ((d0.y - d2.y) * (s1.y - s2.y) - (d1.y - d2.y) * (s0.y - s2.y)) / denom;
+        const c = ((d1.x - d2.x) * (s0.x - s2.x) - (d0.x - d2.x) * (s1.x - s2.x)) / denom;
+        const dd = ((d1.y - d2.y) * (s0.x - s2.x) - (d0.y - d2.y) * (s1.x - s2.x)) / denom;
+        const e = d2.x - a * s2.x - c * s2.y;
+        const f = d2.y - b * s2.x - dd * s2.y;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(d0.x, d0.y);
+        ctx.lineTo(d1.x, d1.y);
+        ctx.lineTo(d2.x, d2.y);
+        ctx.closePath();
+        ctx.clip();
+        ctx.setTransform(a, b, c, dd, e, f);
+        ctx.drawImage(img, 0, 0);
+        ctx.restore();
+      }
+
+      function pulseFlash() {
+        flash.classList.add("active");
+        window.setTimeout(() => flash.classList.remove("active"), 140);
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      startButton.addEventListener("click", startCamera);
+      captureButton.addEventListener("click", captureFace);
+      window.addEventListener("resize", syncCanvasSize);
+      window.addEventListener("beforeunload", stopCamera);
+
+      initLandmarker();
+    </script>
+  </body>
+</html>

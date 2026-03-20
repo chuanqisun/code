@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perlin Noise → Face Detection Stream</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111110;
+        --ink: #e8e8e3;
+        --muted: #999;
+        --line: #333330;
+        --surface: #000;
+        --font-mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+        --panel-gap: 12px;
+        --control-gap: 12px;
+        --feed-gap: 12px;
+        --border: 1px solid var(--line);
+        --stage-ratio: 1;
+        --stage-size: 512px;
+        --settings-label-width: 140px;
+        --settings-value-width: 36px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      button,
+      .button-link,
+      input {
+        font: inherit;
+      }
+
+      html {
+        scrollbar-gutter: stable;
+      }
+
+      body,
+      figure {
+        margin: 0;
+      }
+
+      h2 {
+        margin: 0;
+      }
+
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--ink);
+        font: 14px/1.4 var(--font-mono);
+      }
+
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+        align-items: start;
+        gap: var(--panel-gap);
+      }
+
+      .panel {
+        display: grid;
+        min-width: 0;
+        gap: 5px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        aspect-ratio: var(--stage-ratio);
+        background: var(--surface);
+        border: var(--border);
+      }
+
+      .stage canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .stage-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: var(--control-gap);
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--control-gap);
+      }
+
+      .button-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .status-bar {
+        display: flex;
+        gap: 16px;
+        color: var(--muted);
+      }
+
+      .settings-accordion {
+        margin-top: 12px;
+        border: var(--border);
+      }
+
+      .settings-accordion summary {
+        padding: 8px 12px;
+        cursor: pointer;
+        color: var(--muted);
+        user-select: none;
+      }
+
+      .settings-accordion summary:hover {
+        color: var(--ink);
+      }
+
+      .settings {
+        display: grid;
+        align-items: start;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--panel-gap) 24px;
+        padding: 4px 12px 12px;
+      }
+
+      .settings-group {
+        display: grid;
+        gap: 6px;
+      }
+
+      .setting-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .setting-row label {
+        min-width: var(--settings-label-width);
+        color: var(--muted);
+      }
+
+      .setting-row input[type="range"] {
+        flex: 1;
+        min-width: 80px;
+      }
+
+      .setting-row fieldset {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        min-width: 0;
+      }
+
+      .setting-row fieldset label {
+        min-width: 0;
+        color: var(--ink);
+      }
+
+      .setting-row .value {
+        min-width: var(--settings-value-width);
+        text-align: right;
+      }
+
+      .feed {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+        gap: var(--feed-gap);
+        margin-top: 12px;
+        align-items: stretch;
+      }
+
+      .feed-card {
+        display: grid;
+        grid-template-rows: auto auto;
+        border: var(--border);
+        background: var(--surface);
+        min-width: 0;
+      }
+
+      .feed-card canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        background: var(--surface);
+      }
+
+      .feed-card figcaption {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        padding: 8px 10px 10px;
+        color: var(--ink);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+      }
+
+      .feed-card-label {
+        color: var(--ink);
+      }
+
+      .feed-card-confidence {
+        color: var(--muted);
+        text-align: right;
+      }
+
+      @media (max-width: 600px) {
+        .settings {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 900px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+        .hud {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Input</h2>
+            <div class="controls">
+              <a id="demoButton" class="button-link" href="demo.html">Demo</a>
+              <button id="toggleButton" disabled>Start</button>
+              <button id="downloadButton" disabled>Download</button>
+            </div>
+          </div>
+          <div class="stage">
+            <canvas id="meshPreview" width="512" height="512"></canvas>
+            <canvas id="overlay" class="stage-layer" width="512" height="512"></canvas>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Output</h2>
+            <div class="status-bar">
+              <span id="statusText">Loading…</span>
+              <span>Frames: <span id="frameCount">0</span></span>
+              <span>Detected: <span id="detectCount">0</span></span>
+            </div>
+          </div>
+          <div class="stage">
+            <canvas id="averagePreview" width="512" height="512"></canvas>
+          </div>
+        </aside>
+      </section>
+
+      <details class="settings-accordion">
+        <summary>Settings</summary>
+        <div class="settings">
+          <div class="settings-group">
+            <div class="setting-row">
+              <label>Eyes</label>
+              <fieldset id="eyePolarityGroup">
+                <label><input type="radio" name="eyePolarity" value="dark" checked /> Dark</label>
+                <label><input type="radio" name="eyePolarity" value="light" /> Light</label>
+              </fieldset>
+            </div>
+            <div class="setting-row">
+              <label for="detectionConfidence">Detection confidence</label>
+              <input type="range" id="detectionConfidence" min="0" max="1" step="0.05" value="0.25" />
+              <span id="detectionConfidenceValue" class="value"></span>
+            </div>
+            <div class="setting-row">
+              <label for="presenceConfidence">Presence confidence</label>
+              <input type="range" id="presenceConfidence" min="0" max="1" step="0.05" value="0.25" />
+              <span id="presenceConfidenceValue" class="value"></span>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="setting-row">
+              <label for="noiseScale">Noise scale</label>
+              <input type="range" id="noiseScale" min="1" max="12" step="0.5" value="3" />
+              <span id="noiseScaleValue" class="value"></span>
+            </div>
+            <div class="setting-row">
+              <label for="noiseContrast">Noise contrast</label>
+              <input type="range" id="noiseContrast" min="0.5" max="5" step="0.1" value="3.5" />
+              <span id="noiseContrastValue" class="value"></span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div id="feed" class="feed"></div>
+    </main>
+
+    <script type="module">
+      import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      const { FaceDetector, FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+      const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+      const DETECTOR_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
+      const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm";
+      const CAPTURE_SIZE = 512;
+      const TEXTURE_SIZE = 512;
+      const NOISE_DRIFT_STEP = 0.6;
+      const MAX_BACKFACE_RATIO = 0.5;
+      const IRIS_BRIGHTNESS_THRESHOLD = 127;
+      const IRIS_SAMPLE_RADIUS = 10;
+      const FEATURE_BRIGHTNESS_THRESHOLD = 127;
+      const MOUTH_SAMPLE_RADIUS = 14;
+      const CANVAS_FILL = "#000";
+      const SPHERE_FACE_COLUMNS = 32;
+      const SPHERE_FACE_ROWS = 40;
+
+      const FACE_OVAL_INDICES = [
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162,
+        21, 54, 103, 67, 109,
+      ];
+      const LEFT_IRIS_INDICES = [468, 469, 470, 471, 472];
+      const RIGHT_IRIS_INDICES = [473, 474, 475, 476, 477];
+      const NOSE_SAMPLE_INDICES = [1, 4, 5, 45, 275];
+      const MOUTH_SAMPLE_INDICES = [13, 14, 78, 308];
+      const IRIS_INDICES = new Set([...LEFT_IRIS_INDICES, ...RIGHT_IRIS_INDICES]);
+
+      const MOUTH_EXTRA_EDGES = [
+        [95, 191],
+        [191, 88],
+        [88, 80],
+        [80, 178],
+        [178, 81],
+        [81, 87],
+        [87, 82],
+        [82, 14],
+        [14, 13],
+        [13, 317],
+        [317, 312],
+        [312, 402],
+        [402, 311],
+        [311, 318],
+        [318, 310],
+        [310, 324],
+        [324, 415],
+      ];
+      const LEFT_EYE_EXTRA_EDGES = [
+        [7, 246],
+        [246, 163],
+        [163, 161],
+        [161, 144],
+        [144, 160],
+        [160, 145],
+        [145, 159],
+        [159, 153],
+        [153, 158],
+        [158, 154],
+        [154, 157],
+        [157, 155],
+        [155, 173],
+      ];
+      const RIGHT_EYE_EXTRA_EDGES = [
+        [382, 398],
+        [398, 381],
+        [381, 384],
+        [384, 380],
+        [380, 385],
+        [385, 374],
+        [374, 386],
+        [386, 373],
+        [373, 387],
+        [387, 390],
+        [390, 388],
+        [388, 249],
+        [249, 466],
+      ];
+
+      const FEATURE_EXTRA_EDGES = [...MOUTH_EXTRA_EDGES, ...LEFT_EYE_EXTRA_EDGES, ...RIGHT_EYE_EXTRA_EDGES];
+      const CUSTOM_TESSELATION = buildCustomTessellation();
+      const OVERLAY_STYLES = [
+        [CUSTOM_TESSELATION, { color: "rgba(0, 255, 255, 0.6)", lineWidth: 1 }],
+        [FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "rgba(0, 255, 255, 0.9)", lineWidth: 2 }],
+        [MOUTH_EXTRA_EDGES.map(toConnection), { color: "rgba(0, 255, 255, 0.85)", lineWidth: 1.2 }],
+        [LEFT_EYE_EXTRA_EDGES.map(toConnection), { color: "rgba(0, 255, 255, 0.9)", lineWidth: 1.5 }],
+        [RIGHT_EYE_EXTRA_EDGES.map(toConnection), { color: "rgba(0, 255, 255, 0.9)", lineWidth: 1.5 }],
+      ];
+      const INVALID_OVERLAY_STYLES = [
+        [CUSTOM_TESSELATION, { color: "rgba(255, 64, 64, 0.65)", lineWidth: 1 }],
+        [FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "rgba(255, 96, 96, 0.95)", lineWidth: 2 }],
+        [MOUTH_EXTRA_EDGES.map(toConnection), { color: "rgba(255, 96, 96, 0.9)", lineWidth: 1.2 }],
+        [LEFT_EYE_EXTRA_EDGES.map(toConnection), { color: "rgba(255, 96, 96, 0.95)", lineWidth: 1.5 }],
+        [RIGHT_EYE_EXTRA_EDGES.map(toConnection), { color: "rgba(255, 96, 96, 0.95)", lineWidth: 1.5 }],
+      ];
+
+      const el = {
+        meshPreview: document.getElementById("meshPreview"),
+        overlay: document.getElementById("overlay"),
+        toggleButton: document.getElementById("toggleButton"),
+        downloadButton: document.getElementById("downloadButton"),
+        feed: document.getElementById("feed"),
+        averagePreview: document.getElementById("averagePreview"),
+        statusText: document.getElementById("statusText"),
+        frameCount: document.getElementById("frameCount"),
+        detectCount: document.getElementById("detectCount"),
+        detectionConfidence: document.getElementById("detectionConfidence"),
+        detectionConfidenceValue: document.getElementById("detectionConfidenceValue"),
+        presenceConfidence: document.getElementById("presenceConfidence"),
+        presenceConfidenceValue: document.getElementById("presenceConfidenceValue"),
+        noiseScale: document.getElementById("noiseScale"),
+        noiseScaleValue: document.getElementById("noiseScaleValue"),
+        noiseContrast: document.getElementById("noiseContrast"),
+        noiseContrastValue: document.getElementById("noiseContrastValue"),
+        eyePolarity: document.querySelectorAll('input[name="eyePolarity"]'),
+      };
+
+      const previewCtx = el.meshPreview.getContext("2d");
+      const overlayCtx = el.overlay.getContext("2d");
+      const averageCtx = el.averagePreview.getContext("2d");
+
+      const state = {
+        faceLandmarker: null,
+        faceDetector: null,
+        projectionRenderer: null,
+        canonicalMesh: null,
+        canonicalTriangles: [],
+        sphereFaceMesh: null,
+        sphereFaceUVs: null,
+        sphereFaceTriangles: [],
+        running: false,
+        simTimeoutId: 0,
+        renderFrameId: 0,
+        frameIndex: 0,
+        detectedCount: 0,
+        discoveredFaces: [],
+        noiseTime: 0,
+        noiseScale: 0,
+        noiseContrast: 0,
+        eyePolarity: "dark",
+        averageBuffer: null,
+        averageImageData: null,
+        averageDirty: false,
+        pendingRender: null,
+        dirty: false,
+        overlayLandmarks: null,
+        overlayVariant: "valid",
+        overlayExpireTime: 0,
+        seedNonce: 0n,
+        seedCounter: 0n,
+      };
+
+      el.toggleButton.addEventListener("click", toggleRunState);
+      el.downloadButton.addEventListener("click", downloadAll);
+      el.detectionConfidence.addEventListener("input", applyConfidence);
+      el.presenceConfidence.addEventListener("input", applyConfidence);
+      el.noiseScale.addEventListener("input", () => updateSliderValue("noiseScale", 1));
+      el.noiseContrast.addEventListener("input", () => updateSliderValue("noiseContrast", 1));
+      for (const radio of el.eyePolarity) radio.addEventListener("change", syncEyePolarity);
+
+      syncControlStateFromInputs();
+
+      async function init() {
+        fillCanvas(averageCtx, el.averagePreview);
+
+        try {
+          state.seedNonce = createSeedNonce();
+          state.seedCounter = 0n;
+          state.projectionRenderer = new WebGLProjectionRenderer(CAPTURE_SIZE, CAPTURE_SIZE);
+
+          el.statusText.textContent = "Loading canonical mesh…";
+          state.canonicalMesh = await fetch("canonical-mesh.json").then((response) => response.json());
+          state.canonicalTriangles = triangulateCanonicalMesh(state.canonicalMesh);
+
+          const sphereFace = buildSphereFaceMesh(SPHERE_FACE_COLUMNS, SPHERE_FACE_ROWS);
+          state.sphereFaceMesh = sphereFace.mesh;
+          state.sphereFaceUVs = sphereFace.uvs;
+          state.sphereFaceTriangles = sphereFace.triangles;
+
+          el.statusText.textContent = "Loading model…";
+          const resolver = await FilesetResolver.forVisionTasks(WASM_URL);
+          state.faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+            baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+            runningMode: "IMAGE",
+            numFaces: 1,
+            outputFaceBlendshapes: false,
+            outputFacialTransformationMatrixes: false,
+            minFaceDetectionConfidence: Number(el.detectionConfidence.value),
+            minFacePresenceConfidence: Number(el.presenceConfidence.value),
+          });
+          state.faceDetector = await FaceDetector.createFromOptions(resolver, {
+            baseOptions: { modelAssetPath: DETECTOR_MODEL_URL, delegate: "GPU" },
+            runningMode: "IMAGE",
+            minDetectionConfidence: 0,
+          });
+
+          el.statusText.textContent = "Ready";
+          el.toggleButton.disabled = false;
+          el.toggleButton.textContent = "Start";
+          el.downloadButton.disabled = false;
+
+          const initialNoise = generateNoiseTexture(TEXTURE_SIZE, nextNoiseSeed(), state.noiseScale, state.noiseContrast);
+          previewCtx.drawImage(projectOntoSphereFace(initialNoise), 0, 0, el.meshPreview.width, el.meshPreview.height);
+        } catch (error) {
+          console.error(error);
+          el.statusText.textContent = "Error loading resources";
+        }
+      }
+
+      function toggleRunState() {
+        if (state.running) stop();
+        else start();
+      }
+
+      function start() {
+        if (state.running || !state.faceLandmarker || !state.faceDetector) return;
+
+        state.running = true;
+        el.toggleButton.textContent = "Stop";
+        el.statusText.textContent = "Running";
+
+        scheduleSim();
+        scheduleRender();
+      }
+
+      function stop() {
+        state.running = false;
+
+        if (state.simTimeoutId) {
+          clearTimeout(state.simTimeoutId);
+          state.simTimeoutId = 0;
+        }
+
+        if (state.renderFrameId) {
+          cancelAnimationFrame(state.renderFrameId);
+          state.renderFrameId = 0;
+        }
+
+        el.toggleButton.textContent = "Start";
+        el.statusText.textContent = "Stopped";
+      }
+
+      async function applyConfidence() {
+        el.detectionConfidenceValue.textContent = Number(el.detectionConfidence.value).toFixed(2);
+        el.presenceConfidenceValue.textContent = Number(el.presenceConfidence.value).toFixed(2);
+        if (!state.faceLandmarker) return;
+
+        await state.faceLandmarker.setOptions({
+          minFaceDetectionConfidence: Number(el.detectionConfidence.value),
+          minFacePresenceConfidence: Number(el.presenceConfidence.value),
+        });
+      }
+
+      function syncControlStateFromInputs() {
+        applyConfidence();
+        updateSliderValue("noiseScale", 1);
+        updateSliderValue("noiseContrast", 1);
+        syncEyePolarity();
+        updateAveragePreview();
+      }
+
+      function syncEyePolarity() {
+        const selected = Array.from(el.eyePolarity).find((radio) => radio.checked);
+        state.eyePolarity = selected?.value === "light" ? "light" : "dark";
+      }
+
+      function updateSliderValue(key, digits) {
+        state[key] = Number(el[key].value);
+        el[`${key}Value`].textContent = state[key].toFixed(digits);
+      }
+
+      function scheduleSim() {
+        if (state.running) state.simTimeoutId = setTimeout(simTick, 0);
+      }
+
+      function simTick() {
+        if (!state.running) return;
+
+        state.noiseTime += NOISE_DRIFT_STEP;
+        const seed = nextNoiseSeed();
+        const noiseCanvas = generateNoiseTexture(TEXTURE_SIZE, seed, state.noiseScale, state.noiseContrast);
+        const meshCanvas = projectOntoSphereFace(noiseCanvas);
+
+        state.frameIndex += 1;
+        const result = state.faceLandmarker.detect(meshCanvas);
+        const landmarks = result?.faceLandmarks?.[0];
+
+        state.pendingRender = { meshCanvas };
+        state.dirty = true;
+
+        const qualifiedFace = qualifyDetectedFace(landmarks, noiseCanvas, meshCanvas);
+        if (qualifiedFace) commitQualifiedDetection(qualifiedFace, meshCanvas, seed);
+        else if (landmarks?.length) commitDisqualifiedDetection(landmarks);
+
+        scheduleSim();
+      }
+
+      function qualifyDetectedFace(landmarks, sourceCanvas, mappedCanvas) {
+        if (!landmarks?.length) return null;
+
+        const backfaceRatio = getBackfaceRatio(landmarks, state.canonicalTriangles);
+        if (backfaceRatio > MAX_BACKFACE_RATIO) return null;
+
+        const warpedCanvas = warpLandmarksToCanonical(landmarks, mappedCanvas);
+        if (!warpedCanvas) return null;
+
+        const analysis = analyzeWarpedFace(warpedCanvas);
+        if (!analysis) return null;
+
+        const { featureBrightness, irisBrightness } = analysis;
+        if (!hasQualifiedFeatureBrightness(featureBrightness)) return null;
+
+        const shouldInvert = state.eyePolarity === "light" ? irisBrightness <= IRIS_BRIGHTNESS_THRESHOLD : irisBrightness > IRIS_BRIGHTNESS_THRESHOLD;
+        const normalizedCanvas = shouldInvert ? remapInvertedFaceTexture(sourceCanvas, landmarks) : warpedCanvas;
+        if (!normalizedCanvas) return null;
+
+        return {
+          landmarks,
+          warpedCanvas: normalizedCanvas,
+          backfaceRatio,
+          irisBrightness,
+          featureBrightness,
+          inverted: shouldInvert,
+        };
+      }
+
+      function commitQualifiedDetection(qualifiedFace, meshCanvas, seed) {
+        const { landmarks, warpedCanvas, irisBrightness, featureBrightness, inverted } = qualifiedFace;
+        const faceId = state.detectedCount + 1;
+
+        state.detectedCount = faceId;
+        state.overlayLandmarks = landmarks;
+        state.overlayVariant = "valid";
+        state.overlayExpireTime = performance.now() + 1000;
+
+        blendFaceIntoAverage(warpedCanvas, faceId);
+        state.discoveredFaces.unshift({
+          canvas: warpedCanvas,
+          id: faceId,
+          seed,
+          confidence: detectFaceConfidence(meshCanvas),
+          irisBrightness,
+          featureBrightness,
+          inverted,
+        });
+      }
+
+      function commitDisqualifiedDetection(landmarks) {
+        state.overlayLandmarks = landmarks;
+        state.overlayVariant = "invalid";
+        state.overlayExpireTime = performance.now() + 1000;
+      }
+
+      function scheduleRender() {
+        if (state.running) state.renderFrameId = requestAnimationFrame(renderTick);
+      }
+
+      function renderTick() {
+        if (!state.running) return;
+
+        if (state.dirty && state.pendingRender) {
+          state.dirty = false;
+          const { meshCanvas } = state.pendingRender;
+
+          previewCtx.clearRect(0, 0, el.meshPreview.width, el.meshPreview.height);
+          previewCtx.drawImage(meshCanvas, 0, 0, el.meshPreview.width, el.meshPreview.height);
+
+          el.frameCount.textContent = String(state.frameIndex);
+          el.detectCount.textContent = String(state.detectedCount);
+
+          if (el.feed.childElementCount !== state.discoveredFaces.length) {
+            renderFeed();
+          }
+
+          if (state.averageDirty) updateAveragePreview();
+        }
+
+        overlayCtx.clearRect(0, 0, el.overlay.width, el.overlay.height);
+        if (state.overlayLandmarks && performance.now() < state.overlayExpireTime) drawLandmarkOverlay(state.overlayLandmarks, state.overlayVariant);
+        else state.overlayLandmarks = null;
+
+        scheduleRender();
+      }
+
+      function renderFeed() {
+        el.feed.replaceChildren(...state.discoveredFaces.map(buildFeedCard));
+      }
+
+      function updateAveragePreview() {
+        fillCanvas(averageCtx, el.averagePreview);
+        state.averageDirty = false;
+
+        if (!state.discoveredFaces.length) {
+          state.averageBuffer = null;
+          state.averageImageData = null;
+          return;
+        }
+
+        const { buffer, imageData, pixels } = getAverageBufferSurface();
+
+        for (let offset = 0; offset < pixels.length; offset += 4) {
+          pixels[offset] = Math.round(clamp(buffer[offset], 0, 255));
+          pixels[offset + 1] = Math.round(clamp(buffer[offset + 1], 0, 255));
+          pixels[offset + 2] = Math.round(clamp(buffer[offset + 2], 0, 255));
+          pixels[offset + 3] = 255;
+        }
+
+        averageCtx.putImageData(imageData, 0, 0);
+      }
+
+      async function downloadAll() {
+        if (!state.discoveredFaces.length) return;
+
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+
+          for (const face of state.discoveredFaces) {
+            const blob = await canvasToBlob(face.canvas);
+            const fileHandle = await dirHandle.getFileHandle(`face-${face.id}.png`, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          }
+
+          const averageBlob = await canvasToBlob(el.averagePreview);
+          const averageHandle = await dirHandle.getFileHandle("avg.png", { create: true });
+          const averageWritable = await averageHandle.createWritable();
+          await averageWritable.write(averageBlob);
+          await averageWritable.close();
+        } catch (error) {
+          if (error.name !== "AbortError") console.error(error);
+        }
+      }
+
+      function projectOntoSphereFace(sourceCanvas) {
+        const canvas = document.createElement("canvas");
+        canvas.width = CAPTURE_SIZE;
+        canvas.height = CAPTURE_SIZE;
+        renderProjection(canvas, sourceCanvas, state.sphereFaceUVs, state.sphereFaceMesh, state.sphereFaceTriangles);
+        return canvas;
+      }
+
+      function warpLandmarksToCanonical(landmarks, sourceCanvas) {
+        const canvas = document.createElement("canvas");
+        canvas.width = CAPTURE_SIZE;
+        canvas.height = CAPTURE_SIZE;
+        renderProjection(canvas, sourceCanvas, landmarks, state.canonicalMesh, state.canonicalTriangles);
+        return canvas;
+      }
+
+      function renderProjection(canvas, sourceCanvas, sourceMesh, destMesh, triangles) {
+        const { width, height } = canvas;
+        if (!triangles?.length || !sourceMesh?.length || !destMesh?.length) return;
+
+        const projection = state.projectionRenderer?.render({
+          sourceCanvas,
+          sourceMesh,
+          destMesh,
+          triangles,
+          width,
+          height,
+        });
+        const ctx = canvas.getContext("2d");
+        fillCanvas(ctx, canvas);
+        if (projection) ctx.drawImage(projection, 0, 0, width, height);
+      }
+
+      function drawLandmarkOverlay(landmarks, variant = "valid") {
+        const drawUtils = new DrawingUtils(overlayCtx);
+        const styles = variant === "invalid" ? INVALID_OVERLAY_STYLES : OVERLAY_STYLES;
+        overlayCtx.save();
+        for (const [connections, style] of styles) drawUtils.drawConnectors(landmarks, connections, style);
+        overlayCtx.restore();
+      }
+
+      function buildFeedCard(face) {
+        const card = document.createElement("figure");
+        card.className = "feed-card";
+
+        const caption = document.createElement("figcaption");
+        const label = document.createElement("span");
+        label.className = "feed-card-label";
+        label.textContent = `#${face.id}`;
+
+        const confidence = document.createElement("span");
+        confidence.className = "feed-card-confidence";
+        confidence.textContent = `${face.confidence.toFixed(2)}${face.inverted ? " inv" : ""}`;
+
+        caption.append(label, confidence);
+        card.append(face.canvas, caption);
+        return card;
+      }
+
+      function analyzeWarpedFace(canvas) {
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx || !state.canonicalMesh?.length) return 0;
+
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const leftBrightness = getAverageRegionBrightness(imageData, getFeatureCenter(LEFT_IRIS_INDICES), IRIS_SAMPLE_RADIUS);
+        const rightBrightness = getAverageRegionBrightness(imageData, getFeatureCenter(RIGHT_IRIS_INDICES), IRIS_SAMPLE_RADIUS);
+        const noseBrightness = getAverageRegionBrightness(imageData, getFeatureCenter(NOSE_SAMPLE_INDICES), IRIS_SAMPLE_RADIUS);
+        const mouthBrightness = getAverageRegionBrightness(imageData, getFeatureCenter(MOUTH_SAMPLE_INDICES), MOUTH_SAMPLE_RADIUS);
+
+        return {
+          irisBrightness: (leftBrightness + rightBrightness) / 2,
+          featureBrightness: {
+            leftEye: leftBrightness,
+            rightEye: rightBrightness,
+            nose: noseBrightness,
+            mouth: mouthBrightness,
+          },
+        };
+      }
+
+      function hasQualifiedFeatureBrightness(featureBrightness) {
+        if (!featureBrightness) return false;
+
+        const featurePolarity = [featureBrightness.leftEye, featureBrightness.rightEye, featureBrightness.nose, featureBrightness.mouth].map(
+          (value) => value > FEATURE_BRIGHTNESS_THRESHOLD
+        );
+        return featurePolarity.every((polarity) => polarity === featurePolarity[0]);
+      }
+
+      function getFeatureCenter(indices) {
+        const total = { x: 0, y: 0 };
+
+        for (const index of indices) {
+          const point = state.canonicalMesh[index];
+          total.x += point.x;
+          total.y += point.y;
+        }
+
+        return {
+          x: (total.x / indices.length) * CAPTURE_SIZE,
+          y: (total.y / indices.length) * CAPTURE_SIZE,
+        };
+      }
+
+      function getAverageRegionBrightness(imageData, center, radius) {
+        const { data, width, height } = imageData;
+        const radiusSq = radius * radius;
+        let brightnessSum = 0;
+        let sampleCount = 0;
+        const minX = Math.max(0, Math.floor(center.x - radius));
+        const maxX = Math.min(width - 1, Math.ceil(center.x + radius));
+        const minY = Math.max(0, Math.floor(center.y - radius));
+        const maxY = Math.min(height - 1, Math.ceil(center.y + radius));
+
+        for (let y = minY; y <= maxY; y += 1) {
+          for (let x = minX; x <= maxX; x += 1) {
+            const dx = x + 0.5 - center.x;
+            const dy = y + 0.5 - center.y;
+            if (dx * dx + dy * dy > radiusSq) continue;
+
+            const offset = (y * width + x) * 4;
+            brightnessSum += (data[offset] + data[offset + 1] + data[offset + 2]) / 3;
+            sampleCount += 1;
+          }
+        }
+
+        return sampleCount ? brightnessSum / sampleCount : 0;
+      }
+
+      function remapInvertedFaceTexture(sourceCanvas, landmarks) {
+        const invertedSourceCanvas = invertCanvas(sourceCanvas);
+        const remappedCanvas = projectOntoSphereFace(invertedSourceCanvas);
+        return warpLandmarksToCanonical(landmarks, remappedCanvas);
+      }
+
+      function invertCanvas(sourceCanvas) {
+        const canvas = document.createElement("canvas");
+        canvas.width = sourceCanvas.width;
+        canvas.height = sourceCanvas.height;
+
+        const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+        const targetCtx = canvas.getContext("2d");
+        const imageData = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+        const { data } = imageData;
+
+        for (let offset = 0; offset < data.length; offset += 4) {
+          data[offset] = 255 - data[offset];
+          data[offset + 1] = 255 - data[offset + 1];
+          data[offset + 2] = 255 - data[offset + 2];
+        }
+
+        targetCtx.putImageData(imageData, 0, 0);
+        return canvas;
+      }
+
+      function getAverageBufferSurface() {
+        const width = el.averagePreview.width;
+        const height = el.averagePreview.height;
+        const length = width * height * 4;
+
+        if (!state.averageBuffer || state.averageBuffer.length !== length) {
+          state.averageBuffer = new Float32Array(length);
+          state.averageImageData = new ImageData(width, height);
+        }
+
+        return { buffer: state.averageBuffer, imageData: state.averageImageData, pixels: state.averageImageData.data };
+      }
+
+      function blendFaceIntoAverage(faceCanvas, count) {
+        const { buffer } = getAverageBufferSurface();
+        const faceCtx = faceCanvas.getContext("2d", { willReadFrequently: true });
+        const { data } = faceCtx.getImageData(0, 0, faceCanvas.width, faceCanvas.height);
+
+        if (count === 1) {
+          for (let offset = 0; offset < buffer.length; offset += 4) {
+            buffer[offset] = data[offset];
+            buffer[offset + 1] = data[offset + 1];
+            buffer[offset + 2] = data[offset + 2];
+            buffer[offset + 3] = 255;
+          }
+          state.averageDirty = true;
+          return;
+        }
+
+        const alpha = 1 / count;
+        const previousWeight = 1 - alpha;
+
+        for (let offset = 0; offset < buffer.length; offset += 4) {
+          buffer[offset] = buffer[offset] * previousWeight + data[offset] * alpha;
+          buffer[offset + 1] = buffer[offset + 1] * previousWeight + data[offset + 1] * alpha;
+          buffer[offset + 2] = buffer[offset + 2] * previousWeight + data[offset + 2] * alpha;
+          buffer[offset + 3] = 255;
+        }
+
+        state.averageDirty = true;
+      }
+
+      function canvasToBlob(canvas) {
+        return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+
+      function generateNoiseTexture(size, seed, scale, contrast) {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+
+        const ctx = canvas.getContext("2d");
+        const imageData = ctx.createImageData(size, size);
+        const perlin = new PerlinNoise(seed);
+        const offsetX = randomFloatFromSeed(seed, 0) * 65536;
+        const offsetY = randomFloatFromSeed(seed, 1) * 65536;
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const nx = (x / size) * scale + offsetX;
+            const ny = (y / size) * scale + offsetY;
+            const raw = perlin.fbm(nx, ny, 6);
+            const brightness = Math.floor(clamp((raw * 0.5 + 0.5 - 0.5) * contrast + 0.5, 0, 1) * 255);
+            const offset = (y * size + x) * 4;
+
+            imageData.data[offset] = brightness;
+            imageData.data[offset + 1] = brightness;
+            imageData.data[offset + 2] = brightness;
+            imageData.data[offset + 3] = 255;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+      }
+
+      function getBackfaceRatio(landmarks, triangles) {
+        if (!triangles?.length || !landmarks?.length) return 0;
+
+        let backfaces = 0;
+        const total = triangles.length / 3;
+
+        for (let index = 0; index < triangles.length; index += 3) {
+          const a = landmarks[triangles[index]];
+          const b = landmarks[triangles[index + 1]];
+          const c = landmarks[triangles[index + 2]];
+          if (!isFrontFacing(a, b, c)) backfaces += 1;
+        }
+
+        return backfaces / total;
+      }
+
+      const detectFaceConfidence = (sourceCanvas) => state.faceDetector?.detect(sourceCanvas)?.detections?.[0]?.categories?.[0]?.score ?? 0;
+
+      function buildSphereFaceMesh(columns, rows) {
+        const mesh = [];
+        const uvs = [];
+        const triangles = [];
+        const phiMin = -0.92;
+        const phiMax = 0.92;
+        const thetaMin = -1;
+        const thetaMax = 1;
+        const centerX = 0.5;
+        const centerY = 0.5;
+        const radiusX = 0.4;
+        const radiusY = 0.5;
+
+        for (let row = 0; row <= rows; row += 1) {
+          const v = row / rows;
+          const theta = thetaMin + (thetaMax - thetaMin) * v;
+          const sinTheta = Math.sin(theta);
+          const cosTheta = Math.cos(theta);
+
+          for (let col = 0; col <= columns; col += 1) {
+            const u = col / columns;
+            const phi = phiMin + (phiMax - phiMin) * u;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+            const x3 = cosTheta * sinPhi;
+            const y3 = sinTheta;
+
+            uvs.push({ x: u, y: v });
+            mesh.push({
+              x: centerX + x3 * radiusX,
+              y: centerY + y3 * radiusY,
+            });
+
+            if (row < rows && col < columns) {
+              const index = row * (columns + 1) + col;
+              const next = index + columns + 1;
+              triangles.push(index, next, index + 1);
+              triangles.push(index + 1, next, next + 1);
+            }
+          }
+        }
+
+        centerMeshInUnitSquare(mesh);
+        return { mesh, uvs, triangles };
+      }
+
+      function triangulateCanonicalMesh(mesh) {
+        if (!mesh?.length) return [];
+
+        const points = mesh.map(({ x, y }) => [x, y]);
+        const ovalPolygon = FACE_OVAL_INDICES.map((index) => points[index]);
+        const maxEdgeSq = 0.45 * 0.45;
+        const adjacency = buildAdjacencyMap(CUSTOM_TESSELATION);
+        const triangleKeys = new Set();
+        const triangles = [];
+
+        for (let a = 0; a < mesh.length; a += 1) {
+          if (IRIS_INDICES.has(a)) continue;
+
+          const neighborsA = adjacency.get(a);
+          if (!neighborsA?.size) continue;
+
+          for (const b of neighborsA) {
+            if (b <= a || IRIS_INDICES.has(b)) continue;
+
+            const neighborsB = adjacency.get(b);
+            if (!neighborsB?.size) continue;
+
+            for (const c of neighborsB) {
+              if (c <= b || IRIS_INDICES.has(c) || !neighborsA.has(c)) continue;
+
+              const centroid = [(points[a][0] + points[b][0] + points[c][0]) / 3, (points[a][1] + points[b][1] + points[c][1]) / 3];
+              const longestSq = Math.max(distSq(points[a], points[b]), distSq(points[b], points[c]), distSq(points[c], points[a]));
+              if (!pointInPolygon(centroid, ovalPolygon) || longestSq >= maxEdgeSq) continue;
+
+              const key = `${a}:${b}:${c}`;
+              if (triangleKeys.has(key)) continue;
+              triangleKeys.add(key);
+
+              if (isFrontFacing(mesh[a], mesh[b], mesh[c])) triangles.push(a, b, c);
+              else triangles.push(a, c, b);
+            }
+          }
+        }
+
+        return triangles;
+      }
+
+      function buildCustomTessellation() {
+        const seen = new Set();
+        const edges = [];
+
+        for (const connection of FaceLandmarker.FACE_LANDMARKS_TESSELATION) {
+          const pair = [connection.start, connection.end];
+          if (pair.some((index) => IRIS_INDICES.has(index))) continue;
+
+          const normalized = normalizeEdge(pair);
+          const key = edgeKey(normalized[0], normalized[1]);
+          if (seen.has(key)) continue;
+
+          seen.add(key);
+          edges.push(toConnection(normalized));
+        }
+
+        for (const pair of FEATURE_EXTRA_EDGES) {
+          if (pair.some((index) => IRIS_INDICES.has(index))) continue;
+
+          const normalized = normalizeEdge(pair);
+          const key = edgeKey(normalized[0], normalized[1]);
+          if (seen.has(key)) continue;
+
+          seen.add(key);
+          edges.push(toConnection(normalized));
+        }
+
+        return edges;
+      }
+
+      function buildAdjacencyMap(edges) {
+        const adjacency = new Map();
+
+        for (const { start, end } of edges) {
+          if (!adjacency.has(start)) adjacency.set(start, new Set());
+          if (!adjacency.has(end)) adjacency.set(end, new Set());
+          adjacency.get(start).add(end);
+          adjacency.get(end).add(start);
+        }
+
+        return adjacency;
+      }
+
+      function centerMeshInUnitSquare(mesh) {
+        if (!mesh?.length) return;
+
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        for (const point of mesh) {
+          if (point.x < minX) minX = point.x;
+          if (point.x > maxX) maxX = point.x;
+          if (point.y < minY) minY = point.y;
+          if (point.y > maxY) maxY = point.y;
+        }
+
+        const offsetX = 0.5 - (minX + maxX) / 2;
+        const offsetY = 0.5 - (minY + maxY) / 2;
+
+        for (const point of mesh) {
+          point.x += offsetX;
+          point.y += offsetY;
+        }
+      }
+
+      function fillCanvas(ctx, canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = CANVAS_FILL;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function pointInPolygon(point, polygon) {
+        let inside = false;
+
+        for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+          const [x0, y0] = polygon[index];
+          const [x1, y1] = polygon[previous];
+          if (y0 > point[1] !== y1 > point[1] && point[0] < ((x1 - x0) * (point[1] - y0)) / (y1 - y0 || 1e-9) + x0) inside = !inside;
+        }
+
+        return inside;
+      }
+
+      function normalizeEdge([a, b]) {
+        return a < b ? [a, b] : [b, a];
+      }
+
+      function edgeKey(a, b) {
+        return `${a}:${b}`;
+      }
+
+      function toConnection([start, end]) {
+        return { start, end };
+      }
+
+      function distSq(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        return dx * dx + dy * dy;
+      }
+
+      function isFrontFacing(a, b, c) {
+        return (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y) < 0;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function createSeedNonce() {
+        const bytes = new Uint32Array(2);
+        crypto.getRandomValues(bytes);
+        return (BigInt(bytes[0]) << 32n) | BigInt(bytes[1]);
+      }
+
+      function nextNoiseSeed() {
+        const seed = state.seedNonce + state.seedCounter;
+        state.seedCounter += 1n;
+        return seed;
+      }
+
+      function mixSeed32(seed, stream = 0) {
+        const streamSeed = seed + BigInt(stream) * 0x9e3779b97f4a7c15n;
+        const low = Number(streamSeed & 0xffffffffn) >>> 0;
+        const high = Number((streamSeed >> 32n) & 0xffffffffn) >>> 0;
+        let value = (low ^ high ^ 0x85ebca6b) >>> 0;
+        value ^= value >>> 16;
+        value = Math.imul(value, 0x21f0aaad) >>> 0;
+        value ^= value >>> 15;
+        value = Math.imul(value, 0x735a2d97) >>> 0;
+        value ^= value >>> 15;
+        return value >>> 0;
+      }
+
+      function randomFloatFromSeed(seed, stream = 0) {
+        return mixSeed32(seed, stream) / 0x100000000;
+      }
+
+      const VERTEX_SHADER_SOURCE = `
+        attribute vec2 a_position;
+        attribute vec2 a_uv;
+        varying vec2 v_uv;
+
+        void main() {
+          v_uv = a_uv;
+          gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+      `;
+
+      const FRAGMENT_SHADER_SOURCE = `
+        precision mediump float;
+        varying vec2 v_uv;
+        uniform sampler2D u_texture;
+
+        void main() {
+          gl_FragColor = texture2D(u_texture, v_uv);
+        }
+      `;
+
+      function createProgram(gl, vertexSource, fragmentSource) {
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+        const program = gl.createProgram();
+
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          gl.deleteProgram(program);
+          gl.deleteShader(vertexShader);
+          gl.deleteShader(fragmentShader);
+          throw new Error(`Failed to link WebGL program: ${info}`);
+        }
+
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+        return program;
+      }
+
+      function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(shader);
+          gl.deleteShader(shader);
+          throw new Error(`Failed to compile WebGL shader: ${info}`);
+        }
+
+        return shader;
+      }
+
+      class PerlinNoise {
+        constructor(seed = 0n) {
+          const p = new Uint8Array(256);
+          for (let index = 0; index < 256; index += 1) p[index] = index;
+
+          let value = mixSeed32(typeof seed === "bigint" ? seed : BigInt(seed));
+          for (let index = 255; index > 0; index -= 1) {
+            value = (value * 1664525 + 1013904223) | 0;
+            const swapIndex = (value >>> 0) % (index + 1);
+            [p[index], p[swapIndex]] = [p[swapIndex], p[index]];
+          }
+
+          this.perm = new Uint8Array(512);
+          for (let index = 0; index < 512; index += 1) this.perm[index] = p[index & 255];
+
+          this.grad = [
+            [1, 1],
+            [-1, 1],
+            [1, -1],
+            [-1, -1],
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ];
+        }
+
+        fade(value) {
+          return value * value * value * (value * (value * 6 - 15) + 10);
+        }
+
+        lerp(a, b, amount) {
+          return a + amount * (b - a);
+        }
+
+        dot(gradient, x, y) {
+          return gradient[0] * x + gradient[1] * y;
+        }
+
+        noise(x, y) {
+          const gridX = Math.floor(x) & 255;
+          const gridY = Math.floor(y) & 255;
+          const xf = x - Math.floor(x);
+          const yf = y - Math.floor(y);
+          const u = this.fade(xf);
+          const v = this.fade(yf);
+          const gradients = this.grad;
+          const aa = this.perm[this.perm[gridX] + gridY];
+          const ab = this.perm[this.perm[gridX] + gridY + 1];
+          const ba = this.perm[this.perm[gridX + 1] + gridY];
+          const bb = this.perm[this.perm[gridX + 1] + gridY + 1];
+
+          return this.lerp(
+            this.lerp(this.dot(gradients[aa & 7], xf, yf), this.dot(gradients[ba & 7], xf - 1, yf), u),
+            this.lerp(this.dot(gradients[ab & 7], xf, yf - 1), this.dot(gradients[bb & 7], xf - 1, yf - 1), u),
+            v
+          );
+        }
+
+        fbm(x, y, octaves = 6, lacunarity = 2.0, persistence = 0.5) {
+          let value = 0;
+          let amplitude = 1;
+          let frequency = 1;
+          let maxValue = 0;
+
+          for (let index = 0; index < octaves; index += 1) {
+            value += amplitude * this.noise(x * frequency, y * frequency);
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+          }
+
+          return value / maxValue;
+        }
+      }
+
+      class WebGLProjectionRenderer {
+        constructor(width, height) {
+          this.canvas = document.createElement("canvas");
+          this.gl = this.canvas.getContext("webgl", {
+            alpha: false,
+            antialias: false,
+            depth: false,
+            premultipliedAlpha: false,
+            preserveDrawingBuffer: true,
+          });
+          if (!this.gl) throw new Error("WebGL is unavailable");
+
+          this.program = createProgram(this.gl, VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE);
+          this.positionLocation = this.gl.getAttribLocation(this.program, "a_position");
+          this.uvLocation = this.gl.getAttribLocation(this.program, "a_uv");
+          this.textureLocation = this.gl.getUniformLocation(this.program, "u_texture");
+          this.positionBuffer = this.gl.createBuffer();
+          this.uvBuffer = this.gl.createBuffer();
+          this.texture = this.gl.createTexture();
+
+          this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
+          this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
+
+          this.resize(width, height);
+        }
+
+        resize(width, height) {
+          if (this.canvas.width === width && this.canvas.height === height) return;
+          this.canvas.width = width;
+          this.canvas.height = height;
+          this.gl.viewport(0, 0, width, height);
+        }
+
+        render({ sourceCanvas, sourceMesh, destMesh, triangles, width, height }) {
+          if (!triangles?.length || !sourceMesh?.length || !destMesh?.length) return null;
+
+          this.resize(width, height);
+
+          const vertexCount = triangles.length;
+          const positions = new Float32Array(vertexCount * 2);
+          const uvs = new Float32Array(vertexCount * 2);
+
+          for (let index = 0; index < triangles.length; index += 1) {
+            const triangleIndex = triangles[index];
+            const dest = destMesh[triangleIndex];
+            const source = sourceMesh[triangleIndex];
+            const offset = index * 2;
+
+            positions[offset] = dest.x * 2 - 1;
+            positions[offset + 1] = 1 - dest.y * 2;
+            uvs[offset] = source.x;
+            uvs[offset + 1] = source.y;
+          }
+
+          const gl = this.gl;
+          gl.useProgram(this.program);
+          gl.disable(gl.BLEND);
+          gl.clearColor(0, 0, 0, 1);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, this.texture);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sourceCanvas);
+          gl.uniform1i(this.textureLocation, 0);
+
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
+          gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STREAM_DRAW);
+          gl.enableVertexAttribArray(this.positionLocation);
+          gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
+          gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STREAM_DRAW);
+          gl.enableVertexAttribArray(this.uvLocation);
+          gl.vertexAttribPointer(this.uvLocation, 2, gl.FLOAT, false, 0, 0);
+
+          gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+          return this.canvas;
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parametric Face + MediaPipe Face Detection</title>
+    <style>
+      body {
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+
+      .wrap {
+        display: grid;
+        gap: 12px;
+        justify-items: center;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        background: #1b1b1b;
+        border: 1px solid #333;
+        padding: 10px 12px;
+        border-radius: 8px;
+      }
+
+      .canvas-stack {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 520px));
+        justify-items: center;
+      }
+
+      @media (max-width: 1100px) {
+        .canvas-stack {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .canvas-box {
+        width: 520px;
+        height: 520px;
+        border: 1px solid #333;
+        background: transparent;
+        position: relative;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: transparent;
+      }
+
+      #faceCanvas {
+        cursor: crosshair;
+      }
+
+      label,
+      input {
+        font-size: 14px;
+      }
+
+      .status {
+        opacity: 0.8;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="controls">
+        <label>
+          Min confidence:
+          <input id="confidence" type="range" min="0" max="1" step="0.01" value="0.5" />
+          <span id="confidenceValue">0.50</span>
+        </label>
+        <span class="status" id="status">Loading MediaPipe...</span>
+        <span class="status">Hold mouse on canvas to generate + detect every frame</span>
+      </div>
+
+      <div class="canvas-stack">
+        <div class="canvas-box">
+          <canvas id="faceCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="normalizedFaceCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="overlayCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="alignedFaceCanvas" width="520" height="520"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      const faceCanvas = document.getElementById("faceCanvas");
+      const normalizedFaceCanvas = document.getElementById("normalizedFaceCanvas");
+      const overlayCanvas = document.getElementById("overlayCanvas");
+      const alignedFaceCanvas = document.getElementById("alignedFaceCanvas");
+
+      const faceCtx = faceCanvas.getContext("2d");
+      const normalizedFaceCtx = normalizedFaceCanvas.getContext("2d");
+      const overlayCtx = overlayCanvas.getContext("2d");
+      const alignedFaceCtx = alignedFaceCanvas.getContext("2d");
+
+      const CANONICAL_FACE_POINTS = Object.freeze({
+        topLeft: { x: 100, y: 80 },
+        topCenter: { x: alignedFaceCanvas.width / 2, y: 72 },
+        topRight: { x: 420, y: 80 },
+        midLeft: { x: 82, y: 250 },
+        midRight: { x: 438, y: 250 },
+        bottomLeft: { x: 118, y: 438 },
+        bottomCenter: { x: alignedFaceCanvas.width / 2, y: 452 },
+        bottomRight: { x: 402, y: 438 },
+        leftEye: { x: alignedFaceCanvas.width / 2 - 90, y: 200 },
+        rightEye: { x: alignedFaceCanvas.width / 2 + 90, y: 200 },
+        nose: { x: alignedFaceCanvas.width / 2, y: 282 },
+        mouth: { x: alignedFaceCanvas.width / 2, y: 362 },
+      });
+
+      const FACE_WARP_TRIANGLES = Object.freeze([
+        [0, 1, 8],
+        [1, 2, 9],
+        [0, 8, 3],
+        [8, 3, 10],
+        [8, 10, 1],
+        [1, 10, 9],
+        [9, 10, 4],
+        [1, 4, 2],
+        [3, 10, 5],
+        [10, 5, 11],
+        [10, 11, 6],
+        [10, 6, 4],
+        [4, 11, 7],
+        [5, 6, 11],
+      ]);
+
+      const confidenceInput = document.getElementById("confidence");
+      const confidenceValue = document.getElementById("confidenceValue");
+      const statusEl = document.getElementById("status");
+
+      let faceDetector = null;
+      let runningMode = "IMAGE";
+      let isHolding = false;
+      let rafId = 0;
+      let isProcessing = false;
+
+      confidenceInput.addEventListener("input", async () => {
+        confidenceValue.textContent = Number(confidenceInput.value).toFixed(2);
+        if (faceDetector) {
+          await faceDetector.setOptions({
+            minDetectionConfidence: Number(confidenceInput.value),
+          });
+        }
+      });
+
+      async function initializeFaceDetector() {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+
+        faceDetector = await FaceDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+            delegate: "GPU",
+          },
+          runningMode,
+          minDetectionConfidence: Number(confidenceInput.value),
+        });
+
+        statusEl.textContent = "MediaPipe ready";
+      }
+
+      function rand(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function randBool(p = 0.5) {
+        return Math.random() < p;
+      }
+
+      function ellipsePath(ctx, x, y, rx, ry) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(rx, ry);
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.restore();
+      }
+
+      function* randomFaceGenerator() {
+        while (true) {
+          const face = {
+            centerX: faceCanvas.width / 2 + rand(-25, 25),
+            centerY: faceCanvas.height / 2 + rand(-25, 25),
+            rotation: rand(-0.08, 0.08),
+            scale: rand(0.85, 1.15),
+
+            head: {
+              enabled: true,
+              width: rand(180, 280),
+              height: rand(220, 340),
+              offsetX: rand(-10, 10),
+              offsetY: rand(-10, 10),
+              lineWidth: rand(1, 4),
+              strokeStyle: "#fff",
+            },
+
+            eyes: {
+              enabled: true,
+              y: rand(-70, -20),
+              spacing: rand(50, 110),
+              offsetX: rand(-10, 10),
+              eyeRadiusX: rand(6, 24),
+              eyeRadiusY: rand(4, 16),
+              pupilRadius: rand(2, 7),
+              pupilOffsetX: rand(-2, 2),
+              pupilOffsetY: rand(-2, 2),
+              eyelidTilt: rand(-0.25, 0.25),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#fff",
+              pupilColor: "#fff",
+            },
+
+            eyebrows: {
+              enabled: randBool(0.9),
+              width: rand(15, 45),
+              thickness: rand(1, 6),
+              tiltLeft: rand(-0.7, 0.7),
+              tiltRight: rand(-0.7, 0.7),
+              offsetX: rand(-10, 10),
+              spacing: rand(50, 115),
+              color: "#fff",
+            },
+
+            nose: {
+              enabled: true,
+              offsetX: rand(-12, 12),
+              width: rand(8, 30),
+              height: rand(18, 65),
+              bridgeHeight: rand(10, 35),
+              nostrilWidth: rand(6, 20),
+              nostrilHeight: rand(2, 8),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#fff",
+            },
+
+            mouth: {
+              enabled: true,
+              offsetX: rand(-12, 12),
+              width: rand(25, 100),
+              openness: rand(0, 28),
+              curvature: rand(-1, 1),
+              upperLipHeight: rand(2, 16),
+              lowerLipHeight: rand(2, 20),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#fff",
+            },
+
+            relations: {
+              browToEyeY: rand(10, 35),
+              eyeToNoseY: rand(20, 60),
+              noseToMouthY: rand(30, 85),
+            },
+          };
+
+          face.eyebrows.y = face.eyes.y - face.relations.browToEyeY;
+          face.nose.y = face.eyes.y + face.relations.eyeToNoseY;
+          face.mouth.y = face.nose.y + face.relations.noseToMouthY;
+
+          yield face;
+        }
+      }
+
+      const faceStream = randomFaceGenerator();
+
+      function drawFace(ctx, p) {
+        ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
+
+        ctx.save();
+        ctx.translate(p.centerX, p.centerY);
+        ctx.rotate(p.rotation);
+        ctx.scale(p.scale, p.scale);
+
+        drawHead(ctx, p.head);
+        drawEyebrows(ctx, p.eyebrows);
+        drawEyes(ctx, p.eyes);
+        drawNose(ctx, p.nose);
+        drawMouth(ctx, p.mouth);
+
+        ctx.restore();
+      }
+
+      function drawHead(ctx, head) {
+        if (!head.enabled) return;
+        ctx.save();
+        ctx.translate(head.offsetX, head.offsetY);
+        ellipsePath(ctx, 0, 0, head.width / 2, head.height / 2);
+        ctx.lineWidth = head.lineWidth;
+        ctx.strokeStyle = head.strokeStyle;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawEyes(ctx, eyes) {
+        if (!eyes.enabled) return;
+        const xs = [-eyes.spacing / 2 + eyes.offsetX, eyes.spacing / 2 + eyes.offsetX];
+
+        for (const x of xs) {
+          ctx.save();
+          ctx.translate(x, eyes.y);
+          ctx.rotate(eyes.eyelidTilt);
+
+          ellipsePath(ctx, 0, 0, eyes.eyeRadiusX, eyes.eyeRadiusY);
+          ctx.lineWidth = eyes.lineWidth;
+          ctx.strokeStyle = eyes.strokeStyle;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(eyes.pupilOffsetX, eyes.pupilOffsetY, eyes.pupilRadius, 0, Math.PI * 2);
+          ctx.fillStyle = eyes.pupilColor;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawEyebrows(ctx, brows) {
+        if (!brows.enabled) return;
+
+        const leftX = -brows.spacing / 2 + brows.offsetX;
+        const rightX = brows.spacing / 2 + brows.offsetX;
+        const y = brows.y;
+
+        ctx.save();
+        ctx.lineWidth = brows.thickness;
+        ctx.strokeStyle = brows.color;
+        ctx.lineCap = "round";
+        drawBrow(ctx, leftX, y, brows.width, brows.tiltLeft);
+        drawBrow(ctx, rightX, y, brows.width, brows.tiltRight);
+        ctx.restore();
+      }
+
+      function drawBrow(ctx, x, y, width, tilt) {
+        const dx = width / 2;
+        const dy = Math.tan(tilt) * dx * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(x - dx, y + dy);
+        ctx.lineTo(x + dx, y - dy);
+        ctx.stroke();
+      }
+
+      function drawNose(ctx, nose) {
+        if (!nose.enabled) return;
+
+        const x = nose.offsetX;
+        const y = nose.y;
+
+        ctx.save();
+        ctx.lineWidth = nose.lineWidth;
+        ctx.strokeStyle = nose.strokeStyle;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y - nose.bridgeHeight / 2);
+        ctx.lineTo(x - nose.width / 2, y + nose.height / 2);
+        ctx.lineTo(x + nose.width / 2, y + nose.height / 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - nose.nostrilWidth / 2, y + nose.height / 2);
+        ctx.lineTo(x - nose.nostrilWidth / 2 + 3, y + nose.height / 2 + nose.nostrilHeight);
+        ctx.moveTo(x + nose.nostrilWidth / 2, y + nose.height / 2);
+        ctx.lineTo(x + nose.nostrilWidth / 2 - 3, y + nose.height / 2 + nose.nostrilHeight);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawMouth(ctx, mouth) {
+        if (!mouth.enabled) return;
+
+        const x = mouth.offsetX;
+        const y = mouth.y;
+        const halfW = mouth.width / 2;
+        const curve = mouth.curvature * 22;
+        const open = mouth.openness;
+
+        ctx.save();
+        ctx.lineWidth = mouth.lineWidth;
+        ctx.strokeStyle = mouth.strokeStyle;
+
+        ctx.beginPath();
+        ctx.moveTo(x - halfW, y);
+        ctx.quadraticCurveTo(x, y + curve - mouth.upperLipHeight, x + halfW, y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - halfW, y);
+        ctx.quadraticCurveTo(x, y + curve + mouth.lowerLipHeight + open, x + halfW, y);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function transformFacePoint(params, x, y) {
+        const scaledX = x * params.scale;
+        const scaledY = y * params.scale;
+        const cos = Math.cos(params.rotation);
+        const sin = Math.sin(params.rotation);
+
+        return {
+          x: params.centerX + scaledX * cos - scaledY * sin,
+          y: params.centerY + scaledX * sin + scaledY * cos,
+        };
+      }
+
+      function getGeneratedPupilPoints(params) {
+        const localY = params.eyes.y + params.eyes.pupilOffsetY;
+
+        return {
+          left: transformFacePoint(params, -params.eyes.spacing / 2 + params.eyes.offsetX + params.eyes.pupilOffsetX, localY),
+          right: transformFacePoint(params, params.eyes.spacing / 2 + params.eyes.offsetX + params.eyes.pupilOffsetX, localY),
+        };
+      }
+
+      function getGeneratedWarpPoints(params) {
+        const pupils = getGeneratedPupilPoints(params);
+        const headHalfWidth = params.head.width / 2;
+        const headHalfHeight = params.head.height / 2;
+        const headOffsetX = params.head.offsetX;
+        const headOffsetY = params.head.offsetY;
+        const nose = transformFacePoint(params, params.nose.offsetX, params.nose.y + params.nose.height * 0.45);
+        const mouth = transformFacePoint(params, params.mouth.offsetX, params.mouth.y + params.mouth.openness * 0.35);
+
+        return [
+          transformFacePoint(params, headOffsetX - headHalfWidth * 0.82, headOffsetY - headHalfHeight * 0.92),
+          transformFacePoint(params, headOffsetX, headOffsetY - headHalfHeight),
+          transformFacePoint(params, headOffsetX + headHalfWidth * 0.82, headOffsetY - headHalfHeight * 0.92),
+          transformFacePoint(params, headOffsetX - headHalfWidth, headOffsetY),
+          transformFacePoint(params, headOffsetX + headHalfWidth, headOffsetY),
+          transformFacePoint(params, headOffsetX - headHalfWidth * 0.72, headOffsetY + headHalfHeight * 0.9),
+          transformFacePoint(params, headOffsetX, headOffsetY + headHalfHeight),
+          transformFacePoint(params, headOffsetX + headHalfWidth * 0.72, headOffsetY + headHalfHeight * 0.9),
+          pupils.left,
+          pupils.right,
+          nose,
+          mouth,
+        ];
+      }
+
+      function getCanonicalWarpPoints() {
+        return [
+          CANONICAL_FACE_POINTS.topLeft,
+          CANONICAL_FACE_POINTS.topCenter,
+          CANONICAL_FACE_POINTS.topRight,
+          CANONICAL_FACE_POINTS.midLeft,
+          CANONICAL_FACE_POINTS.midRight,
+          CANONICAL_FACE_POINTS.bottomLeft,
+          CANONICAL_FACE_POINTS.bottomCenter,
+          CANONICAL_FACE_POINTS.bottomRight,
+          CANONICAL_FACE_POINTS.leftEye,
+          CANONICAL_FACE_POINTS.rightEye,
+          CANONICAL_FACE_POINTS.nose,
+          CANONICAL_FACE_POINTS.mouth,
+        ];
+      }
+
+      function getCanvasPoint(keypoint, width, height) {
+        return {
+          x: keypoint.x * width,
+          y: keypoint.y * height,
+        };
+      }
+
+      function getLandmarkSet(detection, width, height) {
+        if (!detection.keypoints || detection.keypoints.length < 4) return null;
+
+        const firstEye = getCanvasPoint(detection.keypoints[0], width, height);
+        const secondEye = getCanvasPoint(detection.keypoints[1], width, height);
+        const nose = getCanvasPoint(detection.keypoints[2], width, height);
+        const mouth = getCanvasPoint(detection.keypoints[3], width, height);
+
+        const leftEye = firstEye.x <= secondEye.x ? firstEye : secondEye;
+        const rightEye = firstEye.x <= secondEye.x ? secondEye : firstEye;
+
+        if (
+          !Number.isFinite(leftEye.x) ||
+          !Number.isFinite(leftEye.y) ||
+          !Number.isFinite(rightEye.x) ||
+          !Number.isFinite(rightEye.y) ||
+          !Number.isFinite(nose.x) ||
+          !Number.isFinite(nose.y) ||
+          !Number.isFinite(mouth.x) ||
+          !Number.isFinite(mouth.y)
+        ) {
+          return null;
+        }
+
+        return { leftEye, rightEye, nose, mouth };
+      }
+
+      function getWarpPointsFromDetection(detection) {
+        const landmarks = getLandmarkSet(detection, faceCanvas.width, faceCanvas.height);
+        if (!landmarks) return null;
+
+        const box = detection.boundingBox;
+        const padX = Math.max(24, box.width * 0.18);
+        const padTop = Math.max(24, box.height * 0.24);
+        const padBottom = Math.max(32, box.height * 0.2);
+
+        const left = Math.max(0, box.originX - padX);
+        const right = Math.min(faceCanvas.width, box.originX + box.width + padX);
+        const top = Math.max(0, box.originY - padTop);
+        const bottom = Math.min(faceCanvas.height, box.originY + box.height + padBottom);
+        const centerX = (left + right) / 2;
+
+        return {
+          landmarks,
+          points: [
+            { x: left, y: top },
+            { x: centerX, y: top },
+            { x: right, y: top },
+            { x: left, y: (top + bottom) / 2 },
+            { x: right, y: (top + bottom) / 2 },
+            { x: left, y: bottom },
+            { x: centerX, y: bottom },
+            { x: right, y: bottom },
+            landmarks.leftEye,
+            landmarks.rightEye,
+            landmarks.nose,
+            landmarks.mouth,
+          ],
+        };
+      }
+
+      function getAffineTransform(srcTri, dstTri) {
+        const [s0, s1, s2] = srcTri;
+        const [d0, d1, d2] = dstTri;
+        const det = s0.x * (s1.y - s2.y) + s1.x * (s2.y - s0.y) + s2.x * (s0.y - s1.y);
+
+        if (Math.abs(det) < 1e-6) return null;
+
+        const a = (d0.x * (s1.y - s2.y) + d1.x * (s2.y - s0.y) + d2.x * (s0.y - s1.y)) / det;
+        const b = (d0.y * (s1.y - s2.y) + d1.y * (s2.y - s0.y) + d2.y * (s0.y - s1.y)) / det;
+        const c = (d0.x * (s2.x - s1.x) + d1.x * (s0.x - s2.x) + d2.x * (s1.x - s0.x)) / det;
+        const d = (d0.y * (s2.x - s1.x) + d1.y * (s0.x - s2.x) + d2.y * (s1.x - s0.x)) / det;
+        const e = (d0.x * (s1.x * s2.y - s2.x * s1.y) + d1.x * (s2.x * s0.y - s0.x * s2.y) + d2.x * (s0.x * s1.y - s1.x * s0.y)) / det;
+        const f = (d0.y * (s1.x * s2.y - s2.x * s1.y) + d1.y * (s2.x * s0.y - s0.x * s2.y) + d2.y * (s0.x * s1.y - s1.x * s0.y)) / det;
+
+        return { a, b, c, d, e, f };
+      }
+
+      function drawTrianglePath(ctx, tri) {
+        ctx.beginPath();
+        ctx.moveTo(tri[0].x, tri[0].y);
+        ctx.lineTo(tri[1].x, tri[1].y);
+        ctx.lineTo(tri[2].x, tri[2].y);
+        ctx.closePath();
+      }
+
+      function warpTriangle(ctx, image, srcTri, dstTri, alpha) {
+        const transform = getAffineTransform(srcTri, dstTri);
+        if (!transform) return;
+
+        ctx.save();
+        drawTrianglePath(ctx, dstTri);
+        ctx.clip();
+        ctx.setTransform(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f);
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(image, 0, 0);
+        ctx.restore();
+      }
+
+      function drawAffineWarp(ctx, image, sourcePoints, targetPoints, alpha = 0.08) {
+        for (const triangleIndices of FACE_WARP_TRIANGLES) {
+          const srcTri = triangleIndices.map((index) => sourcePoints[index]);
+          const dstTri = triangleIndices.map((index) => targetPoints[index]);
+          warpTriangle(ctx, image, srcTri, dstTri, alpha);
+        }
+      }
+
+      function drawNormalizedFace(ctx, params) {
+        const sourcePoints = getGeneratedWarpPoints(params);
+        const targetPoints = getCanonicalWarpPoints();
+
+        ctx.clearRect(0, 0, normalizedFaceCanvas.width, normalizedFaceCanvas.height);
+        drawAffineWarp(ctx, faceCanvas, sourcePoints, targetPoints, 1);
+
+        return {
+          sourcePoints,
+          targetPoints,
+        };
+      }
+
+      function drawAlignedDetection(ctx, normalizedWarp, detections) {
+        if (!normalizedWarp) return;
+
+        const transformedKeypoints = normalizedWarp.targetPoints.slice(8);
+
+        ctx.save();
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        ctx.drawImage(normalizedFaceCanvas, 0, 0);
+        ctx.strokeStyle = "rgba(0,255,255,0.22)";
+        ctx.lineWidth = 1;
+
+        for (const triangleIndices of FACE_WARP_TRIANGLES) {
+          drawTrianglePath(
+            ctx,
+            triangleIndices.map((index) => normalizedWarp.targetPoints[index])
+          );
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = "rgba(255,0,255,0.28)";
+        for (const p of transformedKeypoints) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.strokeStyle = "rgba(255,255,255,0.18)";
+        for (const detection of detections) {
+          const warp = getWarpPointsFromDetection(detection);
+          if (!warp) continue;
+
+          for (const point of warp.points.slice(8)) {
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+      }
+
+      function drawAlignedFaceCrop(ctx, detections) {
+        if (!detections.length) return;
+
+        ctx.save();
+        ctx.globalAlpha = 0.04;
+        ctx.drawImage(normalizedFaceCanvas, 0, 0);
+        ctx.restore();
+      }
+
+      function drawDetectionsOverlay(ctx, normalizedWarp, detections) {
+        drawAlignedDetection(ctx, normalizedWarp, detections);
+      }
+
+      function drawAlignedFacesOverlay(ctx, detections) {
+        drawAlignedFaceCrop(ctx, detections);
+      }
+
+      async function processOneFrame() {
+        if (!faceDetector || isProcessing) return;
+
+        isProcessing = true;
+        try {
+          const params = faceStream.next().value;
+          drawFace(faceCtx, params);
+          const normalizedWarp = drawNormalizedFace(normalizedFaceCtx, params);
+
+          const result = faceDetector.detect(faceCanvas);
+
+          drawDetectionsOverlay(overlayCtx, normalizedWarp, result.detections);
+          drawAlignedFacesOverlay(alignedFaceCtx, result.detections);
+        } catch (err) {
+          console.error(err);
+        } finally {
+          isProcessing = false;
+        }
+      }
+
+      async function tick() {
+        if (isHolding) {
+          await processOneFrame();
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+
+      faceCanvas.addEventListener("mousedown", () => {
+        isHolding = true;
+      });
+
+      window.addEventListener("mouseup", () => {
+        isHolding = false;
+      });
+
+      faceCanvas.addEventListener("mouseleave", () => {
+        isHolding = false;
+      });
+
+      await initializeFaceDetector();
+      confidenceValue.textContent = Number(confidenceInput.value).toFixed(2);
+
+      drawFace(faceCtx, faceStream.next().value);
+      tick();
+    </script>
+  </body>
+</html>

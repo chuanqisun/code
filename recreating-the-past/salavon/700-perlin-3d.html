@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perlin Noise 3D Mesh</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f2;
+        --ink: #111;
+        --muted: #666;
+        --line: #cfcfc7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.4 "SFMono-Regular",
+          Menlo,
+          Consolas,
+          "Liberation Mono",
+          monospace;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+
+      section,
+      aside {
+        min-width: 0;
+      }
+
+      .hero,
+      .hud,
+      .controls,
+      .feed-media {
+        display: flex;
+        gap: 12px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1fr);
+        align-items: start;
+      }
+
+      .panel {
+        min-width: 0;
+      }
+
+      .noise-panel {
+        max-width: 560px;
+      }
+
+      .average-panel {
+        display: grid;
+        gap: 10px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        aspect-ratio: 1 / 1;
+        background: #efefe8;
+        border: 1px solid var(--line);
+      }
+
+      .stage canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .flash {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.9);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .flash.active {
+        opacity: 1;
+      }
+
+      .hud {
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-top: 8px;
+      }
+
+      .controls {
+        flex-wrap: wrap;
+      }
+
+      .average-stage canvas {
+        background: #efefe8;
+      }
+
+      .panel-copy {
+        display: grid;
+        gap: 4px;
+      }
+
+      .average-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .feed-shell {
+        margin-top: 12px;
+      }
+
+      .feed {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 12px;
+      }
+
+      .feed-card {
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .feed-media {
+        gap: 0;
+      }
+
+      .feed-media canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        background: #efefe8;
+      }
+
+      .eyebrow,
+      .lede {
+        color: var(--muted);
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      @media (max-width: 900px) {
+        .hud {
+          flex-direction: column;
+        }
+
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        .noise-panel {
+          max-width: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero">
+        <section class="panel noise-panel">
+          <div class="panel-copy">
+            <p class="eyebrow">Generated texture</p>
+            <h2>Perlin noise</h2>
+          </div>
+          <div class="stage noise-stage">
+            <canvas id="noisePreview" width="512" height="512"></canvas>
+            <div id="flash" class="flash"></div>
+          </div>
+          <div class="hud">
+            <div class="controls">
+              <button id="captureButton" class="primary" disabled>Capture</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel average-panel">
+          <div class="panel-copy">
+            <p class="eyebrow">Composite output</p>
+            <h2>Average mesh</h2>
+            <p class="lede">Each capture is overlaid at equal opacity, so the preview updates as a running visual average.</p>
+          </div>
+          <div class="stage average-stage">
+            <canvas id="averagePreview" width="320" height="320"></canvas>
+          </div>
+          <div class="average-meta">
+            <p class="eyebrow">Captures</p>
+            <p id="captureCount" class="eyebrow">0</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel feed-shell">
+        <div id="feed" class="feed"></div>
+      </section>
+    </main>
+
+    <script type="module">
+      import Delaunator from "https://cdn.jsdelivr.net/npm/delaunator@5.0.0/+esm";
+
+      const CAPTURE_SIZE = 320;
+      const TEXTURE_SIZE = 512;
+      const CONTRAST = 2.5;
+
+      /* ── MediaPipe face oval indices (hardcoded) ── */
+      const FACE_OVAL_LOOP = [
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162,
+        21, 54, 103, 67, 109,
+      ];
+
+      /* ── Perlin noise ── */
+      class PerlinNoise {
+        constructor(seed = 0) {
+          const p = new Uint8Array(256);
+          for (let i = 0; i < 256; i++) p[i] = i;
+          let s = seed | 0;
+          for (let i = 255; i > 0; i--) {
+            s = (s * 1664525 + 1013904223) | 0;
+            const j = (s >>> 0) % (i + 1);
+            [p[i], p[j]] = [p[j], p[i]];
+          }
+          this.perm = new Uint8Array(512);
+          for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+          this.grad = [
+            [1, 1],
+            [-1, 1],
+            [1, -1],
+            [-1, -1],
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ];
+        }
+        fade(t) {
+          return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+        lerp(a, b, t) {
+          return a + t * (b - a);
+        }
+        dot(g, x, y) {
+          return g[0] * x + g[1] * y;
+        }
+        noise(x, y) {
+          const X = Math.floor(x) & 255;
+          const Y = Math.floor(y) & 255;
+          const xf = x - Math.floor(x);
+          const yf = y - Math.floor(y);
+          const u = this.fade(xf);
+          const v = this.fade(yf);
+          const g = this.grad;
+          const aa = this.perm[this.perm[X] + Y];
+          const ab = this.perm[this.perm[X] + Y + 1];
+          const ba = this.perm[this.perm[X + 1] + Y];
+          const bb = this.perm[this.perm[X + 1] + Y + 1];
+          return this.lerp(
+            this.lerp(this.dot(g[aa & 7], xf, yf), this.dot(g[ba & 7], xf - 1, yf), u),
+            this.lerp(this.dot(g[ab & 7], xf, yf - 1), this.dot(g[bb & 7], xf - 1, yf - 1), u),
+            v
+          );
+        }
+        fbm(x, y, octaves = 6, lacunarity = 2.0, persistence = 0.5) {
+          let value = 0,
+            amplitude = 1,
+            frequency = 1,
+            maxValue = 0;
+          for (let i = 0; i < octaves; i++) {
+            value += amplitude * this.noise(x * frequency, y * frequency);
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+          }
+          return value / maxValue;
+        }
+      }
+
+      /* ── UI refs ── */
+      const ui = {
+        noisePreview: document.getElementById("noisePreview"),
+        captureButton: document.getElementById("captureButton"),
+        feed: document.getElementById("feed"),
+        flash: document.getElementById("flash"),
+        averagePreview: document.getElementById("averagePreview"),
+        captureCount: document.getElementById("captureCount"),
+      };
+
+      const noisePreviewCtx = ui.noisePreview.getContext("2d");
+      const averagePreviewCtx = ui.averagePreview.getContext("2d");
+
+      const state = {
+        canonicalMesh: null,
+        canonicalTriangles: [],
+        capturedMeshes: [],
+        captureIndex: 0,
+      };
+
+      ui.captureButton.addEventListener("click", capture);
+
+      init();
+
+      async function init() {
+        resetAveragePreview();
+        await loadResources();
+      }
+
+      /* ── Capture: generate noise → render mesh → update feed + average ── */
+      function capture() {
+        const seed = Date.now() ^ (Math.random() * 0xffffffff);
+        const noiseCanvas = generateNoiseTexture(TEXTURE_SIZE, seed);
+
+        /* Show generated noise in the preview */
+        noisePreviewCtx.clearRect(0, 0, ui.noisePreview.width, ui.noisePreview.height);
+        noisePreviewCtx.drawImage(noiseCanvas, 0, 0, ui.noisePreview.width, ui.noisePreview.height);
+
+        /* Render onto canonical mesh (normalized orientation, same as 602) */
+        const meshCanvas = createMeshCanvas(noiseCanvas);
+
+        state.capturedMeshes.push(meshCanvas);
+        state.captureIndex += 1;
+        ui.feed.prepend(buildFeedCard(meshCanvas));
+        updateAveragePreview();
+        pulseFlash();
+      }
+
+      /* ── Resource loading ── */
+      async function loadResources() {
+        try {
+          state.canonicalMesh = await fetch("canonical-mesh.json").then((r) => r.json());
+          state.canonicalTriangles = createCanonicalTriangles(state.canonicalMesh);
+          ui.captureButton.disabled = false;
+
+          /* Generate an initial noise preview so the stage isn't blank */
+          const initial = generateNoiseTexture(TEXTURE_SIZE, 42);
+          noisePreviewCtx.drawImage(initial, 0, 0, ui.noisePreview.width, ui.noisePreview.height);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      /* ── Noise texture generation ── */
+      function generateNoiseTexture(size, seed) {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const imageData = ctx.createImageData(size, size);
+        const perlin = new PerlinNoise(seed);
+        const scale = 5;
+        const offsetX = ((seed * 13) & 0xffff) / 10;
+        const offsetY = ((seed * 7) & 0xffff) / 10;
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const nx = (x / size) * scale + offsetX;
+            const ny = (y / size) * scale + offsetY;
+            const value = perlin.fbm(nx, ny, 6);
+            const t = clamp((value * 0.5 + 0.5 - 0.5) * CONTRAST + 0.5, 0, 1);
+            const brightness = Math.floor(t * 255);
+            const idx = (y * size + x) * 4;
+            imageData.data[idx] = brightness;
+            imageData.data[idx + 1] = brightness;
+            imageData.data[idx + 2] = brightness;
+            imageData.data[idx + 3] = 255;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+      }
+
+      /* ── Mesh card rendering (same technique as 602-averaging.html) ── */
+      function createMeshCanvas(sourceCanvas) {
+        const canvas = document.createElement("canvas");
+        canvas.width = CAPTURE_SIZE;
+        canvas.height = CAPTURE_SIZE;
+        renderMeshCard(canvas, sourceCanvas, state.canonicalMesh, state.canonicalTriangles);
+        return canvas;
+      }
+
+      function renderMeshCard(canvas, sourceCanvas, canonicalMesh, canonicalTriangles) {
+        const ctx = canvas.getContext("2d");
+        const { width, height } = canvas;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "#f3f3ee";
+        ctx.fillRect(0, 0, width, height);
+
+        if (!canonicalMesh.length || !canonicalTriangles.length) return;
+
+        const sourceWidth = sourceCanvas.width;
+        const sourceHeight = sourceCanvas.height;
+
+        for (let index = 0; index < canonicalTriangles.length; index += 3) {
+          const triangle = canonicalTriangles.slice(index, index + 3);
+
+          /* Source: canonical mesh positions in the noise texture */
+          const [src0, src1, src2] = triangle.map((pointIndex) => ({
+            x: canonicalMesh[pointIndex].x * sourceWidth,
+            y: canonicalMesh[pointIndex].y * sourceHeight,
+          }));
+
+          /* Destination: same canonical mesh positions on the output canvas */
+          const [dst0, dst1, dst2] = triangle.map((pointIndex) => ({
+            x: canonicalMesh[pointIndex].x * width,
+            y: canonicalMesh[pointIndex].y * height,
+          }));
+
+          drawTexturedTriangle(ctx, sourceCanvas, src0, src1, src2, dst0, dst1, dst2);
+        }
+      }
+
+      /* ── Feed card ── */
+      function buildFeedCard(meshCanvas) {
+        const card = document.createElement("article");
+        card.className = "feed-card";
+        const media = document.createElement("div");
+        media.className = "feed-media";
+        media.append(meshCanvas);
+        card.append(media);
+        return card;
+      }
+
+      /* ── Average preview ── */
+      function updateAveragePreview() {
+        resetAveragePreview();
+        const count = state.capturedMeshes.length;
+        if (!count) {
+          ui.captureCount.textContent = "0";
+          return;
+        }
+        averagePreviewCtx.save();
+        averagePreviewCtx.globalAlpha = 1 / count;
+        for (const meshCanvas of state.capturedMeshes) {
+          averagePreviewCtx.drawImage(meshCanvas, 0, 0, ui.averagePreview.width, ui.averagePreview.height);
+        }
+        averagePreviewCtx.restore();
+        ui.captureCount.textContent = String(count);
+      }
+
+      function resetAveragePreview() {
+        averagePreviewCtx.clearRect(0, 0, ui.averagePreview.width, ui.averagePreview.height);
+        averagePreviewCtx.fillStyle = "#f3f3ee";
+        averagePreviewCtx.fillRect(0, 0, ui.averagePreview.width, ui.averagePreview.height);
+      }
+
+      /* ── Flash ── */
+      function pulseFlash() {
+        ui.flash.classList.add("active");
+        window.setTimeout(() => ui.flash.classList.remove("active"), 140);
+      }
+
+      /* ── Canonical triangles (Delaunay inside face oval) ── */
+      function createCanonicalTriangles(canonicalMesh) {
+        if (!canonicalMesh?.length) return [];
+
+        const points2d = canonicalMesh.map(({ x, y }) => [x, y]);
+        const delaunay = Delaunator.from(points2d);
+        const faceOval = FACE_OVAL_LOOP.map((index) => points2d[index]);
+        const maxEdgeSquared = 0.45 * 0.45;
+        const triangles = [];
+
+        for (let index = 0; index < delaunay.triangles.length; index += 3) {
+          const a = delaunay.triangles[index];
+          const b = delaunay.triangles[index + 1];
+          const c = delaunay.triangles[index + 2];
+          const centroid = [(points2d[a][0] + points2d[b][0] + points2d[c][0]) / 3, (points2d[a][1] + points2d[b][1] + points2d[c][1]) / 3];
+          const longestEdgeSquared = Math.max(dist2(points2d[a], points2d[b]), dist2(points2d[b], points2d[c]), dist2(points2d[c], points2d[a]));
+          if (pointInPolygon(centroid, faceOval) && longestEdgeSquared < maxEdgeSquared) triangles.push(a, b, c);
+        }
+
+        return triangles;
+      }
+
+      /* ── Textured-triangle rasterisation ── */
+      function drawTexturedTriangle(ctx, image, src0, src1, src2, dst0, dst1, dst2) {
+        const denominator = (src0.x - src2.x) * (src1.y - src2.y) - (src1.x - src2.x) * (src0.y - src2.y);
+        if (Math.abs(denominator) < 1e-6) return;
+
+        const a = ((dst0.x - dst2.x) * (src1.y - src2.y) - (dst1.x - dst2.x) * (src0.y - src2.y)) / denominator;
+        const b = ((dst0.y - dst2.y) * (src1.y - src2.y) - (dst1.y - dst2.y) * (src0.y - src2.y)) / denominator;
+        const c = ((dst1.x - dst2.x) * (src0.x - src2.x) - (dst0.x - dst2.x) * (src1.x - src2.x)) / denominator;
+        const d = ((dst1.y - dst2.y) * (src0.x - src2.x) - (dst0.y - dst2.y) * (src1.x - src2.x)) / denominator;
+        const e = dst2.x - a * src2.x - c * src2.y;
+        const f = dst2.y - b * src2.x - d * src2.y;
+
+        ctx.save();
+        clipTriangle(ctx, dst0, dst1, dst2);
+        ctx.setTransform(a, b, c, d, e, f);
+        ctx.drawImage(image, 0, 0);
+        ctx.restore();
+      }
+
+      function clipTriangle(ctx, a, b, c) {
+        const cx = (a.x + b.x + c.x) / 3;
+        const cy = (a.y + b.y + c.y) / 3;
+        const expand = 0.5;
+        const ax = a.x + ((a.x - cx) * expand) / Math.hypot(a.x - cx, a.y - cy);
+        const ay = a.y + ((a.y - cy) * expand) / Math.hypot(a.x - cx, a.y - cy);
+        const bx = b.x + ((b.x - cx) * expand) / Math.hypot(b.x - cx, b.y - cy);
+        const by = b.y + ((b.y - cy) * expand) / Math.hypot(b.x - cx, b.y - cy);
+        const ccx = c.x + ((c.x - cx) * expand) / Math.hypot(c.x - cx, c.y - cy);
+        const ccy = c.y + ((c.y - cy) * expand) / Math.hypot(c.x - cx, c.y - cy);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(ccx, ccy);
+        ctx.closePath();
+        ctx.clip();
+      }
+
+      /* ── Geometry helpers ── */
+      function pointInPolygon(point, polygon) {
+        let inside = false;
+        for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+          const [x0, y0] = polygon[index];
+          const [x1, y1] = polygon[previous];
+          const crosses = y0 > point[1] !== y1 > point[1] && point[0] < ((x1 - x0) * (point[1] - y0)) / (y1 - y0 || 1e-9) + x0;
+          if (crosses) inside = !inside;
+        }
+        return inside;
+      }
+
+      function dist2(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        return dx * dx + dy * dy;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+    </script>
+  </body>
+</html>

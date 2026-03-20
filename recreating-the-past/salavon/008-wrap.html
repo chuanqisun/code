@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parametric Face + MediaPipe Face Detection</title>
+    <style>
+      :root {
+        --canvas-size: min(400px, calc((100vw - 72px) / 2), calc((100vh - 180px) / 3));
+      }
+
+      body {
+        margin: 0;
+        background: #111;
+        color: #eee;
+        font-family: sans-serif;
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+
+      .wrap {
+        display: grid;
+        gap: 12px;
+        justify-items: center;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        background: #1b1b1b;
+        border: 1px solid #333;
+        padding: 10px 12px;
+        border-radius: 8px;
+      }
+
+      .canvas-stack {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, var(--canvas-size)));
+        justify-items: center;
+      }
+
+      .canvas-box {
+        width: var(--canvas-size);
+        height: var(--canvas-size);
+        border: 1px solid #333;
+        background: transparent;
+        position: relative;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        background: transparent;
+      }
+
+      #rawInputCanvas {
+        cursor: crosshair;
+      }
+
+      label,
+      input {
+        font-size: 14px;
+      }
+
+      .status {
+        opacity: 0.8;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="controls">
+        <label>
+          Min confidence:
+          <input id="confidence" type="range" min="0" max="1" step="0.01" value="0.5" />
+          <span id="confidenceValue">0.50</span>
+        </label>
+        <span class="status" id="status">Loading MediaPipe...</span>
+        <span class="status">Hold mouse on canvas to generate + detect every frame</span>
+      </div>
+
+      <div class="canvas-stack">
+        <div class="canvas-box">
+          <canvas id="rawInputCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="alignedFaceCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="landmarksCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="landmarksAveragingCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="faceWrapSnapshotCanvas" width="520" height="520"></canvas>
+        </div>
+        <div class="canvas-box">
+          <canvas id="faceWrappingCanvas" width="520" height="520"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      const rawInputCanvas = document.getElementById("rawInputCanvas");
+      const alignedFaceCanvas = document.getElementById("alignedFaceCanvas");
+      const landmarksCanvas = document.getElementById("landmarksCanvas");
+      const landmarksAveragingCanvas = document.getElementById("landmarksAveragingCanvas");
+      const faceWrapSnapshotCanvas = document.getElementById("faceWrapSnapshotCanvas");
+      const faceWrappingCanvas = document.getElementById("faceWrappingCanvas");
+
+      const rawInputCtx = rawInputCanvas.getContext("2d");
+      const alignedFaceCtx = alignedFaceCanvas.getContext("2d");
+      const landmarksCtx = landmarksCanvas.getContext("2d");
+      const landmarksAveragingCtx = landmarksAveragingCanvas.getContext("2d");
+      const faceWrapSnapshotCtx = faceWrapSnapshotCanvas.getContext("2d");
+      const faceWrappingCtx = faceWrappingCanvas.getContext("2d");
+
+      const confidenceInput = document.getElementById("confidence");
+      const confidenceValue = document.getElementById("confidenceValue");
+      const statusEl = document.getElementById("status");
+
+      let faceDetector = null;
+      let runningMode = "IMAGE";
+      let isHolding = false;
+      let rafId = 0;
+      let isProcessing = false;
+      let averagedLandmarks = [];
+
+      const LANDMARK_DECAY = 0.95;
+      const LANDMARK_BLEND = 0.05;
+      const FIXED_EYE_OFFSET_X = 70;
+      const FIXED_EYE_Y = 200;
+      const FIXED_MOUTH_BOTTOM_OFFSET = 120;
+      const MORPH_TRIANGLES = [
+        [0, 4, 2],
+        [1, 5, 2],
+        [0, 1, 2],
+        [4, 2, 3],
+        [5, 2, 3],
+      ];
+      // Extended triangulation: 0-5 = face keypoints, 6=TL, 7=TR, 8=BR, 9=BL canvas corners
+      const WARP_TRIANGLES = [
+        // Interior face
+        [0, 1, 2],
+        [0, 4, 2],
+        [1, 5, 2],
+        [4, 2, 3],
+        [5, 2, 3],
+        // Boundary to canvas corners
+        [6, 7, 0],
+        [7, 1, 0],
+        [7, 5, 1],
+        [7, 8, 5],
+        [5, 8, 3],
+        [8, 9, 3],
+        [9, 4, 3],
+        [6, 9, 4],
+        [6, 0, 4],
+      ];
+
+      confidenceInput.addEventListener("input", async () => {
+        confidenceValue.textContent = Number(confidenceInput.value).toFixed(2);
+        if (faceDetector) {
+          await faceDetector.setOptions({
+            minDetectionConfidence: Number(confidenceInput.value),
+          });
+        }
+      });
+
+      async function initializeFaceDetector() {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+
+        faceDetector = await FaceDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+            delegate: "GPU",
+          },
+          runningMode,
+          minDetectionConfidence: Number(confidenceInput.value),
+        });
+
+        statusEl.textContent = "MediaPipe ready";
+      }
+
+      function rand(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function randBool(p = 0.5) {
+        return Math.random() < p;
+      }
+
+      function ellipsePath(ctx, x, y, rx, ry) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(rx, ry);
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.restore();
+      }
+
+      function* randomFaceGenerator() {
+        while (true) {
+          const face = {
+            centerX: rawInputCanvas.width / 2 + rand(-25, 25),
+            centerY: rawInputCanvas.height / 2 + rand(-25, 25),
+            rotation: rand(-0.08, 0.08),
+            scale: rand(0.85, 1.15),
+
+            head: {
+              enabled: true,
+              width: rand(180, 280),
+              height: rand(220, 340),
+              offsetX: rand(-10, 10),
+              offsetY: rand(-10, 10),
+              lineWidth: rand(1, 4),
+              strokeStyle: "#fff",
+            },
+
+            eyes: {
+              enabled: true,
+              y: rand(-70, -20),
+              spacing: rand(50, 110),
+              offsetX: rand(-10, 10),
+              eyeRadiusX: rand(6, 24),
+              eyeRadiusY: rand(4, 16),
+              pupilRadius: rand(2, 7),
+              pupilOffsetX: rand(-2, 2),
+              pupilOffsetY: rand(-2, 2),
+              eyelidTilt: rand(-0.25, 0.25),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#fff",
+              pupilColor: "#fff",
+            },
+
+            eyebrows: {
+              enabled: randBool(0.9),
+              width: rand(15, 45),
+              thickness: rand(1, 6),
+              tiltLeft: rand(-0.7, 0.7),
+              tiltRight: rand(-0.7, 0.7),
+              offsetX: rand(-10, 10),
+              spacing: rand(50, 115),
+              color: "#fff",
+            },
+
+            nose: {
+              enabled: true,
+              offsetX: rand(-12, 12),
+              width: rand(18, 42),
+              height: rand(24, 70),
+              bridgeHeight: rand(12, 32),
+              nostrilWidth: rand(10, 24),
+              nostrilHeight: rand(3, 8),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#fff",
+            },
+
+            mouth: {
+              enabled: true,
+              offsetX: rand(-12, 12),
+              width: rand(25, 100),
+              openness: rand(0, 28),
+              curvature: rand(-1, 1),
+              upperLipHeight: rand(2, 16),
+              lowerLipHeight: rand(2, 20),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#fff",
+            },
+
+            relations: {
+              browToEyeY: rand(10, 35),
+              eyeToNoseY: rand(20, 60),
+              noseToMouthY: rand(30, 85),
+            },
+          };
+
+          face.eyebrows.y = face.eyes.y - face.relations.browToEyeY;
+          face.nose.y = face.eyes.y + face.relations.eyeToNoseY;
+          face.mouth.y = face.nose.y + face.relations.noseToMouthY;
+
+          yield face;
+        }
+      }
+
+      const faceStream = randomFaceGenerator();
+
+      function drawFace(ctx, p) {
+        ctx.clearRect(0, 0, rawInputCanvas.width, rawInputCanvas.height);
+
+        ctx.save();
+        ctx.translate(p.centerX, p.centerY);
+        ctx.rotate(p.rotation);
+        ctx.scale(p.scale, p.scale);
+
+        drawHead(ctx, p.head);
+        drawEyebrows(ctx, p.eyebrows);
+        drawEyes(ctx, p.eyes);
+        drawNose(ctx, p.nose);
+        drawMouth(ctx, p.mouth);
+
+        ctx.restore();
+      }
+
+      function drawHead(ctx, head) {
+        if (!head.enabled) return;
+        ctx.save();
+        ctx.translate(head.offsetX, head.offsetY);
+        ellipsePath(ctx, 0, 0, head.width / 2, head.height / 2);
+        ctx.lineWidth = head.lineWidth;
+        ctx.strokeStyle = head.strokeStyle;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawEyes(ctx, eyes) {
+        if (!eyes.enabled) return;
+        const xs = [-eyes.spacing / 2 + eyes.offsetX, eyes.spacing / 2 + eyes.offsetX];
+
+        for (const x of xs) {
+          ctx.save();
+          ctx.translate(x, eyes.y);
+          ctx.rotate(eyes.eyelidTilt);
+
+          ellipsePath(ctx, 0, 0, eyes.eyeRadiusX, eyes.eyeRadiusY);
+          ctx.lineWidth = eyes.lineWidth;
+          ctx.strokeStyle = eyes.strokeStyle;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(eyes.pupilOffsetX, eyes.pupilOffsetY, eyes.pupilRadius, 0, Math.PI * 2);
+          ctx.fillStyle = eyes.pupilColor;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawEyebrows(ctx, brows) {
+        if (!brows.enabled) return;
+
+        const leftX = -brows.spacing / 2 + brows.offsetX;
+        const rightX = brows.spacing / 2 + brows.offsetX;
+        const y = brows.y;
+
+        ctx.save();
+        ctx.lineWidth = brows.thickness;
+        ctx.strokeStyle = brows.color;
+        ctx.lineCap = "round";
+        drawBrow(ctx, leftX, y, brows.width, brows.tiltLeft);
+        drawBrow(ctx, rightX, y, brows.width, brows.tiltRight);
+        ctx.restore();
+      }
+
+      function drawBrow(ctx, x, y, width, tilt) {
+        const dx = width / 2;
+        const dy = Math.tan(tilt) * dx * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(x - dx, y + dy);
+        ctx.lineTo(x + dx, y - dy);
+        ctx.stroke();
+      }
+
+      function drawNose(ctx, nose) {
+        if (!nose.enabled) return;
+
+        const x = nose.offsetX;
+        const y = nose.y;
+        const apexY = y - nose.bridgeHeight / 2;
+        const baseY = y + nose.height / 2;
+        const halfWidth = nose.width / 2;
+        const nostrilHalfWidth = nose.nostrilWidth / 2;
+        const nostrilY = baseY - nose.nostrilHeight * 0.3;
+
+        ctx.save();
+        ctx.lineWidth = nose.lineWidth;
+        ctx.strokeStyle = nose.strokeStyle;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+
+        ctx.beginPath();
+        ctx.moveTo(x, apexY);
+        ctx.lineTo(x - halfWidth, baseY);
+        ctx.lineTo(x + halfWidth, baseY);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - nostrilHalfWidth, nostrilY);
+        ctx.quadraticCurveTo(x, baseY + nose.nostrilHeight, x + nostrilHalfWidth, nostrilY);
+        ctx.moveTo(x, apexY + nose.bridgeHeight * 0.35);
+        ctx.lineTo(x, baseY - nose.nostrilHeight);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawMouth(ctx, mouth) {
+        if (!mouth.enabled) return;
+
+        const x = mouth.offsetX;
+        const y = mouth.y;
+        const halfW = mouth.width / 2;
+        const curve = mouth.curvature * 22;
+        const open = mouth.openness;
+
+        ctx.save();
+        ctx.lineWidth = mouth.lineWidth;
+        ctx.strokeStyle = mouth.strokeStyle;
+
+        ctx.beginPath();
+        ctx.moveTo(x - halfW, y);
+        ctx.quadraticCurveTo(x, y + curve - mouth.upperLipHeight, x + halfW, y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - halfW, y);
+        ctx.quadraticCurveTo(x, y + curve + mouth.lowerLipHeight + open, x + halfW, y);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function transformFacePoint(params, x, y) {
+        const scaledX = x * params.scale;
+        const scaledY = y * params.scale;
+        const cos = Math.cos(params.rotation);
+        const sin = Math.sin(params.rotation);
+
+        return {
+          x: params.centerX + scaledX * cos - scaledY * sin,
+          y: params.centerY + scaledX * sin + scaledY * cos,
+        };
+      }
+
+      function getGeneratedPupilPoints(params) {
+        const localY = params.eyes.y + params.eyes.pupilOffsetY;
+
+        return {
+          left: transformFacePoint(params, -params.eyes.spacing / 2 + params.eyes.offsetX + params.eyes.pupilOffsetX, localY),
+          right: transformFacePoint(params, params.eyes.spacing / 2 + params.eyes.offsetX + params.eyes.pupilOffsetX, localY),
+        };
+      }
+
+      function getAlignedEyeTargets() {
+        return {
+          left: { x: alignedFaceCanvas.width / 2 - FIXED_EYE_OFFSET_X, y: FIXED_EYE_Y },
+          right: { x: alignedFaceCanvas.width / 2 + FIXED_EYE_OFFSET_X, y: FIXED_EYE_Y },
+        };
+      }
+
+      function getFixedMorphAnchors(width, height) {
+        const mouthY = height - FIXED_MOUTH_BOTTOM_OFFSET;
+        return {
+          leftEye: { x: width / 2 - FIXED_EYE_OFFSET_X, y: FIXED_EYE_Y },
+          rightEye: { x: width / 2 + FIXED_EYE_OFFSET_X, y: FIXED_EYE_Y },
+          nose: { x: width / 2, y: (FIXED_EYE_Y + mouthY) / 2 },
+          mouth: { x: width / 2, y: mouthY },
+        };
+      }
+
+      function getAlignmentFromEyePair(leftEye, rightEye, targetLeft, targetRight) {
+        const currentDx = rightEye.x - leftEye.x;
+        const currentDy = rightEye.y - leftEye.y;
+        const currentDist = Math.hypot(currentDx, currentDy);
+        if (!currentDist) return null;
+
+        const targetDx = targetRight.x - targetLeft.x;
+        const targetDy = targetRight.y - targetLeft.y;
+        const targetDist = Math.hypot(targetDx, targetDy);
+        if (!targetDist) return null;
+
+        const currentAngle = Math.atan2(currentDy, currentDx);
+        const targetAngle = Math.atan2(targetDy, targetDx);
+        const rotation = targetAngle - currentAngle;
+        const scale = targetDist / currentDist;
+        const cos = Math.cos(rotation);
+        const sin = Math.sin(rotation);
+
+        function transformPoint(point) {
+          const x = point.x - leftEye.x;
+          const y = point.y - leftEye.y;
+          return {
+            x: x * scale * cos - y * scale * sin + targetLeft.x,
+            y: x * scale * sin + y * scale * cos + targetLeft.y,
+          };
+        }
+
+        return {
+          rotation,
+          scale,
+          targetLeft,
+          targetRight,
+          transformPoint,
+        };
+      }
+
+      function drawAlignedFace(ctx, params) {
+        const pupils = getGeneratedPupilPoints(params);
+        const targetEyes = getAlignedEyeTargets();
+        const alignment = getAlignmentFromEyePair(pupils.left, pupils.right, targetEyes.left, targetEyes.right);
+
+        ctx.clearRect(0, 0, alignedFaceCanvas.width, alignedFaceCanvas.height);
+        if (!alignment) return null;
+
+        ctx.save();
+        ctx.translate(alignment.targetLeft.x, alignment.targetLeft.y);
+        ctx.rotate(alignment.rotation);
+        ctx.scale(alignment.scale, alignment.scale);
+        ctx.translate(-pupils.left.x, -pupils.left.y);
+        ctx.drawImage(rawInputCanvas, 0, 0);
+        ctx.restore();
+
+        return alignment;
+      }
+
+      function getEyeKeypoints(detection) {
+        if (!detection.keypoints || detection.keypoints.length < 2) return null;
+
+        const left = {
+          x: detection.keypoints[0].x * landmarksCanvas.width,
+          y: detection.keypoints[0].y * landmarksCanvas.height,
+        };
+        const right = {
+          x: detection.keypoints[1].x * landmarksCanvas.width,
+          y: detection.keypoints[1].y * landmarksCanvas.height,
+        };
+
+        if (!Number.isFinite(left.x) || !Number.isFinite(left.y) || !Number.isFinite(right.x) || !Number.isFinite(right.y)) {
+          return null;
+        }
+
+        return { left, right };
+      }
+
+      function getAlignmentFromDetection(detection) {
+        const eyes = getEyeKeypoints(detection);
+        if (!eyes) return null;
+
+        const currentDx = eyes.right.x - eyes.left.x;
+        const currentDy = eyes.right.y - eyes.left.y;
+        const currentDist = Math.hypot(currentDx, currentDy);
+        if (!currentDist) return null;
+
+        const targetAnchors = getFixedMorphAnchors(landmarksCanvas.width, landmarksCanvas.height);
+        const targetLeft = targetAnchors.leftEye;
+        const targetRight = targetAnchors.rightEye;
+
+        const currentAngle = Math.atan2(currentDy, currentDx);
+        const rotation = -currentAngle;
+        const scale = (FIXED_EYE_OFFSET_X * 2) / currentDist;
+
+        function transformPoint(p) {
+          const x = p.x - eyes.left.x;
+          const y = p.y - eyes.left.y;
+
+          const sx = x * scale;
+          const sy = y * scale;
+
+          const rx = sx * Math.cos(rotation) - sy * Math.sin(rotation);
+          const ry = sx * Math.sin(rotation) + sy * Math.cos(rotation);
+
+          return {
+            x: rx + targetLeft.x,
+            y: ry + targetLeft.y,
+          };
+        }
+
+        return {
+          eyes,
+          targetLeft,
+          targetRight,
+          rotation,
+          scale,
+          transformPoint,
+        };
+      }
+
+      function getAlignedLandmarkPoints(detection) {
+        const alignment = getAlignmentFromDetection(detection);
+        if (!alignment) return null;
+
+        const alignedPoints = [];
+
+        for (let pointIndex = 0; pointIndex < 6; pointIndex += 1) {
+          const point = detection.keypoints?.[pointIndex];
+          if (!point) return null;
+
+          alignedPoints[pointIndex] = alignment.transformPoint({
+            x: point.x * landmarksCanvas.width,
+            y: point.y * landmarksCanvas.height,
+          });
+        }
+
+        return alignedPoints;
+      }
+
+      function updateAveragedLandmarks(detectedLandmarkSets) {
+        const nextAverage = [];
+
+        for (let index = 0; index < detectedLandmarkSets.length; index += 1) {
+          const detectedPoints = detectedLandmarkSets[index];
+          const previousPoints = averagedLandmarks[index] || [];
+          const nextPoints = [];
+
+          for (let pointIndex = 0; pointIndex < 6; pointIndex += 1) {
+            const currentPoint = detectedPoints[pointIndex];
+            if (!currentPoint) continue;
+
+            const previousPoint = previousPoints[pointIndex];
+            nextPoints[pointIndex] = previousPoint
+              ? {
+                  x: previousPoint.x * LANDMARK_DECAY + currentPoint.x * LANDMARK_BLEND,
+                  y: previousPoint.y * LANDMARK_DECAY + currentPoint.y * LANDMARK_BLEND,
+                }
+              : currentPoint;
+          }
+
+          nextAverage[index] = nextPoints;
+        }
+
+        averagedLandmarks = nextAverage;
+      }
+
+      function drawAveragedLandmarks(ctx) {
+        ctx.clearRect(0, 0, landmarksAveragingCanvas.width, landmarksAveragingCanvas.height);
+        ctx.strokeStyle = "rgba(170, 255, 180, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.fillStyle = "rgba(170, 255, 180, 0.9)";
+
+        for (const points of averagedLandmarks) {
+          for (const [aIndex, bIndex, cIndex] of MORPH_TRIANGLES) {
+            const a = points[aIndex];
+            const b = points[bIndex];
+            const c = points[cIndex];
+            if (!a || !b || !c) continue;
+
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.lineTo(c.x, c.y);
+            ctx.closePath();
+            ctx.stroke();
+          }
+
+          for (const point of points) {
+            if (!point) continue;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      function drawAlignedDetection(ctx, detection) {
+        const alignment = getAlignmentFromDetection(detection);
+        if (!alignment) return false;
+
+        const box = detection.boundingBox;
+        const corners = [
+          { x: box.originX, y: box.originY },
+          { x: box.originX + box.width, y: box.originY },
+          { x: box.originX + box.width, y: box.originY + box.height },
+          { x: box.originX, y: box.originY + box.height },
+        ];
+
+        const tc = corners.map(alignment.transformPoint);
+        const transformedKeypoints = (detection.keypoints || []).map((kp) =>
+          alignment.transformPoint({
+            x: kp.x * landmarksCanvas.width,
+            y: kp.y * landmarksCanvas.height,
+          })
+        );
+
+        ctx.save();
+        ctx.strokeStyle = "rgba(0,255,255,0.22)";
+        ctx.lineWidth = 1;
+
+        ctx.beginPath();
+        ctx.moveTo(tc[0].x, tc[0].y);
+        ctx.lineTo(tc[1].x, tc[1].y);
+        ctx.lineTo(tc[2].x, tc[2].y);
+        ctx.lineTo(tc[3].x, tc[3].y);
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255,0,255,0.28)";
+        for (const p of transformedKeypoints) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+
+        return true;
+      }
+
+      function drawAlignedFaceCrop(ctx, detection) {
+        const alignment = getAlignmentFromDetection(detection);
+        if (!alignment) return;
+
+        const box = detection.boundingBox;
+        const pad = 24;
+
+        const sx = Math.max(0, box.originX - pad);
+        const sy = Math.max(0, box.originY - pad);
+        const sw = Math.min(rawInputCanvas.width - sx, box.width + pad * 2);
+        const sh = Math.min(rawInputCanvas.height - sy, box.height + pad * 2);
+
+        const srcCenterX = sx + sw / 2;
+        const srcCenterY = sy + sh / 2;
+
+        const transformedCenter = alignment.transformPoint({
+          x: srcCenterX,
+          y: srcCenterY,
+        });
+
+        ctx.save();
+        ctx.translate(transformedCenter.x, transformedCenter.y);
+        ctx.rotate(alignment.rotation);
+        ctx.scale(alignment.scale, alignment.scale);
+        ctx.globalAlpha = 0.01;
+        ctx.drawImage(rawInputCanvas, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+        ctx.restore();
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+
+      function boundingBox(triangle, width, height) {
+        const xs = triangle.map((point) => point.x);
+        const ys = triangle.map((point) => point.y);
+
+        return {
+          minX: clamp(Math.floor(Math.min(...xs)), 0, width - 1),
+          maxX: clamp(Math.ceil(Math.max(...xs)), 0, width - 1),
+          minY: clamp(Math.floor(Math.min(...ys)), 0, height - 1),
+          maxY: clamp(Math.ceil(Math.max(...ys)), 0, height - 1),
+        };
+      }
+
+      function barycentric(point, triangle) {
+        const [a, b, c] = triangle;
+        const denom = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+
+        if (Math.abs(denom) < 1e-6) {
+          return null;
+        }
+
+        const u = ((b.y - c.y) * (point.x - c.x) + (c.x - b.x) * (point.y - c.y)) / denom;
+        const v = ((c.y - a.y) * (point.x - c.x) + (a.x - c.x) * (point.y - c.y)) / denom;
+        const w = 1 - u - v;
+
+        return [u, v, w];
+      }
+
+      function pointInTriangle(point, triangle) {
+        const weights = barycentric(point, triangle);
+        if (!weights) return false;
+
+        const epsilon = 1e-4;
+        return weights.every((weight) => weight >= -epsilon && weight <= 1 + epsilon);
+      }
+
+      function sampleBilinear(imageData, x, y) {
+        const { width, height, data } = imageData;
+        const clampedX = clamp(x, 0, width - 1);
+        const clampedY = clamp(y, 0, height - 1);
+        const x0 = Math.floor(clampedX);
+        const y0 = Math.floor(clampedY);
+        const x1 = Math.min(x0 + 1, width - 1);
+        const y1 = Math.min(y0 + 1, height - 1);
+        const dx = clampedX - x0;
+        const dy = clampedY - y0;
+
+        function read(ix, iy) {
+          const offset = (iy * width + ix) * 4;
+          return [data[offset], data[offset + 1], data[offset + 2], data[offset + 3]];
+        }
+
+        const c00 = read(x0, y0);
+        const c10 = read(x1, y0);
+        const c01 = read(x0, y1);
+        const c11 = read(x1, y1);
+
+        const result = [0, 0, 0, 0];
+        for (let channel = 0; channel < 4; channel += 1) {
+          const top = c00[channel] * (1 - dx) + c10[channel] * dx;
+          const bottom = c01[channel] * (1 - dx) + c11[channel] * dx;
+          result[channel] = top * (1 - dy) + bottom * dy;
+        }
+
+        return result;
+      }
+
+      function writePixel(imageData, x, y, color) {
+        const offset = (y * imageData.width + x) * 4;
+        imageData.data[offset] = color[0];
+        imageData.data[offset + 1] = color[1];
+        imageData.data[offset + 2] = color[2];
+        imageData.data[offset + 3] = color[3];
+      }
+
+      function copyImageData(imageData) {
+        return new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+      }
+
+      function warpTriangle(sourceImageData, targetImageData, sourceTriangle, targetTriangle) {
+        const weightsCache = [];
+        const box = boundingBox(targetTriangle, targetImageData.width, targetImageData.height);
+
+        for (let y = box.minY; y <= box.maxY; y += 1) {
+          for (let x = box.minX; x <= box.maxX; x += 1) {
+            const point = { x: x + 0.5, y: y + 0.5 };
+            if (!pointInTriangle(point, targetTriangle)) continue;
+
+            const weights = barycentric(point, targetTriangle);
+            if (!weights) continue;
+
+            const sourcePoint = {
+              x: weights[0] * sourceTriangle[0].x + weights[1] * sourceTriangle[1].x + weights[2] * sourceTriangle[2].x,
+              y: weights[0] * sourceTriangle[0].y + weights[1] * sourceTriangle[1].y + weights[2] * sourceTriangle[2].y,
+            };
+
+            const color = sampleBilinear(sourceImageData, sourcePoint.x, sourcePoint.y);
+            writePixel(targetImageData, x, y, color);
+            weightsCache.push((y * targetImageData.width + x) * 4);
+          }
+        }
+
+        return weightsCache;
+      }
+
+      function morphFaceToAverage(sourceImageData, sourceLandmarks, targetLandmarks) {
+        const W = sourceImageData.width;
+        const H = sourceImageData.height;
+        const corners = [
+          { x: 0, y: 0 },
+          { x: W, y: 0 },
+          { x: W, y: H },
+          { x: 0, y: H },
+        ];
+        const extSource = [...sourceLandmarks, ...corners];
+        const extTarget = [...targetLandmarks, ...corners];
+
+        const outputImageData = copyImageData(sourceImageData);
+        let wroteAnyPixel = false;
+
+        for (const indices of WARP_TRIANGLES) {
+          const sourceTriangle = indices.map((index) => extSource[index]);
+          const targetTriangle = indices.map((index) => extTarget[index]);
+
+          if (sourceTriangle.some((point) => !point) || targetTriangle.some((point) => !point)) {
+            continue;
+          }
+
+          const touchedPixels = warpTriangle(sourceImageData, outputImageData, sourceTriangle, targetTriangle);
+          wroteAnyPixel = wroteAnyPixel || touchedPixels.length > 0;
+        }
+
+        return wroteAnyPixel ? outputImageData : null;
+      }
+
+      function getAverageLandmarks() {
+        if (!averagedLandmarks.length) return null;
+
+        const totals = Array.from({ length: 6 }, () => ({ x: 0, y: 0, count: 0 }));
+
+        for (const points of averagedLandmarks) {
+          for (let index = 0; index < 6; index += 1) {
+            const point = points[index];
+            if (!point) continue;
+
+            totals[index].x += point.x;
+            totals[index].y += point.y;
+            totals[index].count += 1;
+          }
+        }
+
+        if (totals.some((entry) => entry.count === 0)) return null;
+
+        const averaged = totals.map((entry) => ({
+          x: entry.x / entry.count,
+          y: entry.y / entry.count,
+        }));
+
+        const targetAnchors = getFixedMorphAnchors(faceWrappingCanvas.width, faceWrappingCanvas.height);
+        averaged[0] = targetAnchors.leftEye;
+        averaged[1] = targetAnchors.rightEye;
+        averaged[2] = targetAnchors.nose;
+        averaged[3] = targetAnchors.mouth;
+
+        return averaged;
+      }
+
+      function createWrappedFaceSnapshot(detection, targetLandmarks) {
+        const alignment = getAlignmentFromDetection(detection);
+        if (!alignment || !targetLandmarks) return null;
+
+        const sourceLandmarks = getAlignedLandmarkPoints(detection);
+        if (!sourceLandmarks) return null;
+
+        const box = detection.boundingBox;
+        const pad = 24;
+        const sx = Math.max(0, box.originX - pad);
+        const sy = Math.max(0, box.originY - pad);
+        const sw = Math.min(rawInputCanvas.width - sx, box.width + pad * 2);
+        const sh = Math.min(rawInputCanvas.height - sy, box.height + pad * 2);
+
+        if (sw <= 0 || sh <= 0) return null;
+
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = faceWrapSnapshotCanvas.width;
+        tempCanvas.height = faceWrapSnapshotCanvas.height;
+        const tempCtx = tempCanvas.getContext("2d");
+        tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+        const transformedCenter = alignment.transformPoint({
+          x: sx + sw / 2,
+          y: sy + sh / 2,
+        });
+
+        tempCtx.save();
+        tempCtx.translate(transformedCenter.x, transformedCenter.y);
+        tempCtx.rotate(alignment.rotation);
+        tempCtx.scale(alignment.scale, alignment.scale);
+        tempCtx.drawImage(rawInputCanvas, sx, sy, sw, sh, -sw / 2, -sh / 2, sw, sh);
+        tempCtx.restore();
+
+        const sourceImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const wrappedImageData = morphFaceToAverage(sourceImageData, sourceLandmarks, targetLandmarks);
+        if (!wrappedImageData) return null;
+
+        tempCtx.putImageData(wrappedImageData, 0, 0);
+        return tempCanvas;
+      }
+
+      function drawWrappedFaceSnapshot(ctx, detection, targetLandmarks) {
+        const wrappedCanvas = createWrappedFaceSnapshot(detection, targetLandmarks);
+        if (!wrappedCanvas) return false;
+
+        ctx.clearRect(0, 0, faceWrapSnapshotCanvas.width, faceWrapSnapshotCanvas.height);
+        ctx.drawImage(wrappedCanvas, 0, 0);
+
+        return true;
+      }
+
+      function drawDetectionsOverlay(ctx, detections) {
+        const successfulLandmarkSets = [];
+
+        for (const detection of detections) {
+          const didDraw = drawAlignedDetection(ctx, detection);
+          if (!didDraw) continue;
+
+          const alignedPoints = getAlignedLandmarkPoints(detection);
+          if (alignedPoints) {
+            successfulLandmarkSets.push(alignedPoints);
+          }
+        }
+
+        return successfulLandmarkSets;
+      }
+
+      function drawWrappedFacesOverlay(ctx, detections, targetLandmarks) {
+        if (!targetLandmarks) return;
+
+        for (const detection of detections) {
+          const wrappedCanvas = createWrappedFaceSnapshot(detection, targetLandmarks);
+          if (!wrappedCanvas) continue;
+
+          ctx.save();
+          ctx.globalAlpha = 0.01;
+          ctx.drawImage(wrappedCanvas, 0, 0);
+          ctx.restore();
+        }
+      }
+
+      async function processOneFrame() {
+        if (!faceDetector || isProcessing) return;
+
+        isProcessing = true;
+        try {
+          const params = faceStream.next().value;
+          drawFace(rawInputCtx, params);
+          drawAlignedFace(alignedFaceCtx, params);
+
+          const result = faceDetector.detect(rawInputCanvas);
+
+          const successfulLandmarkSets = drawDetectionsOverlay(landmarksCtx, result.detections);
+          if (successfulLandmarkSets.length > 0) {
+            updateAveragedLandmarks(successfulLandmarkSets);
+            drawAveragedLandmarks(landmarksAveragingCtx);
+          }
+          const averageLandmarks = getAverageLandmarks();
+          if (averageLandmarks) {
+            for (const detection of result.detections) {
+              if (drawWrappedFaceSnapshot(faceWrapSnapshotCtx, detection, averageLandmarks)) {
+                break;
+              }
+            }
+          }
+          drawWrappedFacesOverlay(faceWrappingCtx, result.detections, averageLandmarks);
+        } catch (err) {
+          console.error(err);
+        } finally {
+          isProcessing = false;
+        }
+      }
+
+      async function tick() {
+        if (isHolding) {
+          await processOneFrame();
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+
+      rawInputCanvas.addEventListener("mousedown", () => {
+        isHolding = true;
+      });
+
+      window.addEventListener("mouseup", () => {
+        isHolding = false;
+      });
+
+      rawInputCanvas.addEventListener("mouseleave", () => {
+        isHolding = false;
+      });
+
+      await initializeFaceDetector();
+      confidenceValue.textContent = Number(confidenceInput.value).toFixed(2);
+
+      drawFace(rawInputCtx, faceStream.next().value);
+      tick();
+    </script>
+  </body>
+</html>

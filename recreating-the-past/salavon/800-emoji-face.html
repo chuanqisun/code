@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Emoji Rolling Average</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        color: #fff;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+      }
+      .wrap {
+        display: grid;
+        height: 100vh;
+      }
+      @media (orientation: landscape), (min-width: 768px) {
+        .wrap {
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: 1fr;
+        }
+      }
+      @media (orientation: portrait) and (max-width: 767px) {
+        .wrap {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr 1fr;
+        }
+      }
+      .pane {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #000;
+        min-width: 0;
+        min-height: 0;
+      }
+      .label {
+        position: absolute;
+        top: 10px;
+        left: 12px;
+        font-size: 14px;
+        opacity: 0.8;
+        z-index: 2;
+      }
+      canvas {
+        position: absolute;
+        left: 0;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="wrap">
+      <div class="pane" id="leftPane">
+        <div class="label">Current emoji</div>
+        <canvas id="leftCanvas"></canvas>
+      </div>
+      <div class="pane" id="rightPane">
+        <div class="label">Rolling average</div>
+        <canvas id="rightCanvas"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const EMOJIS = [
+        "😀",
+        "😃",
+        "😄",
+        "😁",
+        "😆",
+        "😅",
+        "😂",
+        "🤣",
+        "🥲",
+        "☺️",
+        "😊",
+        "😇",
+        "🙂",
+        "🙃",
+        "😉",
+        "😌",
+        "😍",
+        "🥰",
+        "😘",
+        "😗",
+        "😙",
+        "😚",
+        "😋",
+        "😛",
+        "😝",
+        "😜",
+        "🤪",
+        "🤨",
+        "🧐",
+        "🤓",
+        "😎",
+        "🥸",
+        "🤩",
+        "🥳",
+        "😏",
+        "😒",
+        "😞",
+        "😔",
+        "😟",
+        "😕",
+        "🙁",
+        "☹️",
+        "😣",
+        "😖",
+        "😫",
+        "😩",
+        "🥺",
+        "😢",
+        "😭",
+        "😤",
+        "😠",
+        "😡",
+        "🤬",
+        "🤯",
+        "😳",
+        "🥵",
+        "🥶",
+        "😱",
+        "😨",
+        "😰",
+        "😥",
+        "😓",
+        "🤗",
+        "🤔",
+        "🫣",
+        "🤭",
+        "🫢",
+        "🫡",
+        "🤫",
+        "🫠",
+        "🤥",
+        "😶",
+        "🫥",
+        "😐",
+        "🫤",
+        "😑",
+        "🫨",
+        "😬",
+        "🙄",
+        "😯",
+        "😦",
+        "😧",
+        "😮",
+        "😲",
+        "🥱",
+        "😴",
+        "🤤",
+        "😪",
+        "😵",
+        "🤐",
+        "🥴",
+        "🤢",
+        "🤮",
+        "🤧",
+        "😷",
+        "🤒",
+        "🤕",
+        "🤑",
+        "🤠",
+        "😈",
+        "👿",
+        "👹",
+        "👺",
+        "💀",
+        "☠️",
+        "👻",
+        "👽",
+        "👾",
+        "🤖",
+        "💩",
+        "😺",
+        "😸",
+        "😹",
+        "😻",
+        "😼",
+        "😽",
+        "🙀",
+        "😿",
+        "😾",
+        "🙈",
+        "🙉",
+        "🙊",
+      ];
+
+      const ALPHA_NEW = 0.01;
+      const ALPHA_OLD = 0.99;
+
+      const leftCanvas = document.getElementById("leftCanvas");
+      const rightCanvas = document.getElementById("rightCanvas");
+      const leftCtx = leftCanvas.getContext("2d", { willReadFrequently: true });
+      const rightCtx = rightCanvas.getContext("2d");
+      const leftPane = document.getElementById("leftPane");
+      const rightPane = document.getElementById("rightPane");
+
+      let W, H, avgF32, emojiPixels;
+      let shuffled = [];
+      let cycleIndex = 0;
+      let dirty = true;
+      let rafId = null;
+
+      function shuffle(arr) {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      }
+
+      function nextEmoji() {
+        if (cycleIndex >= shuffled.length) {
+          shuffled = shuffle(EMOJIS);
+          cycleIndex = 0;
+        }
+        return shuffled[cycleIndex++];
+      }
+
+      function measure() {
+        const lr = leftPane.getBoundingClientRect();
+        const rr = rightPane.getBoundingClientRect();
+        const pw = Math.floor(Math.min(lr.width, rr.width));
+        const ph = Math.floor(Math.min(lr.height, rr.height));
+        if (pw === W && ph === H) return false;
+        W = pw;
+        H = ph;
+        return true;
+      }
+
+      function sizeCanvases() {
+        for (const c of [leftCanvas, rightCanvas]) {
+          c.width = W;
+          c.height = H;
+          c.style.width = W + "px";
+          c.style.height = H + "px";
+        }
+      }
+
+      function rasterize(emoji) {
+        leftCtx.fillStyle = "#000";
+        leftCtx.fillRect(0, 0, W, H);
+        const size = Math.floor(Math.min(W, H) * 0.7);
+        leftCtx.font = size + "px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";
+        leftCtx.textAlign = "center";
+        leftCtx.textBaseline = "middle";
+        leftCtx.fillText(emoji, W / 2, H / 2);
+        return new Uint8ClampedArray(leftCtx.getImageData(0, 0, W, H).data);
+      }
+
+      function buildCache() {
+        emojiPixels = new Map();
+        for (const e of EMOJIS) {
+          emojiPixels.set(e, rasterize(e));
+        }
+      }
+
+      function initAvg() {
+        avgF32 = new Float32Array(W * H * 4);
+        // seed with first shuffled emoji
+        const first = emojiPixels.get(shuffled[0] || EMOJIS[0]);
+        for (let i = 0; i < avgF32.length; i++) avgF32[i] = first[i];
+      }
+
+      function rebuild() {
+        measure();
+        sizeCanvases();
+        buildCache();
+        initAvg();
+        dirty = false;
+      }
+
+      function step() {
+        if (dirty) rebuild();
+
+        const emoji = nextEmoji();
+        const src = emojiPixels.get(emoji);
+
+        // draw current emoji on left
+        leftCtx.putImageData(new ImageData(new Uint8ClampedArray(src), W, H), 0, 0);
+
+        // blend into float buffer
+        const n = avgF32.length;
+        const out = new Uint8ClampedArray(n);
+        for (let i = 0; i < n; i++) {
+          const v = avgF32[i] * ALPHA_OLD + src[i] * ALPHA_NEW;
+          avgF32[i] = v;
+          out[i] = Math.round(v);
+        }
+
+        // draw average on right
+        rightCtx.putImageData(new ImageData(out, W, H), 0, 0);
+      }
+
+      function loop() {
+        step();
+        rafId = requestAnimationFrame(loop);
+      }
+
+      // handle resize
+      let resizeTimer;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          if (measure()) dirty = true;
+        }, 150);
+      });
+
+      // init
+      shuffled = shuffle(EMOJIS);
+      cycleIndex = 0;
+      rebuild();
+      rafId = requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

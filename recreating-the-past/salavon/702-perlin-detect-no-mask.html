@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perlin Noise → Face Detection Stream</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111110;
+        --ink: #e8e8e3;
+        --muted: #999;
+        --line: #333330;
+        --surface: #000;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      h2 {
+        margin: 0;
+      }
+      button,
+      input {
+        font: inherit;
+      }
+
+      figure {
+        margin: 0;
+      }
+
+      html {
+        scrollbar-gutter: stable;
+      }
+
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--ink);
+        font: 14px/1.4 "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 1fr);
+        align-items: start;
+        gap: 12px;
+      }
+
+      .panel {
+        display: grid;
+        min-width: 0;
+        gap: 5px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        aspect-ratio: 1;
+        background: var(--surface);
+        border: 1px solid var(--line);
+      }
+
+      .stage canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .status-bar {
+        display: flex;
+        gap: 16px;
+        color: var(--muted);
+      }
+
+      .settings-accordion {
+        margin-top: 12px;
+        border: 1px solid var(--line);
+      }
+
+      .settings-accordion summary {
+        padding: 8px 12px;
+        cursor: pointer;
+        color: var(--muted);
+        user-select: none;
+      }
+
+      .settings-accordion summary:hover {
+        color: var(--ink);
+      }
+
+      .settings {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 24px;
+        padding: 4px 12px 12px;
+      }
+
+      .settings-group {
+        display: grid;
+        gap: 6px;
+      }
+
+      .setting-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .setting-row label {
+        min-width: 140px;
+        color: var(--muted);
+      }
+
+      .setting-row input[type="range"] {
+        flex: 1;
+        min-width: 80px;
+      }
+
+      .setting-row .value {
+        min-width: 36px;
+        text-align: right;
+      }
+
+      @media (max-width: 600px) {
+        .settings {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .feed {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+        gap: 12px;
+        margin-top: 12px;
+        align-items: stretch;
+      }
+
+      .feed-card {
+        display: grid;
+        grid-template-rows: auto auto;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        min-width: 0;
+      }
+
+      .feed-card canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        background: var(--surface);
+      }
+
+      .feed-card figcaption {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        padding: 8px 10px 10px;
+        color: var(--ink);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+      }
+
+      .feed-card-label {
+        color: var(--ink);
+      }
+
+      .feed-card-confidence {
+        color: var(--muted);
+        text-align: right;
+      }
+
+      @media (max-width: 900px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+        .hud {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Noise</h2>
+            <div class="controls">
+              <button id="startButton" disabled>Start</button>
+              <button id="stopButton" disabled>Stop</button>
+              <button id="downloadButton" disabled>Download</button>
+            </div>
+          </div>
+          <div class="stage">
+            <canvas id="meshPreview" width="512" height="512"></canvas>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Face</h2>
+            <div class="status-bar">
+              <span id="statusText">Loading…</span>
+              <span>Frames: <span id="frameCount">0</span></span>
+              <span>Detected: <span id="detectCount">0</span></span>
+            </div>
+          </div>
+          <div class="stage">
+            <canvas id="averagePreview" width="512" height="512"></canvas>
+          </div>
+        </aside>
+      </section>
+
+      <details class="settings-accordion">
+        <summary>Settings</summary>
+        <div class="settings">
+          <div class="settings-group">
+            <div class="setting-row">
+              <label for="detectionConfidence">Detection confidence</label>
+              <input type="range" id="detectionConfidence" min="0" max="1" step="0.05" value="0.2" />
+              <span id="detectionConfidenceValue" class="value">0.20</span>
+            </div>
+            <div class="setting-row">
+              <label for="presenceConfidence">Presence confidence</label>
+              <input type="range" id="presenceConfidence" min="0" max="1" step="0.05" value="0.2" />
+              <span id="presenceConfidenceValue" class="value">0.20</span>
+            </div>
+          </div>
+          <div class="settings-group">
+            <div class="setting-row">
+              <label for="noiseScale">Noise scale</label>
+              <input type="range" id="noiseScale" min="1" max="12" step="0.5" value="3" />
+              <span id="noiseScaleValue" class="value">3.0</span>
+            </div>
+            <div class="setting-row">
+              <label for="noiseContrast">Noise contrast</label>
+              <input type="range" id="noiseContrast" min="0.5" max="5" step="0.1" value="3.5" />
+              <span id="noiseContrastValue" class="value">3.5</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div id="feed" class="feed"></div>
+    </main>
+
+    <script type="module">
+      import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+      import Delaunator from "https://cdn.jsdelivr.net/npm/delaunator@5.0.0/+esm";
+
+      const { FaceDetector, FaceLandmarker, FilesetResolver } = vision;
+
+      const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+      const DETECTOR_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
+      const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm";
+      const CAPTURE_SIZE = 512;
+      const TEXTURE_SIZE = 512;
+      const NOISE_DRIFT_STEP = 0.6;
+      const CANVAS_FILL = "#000";
+      const SPHERE_FACE_COLUMNS = 32;
+      const SPHERE_FACE_ROWS = 40;
+
+      const FACE_OVAL_INDICES = [
+        10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162,
+        21, 54, 103, 67, 109,
+      ];
+
+      const el = {
+        meshPreview: document.getElementById("meshPreview"),
+        startButton: document.getElementById("startButton"),
+        stopButton: document.getElementById("stopButton"),
+        downloadButton: document.getElementById("downloadButton"),
+        feed: document.getElementById("feed"),
+        averagePreview: document.getElementById("averagePreview"),
+        statusText: document.getElementById("statusText"),
+        frameCount: document.getElementById("frameCount"),
+        detectCount: document.getElementById("detectCount"),
+        detectionConfidence: document.getElementById("detectionConfidence"),
+        detectionConfidenceValue: document.getElementById("detectionConfidenceValue"),
+        presenceConfidence: document.getElementById("presenceConfidence"),
+        presenceConfidenceValue: document.getElementById("presenceConfidenceValue"),
+        noiseScale: document.getElementById("noiseScale"),
+        noiseScaleValue: document.getElementById("noiseScaleValue"),
+        noiseContrast: document.getElementById("noiseContrast"),
+        noiseContrastValue: document.getElementById("noiseContrastValue"),
+      };
+
+      const previewCtx = el.meshPreview.getContext("2d");
+      const averageCtx = el.averagePreview.getContext("2d");
+
+      const state = {
+        faceLandmarker: null,
+        faceDetector: null,
+        canonicalMesh: null,
+        canonicalTriangles: [],
+        sphereFaceMesh: null,
+        sphereFaceUVs: null,
+        sphereFaceTriangles: [],
+        running: false,
+        simTimeoutId: 0,
+        renderFrameId: 0,
+        frameIndex: 0,
+        detectedCount: 0,
+        discoveredFaces: [],
+        noiseTime: 0,
+        noiseScale: 3,
+        noiseContrast: 3.5,
+        pendingRender: null,
+        dirty: false,
+      };
+
+      el.startButton.addEventListener("click", start);
+      el.stopButton.addEventListener("click", stop);
+      el.downloadButton.addEventListener("click", downloadAll);
+      el.detectionConfidence.addEventListener("input", applyConfidence);
+      el.presenceConfidence.addEventListener("input", applyConfidence);
+      el.noiseScale.addEventListener("input", () => {
+        state.noiseScale = Number(el.noiseScale.value);
+        el.noiseScaleValue.textContent = state.noiseScale.toFixed(1);
+      });
+      el.noiseContrast.addEventListener("input", () => {
+        state.noiseContrast = Number(el.noiseContrast.value);
+        el.noiseContrastValue.textContent = state.noiseContrast.toFixed(1);
+      });
+
+      init();
+
+      async function init() {
+        fillCanvas(averageCtx, el.averagePreview);
+        try {
+          el.statusText.textContent = "Loading canonical mesh…";
+          state.canonicalMesh = await fetch("canonical-mesh.json").then((r) => r.json());
+          state.canonicalTriangles = triangulateCanonicalMesh(state.canonicalMesh);
+          const sphereFace = buildSphereFaceMesh(SPHERE_FACE_COLUMNS, SPHERE_FACE_ROWS);
+          state.sphereFaceMesh = sphereFace.mesh;
+          state.sphereFaceUVs = sphereFace.uvs;
+          state.sphereFaceTriangles = sphereFace.triangles;
+
+          el.statusText.textContent = "Loading model…";
+          const resolver = await FilesetResolver.forVisionTasks(WASM_URL);
+          state.faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+            baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+            runningMode: "IMAGE",
+            numFaces: 1,
+            outputFaceBlendshapes: false,
+            outputFacialTransformationMatrixes: false,
+            minFaceDetectionConfidence: Number(el.detectionConfidence.value),
+            minFacePresenceConfidence: Number(el.presenceConfidence.value),
+          });
+          state.faceDetector = await FaceDetector.createFromOptions(resolver, {
+            baseOptions: { modelAssetPath: DETECTOR_MODEL_URL, delegate: "GPU" },
+            runningMode: "IMAGE",
+            minDetectionConfidence: 0,
+          });
+
+          el.statusText.textContent = "Ready";
+          el.startButton.disabled = false;
+          el.downloadButton.disabled = false;
+
+          const initialNoise = generateNoiseTexture(TEXTURE_SIZE, 42, state.noiseScale, state.noiseContrast);
+          previewCtx.drawImage(projectOntoSphereFace(initialNoise), 0, 0, el.meshPreview.width, el.meshPreview.height);
+        } catch (error) {
+          console.error(error);
+          el.statusText.textContent = "Error loading resources";
+        }
+      }
+
+      function start() {
+        if (state.running || !state.faceLandmarker || !state.faceDetector) return;
+        state.running = true;
+        el.startButton.disabled = true;
+        el.stopButton.disabled = false;
+        el.statusText.textContent = "Running";
+        scheduleSim();
+        scheduleRender();
+      }
+
+      function stop() {
+        state.running = false;
+        if (state.simTimeoutId) {
+          clearTimeout(state.simTimeoutId);
+          state.simTimeoutId = 0;
+        }
+        if (state.renderFrameId) {
+          cancelAnimationFrame(state.renderFrameId);
+          state.renderFrameId = 0;
+        }
+        el.startButton.disabled = false;
+        el.stopButton.disabled = true;
+        el.statusText.textContent = "Stopped";
+      }
+
+      async function applyConfidence() {
+        el.detectionConfidenceValue.textContent = Number(el.detectionConfidence.value).toFixed(2);
+        el.presenceConfidenceValue.textContent = Number(el.presenceConfidence.value).toFixed(2);
+        if (!state.faceLandmarker) return;
+        await state.faceLandmarker.setOptions({
+          minFaceDetectionConfidence: Number(el.detectionConfidence.value),
+          minFacePresenceConfidence: Number(el.presenceConfidence.value),
+        });
+      }
+
+      function scheduleSim() {
+        if (state.running) state.simTimeoutId = setTimeout(simTick, 0);
+      }
+
+      function simTick() {
+        if (!state.running) return;
+
+        state.noiseTime += NOISE_DRIFT_STEP;
+        const seed = Math.floor(state.noiseTime * 37) ^ 0xbeef;
+        const noiseCanvas = generateNoiseTexture(TEXTURE_SIZE, seed, state.noiseScale, state.noiseContrast);
+        const meshCanvas = projectOntoSphereFace(noiseCanvas);
+
+        state.frameIndex++;
+        const result = state.faceLandmarker.detect(meshCanvas);
+        const landmarks = result?.faceLandmarks?.[0];
+
+        state.pendingRender = { meshCanvas };
+        state.dirty = true;
+
+        if (landmarks?.length) {
+          const warpedCanvas = warpDetectedToCanonical(landmarks, meshCanvas);
+          if (warpedCanvas) {
+            const confidence = detectFaceConfidence(meshCanvas);
+            const faceNumber = state.detectedCount + 1;
+            state.detectedCount = faceNumber;
+            state.discoveredFaces.unshift({
+              canvas: warpedCanvas,
+              id: faceNumber,
+              seed,
+              confidence,
+            });
+          }
+        }
+
+        scheduleSim();
+      }
+
+      function scheduleRender() {
+        if (state.running) state.renderFrameId = requestAnimationFrame(renderTick);
+      }
+
+      function renderTick() {
+        if (!state.running) return;
+
+        if (state.dirty && state.pendingRender) {
+          state.dirty = false;
+          const { meshCanvas } = state.pendingRender;
+
+          previewCtx.clearRect(0, 0, el.meshPreview.width, el.meshPreview.height);
+          previewCtx.drawImage(meshCanvas, 0, 0, el.meshPreview.width, el.meshPreview.height);
+
+          el.frameCount.textContent = String(state.frameIndex);
+          el.detectCount.textContent = String(state.detectedCount);
+
+          if (el.feed.childElementCount !== state.discoveredFaces.length) {
+            renderFeed();
+            updateAveragePreview();
+          }
+        }
+
+        scheduleRender();
+      }
+
+      function generateNoiseTexture(size, seed, scale, contrast) {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        const imageData = ctx.createImageData(size, size);
+        const perlin = new PerlinNoise(seed);
+        const offsetX = ((seed * 13) & 0xffff) / 10;
+        const offsetY = ((seed * 7) & 0xffff) / 10;
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const nx = (x / size) * scale + offsetX;
+            const ny = (y / size) * scale + offsetY;
+            const raw = perlin.fbm(nx, ny, 6);
+            const brightness = Math.floor(clamp((raw * 0.5 + 0.5 - 0.5) * contrast + 0.5, 0, 1) * 255);
+            const idx = (y * size + x) * 4;
+            imageData.data[idx] = brightness;
+            imageData.data[idx + 1] = brightness;
+            imageData.data[idx + 2] = brightness;
+            imageData.data[idx + 3] = 255;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+      }
+
+      function projectOntoSphereFace(sourceCanvas) {
+        const canvas = document.createElement("canvas");
+        canvas.width = CAPTURE_SIZE;
+        canvas.height = CAPTURE_SIZE;
+        renderProjection(canvas, sourceCanvas, state.sphereFaceUVs, state.sphereFaceMesh, state.sphereFaceTriangles);
+        return canvas;
+      }
+
+      function warpDetectedToCanonical(landmarks, sourceCanvas) {
+        if (getBackfaceRatio(landmarks, state.canonicalTriangles) > 0.5) return null;
+        const canvas = document.createElement("canvas");
+        canvas.width = CAPTURE_SIZE;
+        canvas.height = CAPTURE_SIZE;
+        renderProjection(canvas, sourceCanvas, landmarks, state.canonicalMesh, state.canonicalTriangles);
+        return canvas;
+      }
+
+      function getBackfaceRatio(landmarks, triangles) {
+        if (!triangles?.length || !landmarks?.length) return 0;
+        let backfaces = 0;
+        const total = triangles.length / 3;
+        for (let i = 0; i < triangles.length; i += 3) {
+          const a = landmarks[triangles[i]],
+            b = landmarks[triangles[i + 1]],
+            c = landmarks[triangles[i + 2]];
+          if (!isFrontFacing(a, b, c)) backfaces++;
+        }
+        return backfaces / total;
+      }
+
+      function detectFaceConfidence(sourceCanvas) {
+        const result = state.faceDetector?.detect(sourceCanvas);
+        return result?.detections?.[0]?.categories?.[0]?.score ?? 0;
+      }
+
+      function renderProjection(canvas, sourceCanvas, sourceMesh, destMesh, triangles) {
+        const ctx = canvas.getContext("2d");
+        const { width, height } = canvas;
+        ctx.fillStyle = CANVAS_FILL;
+        ctx.fillRect(0, 0, width, height);
+        if (!triangles?.length || !sourceMesh?.length || !destMesh?.length) return;
+
+        const sw = sourceCanvas.width;
+        const sh = sourceCanvas.height;
+
+        for (let i = 0; i < triangles.length; i += 3) {
+          const a = triangles[i],
+            b = triangles[i + 1],
+            c = triangles[i + 2];
+          drawTexturedTriangle(
+            ctx,
+            sourceCanvas,
+            { x: sourceMesh[a].x * sw, y: sourceMesh[a].y * sh },
+            { x: sourceMesh[b].x * sw, y: sourceMesh[b].y * sh },
+            { x: sourceMesh[c].x * sw, y: sourceMesh[c].y * sh },
+            { x: destMesh[a].x * width, y: destMesh[a].y * height },
+            { x: destMesh[b].x * width, y: destMesh[b].y * height },
+            { x: destMesh[c].x * width, y: destMesh[c].y * height }
+          );
+        }
+      }
+
+      function buildSphereFaceMesh(columns, rows) {
+        const mesh = [];
+        const uvs = [];
+        const triangles = [];
+        const phiMin = -0.92;
+        const phiMax = 0.92;
+        const thetaMin = -1;
+        const thetaMax = 1;
+        const centerX = 0.5;
+        const centerY = 0.5;
+        const radiusX = 0.4;
+        const radiusY = 0.5;
+
+        for (let row = 0; row <= rows; row++) {
+          const v = row / rows;
+          const theta = thetaMin + (thetaMax - thetaMin) * v;
+          const sinTheta = Math.sin(theta);
+          const cosTheta = Math.cos(theta);
+
+          for (let col = 0; col <= columns; col++) {
+            const u = col / columns;
+            const phi = phiMin + (phiMax - phiMin) * u;
+            const sinPhi = Math.sin(phi);
+            const cosPhi = Math.cos(phi);
+            const x3 = cosTheta * sinPhi;
+            const y3 = sinTheta;
+            const z3 = cosTheta * cosPhi;
+            const taper = 0.86 + 0.14 * Math.pow(Math.max(z3, 0), 1.6);
+
+            uvs.push({ x: u, y: v });
+            mesh.push({
+              x: centerX + x3 * radiusX * taper,
+              y: centerY + y3 * radiusY - (1 - z3) * 0.035,
+            });
+
+            if (row < rows && col < columns) {
+              const index = row * (columns + 1) + col;
+              const next = index + columns + 1;
+              triangles.push(index, next, index + 1);
+              triangles.push(index + 1, next, next + 1);
+            }
+          }
+        }
+
+        centerMeshInUnitSquare(mesh);
+
+        return { mesh, uvs, triangles };
+      }
+
+      function centerMeshInUnitSquare(mesh) {
+        if (!mesh?.length) return;
+
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        for (const point of mesh) {
+          if (point.x < minX) minX = point.x;
+          if (point.x > maxX) maxX = point.x;
+          if (point.y < minY) minY = point.y;
+          if (point.y > maxY) maxY = point.y;
+        }
+
+        const offsetX = 0.5 - (minX + maxX) / 2;
+        const offsetY = 0.5 - (minY + maxY) / 2;
+
+        for (const point of mesh) {
+          point.x += offsetX;
+          point.y += offsetY;
+        }
+      }
+
+      function buildFeedCard(face) {
+        const card = document.createElement("figure");
+        card.className = "feed-card";
+        const label = document.createElement("figcaption");
+        const faceLabel = document.createElement("span");
+        faceLabel.className = "feed-card-label";
+        faceLabel.textContent = `#${face.id}`;
+        const confidenceLabel = document.createElement("span");
+        confidenceLabel.className = "feed-card-confidence";
+        confidenceLabel.textContent = face.confidence.toFixed(2);
+        label.append(faceLabel, confidenceLabel);
+        card.append(face.canvas, label);
+        return card;
+      }
+
+      function renderFeed() {
+        el.feed.replaceChildren(...state.discoveredFaces.map((face) => buildFeedCard(face)));
+      }
+
+      function updateAveragePreview() {
+        fillCanvas(averageCtx, el.averagePreview);
+        const count = state.discoveredFaces.length;
+        if (!count) return;
+        averageCtx.save();
+        averageCtx.globalAlpha = 1 / count;
+        for (const face of state.discoveredFaces) {
+          averageCtx.drawImage(face.canvas, 0, 0, el.averagePreview.width, el.averagePreview.height);
+        }
+        averageCtx.restore();
+      }
+
+      async function downloadAll() {
+        if (!state.discoveredFaces.length) return;
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+          for (const face of state.discoveredFaces) {
+            const blob = await canvasToBlob(face.canvas);
+            const fileHandle = await dirHandle.getFileHandle(`face-${face.id}.png`, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          }
+          const avgBlob = await canvasToBlob(el.averagePreview);
+          const avgHandle = await dirHandle.getFileHandle("avg.png", { create: true });
+          const avgWritable = await avgHandle.createWritable();
+          await avgWritable.write(avgBlob);
+          await avgWritable.close();
+        } catch (e) {
+          if (e.name !== "AbortError") console.error(e);
+        }
+      }
+
+      function canvasToBlob(canvas) {
+        return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      }
+
+      function fillCanvas(ctx, canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = CANVAS_FILL;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function triangulateCanonicalMesh(mesh) {
+        if (!mesh?.length) return [];
+        const points = mesh.map(({ x, y }) => [x, y]);
+        const delaunay = Delaunator.from(points);
+        const ovalPolygon = FACE_OVAL_INDICES.map((i) => points[i]);
+        const maxEdgeSq = 0.45 * 0.45;
+        const triangles = [];
+
+        for (let i = 0; i < delaunay.triangles.length; i += 3) {
+          const a = delaunay.triangles[i],
+            b = delaunay.triangles[i + 1],
+            c = delaunay.triangles[i + 2];
+          const centroid = [(points[a][0] + points[b][0] + points[c][0]) / 3, (points[a][1] + points[b][1] + points[c][1]) / 3];
+          const longestSq = Math.max(distSq(points[a], points[b]), distSq(points[b], points[c]), distSq(points[c], points[a]));
+          if (pointInPolygon(centroid, ovalPolygon) && longestSq < maxEdgeSq) triangles.push(a, b, c);
+        }
+        return triangles;
+      }
+
+      function drawTexturedTriangle(ctx, image, s0, s1, s2, d0, d1, d2) {
+        const det = (s0.x - s2.x) * (s1.y - s2.y) - (s1.x - s2.x) * (s0.y - s2.y);
+        if (Math.abs(det) < 1e-6) return;
+
+        const a = ((d0.x - d2.x) * (s1.y - s2.y) - (d1.x - d2.x) * (s0.y - s2.y)) / det;
+        const b = ((d0.y - d2.y) * (s1.y - s2.y) - (d1.y - d2.y) * (s0.y - s2.y)) / det;
+        const c = ((d1.x - d2.x) * (s0.x - s2.x) - (d0.x - d2.x) * (s1.x - s2.x)) / det;
+        const d = ((d1.y - d2.y) * (s0.x - s2.x) - (d0.y - d2.y) * (s1.x - s2.x)) / det;
+        const e = d2.x - a * s2.x - c * s2.y;
+        const f = d2.y - b * s2.x - d * s2.y;
+
+        ctx.save();
+        clipExpandedTriangle(ctx, d0, d1, d2);
+        ctx.setTransform(a, b, c, d, e, f);
+        ctx.drawImage(image, 0, 0);
+        ctx.restore();
+      }
+
+      function clipExpandedTriangle(ctx, a, b, c) {
+        const cx = (a.x + b.x + c.x) / 3;
+        const cy = (a.y + b.y + c.y) / 3;
+        const expand = 0.8;
+        const nudge = (p) => ({
+          x: p.x + ((p.x - cx) * expand) / Math.hypot(p.x - cx, p.y - cy),
+          y: p.y + ((p.y - cy) * expand) / Math.hypot(p.x - cx, p.y - cy),
+        });
+        const ea = nudge(a),
+          eb = nudge(b),
+          ec = nudge(c);
+        ctx.beginPath();
+        ctx.moveTo(ea.x, ea.y);
+        ctx.lineTo(eb.x, eb.y);
+        ctx.lineTo(ec.x, ec.y);
+        ctx.closePath();
+        ctx.clip();
+      }
+
+      function pointInPolygon(point, polygon) {
+        let inside = false;
+        for (let i = 0, prev = polygon.length - 1; i < polygon.length; prev = i++) {
+          const [x0, y0] = polygon[i];
+          const [x1, y1] = polygon[prev];
+          if (y0 > point[1] !== y1 > point[1] && point[0] < ((x1 - x0) * (point[1] - y0)) / (y1 - y0 || 1e-9) + x0) inside = !inside;
+        }
+        return inside;
+      }
+
+      function distSq(a, b) {
+        const dx = a[0] - b[0],
+          dy = a[1] - b[1];
+        return dx * dx + dy * dy;
+      }
+
+      function isFrontFacing(a, b, c) {
+        return (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y) < 0;
+      }
+
+      function clamp(v, min, max) {
+        return Math.min(max, Math.max(min, v));
+      }
+
+      class PerlinNoise {
+        constructor(seed = 0) {
+          const p = new Uint8Array(256);
+          for (let i = 0; i < 256; i++) p[i] = i;
+          let s = seed | 0;
+          for (let i = 255; i > 0; i--) {
+            s = (s * 1664525 + 1013904223) | 0;
+            const j = (s >>> 0) % (i + 1);
+            [p[i], p[j]] = [p[j], p[i]];
+          }
+          this.perm = new Uint8Array(512);
+          for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+          this.grad = [
+            [1, 1],
+            [-1, 1],
+            [1, -1],
+            [-1, -1],
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ];
+        }
+        fade(t) {
+          return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+        lerp(a, b, t) {
+          return a + t * (b - a);
+        }
+        dot(g, x, y) {
+          return g[0] * x + g[1] * y;
+        }
+        noise(x, y) {
+          const X = Math.floor(x) & 255,
+            Y = Math.floor(y) & 255;
+          const xf = x - Math.floor(x),
+            yf = y - Math.floor(y);
+          const u = this.fade(xf),
+            v = this.fade(yf);
+          const g = this.grad;
+          const aa = this.perm[this.perm[X] + Y];
+          const ab = this.perm[this.perm[X] + Y + 1];
+          const ba = this.perm[this.perm[X + 1] + Y];
+          const bb = this.perm[this.perm[X + 1] + Y + 1];
+          return this.lerp(
+            this.lerp(this.dot(g[aa & 7], xf, yf), this.dot(g[ba & 7], xf - 1, yf), u),
+            this.lerp(this.dot(g[ab & 7], xf, yf - 1), this.dot(g[bb & 7], xf - 1, yf - 1), u),
+            v
+          );
+        }
+        fbm(x, y, octaves = 6, lacunarity = 2.0, persistence = 0.5) {
+          let value = 0,
+            amplitude = 1,
+            frequency = 1,
+            maxValue = 0;
+          for (let i = 0; i < octaves; i++) {
+            value += amplitude * this.noise(x * frequency, y * frequency);
+            maxValue += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+          }
+          return value / maxValue;
+        }
+      }
+    </script>
+  </body>
+</html>

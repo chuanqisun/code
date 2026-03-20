@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>face sequence player demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+      font: 14px/1.4 monospace;
+      background: black;
+      color: color-mix(in srgb, Canvas 50%, CanvasText 50%);
+    }
+    #app {
+      width: min(100%, 60rem);
+      margin: 0 auto;
+    }
+    a {
+      color: inherit;
+    }
+    button,
+    canvas {
+      font: inherit;
+    }
+    figure {
+      margin: 0;
+    }
+    #row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    #session-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .session-link {
+      padding: 6px 10px;
+      border: 1px solid color-mix(in srgb, Canvas 85%, CanvasText 15%);
+      text-decoration: none;
+    }
+    .session-link[aria-current="page"] {
+      background: color-mix(in srgb, Canvas 80%, CanvasText 20%);
+      border-color: color-mix(in srgb, Canvas 60%, CanvasText 40%);
+    }
+    #views {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      align-items: start;
+    }
+    #featured-panel {
+      margin-top: 18px;
+      display: grid;
+      gap: 8px;
+    }
+    #featured-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 10px;
+    }
+    .featured-card {
+      display: grid;
+      gap: 6px;
+    }
+    .featured-thumb {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+      background: black;
+      border: 1px solid color-mix(in srgb, Canvas 90%, CanvasText 10%);
+    }
+    .featured-label {
+      font-size: 11px;
+      line-height: 1.2;
+      color: color-mix(in srgb, Canvas 35%, CanvasText 65%);
+    }
+    .panel {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 1 / 1;
+      background: black;
+      border: 1px solid color-mix(in srgb, Canvas 90%, CanvasText 10%);
+    }
+    @media (max-width: 40rem) {
+      #views {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div id="app">
+    <div id="session-nav" aria-label="session picker">
+      <a class="session-link" href="index.html">Generator</a>
+    </div>
+
+    <div id="row">
+      <span id="status">loading...</span>
+    </div>
+
+    <div id="views">
+      <div class="panel">
+        <div>current</div>
+        <canvas id="current" width="512" height="512"></canvas>
+      </div>
+      <div class="panel">
+        <div>avg</div>
+        <canvas id="average" width="512" height="512"></canvas>
+      </div>
+    </div>
+
+    <div id="featured-panel">
+      <div>featured</div>
+      <div id="featured-grid"></div>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const sessionNavEl = document.getElementById("session-nav");
+    const featuredGridEl = document.getElementById("featured-grid");
+    const currentCanvas = document.getElementById("current");
+    const averageCanvas = document.getElementById("average");
+    const currentCtx = currentCanvas.getContext("2d", { alpha: false });
+    const averageCtx = averageCanvas.getContext("2d", { alpha: false });
+
+    const W = 512;
+    const H = 512;
+    const CONTRAST = 1.6;
+    const FRAME_DELAY_MS = 100;
+    const DEFAULT_SESSION = "session-01";
+    const SESSION_IDS = ["session-01", "session-02"];
+
+    let timer = null;
+    let bitmaps = [];
+    let resetEvery = 0;
+    let currentSessionId = DEFAULT_SESSION;
+
+    const srcCanvas = document.createElement("canvas");
+    srcCanvas.width = W;
+    srcCanvas.height = H;
+    const srcCtx = srcCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+    const avgCanvas = document.createElement("canvas");
+    avgCanvas.width = W;
+    avgCanvas.height = H;
+    const avgCtx = avgCanvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+    let avgFloat = new Float32Array(W * H * 4);
+    let frameCount = 0;
+
+    function getSessionIdFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const value = params.get("session");
+      return SESSION_IDS.includes(value) ? value : DEFAULT_SESSION;
+    }
+
+    function getSessionBasePath(sessionId) {
+      return `data/${sessionId}`;
+    }
+
+    function renderSessionLinks(activeSessionId) {
+      sessionNavEl.replaceChildren(
+        Object.assign(document.createElement("a"), {
+          href: "index.html",
+          className: "session-link",
+          textContent: "Generator",
+        }),
+        ...SESSION_IDS.map((sessionId) => {
+          const link = document.createElement("a");
+          const url = new URL(window.location.href);
+          url.searchParams.set("session", sessionId);
+          link.href = url.toString();
+          link.className = "session-link";
+          link.textContent = sessionId;
+          if (sessionId === activeSessionId) {
+            link.setAttribute("aria-current", "page");
+          }
+          return link;
+        })
+      );
+    }
+
+    function clearFeaturedGrid() {
+      featuredGridEl.replaceChildren();
+    }
+
+    function renderFeaturedGrid(sessionId, featuredFaces) {
+      clearFeaturedGrid();
+      const basePath = getSessionBasePath(sessionId);
+      featuredGridEl.replaceChildren(
+        ...featuredFaces.map((faceNumber) => {
+          const card = document.createElement("figure");
+          const img = document.createElement("img");
+          const label = document.createElement("figcaption");
+
+          card.className = "featured-card";
+          img.className = "featured-thumb";
+          img.loading = "lazy";
+          img.decoding = "async";
+          img.alt = `Featured face ${faceNumber}`;
+          img.src = `${basePath}/face-${faceNumber}.webp`;
+          label.className = "featured-label";
+          label.textContent = `face-${faceNumber}`;
+
+          card.append(img, label);
+          return card;
+        })
+      );
+    }
+
+    function clearVisible() {
+      currentCtx.fillStyle = "#000";
+      currentCtx.fillRect(0, 0, W, H);
+      averageCtx.fillStyle = "#000";
+      averageCtx.fillRect(0, 0, W, H);
+    }
+
+    function resetAverage() {
+      avgFloat.fill(0);
+      frameCount = 0;
+      avgCtx.fillStyle = "#000";
+      avgCtx.fillRect(0, 0, W, H);
+      averageCtx.fillStyle = "#000";
+      averageCtx.fillRect(0, 0, W, H);
+    }
+
+    function releaseBitmaps(list) {
+      for (const bitmap of list) bitmap.close?.();
+    }
+
+    function stop() {
+      if (timer) clearInterval(timer);
+      timer = null;
+      releaseBitmaps(bitmaps);
+      bitmaps = [];
+      resetEvery = 0;
+      resetAverage();
+      clearVisible();
+    }
+
+    function clamp255(x) {
+      return x < 0 ? 0 : x > 255 ? 255 : x;
+    }
+
+    function contrast255(x, amount) {
+      return clamp255((x - 128) * amount + 128);
+    }
+
+    function updateAverageWith(bitmap) {
+      if (resetEvery > 0 && frameCount >= resetEvery) resetAverage();
+
+      srcCtx.clearRect(0, 0, W, H);
+      srcCtx.drawImage(bitmap, 0, 0, W, H);
+
+      const src = srcCtx.getImageData(0, 0, W, H);
+      const s = src.data;
+
+      const k = frameCount;
+      const a = k / (k + 1);
+      const b = 1 / (k + 1);
+
+      for (let i = 0; i < s.length; i += 4) {
+        avgFloat[i + 0] = avgFloat[i + 0] * a + s[i + 0] * b;
+        avgFloat[i + 1] = avgFloat[i + 1] * a + s[i + 1] * b;
+        avgFloat[i + 2] = avgFloat[i + 2] * a + s[i + 2] * b;
+        avgFloat[i + 3] = 255;
+      }
+
+      const out = avgCtx.createImageData(W, H);
+      const d = out.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i + 0] = contrast255(avgFloat[i + 0], CONTRAST);
+        d[i + 1] = contrast255(avgFloat[i + 1], CONTRAST);
+        d[i + 2] = contrast255(avgFloat[i + 2], CONTRAST);
+        d[i + 3] = 255;
+      }
+      avgCtx.putImageData(out, 0, 0);
+      frameCount++;
+    }
+
+    function drawFrame(bitmap) {
+      currentCtx.clearRect(0, 0, W, H);
+      currentCtx.drawImage(bitmap, 0, 0, W, H);
+
+      updateAverageWith(bitmap);
+
+      averageCtx.clearRect(0, 0, W, H);
+      averageCtx.drawImage(avgCanvas, 0, 0);
+    }
+
+    function updateStatus(extra = "") {
+      const suffix = extra ? `, ${extra}` : "";
+      statusEl.textContent = `${currentSessionId}: loaded ${bitmaps.length} frame(s), average frame ${frameCount}/${resetEvery || 0}${suffix}`;
+    }
+
+    function updateLoadingProgress(completed, total) {
+      statusEl.textContent = `${currentSessionId}: reloading frames... ${completed}/${total}`;
+    }
+
+    function startPlayback() {
+      if (!bitmaps.length) return;
+      let index = 0;
+      drawFrame(bitmaps[0]);
+      updateStatus("playing");
+      timer = setInterval(() => {
+        index = (index + 1) % bitmaps.length;
+        drawFrame(bitmaps[index]);
+        updateStatus("playing");
+      }, FRAME_DELAY_MS);
+    }
+
+    async function loadSessionMetadata(sessionId) {
+      const response = await fetch(`${getSessionBasePath(sessionId)}/metadata.json`, { cache: "reload" });
+      if (!response.ok) {
+        throw new Error(`failed to load metadata for ${sessionId}`);
+      }
+      return response.json();
+    }
+
+    async function loadFixedSequence(sessionId, frameCount) {
+      const basePath = getSessionBasePath(sessionId);
+      const urls = Array.from({ length: frameCount }, (_, index) => {
+        return `${basePath}/face-${index + 1}.webp`;
+      });
+      let completed = 0;
+
+      updateLoadingProgress(completed, urls.length);
+
+      const loaded = await Promise.all(
+        urls.map(async (url) => {
+          const response = await fetch(url, { cache: "reload" });
+          if (!response.ok) {
+            throw new Error(`failed to load ${url}`);
+          }
+          const blob = await response.blob();
+          const bitmap = await createImageBitmap(blob);
+          completed += 1;
+          updateLoadingProgress(completed, urls.length);
+          return bitmap;
+        })
+      );
+
+      return loaded;
+    }
+
+    async function boot() {
+      stop();
+      currentSessionId = getSessionIdFromQuery();
+      renderSessionLinks(currentSessionId);
+      try {
+        const metadata = await loadSessionMetadata(currentSessionId);
+        renderFeaturedGrid(currentSessionId, metadata.featured || []);
+        bitmaps = await loadFixedSequence(currentSessionId, metadata.max || 0);
+        resetEvery = bitmaps.length;
+        resetAverage();
+        updateStatus("ready");
+        startPlayback();
+      } catch (error) {
+        stop();
+        renderSessionLinks(currentSessionId);
+        clearFeaturedGrid();
+        statusEl.textContent = error?.message || "failed to load sequence";
+      }
+    }
+
+    clearVisible();
+    boot();
+  </script>
+</html>

@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Unified Face Mapping</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f7f2;
+        --ink: #111;
+        --muted: #666;
+        --line: #cfcfc7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.4 "SFMono-Regular",
+          Menlo,
+          Consolas,
+          "Liberation Mono",
+          monospace;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+
+      section,
+      aside {
+        min-width: 0;
+      }
+
+      .hero,
+      .hud,
+      .controls,
+      .feed-media {
+        display: flex;
+        gap: 12px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1fr);
+        align-items: start;
+      }
+
+      .panel {
+        min-width: 0;
+      }
+
+      .camera-panel {
+        max-width: 560px;
+      }
+
+      .average-panel {
+        display: grid;
+        gap: 10px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        aspect-ratio: 4 / 3;
+        background: #000;
+        border: 1px solid var(--line);
+      }
+
+      .stage video,
+      .stage canvas,
+      .flash {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      video,
+      .overlay {
+        object-fit: cover;
+      }
+
+      video {
+        transform: scaleX(-1);
+      }
+
+      .overlay,
+      .flash {
+        pointer-events: none;
+      }
+
+      .flash {
+        background: rgba(255, 255, 255, 0.9);
+        opacity: 0;
+      }
+
+      .flash.active {
+        opacity: 1;
+      }
+
+      .hud {
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-top: 8px;
+      }
+
+      .controls {
+        flex-wrap: wrap;
+      }
+
+      .average-stage {
+        aspect-ratio: 1 / 1;
+        background: #efefe8;
+      }
+
+      .average-stage canvas {
+        position: static;
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: #efefe8;
+      }
+
+      .panel-copy {
+        display: grid;
+        gap: 4px;
+      }
+
+      .average-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .feed-shell {
+        margin-top: 12px;
+      }
+
+      .feed {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 12px;
+      }
+
+      .feed-card {
+        border: 1px solid var(--line);
+        background: #fff;
+      }
+
+      .feed-media {
+        gap: 0;
+      }
+
+      .feed-media canvas {
+        position: static;
+        display: block;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        background: #efefe8;
+      }
+
+      .eyebrow,
+      .lede {
+        color: var(--muted);
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      @media (max-width: 900px) {
+        .hud {
+          flex-direction: column;
+        }
+
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        .camera-panel {
+          max-width: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero">
+        <section class="panel camera-panel">
+          <div class="panel-copy">
+            <p class="eyebrow">Live capture</p>
+            <h2>Camera preview</h2>
+          </div>
+          <div class="stage">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlay" class="overlay"></canvas>
+            <div id="flash" class="flash"></div>
+          </div>
+          <div class="hud">
+            <div class="controls">
+              <button id="startButton" class="secondary">Start Camera</button>
+              <button id="captureButton" class="primary" disabled>Capture Face</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel average-panel">
+          <div class="panel-copy">
+            <p class="eyebrow">Composite output</p>
+            <h2>Average face</h2>
+            <p class="lede">Each capture is overlaid at equal opacity, so the preview updates as a running visual average.</p>
+          </div>
+          <div class="stage average-stage">
+            <canvas id="averagePreview" width="320" height="320"></canvas>
+          </div>
+          <div class="average-meta">
+            <p class="eyebrow">Captured faces</p>
+            <p id="captureCount" class="eyebrow">0</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="panel feed-shell">
+        <div id="feed" class="feed"></div>
+      </section>
+    </main>
+
+    <script type="module">
+      import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+      import Delaunator from "https://cdn.jsdelivr.net/npm/delaunator@5.0.0/+esm";
+
+      const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+      const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+      const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm";
+      const CAPTURE_SIZE = 320;
+      const DETECTION_OPTIONS = {
+        baseOptions: {
+          modelAssetPath: MODEL_URL,
+          delegate: "GPU",
+        },
+        runningMode: "VIDEO",
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: true,
+        minFaceDetectionConfidence: 0.55,
+        minFacePresenceConfidence: 0.55,
+        minTrackingConfidence: 0.55,
+      };
+      const OVERLAY_STYLES = [
+        [FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "rgba(255, 96, 32, 0.6)", lineWidth: 1 }],
+        [FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "rgba(255, 255, 255, 0.9)", lineWidth: 2 }],
+        [FaceLandmarker.FACE_LANDMARKS_LIPS, { color: "rgba(255, 255, 255, 0.85)", lineWidth: 1.2 }],
+        [FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, { color: "rgba(80, 160, 255, 0.9)", lineWidth: 1.5 }],
+        [FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, { color: "rgba(80, 160, 255, 0.9)", lineWidth: 1.5 }],
+      ];
+
+      const ui = {
+        webcam: document.getElementById("webcam"),
+        overlay: document.getElementById("overlay"),
+        startButton: document.getElementById("startButton"),
+        captureButton: document.getElementById("captureButton"),
+        feed: document.getElementById("feed"),
+        flash: document.getElementById("flash"),
+        averagePreview: document.getElementById("averagePreview"),
+        captureCount: document.getElementById("captureCount"),
+      };
+
+      const overlayCtx = ui.overlay.getContext("2d");
+      const averagePreviewCtx = ui.averagePreview.getContext("2d");
+      const drawingUtils = new DrawingUtils(overlayCtx);
+      const frameBuffer = document.createElement("canvas");
+      const frameBufferCtx = frameBuffer.getContext("2d");
+
+      const state = {
+        faceLandmarker: null,
+        canonicalMesh: null,
+        canonicalTriangles: [],
+        stream: null,
+        animationFrameId: 0,
+        lastVideoTime: -1,
+        latestResult: null,
+        latestFaceRecord: null,
+        capturedMeshes: [],
+        feedCount: 0,
+      };
+
+      ui.startButton.addEventListener("click", toggleCamera);
+      ui.captureButton.addEventListener("click", captureFace);
+      window.addEventListener("resize", syncCanvasSize);
+      window.addEventListener("beforeunload", stopCamera);
+
+      init();
+
+      async function init() {
+        resetAveragePreview();
+        await loadResources();
+      }
+
+      async function toggleCamera() {
+        if (state.stream) {
+          stopCamera();
+          return;
+        }
+
+        await startCamera();
+      }
+
+      async function startCamera() {
+        if (!state.faceLandmarker) return;
+
+        try {
+          state.stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "user",
+              width: { ideal: 1280 },
+              height: { ideal: 960 },
+            },
+            audio: false,
+          });
+
+          ui.webcam.srcObject = state.stream;
+          await ui.webcam.play();
+          syncCanvasSize();
+          ui.startButton.textContent = "Stop Camera";
+          scheduleDetection();
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      function stopCamera() {
+        if (state.animationFrameId) {
+          cancelAnimationFrame(state.animationFrameId);
+          state.animationFrameId = 0;
+        }
+
+        overlayCtx.clearRect(0, 0, ui.overlay.width, ui.overlay.height);
+        state.lastVideoTime = -1;
+        state.latestResult = null;
+        state.latestFaceRecord = null;
+        ui.captureButton.disabled = true;
+        ui.startButton.textContent = "Start Camera";
+
+        if (state.stream) {
+          for (const track of state.stream.getTracks()) track.stop();
+          state.stream = null;
+        }
+
+        ui.webcam.srcObject = null;
+      }
+
+      function scheduleDetection() {
+        if (!state.stream) return;
+        syncCanvasSize();
+        detectFrame();
+        state.animationFrameId = requestAnimationFrame(scheduleDetection);
+      }
+
+      function detectFrame() {
+        if (!state.faceLandmarker || ui.webcam.readyState < 2) return;
+
+        if (ui.webcam.currentTime !== state.lastVideoTime) {
+          state.lastVideoTime = ui.webcam.currentTime;
+          state.latestResult = state.faceLandmarker.detectForVideo(ui.webcam, performance.now());
+          state.latestFaceRecord = createFaceRecord(state.latestResult, ui.webcam.videoWidth, ui.webcam.videoHeight);
+          syncCaptureState();
+        }
+
+        renderOverlay();
+      }
+
+      function syncCaptureState() {
+        if (!state.latestFaceRecord) {
+          ui.captureButton.disabled = true;
+          return;
+        }
+
+        ui.captureButton.disabled = false;
+      }
+
+      function renderOverlay() {
+        overlayCtx.clearRect(0, 0, ui.overlay.width, ui.overlay.height);
+        if (!state.latestFaceRecord) return;
+
+        const { landmarks, bounds } = state.latestFaceRecord;
+        overlayCtx.save();
+        overlayCtx.translate(ui.overlay.width, 0);
+        overlayCtx.scale(-1, 1);
+        overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        overlayCtx.lineWidth = 2;
+        overlayCtx.strokeRect(bounds.left, bounds.top, bounds.width, bounds.height);
+        for (const [connections, style] of OVERLAY_STYLES) {
+          drawingUtils.drawConnectors(landmarks, connections, style);
+        }
+        overlayCtx.restore();
+      }
+
+      function captureFace() {
+        if (!state.latestFaceRecord || ui.webcam.readyState < 2) return;
+
+        drawMirroredFrame();
+
+        const meshCanvas = createMeshCanvas(state.latestFaceRecord.landmarks, frameBuffer);
+
+        state.capturedMeshes.push(meshCanvas);
+        state.feedCount += 1;
+        ui.feed.prepend(buildFeedCard(meshCanvas));
+        updateAveragePreview();
+        pulseFlash();
+      }
+
+      async function loadResources() {
+        try {
+          state.canonicalMesh = await fetch("canonical-mesh.json").then((response) => response.json());
+          state.canonicalTriangles = createCanonicalTriangles(state.canonicalMesh);
+          const resolver = await FilesetResolver.forVisionTasks(WASM_URL);
+          state.faceLandmarker = await FaceLandmarker.createFromOptions(resolver, DETECTION_OPTIONS);
+          ui.startButton.disabled = false;
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      function syncCanvasSize() {
+        const width = ui.webcam.videoWidth || 1280;
+        const height = ui.webcam.videoHeight || 960;
+        ui.overlay.width = width;
+        ui.overlay.height = height;
+        frameBuffer.width = width;
+        frameBuffer.height = height;
+      }
+
+      function drawMirroredFrame() {
+        frameBufferCtx.save();
+        frameBufferCtx.clearRect(0, 0, frameBuffer.width, frameBuffer.height);
+        frameBufferCtx.translate(frameBuffer.width, 0);
+        frameBufferCtx.scale(-1, 1);
+        frameBufferCtx.drawImage(ui.webcam, 0, 0, frameBuffer.width, frameBuffer.height);
+        frameBufferCtx.restore();
+      }
+
+      function createMeshCanvas(landmarks, sourceCanvas) {
+        const canvas = document.createElement("canvas");
+        canvas.width = CAPTURE_SIZE;
+        canvas.height = CAPTURE_SIZE;
+        renderMeshCard(canvas, landmarks, sourceCanvas, state.canonicalMesh, state.canonicalTriangles);
+        return canvas;
+      }
+
+      function buildFeedCard(meshCanvas) {
+        const card = document.createElement("article");
+        card.className = "feed-card";
+
+        const media = document.createElement("div");
+        media.className = "feed-media";
+        media.append(meshCanvas);
+
+        card.append(media);
+        return card;
+      }
+
+      function updateAveragePreview() {
+        resetAveragePreview();
+
+        const count = state.capturedMeshes.length;
+        if (!count) {
+          ui.captureCount.textContent = "0";
+          return;
+        }
+
+        averagePreviewCtx.save();
+        averagePreviewCtx.globalAlpha = 1 / count;
+        for (const meshCanvas of state.capturedMeshes) {
+          averagePreviewCtx.drawImage(meshCanvas, 0, 0, ui.averagePreview.width, ui.averagePreview.height);
+        }
+        averagePreviewCtx.restore();
+        ui.captureCount.textContent = String(count);
+      }
+
+      function resetAveragePreview() {
+        averagePreviewCtx.clearRect(0, 0, ui.averagePreview.width, ui.averagePreview.height);
+        averagePreviewCtx.fillStyle = "#f3f3ee";
+        averagePreviewCtx.fillRect(0, 0, ui.averagePreview.width, ui.averagePreview.height);
+      }
+
+      function renderMeshCard(canvas, landmarks, sourceCanvas, canonicalMesh, canonicalTriangles) {
+        const ctx = canvas.getContext("2d");
+        const { width, height } = canvas;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "#f3f3ee";
+        ctx.fillRect(0, 0, width, height);
+
+        if (!canonicalMesh.length || !canonicalTriangles.length) return;
+
+        const sourceWidth = sourceCanvas.width;
+        const sourceHeight = sourceCanvas.height;
+        for (let index = 0; index < canonicalTriangles.length; index += 3) {
+          const triangle = canonicalTriangles.slice(index, index + 3);
+          const [src0, src1, src2] = triangle.map((pointIndex) => ({
+            x: (1 - landmarks[pointIndex].x) * sourceWidth,
+            y: landmarks[pointIndex].y * sourceHeight,
+          }));
+          if (!isFrontFacing(src0, src1, src2)) continue;
+
+          const [dst0, dst1, dst2] = triangle.map((pointIndex) => ({
+            x: canonicalMesh[pointIndex].x * width,
+            y: canonicalMesh[pointIndex].y * height,
+          }));
+
+          drawTexturedTriangle(ctx, sourceCanvas, src0, src1, src2, dst0, dst1, dst2);
+        }
+      }
+
+      function pulseFlash() {
+        ui.flash.classList.add("active");
+        window.setTimeout(() => ui.flash.classList.remove("active"), 140);
+      }
+
+      function createFaceRecord(result, width, height) {
+        const landmarks = result?.faceLandmarks?.[0];
+        if (!landmarks?.length) return null;
+        return {
+          landmarks,
+          bounds: getFaceBounds(landmarks, width, height),
+        };
+      }
+
+      function createCanonicalTriangles(canonicalMesh) {
+        if (!canonicalMesh?.length) return [];
+
+        const points2d = canonicalMesh.map(({ x, y }) => [x, y]);
+        const delaunay = Delaunator.from(points2d);
+        const faceOval = buildLoopIndices(FaceLandmarker.FACE_LANDMARKS_FACE_OVAL).map((index) => points2d[index]);
+        const maxEdgeSquared = 0.45 * 0.45;
+        const triangles = [];
+
+        for (let index = 0; index < delaunay.triangles.length; index += 3) {
+          const a = delaunay.triangles[index];
+          const b = delaunay.triangles[index + 1];
+          const c = delaunay.triangles[index + 2];
+          const centroid = [(points2d[a][0] + points2d[b][0] + points2d[c][0]) / 3, (points2d[a][1] + points2d[b][1] + points2d[c][1]) / 3];
+          const longestEdgeSquared = Math.max(dist2(points2d[a], points2d[b]), dist2(points2d[b], points2d[c]), dist2(points2d[c], points2d[a]));
+          if (pointInPolygon(centroid, faceOval) && longestEdgeSquared < maxEdgeSquared) triangles.push(a, b, c);
+        }
+
+        return triangles;
+      }
+
+      function getFaceBounds(landmarks, width, height) {
+        let minX = 1;
+        let minY = 1;
+        let maxX = 0;
+        let maxY = 0;
+
+        for (const point of landmarks) {
+          minX = Math.min(minX, point.x);
+          minY = Math.min(minY, point.y);
+          maxX = Math.max(maxX, point.x);
+          maxY = Math.max(maxY, point.y);
+        }
+
+        const paddingX = (maxX - minX) * 0.22;
+        const paddingY = (maxY - minY) * 0.28;
+        const left = clamp((minX - paddingX) * width, 0, width);
+        const top = clamp((minY - paddingY) * height, 0, height);
+        const right = clamp((maxX + paddingX) * width, 0, width);
+        const bottom = clamp((maxY + paddingY) * height, 0, height);
+
+        return {
+          left,
+          top,
+          width: Math.max(1, right - left),
+          height: Math.max(1, bottom - top),
+          centerX: (left + right) * 0.5,
+          centerY: (top + bottom) * 0.5,
+        };
+      }
+
+      function drawTexturedTriangle(ctx, image, src0, src1, src2, dst0, dst1, dst2) {
+        const denominator = (src0.x - src2.x) * (src1.y - src2.y) - (src1.x - src2.x) * (src0.y - src2.y);
+        if (Math.abs(denominator) < 1e-6) return;
+
+        const a = ((dst0.x - dst2.x) * (src1.y - src2.y) - (dst1.x - dst2.x) * (src0.y - src2.y)) / denominator;
+        const b = ((dst0.y - dst2.y) * (src1.y - src2.y) - (dst1.y - dst2.y) * (src0.y - src2.y)) / denominator;
+        const c = ((dst1.x - dst2.x) * (src0.x - src2.x) - (dst0.x - dst2.x) * (src1.x - src2.x)) / denominator;
+        const d = ((dst1.y - dst2.y) * (src0.x - src2.x) - (dst0.y - dst2.y) * (src1.x - src2.x)) / denominator;
+        const e = dst2.x - a * src2.x - c * src2.y;
+        const f = dst2.y - b * src2.x - d * src2.y;
+
+        ctx.save();
+        clipTriangle(ctx, dst0, dst1, dst2);
+        ctx.setTransform(a, b, c, d, e, f);
+        ctx.drawImage(image, 0, 0);
+        ctx.restore();
+      }
+
+      function clipTriangle(ctx, a, b, c) {
+        const cx = (a.x + b.x + c.x) / 3;
+        const cy = (a.y + b.y + c.y) / 3;
+        const expand = 0.5;
+        const ax = a.x + ((a.x - cx) * expand) / Math.hypot(a.x - cx, a.y - cy);
+        const ay = a.y + ((a.y - cy) * expand) / Math.hypot(a.x - cx, a.y - cy);
+        const bx = b.x + ((b.x - cx) * expand) / Math.hypot(b.x - cx, b.y - cy);
+        const by = b.y + ((b.y - cy) * expand) / Math.hypot(b.x - cx, b.y - cy);
+        const ccx = c.x + ((c.x - cx) * expand) / Math.hypot(c.x - cx, c.y - cy);
+        const ccy = c.y + ((c.y - cy) * expand) / Math.hypot(c.x - cx, c.y - cy);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(ccx, ccy);
+        ctx.closePath();
+        ctx.clip();
+      }
+
+      function strokeTriangle(ctx, a, b, c) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      function isFrontFacing(a, b, c) {
+        return (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y) > 0;
+      }
+
+      function buildLoopIndices(connections) {
+        if (!connections?.length) return [];
+        const loop = [connections[0].start];
+        for (const connection of connections) loop.push(connection.end);
+        if (loop[0] === loop[loop.length - 1]) loop.pop();
+        return loop;
+      }
+
+      function pointInPolygon(point, polygon) {
+        let inside = false;
+        for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+          const [x0, y0] = polygon[index];
+          const [x1, y1] = polygon[previous];
+          const crosses = y0 > point[1] !== y1 > point[1] && point[0] < ((x1 - x0) * (point[1] - y0)) / (y1 - y0 || 1e-9) + x0;
+          if (crosses) inside = !inside;
+        }
+        return inside;
+      }
+
+      function dist2(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        return dx * dx + dy * dy;
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+    </script>
+  </body>
+</html>

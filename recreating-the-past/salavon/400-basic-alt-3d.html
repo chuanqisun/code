@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MediaPipe Face Capture → Three.js 3D Face</title>
+    <style>
+      body {
+        margin: 1rem;
+        max-width: 1100px;
+      }
+      #views {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      #live {
+        position: relative;
+        display: inline-block;
+        background: #000;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      #threeView {
+        width: 480px;
+        height: 480px;
+        border: 1px solid #ccc;
+      }
+      #threeView canvas,
+      video {
+        display: block;
+      }
+      pre {
+        max-height: 16rem;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Webcam Face Capture → 3D Face Mesh</h1>
+    <p>
+      Start the webcam. When a face is visible, click anywhere on the page outside the button to capture the current face and landmarks into a Three.js mesh.
+    </p>
+
+    <p>
+      <button id="start" disabled>Start webcam</button>
+    </p>
+
+    <p id="status">Loading model…</p>
+
+    <div id="views">
+      <section>
+        <h2>Live</h2>
+        <div id="live">
+          <video id="webcam" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+      </section>
+
+      <section>
+        <h2>3D</h2>
+        <div id="threeView"></div>
+      </section>
+    </div>
+
+    <details>
+      <summary>Last captured landmarks</summary>
+      <pre id="pointsOut">No capture yet.</pre>
+    </details>
+
+    <canvas id="captureCanvas" hidden></canvas>
+
+    <script type="module">
+      import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+      import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+      import Delaunator from "https://cdn.jsdelivr.net/npm/delaunator@5.0.0/+esm";
+
+      const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+      const startButton = document.getElementById("start");
+      const statusEl = document.getElementById("status");
+      const live = document.getElementById("live");
+      const video = document.getElementById("webcam");
+      const overlay = document.getElementById("overlay");
+      const overlayCtx = overlay.getContext("2d");
+      const captureCanvas = document.getElementById("captureCanvas");
+      const captureCtx = captureCanvas.getContext("2d");
+      const pointsOut = document.getElementById("pointsOut");
+      const threeView = document.getElementById("threeView");
+
+      let faceLandmarker = null;
+      let drawingUtils = null;
+      let latestResults = null;
+      let latestLandmarks = null;
+      let webcamRunning = false;
+      let lastVideoTime = -1;
+      let faceOvalIndices = [];
+      let scene,
+        camera,
+        renderer,
+        captureGroup = null;
+
+      initThree();
+      animate();
+      initVision();
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      async function createFaceLandmarker(filesetResolver, delegate) {
+        return FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate,
+          },
+          runningMode: "VIDEO",
+          numFaces: 1,
+        });
+      }
+
+      async function initVision() {
+        setStatus("Loading MediaPipe model...");
+        try {
+          const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+
+          try {
+            faceLandmarker = await createFaceLandmarker(filesetResolver, "GPU");
+          } catch {
+            faceLandmarker = await createFaceLandmarker(filesetResolver, "CPU");
+          }
+
+          drawingUtils = new DrawingUtils(overlayCtx);
+          faceOvalIndices = buildLoopIndices(FaceLandmarker.FACE_LANDMARKS_FACE_OVAL);
+          startButton.disabled = false;
+          setStatus("Model ready. Start webcam.");
+        } catch (error) {
+          console.error(error);
+          setStatus("Model load failed. Serve this page from localhost or HTTPS and check the console.");
+        }
+      }
+
+      function buildLoopIndices(connections) {
+        if (!connections || !connections.length) return [];
+        const loop = [connections[0].start];
+        for (const c of connections) loop.push(c.end);
+        if (loop[0] === loop[loop.length - 1]) loop.pop();
+        return loop;
+      }
+
+      startButton.addEventListener("click", startWebcam);
+
+      async function startWebcam() {
+        if (!faceLandmarker) return;
+
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setStatus("getUserMedia is not supported in this browser.");
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "user",
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            },
+            audio: false,
+          });
+
+          video.srcObject = stream;
+          await video.play();
+          syncLiveSize();
+
+          webcamRunning = true;
+          startButton.disabled = true;
+          setStatus("Webcam running. Click anywhere outside the button to capture the current face.");
+          requestAnimationFrame(predictWebcam);
+        } catch (error) {
+          console.error(error);
+          setStatus("Webcam access failed. Allow camera permissions.");
+        }
+      }
+
+      function syncLiveSize() {
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        const displayWidth = Math.min(640, vw);
+        const displayHeight = Math.round((displayWidth * vh) / vw);
+
+        live.style.width = displayWidth + "px";
+        live.style.height = displayHeight + "px";
+
+        video.style.width = displayWidth + "px";
+        video.style.height = displayHeight + "px";
+
+        overlay.style.width = displayWidth + "px";
+        overlay.style.height = displayHeight + "px";
+        overlay.width = vw;
+        overlay.height = vh;
+      }
+
+      function predictWebcam() {
+        if (!webcamRunning) return;
+
+        if (video.readyState < 2) {
+          requestAnimationFrame(predictWebcam);
+          return;
+        }
+
+        if (video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          latestResults = faceLandmarker.detectForVideo(video, performance.now());
+          latestLandmarks = latestResults?.faceLandmarks?.[0] || null;
+        }
+
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+        if (latestLandmarks) {
+          drawLiveLandmarks(latestLandmarks);
+        }
+
+        requestAnimationFrame(predictWebcam);
+      }
+
+      function drawLiveLandmarks(landmarks) {
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, { color: "#99999966", lineWidth: 1 });
+        drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, { color: "#111111", lineWidth: 2 });
+        drawingUtils.drawLandmarks(landmarks, {
+          color: "#111111",
+          radius: 1,
+        });
+      }
+
+      document.addEventListener("click", (event) => {
+        if (event.target.closest("button,summary")) return;
+        captureCurrentFace();
+      });
+
+      function captureCurrentFace() {
+        if (!webcamRunning) {
+          setStatus("Start the webcam first.");
+          return;
+        }
+
+        if (!latestLandmarks) {
+          setStatus("No active face detected.");
+          return;
+        }
+
+        const capture = buildFaceCapture(latestLandmarks);
+        if (!capture) {
+          setStatus("Capture failed.");
+          return;
+        }
+
+        renderFaceMesh(capture.points, capture.crop, capture.textureCanvas);
+
+        pointsOut.textContent = JSON.stringify(
+          capture.points.map((p) => ({
+            i: p.index,
+            x: +p.x.toFixed(1),
+            y: +p.y.toFixed(1),
+            z: +p.z.toFixed(4),
+          })),
+          null,
+          2
+        );
+
+        setStatus(`Captured ${capture.points.length} landmarks and rebuilt the 3D face.`);
+      }
+
+      function buildFaceCapture(landmarks) {
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (!vw || !vh) return null;
+
+        const points = landmarks.map((lm, index) => ({
+          index,
+          x: lm.x * vw,
+          y: lm.y * vh,
+          z: lm.z,
+        }));
+
+        const source = faceOvalIndices.length ? faceOvalIndices.map((i) => points[i]) : points;
+
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        for (const p of source) {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        }
+
+        const pad = Math.max(maxX - minX, maxY - minY) * 0.18;
+        const x = clamp(Math.floor(minX - pad), 0, vw - 2);
+        const y = clamp(Math.floor(minY - pad), 0, vh - 2);
+        const right = clamp(Math.ceil(maxX + pad), x + 2, vw);
+        const bottom = clamp(Math.ceil(maxY + pad), y + 2, vh);
+
+        const crop = {
+          x,
+          y,
+          w: right - x,
+          h: bottom - y,
+        };
+
+        captureCanvas.width = crop.w;
+        captureCanvas.height = crop.h;
+        captureCtx.clearRect(0, 0, crop.w, crop.h);
+        captureCtx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+
+        const textureCanvas = document.createElement("canvas");
+        textureCanvas.width = crop.w;
+        textureCanvas.height = crop.h;
+        textureCanvas.getContext("2d").drawImage(captureCanvas, 0, 0);
+
+        return { points, crop, textureCanvas };
+      }
+
+      function renderFaceMesh(points, crop, textureSource) {
+        const scale = Math.max(crop.w, crop.h);
+        const cx = crop.x + crop.w / 2;
+        const cy = crop.y + crop.h / 2;
+
+        const positions = [];
+        const uvs = [];
+        const pts2d = [];
+
+        for (const p of points) {
+          positions.push(((p.x - cx) / scale) * 2, (-(p.y - cy) / scale) * 2, -p.z * 2.4);
+
+          uvs.push((p.x - crop.x) / crop.w, 1 - (p.y - crop.y) / crop.h);
+
+          pts2d.push([p.x, p.y]);
+        }
+
+        const delaunay = Delaunator.from(pts2d);
+        const polygon = faceOvalIndices.map((i) => pts2d[i]).filter(Boolean);
+        const indices = [];
+        const maxEdge = scale * 0.45;
+
+        for (let i = 0; i < delaunay.triangles.length; i += 3) {
+          const a = delaunay.triangles[i];
+          const b = delaunay.triangles[i + 1];
+          const c = delaunay.triangles[i + 2];
+
+          const centroid = [(pts2d[a][0] + pts2d[b][0] + pts2d[c][0]) / 3, (pts2d[a][1] + pts2d[b][1] + pts2d[c][1]) / 3];
+
+          const longest = Math.max(dist2(pts2d[a], pts2d[b]), dist2(pts2d[b], pts2d[c]), dist2(pts2d[c], pts2d[a]));
+
+          if ((!polygon.length || pointInPolygon(centroid, polygon)) && longest < maxEdge * maxEdge) {
+            indices.push(a, b, c);
+          }
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+
+        const texture = new THREE.CanvasTexture(textureSource);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.needsUpdate = true;
+
+        const faceMaterial = new THREE.MeshStandardMaterial({
+          map: texture,
+          side: THREE.DoubleSide,
+          roughness: 1,
+          metalness: 0,
+        });
+
+        const mesh = new THREE.Mesh(geometry, faceMaterial);
+
+        const pointsGeometry = new THREE.BufferGeometry();
+        pointsGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions.slice(), 3));
+
+        const pointsMaterial = new THREE.PointsMaterial({
+          color: 0x111111,
+          size: 0.02,
+        });
+
+        const pointCloud = new THREE.Points(pointsGeometry, pointsMaterial);
+
+        const group = new THREE.Group();
+        group.add(mesh);
+        group.add(pointCloud);
+        group.rotation.x = -0.12;
+
+        replaceCaptureGroup(group);
+      }
+
+      function replaceCaptureGroup(group) {
+        if (captureGroup) {
+          scene.remove(captureGroup);
+          captureGroup.traverse((obj) => {
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) {
+              if (Array.isArray(obj.material)) {
+                obj.material.forEach(disposeMaterial);
+              } else {
+                disposeMaterial(obj.material);
+              }
+            }
+          });
+        }
+
+        captureGroup = group;
+        scene.add(captureGroup);
+      }
+
+      function disposeMaterial(material) {
+        if (material.map) material.map.dispose();
+        material.dispose();
+      }
+
+      function initThree() {
+        scene = new THREE.Scene();
+
+        camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+        camera.position.set(0, 0, 2.7);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+        threeView.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 1.25));
+
+        const light = new THREE.DirectionalLight(0xffffff, 1.2);
+        light.position.set(1, 1, 2);
+        scene.add(light);
+
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.45);
+        backLight.position.set(-1, -0.5, -2);
+        scene.add(backLight);
+
+        resizeThree();
+        window.addEventListener("resize", resizeThree);
+      }
+
+      function resizeThree() {
+        const width = threeView.clientWidth || 480;
+        const height = threeView.clientHeight || 480;
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        if (captureGroup) captureGroup.rotation.y += 0.01;
+        renderer.render(scene, camera);
+      }
+
+      function pointInPolygon(point, polygon) {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i][0];
+          const yi = polygon[i][1];
+          const xj = polygon[j][0];
+          const yj = polygon[j][1];
+
+          const intersect = yi > point[1] !== yj > point[1] && point[0] < ((xj - xi) * (point[1] - yi)) / (yj - yi || 1e-9) + xi;
+
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      }
+
+      function dist2(a, b) {
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        return dx * dx + dy * dy;
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+    </script>
+  </body>
+</html>

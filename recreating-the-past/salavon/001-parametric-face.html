@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infinite Random Faces</title>
+    <style>
+      body {
+        margin: 0;
+        background: #eee;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+        user-select: none;
+        font-family: sans-serif;
+      }
+      canvas {
+        background: white;
+        border: 1px solid #bbb;
+        cursor: crosshair;
+      }
+      .note {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 8px 10px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="note">Hold mouse down on canvas to generate faces continuously.</div>
+    <canvas id="faceCanvas" width="520" height="520"></canvas>
+
+    <script>
+      const canvas = document.getElementById("faceCanvas");
+      const ctx = canvas.getContext("2d");
+
+      let isHolding = false;
+      let rafId = null;
+
+      function rand(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function randBool(prob = 0.5) {
+        return Math.random() < prob;
+      }
+
+      function ellipsePath(ctx, x, y, rx, ry) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(rx, ry);
+        ctx.beginPath();
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+        ctx.restore();
+      }
+
+      function* randomFaceGenerator() {
+        while (true) {
+          const face = {
+            centerX: canvas.width / 2 + rand(-20, 20),
+            centerY: canvas.height / 2 + rand(-20, 20),
+            rotation: rand(-0.08, 0.08),
+            scale: rand(0.85, 1.15),
+
+            head: {
+              enabled: true,
+              width: rand(180, 280),
+              height: rand(220, 340),
+              offsetX: rand(-10, 10),
+              offsetY: rand(-10, 10),
+              lineWidth: rand(1, 4),
+              strokeStyle: "#222",
+              fillStyle: null,
+            },
+
+            eyes: {
+              enabled: true,
+              y: rand(-70, -20),
+              spacing: rand(50, 110),
+              offsetX: rand(-10, 10),
+              eyeRadiusX: rand(6, 24),
+              eyeRadiusY: rand(4, 16),
+              pupilRadius: rand(2, 7),
+              pupilOffsetX: rand(-2, 2),
+              pupilOffsetY: rand(-2, 2),
+              eyelidTilt: rand(-0.25, 0.25),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#222",
+              fillStyle: null,
+              pupilColor: "#111",
+            },
+
+            eyebrows: {
+              enabled: randBool(0.9),
+              width: rand(15, 45),
+              thickness: rand(1, 6),
+              tiltLeft: rand(-0.7, 0.7),
+              tiltRight: rand(-0.7, 0.7),
+              offsetX: rand(-10, 10),
+              spacing: rand(50, 115),
+              color: "#222",
+            },
+
+            nose: {
+              enabled: true,
+              offsetX: rand(-12, 12),
+              width: rand(8, 30),
+              height: rand(18, 65),
+              bridgeHeight: rand(10, 35),
+              nostrilWidth: rand(6, 20),
+              nostrilHeight: rand(2, 8),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#222",
+            },
+
+            mouth: {
+              enabled: true,
+              offsetX: rand(-12, 12),
+              width: rand(25, 100),
+              openness: rand(0, 28),
+              curvature: rand(-1, 1),
+              upperLipHeight: rand(2, 16),
+              lowerLipHeight: rand(2, 20),
+              lineWidth: rand(1, 3),
+              strokeStyle: "#222",
+            },
+
+            cheeks: {
+              enabled: randBool(0.35),
+              spacing: rand(90, 150),
+              radiusX: rand(8, 24),
+              radiusY: rand(4, 14),
+              yOffsetFromMouth: rand(-40, -5),
+              color: `rgba(255,120,120,${rand(0.08, 0.28).toFixed(2)})`,
+            },
+
+            relations: {
+              browToEyeY: rand(10, 35),
+              eyeToNoseY: rand(20, 60),
+              noseToMouthY: rand(30, 85),
+            },
+          };
+
+          face.eyebrows.y = face.eyes.y - face.relations.browToEyeY;
+          face.nose.y = face.eyes.y + face.relations.eyeToNoseY;
+          face.mouth.y = face.nose.y + face.relations.noseToMouthY;
+          face.cheeks.y = face.mouth.y + face.cheeks.yOffsetFromMouth;
+
+          yield face;
+        }
+      }
+
+      const faceStream = randomFaceGenerator();
+
+      function drawFace(ctx, p) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(p.centerX, p.centerY);
+        ctx.rotate(p.rotation);
+        ctx.scale(p.scale, p.scale);
+
+        drawHead(ctx, p.head);
+        drawEyebrows(ctx, p.eyebrows);
+        drawEyes(ctx, p.eyes);
+        drawNose(ctx, p.nose);
+        drawMouth(ctx, p.mouth);
+        drawCheeks(ctx, p.cheeks);
+
+        ctx.restore();
+      }
+
+      function drawHead(ctx, head) {
+        if (!head.enabled) return;
+        ctx.save();
+        ctx.translate(head.offsetX, head.offsetY);
+        ellipsePath(ctx, 0, 0, head.width / 2, head.height / 2);
+        ctx.lineWidth = head.lineWidth;
+        ctx.strokeStyle = head.strokeStyle;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawEyes(ctx, eyes) {
+        if (!eyes.enabled) return;
+
+        const positions = [-eyes.spacing / 2 + eyes.offsetX, eyes.spacing / 2 + eyes.offsetX];
+
+        for (const x of positions) {
+          ctx.save();
+          ctx.translate(x, eyes.y);
+          ctx.rotate(eyes.eyelidTilt);
+
+          ellipsePath(ctx, 0, 0, eyes.eyeRadiusX, eyes.eyeRadiusY);
+          ctx.lineWidth = eyes.lineWidth;
+          ctx.strokeStyle = eyes.strokeStyle;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(eyes.pupilOffsetX, eyes.pupilOffsetY, eyes.pupilRadius, 0, Math.PI * 2);
+          ctx.fillStyle = eyes.pupilColor;
+          ctx.fill();
+
+          ctx.restore();
+        }
+      }
+
+      function drawEyebrows(ctx, brows) {
+        if (!brows.enabled) return;
+
+        const leftX = -brows.spacing / 2 + brows.offsetX;
+        const rightX = brows.spacing / 2 + brows.offsetX;
+        const y = brows.y;
+
+        ctx.save();
+        ctx.lineWidth = brows.thickness;
+        ctx.strokeStyle = brows.color;
+        ctx.lineCap = "round";
+
+        drawBrow(ctx, leftX, y, brows.width, brows.tiltLeft);
+        drawBrow(ctx, rightX, y, brows.width, brows.tiltRight);
+
+        ctx.restore();
+      }
+
+      function drawBrow(ctx, x, y, width, tilt) {
+        const dx = width / 2;
+        const dy = Math.tan(tilt) * dx * 0.35;
+        ctx.beginPath();
+        ctx.moveTo(x - dx, y + dy);
+        ctx.lineTo(x + dx, y - dy);
+        ctx.stroke();
+      }
+
+      function drawNose(ctx, nose) {
+        if (!nose.enabled) return;
+
+        const x = nose.offsetX;
+        const y = nose.y;
+
+        ctx.save();
+        ctx.lineWidth = nose.lineWidth;
+        ctx.strokeStyle = nose.strokeStyle;
+
+        ctx.beginPath();
+        ctx.moveTo(x, y - nose.bridgeHeight / 2);
+        ctx.lineTo(x - nose.width / 2, y + nose.height / 2);
+        ctx.lineTo(x + nose.width / 2, y + nose.height / 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - nose.nostrilWidth / 2, y + nose.height / 2);
+        ctx.lineTo(x - nose.nostrilWidth / 2 + 3, y + nose.height / 2 + nose.nostrilHeight);
+        ctx.moveTo(x + nose.nostrilWidth / 2, y + nose.height / 2);
+        ctx.lineTo(x + nose.nostrilWidth / 2 - 3, y + nose.height / 2 + nose.nostrilHeight);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawMouth(ctx, mouth) {
+        if (!mouth.enabled) return;
+
+        const x = mouth.offsetX;
+        const y = mouth.y;
+        const halfW = mouth.width / 2;
+        const smileY = mouth.curvature * 22;
+        const open = mouth.openness;
+
+        ctx.save();
+        ctx.lineWidth = mouth.lineWidth;
+        ctx.strokeStyle = mouth.strokeStyle;
+
+        ctx.beginPath();
+        ctx.moveTo(x - halfW, y);
+        ctx.quadraticCurveTo(x, y + smileY - mouth.upperLipHeight, x + halfW, y);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(x - halfW, y);
+        ctx.quadraticCurveTo(x, y + smileY + mouth.lowerLipHeight + open, x + halfW, y);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawCheeks(ctx, cheeks) {
+        if (!cheeks.enabled) return;
+
+        const leftX = -cheeks.spacing / 2;
+        const rightX = cheeks.spacing / 2;
+        const y = cheeks.y;
+
+        ctx.save();
+        ctx.fillStyle = cheeks.color;
+
+        ellipsePath(ctx, leftX, y, cheeks.radiusX, cheeks.radiusY);
+        ctx.fill();
+
+        ellipsePath(ctx, rightX, y, cheeks.radiusX, cheeks.radiusY);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function frame() {
+        if (!isHolding) return;
+        drawFace(ctx, faceStream.next().value);
+        rafId = requestAnimationFrame(frame);
+      }
+
+      canvas.addEventListener("mousedown", () => {
+        if (isHolding) return;
+        isHolding = true;
+        frame();
+      });
+
+      window.addEventListener("mouseup", () => {
+        isHolding = false;
+        if (rafId) cancelAnimationFrame(rafId);
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        isHolding = false;
+        if (rafId) cancelAnimationFrame(rafId);
+      });
+
+      drawFace(ctx, faceStream.next().value);
+    </script>
+  </body>
+</html>

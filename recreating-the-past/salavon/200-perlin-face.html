@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Perlin Noise Face Finder</title>
+    <style>
+      body {
+        margin: 16px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .controls label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .controls span.val {
+        min-width: 32px;
+        text-align: right;
+      }
+      canvas {
+        display: block;
+        width: 512px;
+        height: 512px;
+        image-rendering: pixelated;
+      }
+      canvas.found {
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
+      }
+      .stats {
+        margin-top: 10px;
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      #log {
+        margin-top: 10px;
+        width: 512px;
+        max-height: 180px;
+        overflow-y: auto;
+        font-size: 11px;
+      }
+      .log-found {
+        font-weight: bold;
+      }
+      .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        gap: 12px;
+      }
+      .loading-overlay .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #ccc;
+        border-top-color: #000;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      #feed {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+        width: 512px;
+      }
+      #feed figure {
+        margin: 0;
+      }
+      #feed canvas {
+        width: 96px;
+        height: 96px;
+      }
+      #feed figcaption {
+        font-size: 12px;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <div>Loading face detection model...</div>
+    </div>
+
+    <h2>👁 Perlin Noise Face Finder</h2>
+
+    <div class="controls">
+      <button id="startStop" disabled>Start</button>
+      <label>
+        Confidence:
+        <input type="range" id="confidence" min="0.01" max="1" step="0.01" value="0.30" />
+        <span class="val" id="confVal">0.30</span>
+      </label>
+      <label>
+        Scale:
+        <input type="range" id="noiseScale" min="4" max="80" step="1" value="28" />
+        <span class="val" id="scaleVal">28</span>
+      </label>
+      <label>
+        Octaves:
+        <input type="range" id="octaves" min="1" max="8" step="1" value="4" />
+        <span class="val" id="octVal">4</span>
+      </label>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="256" height="256"></canvas>
+    </div>
+
+    <div class="stats">
+      <div class="stat">Frames: <b id="framesChecked">0</b></div>
+      <div class="stat">Faces: <b id="facesFound">0</b></div>
+      <div class="stat">Seed: <b id="currentSeed">-</b></div>
+      <div class="stat">Status: <b id="statusText">Loading...</b></div>
+    </div>
+
+    <div id="log"></div>
+
+    <section>
+      <h3>Face Discovery Feed</h3>
+      <div id="feed"></div>
+    </section>
+
+    <script type="module">
+      import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+      // --- Perlin Noise ---
+      class Perlin {
+        constructor(seed) {
+          this.p = new Uint8Array(512);
+          const perm = new Uint8Array(256);
+          for (let i = 0; i < 256; i++) perm[i] = i;
+          const rand = this.rng(seed | 0);
+          for (let i = 255; i > 0; i--) {
+            const j = Math.floor(rand() * (i + 1));
+            [perm[i], perm[j]] = [perm[j], perm[i]];
+          }
+          for (let i = 0; i < 512; i++) this.p[i] = perm[i & 255];
+        }
+        rng(a) {
+          return () => {
+            let t = (a += 0x6d2b79f5);
+            t = Math.imul(t ^ (t >>> 15), t | 1);
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+        fade(t) {
+          return t * t * t * (t * (t * 6 - 15) + 10);
+        }
+        lerp(a, b, t) {
+          return a + t * (b - a);
+        }
+        grad(h, x, y) {
+          switch (h & 3) {
+            case 0:
+              return x + y;
+            case 1:
+              return -x + y;
+            case 2:
+              return x - y;
+            case 3:
+              return -x - y;
+          }
+        }
+        noise(x, y) {
+          const X = Math.floor(x) & 255,
+            Y = Math.floor(y) & 255;
+          const xf = x - Math.floor(x),
+            yf = y - Math.floor(y);
+          const u = this.fade(xf),
+            v = this.fade(yf);
+          const aa = this.p[this.p[X] + Y],
+            ab = this.p[this.p[X] + Y + 1];
+          const ba = this.p[this.p[X + 1] + Y],
+            bb = this.p[this.p[X + 1] + Y + 1];
+          return this.lerp(
+            this.lerp(this.grad(aa, xf, yf), this.grad(ba, xf - 1, yf), u),
+            this.lerp(this.grad(ab, xf, yf - 1), this.grad(bb, xf - 1, yf - 1), u),
+            v
+          );
+        }
+      }
+
+      // --- DOM refs ---
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const startStopBtn = document.getElementById("startStop");
+      const confSlider = document.getElementById("confidence");
+      const confValEl = document.getElementById("confVal");
+      const scaleSlider = document.getElementById("noiseScale");
+      const scaleValEl = document.getElementById("scaleVal");
+      const octSlider = document.getElementById("octaves");
+      const octValEl = document.getElementById("octVal");
+      const framesEl = document.getElementById("framesChecked");
+      const facesEl = document.getElementById("facesFound");
+      const seedEl = document.getElementById("currentSeed");
+      const statusEl = document.getElementById("statusText");
+      const logEl = document.getElementById("log");
+      const loadingOverlay = document.getElementById("loadingOverlay");
+      const feedEl = document.getElementById("feed");
+
+      let running = false;
+      let frameCount = 0;
+      let faceCount = 0;
+      let faceDetector = null;
+
+      confSlider.oninput = () => (confValEl.textContent = parseFloat(confSlider.value).toFixed(2));
+      scaleSlider.oninput = () => (scaleValEl.textContent = scaleSlider.value);
+      octSlider.oninput = () => (octValEl.textContent = octSlider.value);
+
+      // --- Generate noise onto canvas ---
+      function generateNoise(seed) {
+        const p = new Perlin(seed);
+        const { width: w, height: h } = canvas;
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        const scale = parseInt(scaleSlider.value);
+        const octaves = parseInt(octSlider.value);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let v = 0,
+              amp = 1,
+              freq = 1,
+              max = 0;
+            for (let o = 0; o < octaves; o++) {
+              v += p.noise((x / scale) * freq, (y / scale) * freq) * amp;
+              max += amp;
+              amp *= 0.5;
+              freq *= 2;
+            }
+            const c = Math.floor((v / max + 1) * 0.5 * 255);
+            const i = (y * w + x) * 4;
+            d[i] = d[i + 1] = d[i + 2] = c;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+      }
+
+      // --- Draw detections ---
+      function drawDetections(detections) {
+        const { width: w, height: h } = canvas;
+        for (const det of detections) {
+          const bb = det.boundingBox;
+          const score = det.categories[0]?.score || 0;
+
+          // Bounding box
+          ctx.strokeStyle = "#00ff88";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(bb.originX, bb.originY, bb.width, bb.height);
+
+          // Confidence label
+          ctx.fillStyle = "#00ff88";
+          ctx.font = "bold 11px monospace";
+          const label = (score * 100).toFixed(1) + "%";
+          const textY = bb.originY - 4;
+          ctx.fillStyle = "#000000aa";
+          ctx.fillRect(bb.originX, textY - 11, ctx.measureText(label).width + 6, 14);
+          ctx.fillStyle = "#00ff88";
+          ctx.fillText(label, bb.originX + 3, textY);
+
+          // Keypoints
+          if (det.keypoints) {
+            ctx.fillStyle = "#ff4757";
+            for (const kp of det.keypoints) {
+              ctx.beginPath();
+              ctx.arc(kp.x * w, kp.y * h, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+      }
+
+      // --- Logging ---
+      function log(msg, isFound) {
+        const el = document.createElement("div");
+        el.className = isFound ? "log-found" : "log-miss";
+        el.textContent = msg;
+        logEl.prepend(el);
+        while (logEl.children.length > 300) logEl.removeChild(logEl.lastChild);
+      }
+
+      function appendFaceCrop(detection, seedHex, detectionIndex) {
+        const bb = detection.boundingBox;
+        const sx = Math.max(0, Math.floor(bb.originX));
+        const sy = Math.max(0, Math.floor(bb.originY));
+        const sw = Math.min(canvas.width - sx, Math.max(1, Math.ceil(bb.width)));
+        const sh = Math.min(canvas.height - sy, Math.max(1, Math.ceil(bb.height)));
+
+        if (sw <= 0 || sh <= 0) return;
+
+        const cropCanvas = document.createElement("canvas");
+        cropCanvas.width = sw;
+        cropCanvas.height = sh;
+        const cropCtx = cropCanvas.getContext("2d");
+        cropCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+        const figure = document.createElement("figure");
+        const caption = document.createElement("figcaption");
+        caption.textContent = `${seedHex} #${detectionIndex + 1}`;
+        figure.append(cropCanvas, caption);
+        feedEl.prepend(figure);
+
+        while (feedEl.children.length > 40) {
+          feedEl.removeChild(feedEl.lastChild);
+        }
+      }
+
+      // --- Init model ---
+      async function initDetector() {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+        faceDetector = await FaceDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+            delegate: "GPU",
+          },
+          runningMode: "IMAGE",
+        });
+        loadingOverlay.style.display = "none";
+        startStopBtn.disabled = false;
+        statusEl.textContent = "Ready";
+      }
+
+      // --- Main loop ---
+      async function loop() {
+        if (!running) return;
+
+        const seed = (Math.random() * 0xffffffff) | 0;
+        const seedHex = seed.toString(16).toUpperCase().padStart(8, "0");
+        seedEl.textContent = seedHex;
+
+        // Generate and render noise
+        generateNoise(seed);
+
+        frameCount++;
+        framesEl.textContent = frameCount;
+        statusEl.textContent = "Searching...";
+
+        // Detect faces
+        const result = faceDetector.detect(canvas);
+        const threshold = parseFloat(confSlider.value);
+        const detections = (result.detections || []).filter((d) => (d.categories[0]?.score || 0) >= threshold);
+
+        if (detections.length > 0) {
+          detections.forEach((detection, index) => appendFaceCrop(detection, seedHex, index));
+
+          // Draw detections on top of the noise
+          drawDetections(detections);
+          faceCount++;
+          facesEl.textContent = faceCount;
+          canvas.classList.add("found");
+          statusEl.textContent = `Face found! (${detections.length})`;
+
+          const scores = detections.map((d) => (d.categories[0]?.score * 100).toFixed(1) + "%").join(", ");
+          log(`#${frameCount} [${seedHex}] ✓ ${detections.length} face(s) @ ${scores}`, true);
+
+          // Pause to admire the face
+          await new Promise((r) => setTimeout(r, 2000));
+          canvas.classList.remove("found");
+        } else {
+          log(`#${frameCount} [${seedHex}] —`);
+        }
+
+        // Continue if still running
+        if (running) {
+          requestAnimationFrame(loop);
+        }
+      }
+
+      // --- Start/Stop ---
+      startStopBtn.addEventListener("click", () => {
+        running = !running;
+        startStopBtn.textContent = running ? "Stop" : "Start";
+        startStopBtn.classList.toggle("running", running);
+        if (running) {
+          statusEl.textContent = "Starting...";
+          requestAnimationFrame(loop);
+        } else {
+          statusEl.textContent = "Stopped";
+        }
+      });
+
+      // --- Boot ---
+      initDetector().catch((e) => {
+        loadingOverlay.innerHTML = `<div>Failed to load model:<br>${e.message}</div>`;
+        statusEl.textContent = "Error";
+      });
+    </script>
+  </body>
+</html>

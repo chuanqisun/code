@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Canonic Mesh Export Tool</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f1efe8;
+        --panel: rgba(252, 249, 242, 0.9);
+        --panel-strong: #fffdf7;
+        --ink: #1b1a17;
+        --muted: #6d655b;
+        --accent: #cc5c2d;
+        --accent-soft: rgba(204, 92, 45, 0.14);
+        --line: rgba(27, 26, 23, 0.12);
+        --shadow: 0 24px 60px rgba(57, 45, 21, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background: radial-gradient(circle at top left, rgba(204, 92, 45, 0.18), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(35, 79, 134, 0.12), transparent 28%), linear-gradient(180deg, #f7f4ed 0%, var(--bg) 100%);
+      }
+
+      .app {
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 32px 20px 48px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+        padding: 18px;
+      }
+
+      .stage {
+        position: relative;
+        overflow: hidden;
+        border-radius: 22px;
+        background: #0d0d0c;
+        aspect-ratio: 4 / 3;
+      }
+
+      video,
+      .overlay,
+      .flash {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      video,
+      .overlay {
+        object-fit: cover;
+      }
+
+      video {
+        transform: scaleX(-1);
+      }
+
+      .overlay {
+        pointer-events: none;
+      }
+
+      .flash {
+        pointer-events: none;
+        background: rgba(255, 255, 255, 0.88);
+        opacity: 0;
+        transition: opacity 160ms ease;
+      }
+
+      .flash.active {
+        opacity: 1;
+      }
+
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 14px 0 0;
+      }
+
+      .eyebrow {
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 12px;
+        color: var(--accent);
+        margin-bottom: 6px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1.6rem;
+        line-height: 1.1;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 20px;
+        font: inherit;
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .primary {
+        background: var(--ink);
+        color: #f8f4ea;
+        box-shadow: 0 12px 24px rgba(27, 26, 23, 0.22);
+      }
+
+      .secondary {
+        background: var(--accent-soft);
+        color: var(--ink);
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 0.92rem;
+        padding: 6px 0;
+      }
+
+      .capture-panel {
+        display: grid;
+        gap: 16px;
+      }
+
+      .capture-panel h2 {
+        font-size: 1.3rem;
+      }
+
+      .mesh-preview {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: var(--panel-strong);
+        display: block;
+      }
+
+      .json-field {
+        width: 100%;
+        min-height: 280px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+        font-size: 0.78rem;
+        line-height: 1.4;
+        color: var(--ink);
+        background: var(--panel-strong);
+        resize: vertical;
+        white-space: pre;
+        tab-size: 2;
+      }
+
+      .json-field:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: -1px;
+      }
+
+      .empty-hint {
+        color: var(--muted);
+        font-size: 0.95rem;
+        padding: 20px;
+        text-align: center;
+        border: 1px dashed var(--line);
+        border-radius: 18px;
+      }
+
+      .copy-btn {
+        font-size: 0.88rem;
+        padding: 8px 16px;
+      }
+
+      @media (max-width: 900px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="hero">
+        <section class="panel">
+          <div class="eyebrow">Live Camera</div>
+          <h1>Canonic Mesh Export</h1>
+          <div class="stage">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlay" class="overlay"></canvas>
+            <div id="flash" class="flash"></div>
+          </div>
+          <div class="controls">
+            <button id="startButton" class="secondary" disabled>Start Camera</button>
+            <button id="captureButton" class="primary" disabled>Capture Face</button>
+          </div>
+          <div class="status" id="status">Loading model…</div>
+        </section>
+
+        <section class="panel capture-panel">
+          <div>
+            <div class="eyebrow">Capture Output</div>
+            <h2>Mesh Preview</h2>
+          </div>
+          <canvas id="meshPreview" class="mesh-preview" width="480" height="480"></canvas>
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <h2>Landmark JSON</h2>
+            <button id="copyBtn" class="secondary copy-btn" disabled>Copy JSON</button>
+          </div>
+          <textarea id="jsonOutput" class="json-field" readonly placeholder="Capture a face to see landmark data here…"></textarea>
+        </section>
+      </section>
+    </main>
+
+    <script type="module">
+      import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3";
+
+      const { FaceLandmarker, FilesetResolver, DrawingUtils } = vision;
+
+      const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
+      const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm";
+
+      const webcam = document.getElementById("webcam");
+      const overlay = document.getElementById("overlay");
+      const overlayCtx = overlay.getContext("2d");
+      const startButton = document.getElementById("startButton");
+      const captureButton = document.getElementById("captureButton");
+      const copyBtn = document.getElementById("copyBtn");
+      const statusEl = document.getElementById("status");
+      const meshPreview = document.getElementById("meshPreview");
+      const jsonOutput = document.getElementById("jsonOutput");
+      const flash = document.getElementById("flash");
+
+      const drawingUtils = new DrawingUtils(overlayCtx);
+
+      let faceLandmarker = null;
+      let stream = null;
+      let animationFrameId = 0;
+      let lastVideoTime = -1;
+      let latestResult = null;
+      let latestLandmarks = null;
+
+      async function initLandmarker() {
+        try {
+          const resolver = await FilesetResolver.forVisionTasks(WASM_URL);
+          faceLandmarker = await FaceLandmarker.createFromOptions(resolver, {
+            baseOptions: {
+              modelAssetPath: MODEL_URL,
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numFaces: 1,
+            outputFaceBlendshapes: false,
+            outputFacialTransformationMatrixes: false,
+            minFaceDetectionConfidence: 0.55,
+            minFacePresenceConfidence: 0.55,
+            minTrackingConfidence: 0.55,
+          });
+          statusEl.textContent = "Model ready — start the camera.";
+          startButton.disabled = false;
+        } catch (error) {
+          console.error(error);
+          statusEl.textContent = "Model failed to load.";
+        }
+      }
+
+      async function startCamera() {
+        if (!faceLandmarker) return;
+
+        if (stream) {
+          stopCamera();
+          return;
+        }
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 960 } },
+            audio: false,
+          });
+          webcam.srcObject = stream;
+          await webcam.play();
+          syncCanvasSize();
+          statusEl.textContent = "Camera live — align face and capture.";
+          startButton.textContent = "Stop Camera";
+          runDetectionLoop();
+        } catch (error) {
+          console.error(error);
+          statusEl.textContent = "Camera access denied or unavailable.";
+        }
+      }
+
+      function stopCamera() {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = 0;
+        }
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        latestResult = null;
+        latestLandmarks = null;
+        captureButton.disabled = true;
+        statusEl.textContent = "Camera stopped.";
+        startButton.textContent = "Start Camera";
+
+        if (stream) {
+          for (const track of stream.getTracks()) track.stop();
+          stream = null;
+        }
+        webcam.srcObject = null;
+      }
+
+      function syncCanvasSize() {
+        const w = webcam.videoWidth || 1280;
+        const h = webcam.videoHeight || 960;
+        overlay.width = w;
+        overlay.height = h;
+      }
+
+      function runDetectionLoop() {
+        if (!stream) return;
+        syncCanvasSize();
+        detectFrame();
+        animationFrameId = requestAnimationFrame(runDetectionLoop);
+      }
+
+      function detectFrame() {
+        if (!faceLandmarker || webcam.readyState < 2) return;
+        if (webcam.currentTime === lastVideoTime) {
+          renderOverlay();
+          return;
+        }
+        lastVideoTime = webcam.currentTime;
+        latestResult = faceLandmarker.detectForVideo(webcam, performance.now());
+        const landmarks = latestResult?.faceLandmarks?.[0];
+        if (landmarks?.length) {
+          latestLandmarks = landmarks;
+          captureButton.disabled = false;
+        } else {
+          latestLandmarks = null;
+          captureButton.disabled = true;
+        }
+        renderOverlay();
+      }
+
+      function renderOverlay() {
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        if (!latestLandmarks) return;
+
+        overlayCtx.save();
+        overlayCtx.translate(overlay.width, 0);
+        overlayCtx.scale(-1, 1);
+
+        drawingUtils.drawConnectors(latestLandmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
+          color: "rgba(255, 113, 61, 0.65)",
+          lineWidth: 1,
+        });
+        drawingUtils.drawConnectors(latestLandmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, {
+          color: "rgba(255, 255, 255, 0.92)",
+          lineWidth: 2,
+        });
+        drawingUtils.drawConnectors(latestLandmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {
+          color: "rgba(104, 201, 255, 0.9)",
+          lineWidth: 1.5,
+        });
+        drawingUtils.drawConnectors(latestLandmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
+          color: "rgba(104, 201, 255, 0.9)",
+          lineWidth: 1.5,
+        });
+        overlayCtx.restore();
+      }
+
+      function captureFace() {
+        if (!latestLandmarks) return;
+
+        const landmarks = latestLandmarks.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+
+        // Render mesh preview
+        renderMeshPreview(landmarks);
+
+        // Output JSON
+        const json = JSON.stringify(landmarks, null, 2);
+        jsonOutput.value = json;
+        copyBtn.disabled = false;
+        statusEl.textContent = `Captured ${landmarks.length} landmarks.`;
+
+        // Flash
+        flash.classList.add("active");
+        setTimeout(() => flash.classList.remove("active"), 140);
+      }
+
+      function renderMeshPreview(landmarks) {
+        const ctx = meshPreview.getContext("2d");
+        const w = meshPreview.width;
+        const h = meshPreview.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const gradient = ctx.createLinearGradient(0, 0, w, h);
+        gradient.addColorStop(0, "#fcfaf4");
+        gradient.addColorStop(1, "#ece3d5");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.strokeStyle = "rgba(24, 22, 20, 0.22)";
+        ctx.lineWidth = 0.7;
+
+        for (const group of FaceLandmarker.FACE_LANDMARKS_TESSELATION) {
+          const a = landmarks[group.start];
+          const b = landmarks[group.end];
+          ctx.beginPath();
+          ctx.moveTo(a.x * w, a.y * h);
+          ctx.lineTo(b.x * w, b.y * h);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = "rgba(204, 92, 45, 0.88)";
+        for (const index of [1, 33, 263, 61, 291, 199]) {
+          const pt = landmarks[index];
+          ctx.beginPath();
+          ctx.arc(pt.x * w, pt.y * h, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      function copyJSON() {
+        if (!jsonOutput.value) return;
+        navigator.clipboard.writeText(jsonOutput.value).then(() => {
+          const original = copyBtn.textContent;
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => (copyBtn.textContent = original), 1200);
+        });
+      }
+
+      startButton.addEventListener("click", startCamera);
+      captureButton.addEventListener("click", captureFace);
+      copyBtn.addEventListener("click", copyJSON);
+      window.addEventListener("resize", syncCanvasSize);
+      window.addEventListener("beforeunload", stopCamera);
+
+      initLandmarker();
+    </script>
+  </body>
+</html>
