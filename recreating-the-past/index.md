@@ -14,6 +14,24 @@
 
 ### Practice
 
+- Original
+  - [Link](http://playtime.pem.org/art-for-the-ages-an-image-gallery/)
+  - [!Original](./salavon/original.webp)
+- Recreated
+  - [Link](./salavon/demo.html)
+  - [!Recreated](./salavon/recreated.webp)
+- Notes
+  - [Generator](./salavon/index.html), [Demo](./salavon/demo.html), [Code (generator)](https://github.com/chuanqisun/code/tree/master/recreating-the-past/salavon/index.html)
+  - Source: The Class of 1988 & The Class of 1967, Silver gelatin prints, Jason Salavon, 1998
+  - Fixating eyes still cause problem in nose and mouth as they blur into a blob
+  - Salavon warping algorithm requires predefined points.
+  - Created [a tool](./salavon/500-canonic-mesh-tool.html) to build a reference face mesh. Added backface culling to improve detection
+  - Because facial features from pure noise can be either light or dark, they tend to cancel ou- I added manual rule to require dark facial features.
+  - Instead of nancy burson's simple triangle based warping, I used mediapipe's tesselation with 468 points
+  - Need manually fix the holes for eyes and mouth in the mesh
+  - Process: [Face in Perlin](./salavon/200-perlin-face.html), [Face in Perlin averaging](./salavon/202-perlin-face-overlay.html), [Mesh alignment](./salavon/302-basic-3d-canonical-map.html), [Delaunay triangulation](./salavon/401-basic-alt-3d-flat.html), [Reinforcement procedural face building (failed)](./salavon/704-reinforcement.html)
+  - Extras: [Average Emoji](./salavon/800-emoji-face.html), [Parametric average face](./salavon/007-face-morph.html), [Webcam average face](./salavon/602-averaging.html)
+
 ## Week 5: Pixels
 
 ### Read
