@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Folding Surface DNA</title>
+    <style>
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      canvas { display: block; }
+
+      .mesh-bg {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.08;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+        background-size: 32px 32px;
+        -webkit-mask-image: radial-gradient(circle at center, rgba(0,0,0,1), rgba(0,0,0,0.12) 72%, transparent 100%);
+        mask-image: radial-gradient(circle at center, rgba(0,0,0,1), rgba(0,0,0,0.12) 72%, transparent 100%);
+      }
+
+      .ui {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        width: 260px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 14px;
+        padding: 12px;
+        backdrop-filter: blur(10px);
+      }
+
+      .title {
+        font-size: 12px;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+      }
+
+      .control { margin: 10px 0; }
+      .control-head {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        margin-bottom: 4px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        appearance: none;
+        height: 2px;
+        background: rgba(255,255,255,0.18);
+        outline: none;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: none;
+        background: #fff;
+        cursor: pointer;
+      }
+
+      .buttons {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      button {
+        flex: 1;
+        padding: 9px 10px;
+        border-radius: 10px;
+        border: none;
+        background: #fff;
+        color: #000;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      button.alt {
+        background: transparent;
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.15);
+      }
+
+      .hint {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.62);
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.03);
+        padding: 7px 9px;
+        border-radius: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mesh-bg"></div>
+
+    <div class="ui">
+      <div class="title">Surface DNA</div>
+
+      <div class="control">
+        <div class="control-head"><span>Symmetry Order</span><span id="orderVal">6.00</span></div>
+        <input id="order" type="range" min="2" max="18" step="0.01" value="6.00" />
+      </div>
+
+      <div class="control">
+        <div class="control-head"><span>Warp</span><span id="warpVal">1.20</span></div>
+        <input id="warp" type="range" min="0" max="3" step="0.01" value="1.20" />
+      </div>
+
+      <div class="control">
+        <div class="control-head"><span>Fold</span><span id="foldVal">0.68</span></div>
+        <input id="fold" type="range" min="0" max="1.6" step="0.01" value="0.68" />
+      </div>
+
+      <div class="control">
+        <div class="control-head"><span>Asymmetry</span><span id="chaosVal">0.22</span></div>
+        <input id="chaos" type="range" min="0" max="1.2" step="0.01" value="0.22" />
+      </div>
+
+      <div class="control">
+        <div class="control-head"><span>Layering</span><span id="layersVal">3</span></div>
+        <input id="layers" type="range" min="1" max="6" step="1" value="3" />
+      </div>
+
+      <div class="buttons">
+        <button id="mutate">Mutate: Off</button>
+        <button id="seedBtn" class="alt">New Seed</button>
+      </div>
+    </div>
+
+    <div class="hint">drag • zoom • alter surface DNA</div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://esm.sh/three@0.161.0",
+          "three/addons/": "https://esm.sh/three@0.161.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      // constants / parameters
+      const APP = {
+        camera: { fov: 50, near: 0.1, far: 100, position: [0, 0.2, 7.5] },
+        renderer: { clearColor: 0x000000, pixelRatioMax: 2 },
+        mutation: { interpMs: 800, holdMs: 800 },
+        mesh: {
+          color: 0xffffff,
+          opacity: 0.2,
+          uSeg: 220,
+          vSeg: 100,
+          xzScale: 1.28,
+          yFoldScale: 0.55,
+          layerBaseScale: 1.1,
+          layerScaleStep: 0.42,
+          layerPhaseStep: 0.45,
+          rotXStep: 0.19,
+          rotYStep: 0.41,
+          rotZStep: 0.13,
+        },
+        animation: {
+          worldRotY: 0.00012,
+          worldRotXFreq: 0.00018,
+          worldRotXAmp: 0.06,
+        },
+        dna: {
+          defaults: { order: 6.0, warp: 1.2, fold: 0.68, chaos: 0.22, layers: 3 },
+          ranges: {
+            order: { min: 2, max: 18, step: 0.01 },
+            warp: { min: 0, max: 3, step: 0.01 },
+            fold: { min: 0, max: 1.6, step: 0.01 },
+            chaos: { min: 0, max: 1.2, step: 0.01 },
+            layers: { min: 1, max: 6, step: 1 },
+          },
+        },
+      };
+
+      // scene / state
+      const scene = new THREE.Scene();
+
+      const camera = new THREE.PerspectiveCamera(APP.camera.fov, innerWidth / innerHeight, APP.camera.near, APP.camera.far);
+      camera.position.set(...APP.camera.position);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, APP.renderer.pixelRatioMax));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setClearColor(APP.renderer.clearColor, 1);
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      const world = new THREE.Group();
+      scene.add(world);
+
+      const wireMat = new THREE.MeshBasicMaterial({
+        color: APP.mesh.color,
+        wireframe: true,
+        transparent: true,
+        opacity: APP.mesh.opacity,
+      });
+
+      const $ = (id) => document.getElementById(id);
+
+      let seed = (Math.random() * 1e9) | 0;
+      let mutateOn = false;
+      let mutationState = null;
+
+      // ui / app functions
+      function syncUI() {
+        $("orderVal").textContent = (+$("order").value).toFixed(2);
+        $("warpVal").textContent = (+$("warp").value).toFixed(2);
+        $("foldVal").textContent = (+$("fold").value).toFixed(2);
+        $("chaosVal").textContent = (+$("chaos").value).toFixed(2);
+        $("layersVal").textContent = $("layers").value;
+        $("mutate").textContent = mutateOn ? "Mutate: On" : "Mutate: Off";
+      }
+
+      function readDNAFromUI() {
+        return {
+          order: +$("order").value,
+          warp: +$("warp").value,
+          fold: +$("fold").value,
+          chaos: +$("chaos").value,
+          layers: +$("layers").value,
+        };
+      }
+
+      function writeDNAControls(d) {
+        $("order").value = d.order.toFixed(2);
+        $("warp").value = d.warp.toFixed(2);
+        $("fold").value = d.fold.toFixed(2);
+        $("chaos").value = d.chaos.toFixed(2);
+      }
+
+      function setDNAValues(d) {
+        writeDNAControls(d);
+        syncUI();
+        buildMorphology();
+      }
+
+      function disposeMaterial(mat) {
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+        else mat.dispose();
+      }
+
+      function clearGroup(group) {
+        while (group.children.length) {
+          const obj = group.children.pop();
+          obj.traverse?.((child) => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) disposeMaterial(child.material);
+          });
+        }
+      }
+
+      function buildLayer(d, layerIndex) {
+        const { positions, indices } = buildLayerGeometryData(d, layerIndex, APP.mesh);
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geo.setIndex(indices);
+
+        const mesh = new THREE.Mesh(geo, wireMat);
+        mesh.rotation.x = layerIndex * APP.mesh.rotXStep;
+        mesh.rotation.y = layerIndex * APP.mesh.rotYStep;
+        mesh.rotation.z = layerIndex * APP.mesh.rotZStep;
+        world.add(mesh);
+      }
+
+      function buildMorphology() {
+        clearGroup(world);
+        const d = readDNAFromUI();
+        rngFactory(seed);
+        for (let i = 0; i < d.layers; i++) buildLayer(d, i);
+      }
+
+      function startMutationCycle(now) {
+        const current = readDNAFromUI();
+        mutationState = {
+          phase: "interp",
+          phaseStart: now,
+          from: {
+            order: current.order,
+            warp: current.warp,
+            fold: current.fold,
+            chaos: current.chaos,
+          },
+          to: randomMutationTarget(APP.dna.ranges),
+        };
+      }
+
+      function updateMutation(now) {
+        if (!mutateOn) return;
+
+        if (!mutationState) {
+          startMutationCycle(now);
+          return;
+        }
+
+        const elapsed = now - mutationState.phaseStart;
+
+        if (mutationState.phase === "interp") {
+          const t = Math.min(elapsed / APP.mutation.interpMs, 1);
+          const e = smoothstep01(t);
+
+          setDNAValues(interpolateMutationState(mutationState.from, mutationState.to, e));
+
+          if (t >= 1) {
+            mutationState.phase = "hold";
+            mutationState.phaseStart = now;
+          }
+        } else if (mutationState.phase === "hold") {
+          if (elapsed >= APP.mutation.holdMs) startMutationCycle(now);
+        }
+      }
+
+      // events
+      ["order", "warp", "fold", "chaos", "layers"].forEach((id) => {
+        $(id).addEventListener("input", () => {
+          if (id !== "layers" && mutateOn) {
+            mutateOn = false;
+            mutationState = null;
+          }
+          syncUI();
+          buildMorphology();
+        });
+      });
+
+      $("mutate").addEventListener("click", () => {
+        mutateOn = !mutateOn;
+        mutationState = null;
+        syncUI();
+      });
+
+      $("seedBtn").addEventListener("click", () => {
+        seed = (Math.random() * 1e9) | 0;
+        buildMorphology();
+      });
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+
+      // boot
+      syncUI();
+      buildMorphology();
+
+      function animate(t) {
+        requestAnimationFrame(animate);
+        updateMutation(t);
+        world.rotation.y = t * APP.animation.worldRotY;
+        world.rotation.x = Math.sin(t * APP.animation.worldRotXFreq) * APP.animation.worldRotXAmp;
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate(0);
+
+      // pure functions
+      function rngFactory(s) {
+        let t = s >>> 0;
+        return () => {
+          t += 0x6d2b79f5;
+          let r = Math.imul(t ^ (t >>> 15), 1 | t);
+          r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+          return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function randomMutationTarget(ranges) {
+        return {
+          order: ranges.order.min + Math.random() * (ranges.order.max - ranges.order.min),
+          warp: ranges.warp.min + Math.random() * (ranges.warp.max - ranges.warp.min),
+          fold: ranges.fold.min + Math.random() * (ranges.fold.max - ranges.fold.min),
+          chaos: ranges.chaos.min + Math.random() * (ranges.chaos.max - ranges.chaos.min),
+        };
+      }
+
+      function smoothstep01(t) {
+        return t * t * (3 - 2 * t);
+      }
+
+      function interpolateMutationState(from, to, t) {
+        return {
+          order: from.order + (to.order - from.order) * t,
+          warp: from.warp + (to.warp - from.warp) * t,
+          fold: from.fold + (to.fold - from.fold) * t,
+          chaos: from.chaos + (to.chaos - from.chaos) * t,
+        };
+      }
+
+      function scalarField(theta, phi, layer, d) {
+        const m1 = Math.sin(theta * d.order + phi * (1.0 + d.warp) + layer * 0.9);
+        const m2 = Math.cos(theta * (d.order * 0.5 + 1.7) - phi * (2.7 + d.warp * 1.3));
+        const m3 = Math.sin((theta + phi * 0.7) * (3.0 + d.fold * 4.5) + layer * 1.8);
+        const m4 = Math.cos((theta - phi) * (2.0 + layer));
+        const asym = d.chaos * (Math.sin(theta * 1.31 + layer * 0.8) * 0.5 + Math.cos(phi * 2.17 - layer * 0.6) * 0.5);
+        return 1.0 + m1 * (0.18 + d.fold * 0.28) + m2 * (0.14 + d.warp * 0.12) + m3 * 0.12 + m4 * 0.08 + asym * 0.38;
+      }
+
+      function buildLayerGeometryData(d, layerIndex, meshConfig) {
+        const positions = [];
+        const indices = [];
+        const baseScale = meshConfig.layerBaseScale + layerIndex * meshConfig.layerScaleStep;
+        const phase = layerIndex * meshConfig.layerPhaseStep;
+
+        for (let y = 0; y <= meshConfig.vSeg; y++) {
+          const v = y / meshConfig.vSeg;
+          const phi = v * Math.PI;
+
+          for (let x = 0; x <= meshConfig.uSeg; x++) {
+            const u = x / meshConfig.uSeg;
+            const theta = u * Math.PI * 2;
+
+            let r = scalarField(theta + phase, phi, layerIndex, d) * baseScale;
+
+            const seam = Math.sin(phi * d.order * 0.5 + theta * 0.5 + layerIndex);
+            const cavity = Math.cos(phi * 3.0 - theta * d.order);
+            const collapse = Math.max(0, cavity) * d.fold * 0.22;
+
+            r *= 1.0 + seam * 0.08 - collapse;
+
+            const twist = d.warp * 0.75 * Math.sin(phi * 2.0 + layerIndex * 0.7);
+            const sx = Math.sin(phi) * Math.cos(theta + twist);
+            const sy = Math.cos(phi);
+            const sz = Math.sin(phi) * Math.sin(theta - twist * 0.8);
+
+            const anisotropy = 1 + Math.sin(phi * (layerIndex + 2)) * d.fold * 0.32;
+
+            positions.push(sx * r * anisotropy * meshConfig.xzScale, sy * r * (1.0 + d.fold * meshConfig.yFoldScale), sz * r * anisotropy * meshConfig.xzScale);
+          }
+        }
+
+        for (let y = 0; y < meshConfig.vSeg; y++) {
+          for (let x = 0; x < meshConfig.uSeg; x++) {
+            const a = y * (meshConfig.uSeg + 1) + x;
+            const b = a + meshConfig.uSeg + 1;
+            indices.push(a, b, a + 1);
+            indices.push(b, b + 1, a + 1);
+          }
+        }
+
+        return { positions, indices };
+      }
+    </script>
+  </body>
+</html>
