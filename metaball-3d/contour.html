@@ -12,9 +12,13 @@
         height: 100%;
         overflow: hidden;
         background: #000;
+        display: grid;
+        place-items: center;
       }
       canvas {
         display: block;
+        width: min(100vw, 100vh, 2048px);
+        height: min(100vw, 100vh, 2048px);
       }
     </style>
   </head>
@@ -36,20 +40,22 @@
       const METABALL_THRESHOLD = 0.35;
       const RAYMARCH_STEPS = 8;
       const REFINE_STEPS = 4;
+      const VIEW_WIDTH = 2048;
+      const VIEW_HEIGHT = 2048;
       // ======================
 
       const TOTAL_POINTS = GRID_SIZE * GRID_SIZE * GRID_DEPTH;
       const SPHERE_COUNT = Math.min(INITIAL_SPHERES, TOTAL_POINTS);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(innerWidth, innerHeight);
+      renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       document.body.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x000000);
 
-      const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+      const camera = new THREE.PerspectiveCamera(50, VIEW_WIDTH / VIEW_HEIGHT, 0.1, 100);
       camera.position.set(0, 0, 9);
 
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -364,9 +370,7 @@
       });
 
       addEventListener("resize", () => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       });
 
       renderer.setAnimationLoop(() => {
