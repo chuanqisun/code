@@ -238,6 +238,18 @@
         target: points[i].clone(),
       }));
 
+      const rotationQueue = [];
+      const rotationState = {
+        active: false,
+        axis: new THREE.Vector3(),
+        startOffset: new THREE.Vector3(),
+        startUp: new THREE.Vector3(),
+        startTime: 0,
+      };
+      const autoRotationMultipliers = [4, 8, 16];
+      let autoRotateEnabled = true;
+      let nextAutoRotationTime = performance.now() * 0.001 + MOVE_DURATION * autoRotationMultipliers[randInt(autoRotationMultipliers.length)];
+
       let phase = "move";
       let phaseStart = performance.now() * 0.001;
 
@@ -279,6 +291,75 @@
         return t * t * (3.0 - 2.0 * t);
       }
 
+      function scheduleNextAutoRotation(now) {
+        const multiplier = autoRotationMultipliers[randInt(autoRotationMultipliers.length)];
+        nextAutoRotationTime = now + MOVE_DURATION * multiplier;
+      }
+
+      function disableAutoRotation() {
+        autoRotateEnabled = false;
+      }
+
+      function queueRotation(axis) {
+        rotationQueue.push(axis.clone());
+      }
+
+      function startRotation(now) {
+        if (rotationState.active || rotationQueue.length === 0) return;
+        const axis = rotationQueue.shift();
+        rotationState.active = true;
+        rotationState.axis.copy(axis);
+        rotationState.startOffset.copy(camera.position).sub(controls.target);
+        rotationState.startUp.copy(camera.up);
+        rotationState.startTime = now;
+      }
+
+      function updateRotation(now) {
+        if (!rotationState.active) return;
+
+        const t = Math.min((now - rotationState.startTime) / MOVE_DURATION, 1.0);
+        const k = smooth(t);
+        const q = new THREE.Quaternion().setFromAxisAngle(rotationState.axis, k * Math.PI * 0.5);
+        const offset = rotationState.startOffset.clone().applyQuaternion(q);
+        const up = rotationState.startUp.clone().applyQuaternion(q);
+
+        camera.position.copy(controls.target).add(offset);
+        camera.up.copy(up);
+        controls.update();
+
+        if (t >= 1.0) {
+          rotationState.active = false;
+        }
+      }
+
+      function maybeQueueAutoRotation(now) {
+        if (!autoRotateEnabled || now < nextAutoRotationTime) return;
+        const axes = [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1)];
+        queueRotation(axes[randInt(axes.length)]);
+        scheduleNextAutoRotation(now);
+      }
+
+      controls.addEventListener("start", () => {
+        disableAutoRotation();
+      });
+
+      addEventListener("keydown", (event) => {
+        if (event.repeat) return;
+        const key = event.key.toLowerCase();
+        if (key === "x") {
+          disableAutoRotation();
+          queueRotation(new THREE.Vector3(1, 0, 0));
+        }
+        if (key === "y") {
+          disableAutoRotation();
+          queueRotation(new THREE.Vector3(0, 1, 0));
+        }
+        if (key === "z") {
+          disableAutoRotation();
+          queueRotation(new THREE.Vector3(0, 0, 1));
+        }
+      });
+
       addEventListener("resize", () => {
         camera.aspect = innerWidth / innerHeight;
         camera.updateProjectionMatrix();
@@ -301,6 +382,10 @@
         } else if (e >= WAIT_DURATION) {
           startMove();
         }
+
+        maybeQueueAutoRotation(now);
+        startRotation(now);
+        updateRotation(now);
 
         uniforms.uCam.value.copy(camera.position);
         uniforms.uSphereCount.value = SPHERE_COUNT;
