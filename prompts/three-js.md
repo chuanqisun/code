@@ -4,8 +4,8 @@ Import Three.js from a CDN like this:
 
 ```html
 <script type="module">
-  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
-  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/controls/OrbitControls.js';
+  import * as THREE from 'https://esm.sh/three@0.180.0/build/three.module.js';
+  import { OrbitControls } from 'https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js';
 </script>
 ```
 
