@@ -23,6 +23,9 @@
       import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
       import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
 
+      const urlParams = new URLSearchParams(location.search);
+      const manualMode = urlParams.get("manual") === "true";
+
       // ===== Parameters =====
       const GRID_SIZE = 20;
       const GRID_DEPTH = 1;
@@ -247,7 +250,7 @@
         startTime: 0,
       };
       const autoRotationMultipliers = [4, 8, 16];
-      let autoRotateEnabled = true;
+      let autoRotateEnabled = !manualMode;
       let nextAutoRotationTime = performance.now() * 0.001 + MOVE_DURATION * autoRotationMultipliers[randInt(autoRotationMultipliers.length)];
 
       let phase = "move";
