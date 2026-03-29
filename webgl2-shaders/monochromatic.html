@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGL2 Image Shader Test</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        font-family: system-ui, sans-serif;
+      }
+      .app {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        height: 100%;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        padding: 12px;
+        border-bottom: 1px solid CanvasText;
+      }
+      .toolbar label {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .toolbar select,
+      .toolbar input {
+        font: inherit;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="toolbar">
+        <input id="fileInput" type="file" accept="image/*" />
+        <label>
+          Shader
+          <select id="shaderMode">
+            <option value="grayscale" selected>Grayscale</option>
+            <option value="inkContours">Ink Contours</option>
+            <option value="dogInk">DoG Ink</option>
+            <option value="posterBinary">Poster Binary</option>
+            <option value="adaptiveStencil">Adaptive Stencil</option>
+          </select>
+        </label>
+      </div>
+      <canvas id="glcanvas"></canvas>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("glcanvas");
+      const shaderModeSelect = document.getElementById("shaderMode");
+      const gl = canvas.getContext("webgl2");
+
+      if (!gl) {
+        alert("WebGL2 is not supported in this browser.");
+        throw new Error("WebGL2 not supported");
+      }
+
+      const vertexSrc = `#version 300 es
+    uniform vec2 u_scale;
+    in vec2 a_position;
+    in vec2 a_texCoord;
+    out vec2 v_texCoord;
+
+    void main() {
+      v_texCoord = a_texCoord;
+      gl_Position = vec4(a_position * u_scale, 0.0, 1.0);
+    }
+    `;
+
+      const fragmentShaders = {
+        grayscale: `#version 300 es
+    precision highp float;
+
+    uniform sampler2D u_image;
+    in vec2 v_texCoord;
+    out vec4 outColor;
+
+    void main() {
+      vec4 color = texture(u_image, v_texCoord);
+      float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+      outColor = vec4(vec3(gray), color.a);
+    }
+    `,
+        inkContours: `#version 300 es
+    precision highp float;
+
+    uniform sampler2D u_image;
+    uniform vec2 u_textureSize;
+    in vec2 v_texCoord;
+    out vec4 outColor;
+
+    float luminance(vec3 color) {
+      return dot(color, vec3(0.299, 0.587, 0.114));
+    }
+
+    float sampleLum(vec2 offset) {
+      vec2 texel = 1.0 / u_textureSize;
+      return luminance(texture(u_image, v_texCoord + offset * texel).rgb);
+    }
+
+    float blurredLum() {
+      float center = sampleLum(vec2(0.0));
+      float cross = sampleLum(vec2(1.0, 0.0)) + sampleLum(vec2(-1.0, 0.0)) + sampleLum(vec2(0.0, 1.0)) + sampleLum(vec2(0.0, -1.0));
+      float corners = sampleLum(vec2(1.0, 1.0)) + sampleLum(vec2(-1.0, 1.0)) + sampleLum(vec2(1.0, -1.0)) + sampleLum(vec2(-1.0, -1.0));
+      return center * 0.25 + cross * 0.125 + corners * 0.0625;
+    }
+
+    void main() {
+      float tl = sampleLum(vec2(-1.0, 1.0));
+      float tc = sampleLum(vec2(0.0, 1.0));
+      float tr = sampleLum(vec2(1.0, 1.0));
+      float ml = sampleLum(vec2(-1.0, 0.0));
+      float mr = sampleLum(vec2(1.0, 0.0));
+      float bl = sampleLum(vec2(-1.0, -1.0));
+      float bc = sampleLum(vec2(0.0, -1.0));
+      float br = sampleLum(vec2(1.0, -1.0));
+
+      float gx = -tl - 2.0 * ml - bl + tr + 2.0 * mr + br;
+      float gy = tl + 2.0 * tc + tr - bl - 2.0 * bc - br;
+      float edge = smoothstep(0.18, 0.42, length(vec2(gx, gy)));
+
+      float fill = step(0.52, blurredLum());
+      float ink = min(fill, 1.0 - edge);
+      outColor = vec4(vec3(ink), 1.0);
+    }
+    `,
+        dogInk: `#version 300 es
+    precision highp float;
+
+    uniform sampler2D u_image;
+    uniform vec2 u_textureSize;
+    in vec2 v_texCoord;
+    out vec4 outColor;
+
+    float luminance(vec3 color) {
+      return dot(color, vec3(0.299, 0.587, 0.114));
+    }
+
+    float sampleLum(vec2 offset) {
+      vec2 texel = 1.0 / u_textureSize;
+      return luminance(texture(u_image, v_texCoord + offset * texel).rgb);
+    }
+
+    float blurRadius(float radius) {
+      vec2 x = vec2(radius, 0.0);
+      vec2 y = vec2(0.0, radius);
+      float center = sampleLum(vec2(0.0));
+      float cross = sampleLum(x) + sampleLum(-x) + sampleLum(y) + sampleLum(-y);
+      float corners = sampleLum(x + y) + sampleLum(x - y) + sampleLum(-x + y) + sampleLum(-x - y);
+      return center * 0.28 + cross * 0.12 + corners * 0.06;
+    }
+
+    void main() {
+      float fine = blurRadius(1.0);
+      float coarse = blurRadius(3.0);
+      float dog = fine - coarse;
+      float contour = 1.0 - smoothstep(-0.02, 0.08, dog);
+      float tone = step(0.5, coarse + dog * 1.8);
+      float ink = min(tone, contour);
+      outColor = vec4(vec3(ink), 1.0);
+    }
+    `,
+        posterBinary: `#version 300 es
+    precision highp float;
+
+    uniform sampler2D u_image;
+    uniform vec2 u_textureSize;
+    in vec2 v_texCoord;
+    out vec4 outColor;
+
+    float luminance(vec3 color) {
+      return dot(color, vec3(0.299, 0.587, 0.114));
+    }
+
+    float sampleLum(vec2 offset) {
+      vec2 texel = 1.0 / u_textureSize;
+      return luminance(texture(u_image, v_texCoord + offset * texel).rgb);
+    }
+
+    void main() {
+      float center = sampleLum(vec2(0.0));
+      float neighborhood = 0.0;
+      neighborhood += sampleLum(vec2(2.0, 0.0));
+      neighborhood += sampleLum(vec2(-2.0, 0.0));
+      neighborhood += sampleLum(vec2(0.0, 2.0));
+      neighborhood += sampleLum(vec2(0.0, -2.0));
+      neighborhood += sampleLum(vec2(2.0, 2.0));
+      neighborhood += sampleLum(vec2(-2.0, 2.0));
+      neighborhood += sampleLum(vec2(2.0, -2.0));
+      neighborhood += sampleLum(vec2(-2.0, -2.0));
+      neighborhood /= 8.0;
+
+      float region = step(0.5, mix(center, neighborhood, 0.8));
+
+      float dx = abs(sampleLum(vec2(1.0, 0.0)) - sampleLum(vec2(-1.0, 0.0)));
+      float dy = abs(sampleLum(vec2(0.0, 1.0)) - sampleLum(vec2(0.0, -1.0)));
+      float border = smoothstep(0.12, 0.28, dx + dy);
+
+      float ink = min(region, 1.0 - border);
+      outColor = vec4(vec3(ink), 1.0);
+    }
+    `,
+        adaptiveStencil: `#version 300 es
+    precision highp float;
+
+    uniform sampler2D u_image;
+    uniform vec2 u_textureSize;
+    in vec2 v_texCoord;
+    out vec4 outColor;
+
+    float luminance(vec3 color) {
+      return dot(color, vec3(0.299, 0.587, 0.114));
+    }
+
+    float sampleLum(vec2 offset) {
+      vec2 texel = 1.0 / u_textureSize;
+      return luminance(texture(u_image, v_texCoord + offset * texel).rgb);
+    }
+
+    void main() {
+      float center = sampleLum(vec2(0.0));
+      float localMean = 0.0;
+      localMean += sampleLum(vec2(-2.0, -2.0));
+      localMean += sampleLum(vec2(0.0, -2.0));
+      localMean += sampleLum(vec2(2.0, -2.0));
+      localMean += sampleLum(vec2(-2.0, 0.0));
+      localMean += center;
+      localMean += sampleLum(vec2(2.0, 0.0));
+      localMean += sampleLum(vec2(-2.0, 2.0));
+      localMean += sampleLum(vec2(0.0, 2.0));
+      localMean += sampleLum(vec2(2.0, 2.0));
+      localMean /= 9.0;
+
+      float binary = step(localMean - 0.03, center);
+
+      float edgeX = abs(sampleLum(vec2(1.0, 0.0)) - sampleLum(vec2(-1.0, 0.0)));
+      float edgeY = abs(sampleLum(vec2(0.0, 1.0)) - sampleLum(vec2(0.0, -1.0)));
+      float edge = smoothstep(0.1, 0.24, edgeX + edgeY);
+
+      float ink = min(binary, 1.0 - edge);
+      outColor = vec4(vec3(ink), 1.0);
+    }
+    `,
+      };
+
+      function createShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+          const info = gl.getShaderInfoLog(shader);
+          gl.deleteShader(shader);
+          throw new Error(info);
+        }
+        return shader;
+      }
+
+      function createProgram(gl, vsSource, fsSource) {
+        const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        const program = gl.createProgram();
+        gl.attachShader(program, vs);
+        gl.attachShader(program, fs);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const info = gl.getProgramInfoLog(program);
+          gl.deleteProgram(program);
+          throw new Error(info);
+        }
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        return program;
+      }
+
+      let program = null;
+      let positionLoc = -1;
+      let texCoordLoc = -1;
+      let imageLoc = null;
+      let scaleLoc = null;
+      let textureSizeLoc = null;
+      let activeShaderMode = shaderModeSelect.value;
+
+      const vao = gl.createVertexArray();
+      const positionBuffer = gl.createBuffer();
+      const texCoordBuffer = gl.createBuffer();
+      const quadPositions = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+      const quadTexCoords = new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
+
+      function setActiveShader(mode) {
+        const fragmentSrc = fragmentShaders[mode] || fragmentShaders.grayscale;
+        const nextProgram = createProgram(gl, vertexSrc, fragmentSrc);
+
+        program = nextProgram;
+        activeShaderMode = mode;
+        positionLoc = gl.getAttribLocation(program, "a_position");
+        texCoordLoc = gl.getAttribLocation(program, "a_texCoord");
+        imageLoc = gl.getUniformLocation(program, "u_image");
+        scaleLoc = gl.getUniformLocation(program, "u_scale");
+        textureSizeLoc = gl.getUniformLocation(program, "u_textureSize");
+
+        gl.bindVertexArray(vao);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, quadPositions, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(positionLoc);
+        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, texCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, quadTexCoords, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(texCoordLoc);
+        gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+      }
+
+      setActiveShader(activeShaderMode);
+
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+      let imageWidth = 0;
+      let imageHeight = 0;
+      let imageLoaded = false;
+
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.floor(canvas.clientWidth * dpr);
+        const height = Math.floor(canvas.clientHeight * dpr);
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+      }
+
+      function computeObjectFitContainScale() {
+        const canvasAspect = canvas.width / canvas.height;
+        const imageAspect = imageWidth / imageHeight;
+
+        let sx = 1.0;
+        let sy = 1.0;
+
+        if (imageAspect > canvasAspect) {
+          sx = 1.0;
+          sy = canvasAspect / imageAspect;
+        } else {
+          sx = imageAspect / canvasAspect;
+          sy = 1.0;
+        }
+
+        return [sx, sy];
+      }
+
+      function draw() {
+        resizeCanvas();
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        if (!imageLoaded) return;
+
+        const [sx, sy] = computeObjectFitContainScale();
+
+        gl.useProgram(program);
+        gl.uniform2f(scaleLoc, sx, sy);
+        if (textureSizeLoc) {
+          gl.uniform2f(textureSizeLoc, imageWidth, imageHeight);
+        }
+        gl.bindVertexArray(vao);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.uniform1i(imageLoc, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+      }
+
+      function uploadImageToTexture(image) {
+        imageWidth = image.naturalWidth || image.width;
+        imageHeight = image.naturalHeight || image.height;
+        imageLoaded = true;
+
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+        draw();
+      }
+
+      function loadImage(src, revokeAfterLoad = false) {
+        const img = new Image();
+        img.onload = () => {
+          uploadImageToTexture(img);
+          if (revokeAfterLoad) URL.revokeObjectURL(img.src);
+        };
+        img.src = src;
+      }
+
+      document.getElementById("fileInput").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        loadImage(URL.createObjectURL(file), true);
+      });
+
+      shaderModeSelect.addEventListener("change", (event) => {
+        setActiveShader(event.target.value);
+        draw();
+      });
+
+      window.addEventListener("resize", draw);
+      loadImage("./example.jpg");
+      draw();
+    </script>
+  </body>
+</html>
