@@ -1,111 +1,126 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Fast Metaball Demo</title>
-  <style>
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
-    canvas { display: block; }
-  </style>
-</head>
-<body>
-<script type="module">
-  import * as THREE from 'https://esm.sh/three@0.180.0/build/three.module.js';
-  import { OrbitControls } from 'https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js';
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Fast Metaball Demo</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
 
-  // ===== Parameters =====
-  const GRID_SIZE = 6;
-  const INITIAL_SPHERES = 32;
-  const MOVE_DURATION = 1.0;
-  const WAIT_DURATION = 0.0;
-  const SPHERE_RADIUS = 0.2;
-  const METABALL_THRESHOLD = 0.40;
-  const RAYMARCH_STEPS = 20;
-  const REFINE_STEPS = 4;
-  // ======================
+      // ===== Parameters =====
+      const GRID_SIZE = 6;
+      const GRID_DEPTH = 1;
+      const INITIAL_SPHERES = 18;
+      const MOVE_DURATION = 1.0;
+      const WAIT_DURATION = 0.0;
+      const SPHERE_RADIUS = 0.2;
+      const METABALL_THRESHOLD = 0.4;
+      const RAYMARCH_STEPS = 20;
+      const REFINE_STEPS = 4;
+      // ======================
 
-  const TOTAL_POINTS = GRID_SIZE * GRID_SIZE * GRID_SIZE;
-  const SPHERE_COUNT = Math.min(INITIAL_SPHERES, TOTAL_POINTS);
+      const TOTAL_POINTS = GRID_SIZE * GRID_SIZE * GRID_DEPTH;
+      const SPHERE_COUNT = Math.min(INITIAL_SPHERES, TOTAL_POINTS);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  document.body.appendChild(renderer.domElement);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      document.body.appendChild(renderer.domElement);
 
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x000000);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
 
-  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
-  camera.position.set(8, 7, 9);
+      const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+      camera.position.set(0, 0, 9);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 0);
+      controls.update();
 
-  const cubeSize = 4;
-  const half = cubeSize / 2;
+      const cubeSize = 4;
+      const half = cubeSize / 2;
+      const wallDepth = Math.max(SPHERE_RADIUS * 2.0, 0.2);
 
-  const cube = new THREE.LineSegments(
-    new THREE.EdgesGeometry(new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize)),
-    new THREE.LineBasicMaterial({ color: 0x444444 })
-  );
-  scene.add(cube);
+      const cube = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(cubeSize, cubeSize, wallDepth)),
+        new THREE.LineBasicMaterial({ color: 0x444444 })
+      );
+      scene.add(cube);
 
-  function makeCoords(gridSize, worldSize) {
-    const arr = [];
-    if (gridSize === 1) return [0];
-    for (let i = 0; i < gridSize; i++) arr.push(-worldSize / 2 + (worldSize * i) / (gridSize - 1));
-    return arr;
-  }
+      function makeCoords(gridSize, worldSize) {
+        const arr = [];
+        if (gridSize === 1) return [0];
+        for (let i = 0; i < gridSize; i++) arr.push(-worldSize / 2 + (worldSize * i) / (gridSize - 1));
+        return arr;
+      }
 
-  function toIndex(ix, iy, iz) { return ix + GRID_SIZE * (iy + GRID_SIZE * iz); }
-  function fromIndex(index) {
-    return { ix: index % GRID_SIZE, iy: Math.floor(index / GRID_SIZE) % GRID_SIZE, iz: Math.floor(index / (GRID_SIZE * GRID_SIZE)) };
-  }
-  function neighbors(index) {
-    const { ix, iy, iz } = fromIndex(index);
-    const out = [];
-    if (ix > 0) out.push(toIndex(ix - 1, iy, iz));
-    if (ix < GRID_SIZE - 1) out.push(toIndex(ix + 1, iy, iz));
-    if (iy > 0) out.push(toIndex(ix, iy - 1, iz));
-    if (iy < GRID_SIZE - 1) out.push(toIndex(ix, iy + 1, iz));
-    if (iz > 0) out.push(toIndex(ix, iy, iz - 1));
-    if (iz < GRID_SIZE - 1) out.push(toIndex(ix, iy, iz + 1));
-    return out;
-  }
+      function toIndex(ix, iy, iz) {
+        return ix + GRID_SIZE * (iy + GRID_SIZE * iz);
+      }
+      function fromIndex(index) {
+        return {
+          ix: index % GRID_SIZE,
+          iy: Math.floor(index / GRID_SIZE) % GRID_SIZE,
+          iz: Math.floor(index / (GRID_SIZE * GRID_SIZE)),
+        };
+      }
+      function neighbors(index) {
+        const { ix, iy, iz } = fromIndex(index);
+        const out = [];
+        if (ix > 0) out.push(toIndex(ix - 1, iy, iz));
+        if (ix < GRID_SIZE - 1) out.push(toIndex(ix + 1, iy, iz));
+        if (iy > 0) out.push(toIndex(ix, iy - 1, iz));
+        if (iy < GRID_SIZE - 1) out.push(toIndex(ix, iy + 1, iz));
+        if (iz > 0) out.push(toIndex(ix, iy, iz - 1));
+        if (iz < GRID_DEPTH - 1) out.push(toIndex(ix, iy, iz + 1));
+        return out;
+      }
 
-  const coords = makeCoords(GRID_SIZE, cubeSize);
-  const points = [];
-  for (let iz = 0; iz < GRID_SIZE; iz++)
-    for (let iy = 0; iy < GRID_SIZE; iy++)
-      for (let ix = 0; ix < GRID_SIZE; ix++)
-        points.push(new THREE.Vector3(coords[ix], coords[iy], coords[iz]));
+      const coords = makeCoords(GRID_SIZE, cubeSize);
+      const depthCoords = makeCoords(GRID_DEPTH, wallDepth);
+      const points = [];
+      for (let iz = 0; iz < GRID_DEPTH; iz++)
+        for (let iy = 0; iy < GRID_SIZE; iy++) for (let ix = 0; ix < GRID_SIZE; ix++) points.push(new THREE.Vector3(coords[ix], coords[iy], depthCoords[iz]));
 
-  const neighborMap = Array.from({ length: points.length }, (_, i) => neighbors(i));
+      const neighborMap = Array.from({ length: points.length }, (_, i) => neighbors(i));
 
-  const boundsPad = 0.6;
-  const boundsMin = new THREE.Vector3(-half - boundsPad, -half - boundsPad, -half - boundsPad);
-  const boundsMax = new THREE.Vector3( half + boundsPad,  half + boundsPad,  half + boundsPad);
+      const boundsPad = 0.6;
+      const halfDepth = wallDepth / 2;
+      const boundsMin = new THREE.Vector3(-half - boundsPad, -half - boundsPad, -halfDepth - boundsPad);
+      const boundsMax = new THREE.Vector3(half + boundsPad, half + boundsPad, halfDepth + boundsPad);
 
-  const uniforms = {
-    uCam: { value: new THREE.Vector3() },
-    uSphereCount: { value: SPHERE_COUNT },
-    uCenters: { value: Array.from({ length: SPHERE_COUNT }, () => new THREE.Vector3()) },
-    uRadius: { value: SPHERE_RADIUS },
-    uThreshold: { value: METABALL_THRESHOLD },
-    uBoundsMin: { value: boundsMin.clone() },
-    uBoundsMax: { value: boundsMax.clone() }
-  };
+      const uniforms = {
+        uCam: { value: new THREE.Vector3() },
+        uSphereCount: { value: SPHERE_COUNT },
+        uCenters: { value: Array.from({ length: SPHERE_COUNT }, () => new THREE.Vector3()) },
+        uRadius: { value: SPHERE_RADIUS },
+        uThreshold: { value: METABALL_THRESHOLD },
+        uBoundsMin: { value: boundsMin.clone() },
+        uBoundsMax: { value: boundsMax.clone() },
+      };
 
-  const metaball = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      boundsMax.x - boundsMin.x,
-      boundsMax.y - boundsMin.y,
-      boundsMax.z - boundsMin.z
-    ),
-    new THREE.ShaderMaterial({
-      uniforms,
-      side: THREE.DoubleSide,
-      vertexShader: `
+      const metaball = new THREE.Mesh(
+        new THREE.BoxGeometry(boundsMax.x - boundsMin.x, boundsMax.y - boundsMin.y, boundsMax.z - boundsMin.z),
+        new THREE.ShaderMaterial({
+          uniforms,
+          side: THREE.DoubleSide,
+          vertexShader: `
         varying vec3 vWorldPos;
         void main() {
           vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -113,7 +128,7 @@
           gl_Position = projectionMatrix * viewMatrix * wp;
         }
       `,
-      fragmentShader: `
+          fragmentShader: `
         precision highp float;
 
         varying vec3 vWorldPos;
@@ -223,92 +238,106 @@
 
           gl_FragColor = vec4(vec3(shade), 1.0);
         }
-      `
-    })
-  );
-  scene.add(metaball);
+      `,
+        })
+      );
+      scene.add(metaball);
 
-  function randInt(n) { return (Math.random() * n) | 0; }
-  function shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = randInt(i + 1);
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-  }
-  function sampleDistinct(count, total) {
-    const used = new Set();
-    while (used.size < count) used.add(randInt(total));
-    return [...used];
-  }
-
-  const initialIds = sampleDistinct(SPHERE_COUNT, points.length);
-  const spheres = initialIds.map(i => ({
-    index: i, pos: points[i].clone(), start: points[i].clone(), target: points[i].clone()
-  }));
-
-  let phase = "move";
-  let phaseStart = performance.now() * 0.001;
-
-  function assignMovesRecursive(order, occupiedStatic, targets) {
-    if (order.length === 0) return true;
-    const si = order[0];
-    const current = spheres[si].index;
-    const options = neighborMap[current].filter(ni => !occupiedStatic.has(ni) && !targets.has(ni));
-    shuffle(options);
-    for (const ni of options) {
-      targets.add(ni);
-      spheres[si].nextIndex = ni;
-      if (assignMovesRecursive(order.slice(1), occupiedStatic, targets)) return true;
-      targets.delete(ni);
-    }
-    return false;
-  }
-
-  function startMove() {
-    for (const s of spheres) { s.start.copy(s.pos); s.target.copy(s.pos); s.nextIndex = s.index; }
-    const order = shuffle([...Array(spheres.length).keys()]);
-    if (assignMovesRecursive(order, new Set(), new Set())) {
-      for (const s of spheres) { s.index = s.nextIndex; s.target.copy(points[s.index]); }
-    }
-    phase = "move";
-    phaseStart = performance.now() * 0.001;
-  }
-
-  startMove();
-
-  function smooth(t) { return t * t * (3.0 - 2.0 * t); }
-
-  addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-  });
-
-  renderer.setAnimationLoop(() => {
-    const now = performance.now() * 0.001;
-    const e = now - phaseStart;
-
-    if (phase === "move") {
-      const t = Math.min(e / MOVE_DURATION, 1.0);
-      const k = smooth(t);
-      for (const s of spheres) s.pos.lerpVectors(s.start, s.target, k);
-      if (t >= 1.0) {
-        for (const s of spheres) s.pos.copy(s.target);
-        phase = "wait";
-        phaseStart = now;
+      function randInt(n) {
+        return (Math.random() * n) | 0;
       }
-    } else if (e >= WAIT_DURATION) {
+      function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = randInt(i + 1);
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+      function sampleDistinct(count, total) {
+        const used = new Set();
+        while (used.size < count) used.add(randInt(total));
+        return [...used];
+      }
+
+      const initialIds = sampleDistinct(SPHERE_COUNT, points.length);
+      const spheres = initialIds.map((i) => ({
+        index: i,
+        pos: points[i].clone(),
+        start: points[i].clone(),
+        target: points[i].clone(),
+      }));
+
+      let phase = "move";
+      let phaseStart = performance.now() * 0.001;
+
+      function assignMovesRecursive(order, occupiedStatic, targets) {
+        if (order.length === 0) return true;
+        const si = order[0];
+        const current = spheres[si].index;
+        const options = neighborMap[current].filter((ni) => !occupiedStatic.has(ni) && !targets.has(ni));
+        shuffle(options);
+        for (const ni of options) {
+          targets.add(ni);
+          spheres[si].nextIndex = ni;
+          if (assignMovesRecursive(order.slice(1), occupiedStatic, targets)) return true;
+          targets.delete(ni);
+        }
+        return false;
+      }
+
+      function startMove() {
+        for (const s of spheres) {
+          s.start.copy(s.pos);
+          s.target.copy(s.pos);
+          s.nextIndex = s.index;
+        }
+        const order = shuffle([...Array(spheres.length).keys()]);
+        if (assignMovesRecursive(order, new Set(), new Set())) {
+          for (const s of spheres) {
+            s.index = s.nextIndex;
+            s.target.copy(points[s.index]);
+          }
+        }
+        phase = "move";
+        phaseStart = performance.now() * 0.001;
+      }
+
       startMove();
-    }
 
-    uniforms.uCam.value.copy(camera.position);
-    uniforms.uSphereCount.value = SPHERE_COUNT;
-    for (let i = 0; i < SPHERE_COUNT; i++) uniforms.uCenters.value[i].copy(spheres[i].pos);
+      function smooth(t) {
+        return t * t * (3.0 - 2.0 * t);
+      }
 
-    controls.update();
-    renderer.render(scene, camera);
-  });
-</script>
-</body>
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+
+      renderer.setAnimationLoop(() => {
+        const now = performance.now() * 0.001;
+        const e = now - phaseStart;
+
+        if (phase === "move") {
+          const t = Math.min(e / MOVE_DURATION, 1.0);
+          const k = smooth(t);
+          for (const s of spheres) s.pos.lerpVectors(s.start, s.target, k);
+          if (t >= 1.0) {
+            for (const s of spheres) s.pos.copy(s.target);
+            phase = "wait";
+            phaseStart = now;
+          }
+        } else if (e >= WAIT_DURATION) {
+          startMove();
+        }
+
+        uniforms.uCam.value.copy(camera.position);
+        uniforms.uSphereCount.value = SPHERE_COUNT;
+        for (let i = 0; i < SPHERE_COUNT; i++) uniforms.uCenters.value[i].copy(spheres[i].pos);
+
+        controls.update();
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
 </html>
