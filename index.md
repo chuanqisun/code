@@ -68,7 +68,7 @@
 - [Life clock](./life-clock/)
 - [Life.Config](https://chuanqisun.github.io/life-config/)
 - [Media Lab Game of Life](./media-lab-game-of-life/)
-- [Metaball 3D](./metaball-3d/)
+- [Metaball Surface Geometry](./metaball-surface-geometry/)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
 - [Paper CAD](https://chuanqisun.github.io/paper-cad/)
 - [Perlin noise](./perlin-noise/)
