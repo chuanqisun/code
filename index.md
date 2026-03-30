@@ -72,6 +72,7 @@
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
 - [Paper CAD](https://chuanqisun.github.io/paper-cad/)
 - [Perlin noise](./perlin-noise/)
+- [Phorm](./phorm/)
 - [Photon Grammar](./photon-grammar/)
 - [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
