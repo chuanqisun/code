@@ -43,6 +43,7 @@
 - [Box It](./box-it/)
 - [Braille 3D](./braille-3d/)
 - [Bubbles](./bubbles/)
+- [Buttons](./buttons/)
 - [Clipboard++](./clipboard/)
 - [CyberMUSE](https://chuanqisun.github.io/cybermuse/)
 - [Device Orientation API](./device-orientation-api/)

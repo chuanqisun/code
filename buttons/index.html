@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buttons</title>
+    <style>
+      html {
+        overflow: hidden;
+      }
+      html,
+      body {
+        background: black;
+        height: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        place-content: center;
+        place-items: center;
+        transform: rotate(var(--rotation));
+        transition: transform 20ms;
+      }
+      button {
+        transform: rotate(var(--rotation));
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1px;
+        display: flex;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+      }
+    </style>
+  </head>
+  <body style="--rotation: 0deg">
+    <button></button>
+    <script type="module">
+      const step = () => {
+        const currentRotation = Number.parseFloat(document.body.style.getPropertyValue("--rotation"));
+        document.body.style.setProperty("--rotation", `${currentRotation + 0.5}deg`);
+
+        const allButtons = document.querySelectorAll("button");
+        [...allButtons]
+          .sort(() => Math.random() - 0.5)
+          .at(0)
+          .appendChild(document.createElement("button"));
+
+        if (allButtons.length > 200) {
+          const outermostButton = [...document.body.children]
+            .filter((element) => element.tagName === "BUTTON")
+            .sort(() => Math.random() - 0.5)
+            .at(0);
+
+          if (outermostButton) {
+            while (outermostButton.firstChild) {
+              document.body.insertBefore(outermostButton.firstChild, outermostButton);
+            }
+            outermostButton.remove();
+          }
+        }
+
+        const outermostButton = [...document.body.children].filter((element) => element.tagName === "BUTTON");
+        if (outermostButton.length > 7) {
+          const random = outermostButton
+            .slice(0, -1)
+            .sort(() => Math.random() - 0.5)
+            .at(0);
+          const randomNextSibling = random.nextElementSibling;
+          const newButton = document.createElement("button");
+          random.replaceWith(newButton);
+          newButton.appendChild(random);
+          newButton.appendChild(randomNextSibling);
+        }
+
+        requestAnimationFrame(loop);
+      };
+
+      const stepIntervalMs = 20;
+      let lastTimestamp = 0;
+      let accumulatedTime = 0;
+
+      const loop = (timestamp) => {
+        if (lastTimestamp === 0) {
+          lastTimestamp = timestamp;
+        }
+
+        accumulatedTime += timestamp - lastTimestamp;
+        lastTimestamp = timestamp;
+
+        if (accumulatedTime >= stepIntervalMs) {
+          accumulatedTime = 0;
+          step();
+          return;
+        }
+
+        requestAnimationFrame(loop);
+      };
+
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
