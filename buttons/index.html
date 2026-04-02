@@ -33,7 +33,7 @@
     <script type="module">
       const step = () => {
         const currentRotation = Number.parseFloat(document.body.style.getPropertyValue("--rotation"));
-        document.body.style.setProperty("--rotation", `${currentRotation + 0.5}deg`);
+        document.body.style.setProperty("--rotation", `${currentRotation + 0.8}deg`);
 
         const allButtons = document.querySelectorAll("button");
         [...allButtons]
@@ -56,7 +56,7 @@
         }
 
         const outermostButton = [...document.body.children].filter((element) => element.tagName === "BUTTON");
-        if (outermostButton.length > 7) {
+        if (outermostButton.length > 5 && Math.random() < 0.4) {
           const random = outermostButton
             .slice(0, -1)
             .sort(() => Math.random() - 0.5)
@@ -71,7 +71,7 @@
         requestAnimationFrame(loop);
       };
 
-      const stepIntervalMs = 20;
+      const stepIntervalMs = 1;
       let lastTimestamp = 0;
       let accumulatedTime = 0;
 
