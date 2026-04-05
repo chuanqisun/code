@@ -1,5 +1,30 @@
 # Recreating The Past
 
+## Week 7: Body
+
+### Watch
+
+- [Text rain](https://www.dropbox.com/s/bsjjejhid9esrw8/async_7_2_textRain.mp4?dl=0)
+- [Motion capture data](https://www.dropbox.com/s/i94vf10f09eetq4/async_7_2_walkingData.mp4?dl=0)
+- [Background subtraction, thresholding, coutour, body motion](https://www.dropbox.com/s/gqa3ngpbvqktwci/async_7_2.mp4?dl=0)
+
+### Read
+
+> Is it art to create a new art form?
+>
+> — [Dinner with Myron Or: Rereading Artificial Reality 2: Reflections on Interface and Art by Andy Cameron](https://www.dropbox.com/s/wejob9dwula5yy5/dinner_with_myron.pdf?dl=0)
+
+## Practice
+
+- Background subtraction requires pure wall color and consistent camera exposure
+- In Web API, we don't have raw access to camera input. The auto exposure messes up background substraction
+- Switching to ML based CV in mediapipe, yields much better result with similar latency
+- Playing with object (using physics model)
+- Playing with symmetry
+- Playing with CMU mocap dataset in three.js
+- Endded up with a state machine driven demo: each scene has a transition condition and unique visual effect
+- A lot time was spent on sychronizing audio sound track
+
 ## Week 6: Images
 
 ### Read

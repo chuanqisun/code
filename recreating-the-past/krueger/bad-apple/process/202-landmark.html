@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webcam Segmentation Masks</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .panel {
+        display: inline-block;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      label {
+        display: inline-block;
+        margin-right: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Webcam Segmentation Masks</h1>
+
+    <div style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+      <label>
+        Mask Threshold:
+        <input id="maskThreshold" type="range" min="0" max="255" value="128" disabled />
+        <span id="maskThresholdValue">128</span>
+      </label>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 1: Live Video</div>
+        <canvas id="canvas1" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 2: Background Confidence Mask</div>
+        <canvas id="canvas2" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 3: Inverted Threshold Mask</div>
+        <canvas id="canvas3" width="320" height="240"></canvas>
+      </div>
+    </div>
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 4: Right Edge Fill</div>
+        <canvas id="canvas4" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 5: Center Divider Even/Odd</div>
+        <canvas id="canvas5" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 6: Left Half Inverted</div>
+        <canvas id="canvas6" width="320" height="240"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const maskThresholdInput = document.getElementById("maskThreshold");
+      const maskThresholdValue = document.getElementById("maskThresholdValue");
+
+      const canvas1 = document.getElementById("canvas1");
+      const canvas2 = document.getElementById("canvas2");
+      const canvas3 = document.getElementById("canvas3");
+      const canvas4 = document.getElementById("canvas4");
+      const canvas5 = document.getElementById("canvas5");
+      const canvas6 = document.getElementById("canvas6");
+
+      const ctx1 = canvas1.getContext("2d");
+      const ctx2 = canvas2.getContext("2d");
+      const ctx3 = canvas3.getContext("2d");
+      const ctx4 = canvas4.getContext("2d");
+      const ctx5 = canvas5.getContext("2d");
+      const ctx6 = canvas6.getContext("2d");
+
+      let running = false;
+      let imageSegmenter = null;
+      let poseLandmarker = null;
+      let handLandmarker = null;
+      let segmenterReady = false;
+      let poseReady = false;
+      let handReady = false;
+      let segmenterBusy = false;
+      let segmenterLastVideoTime = -1;
+
+      initializeSegmenter();
+
+      maskThresholdInput.addEventListener("input", () => {
+        maskThresholdValue.textContent = maskThresholdInput.value;
+      });
+
+      startBtn.addEventListener("click", async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240 },
+            audio: false,
+          });
+          video.srcObject = stream;
+          await video.play();
+          maskThresholdInput.disabled = false;
+          if (!running) {
+            running = true;
+            requestAnimationFrame(processFrame);
+          }
+        } catch (err) {
+          alert("Could not access webcam: " + err.message);
+        }
+      });
+
+      function processFrame() {
+        if (!running) return;
+
+        ctx1.drawImage(video, 0, 0, canvas1.width, canvas1.height);
+
+        processSegmentationFrame();
+
+        requestAnimationFrame(processFrame);
+      }
+
+      async function initializeSegmenter() {
+        try {
+          const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2");
+          const filesetResolver = await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2/wasm");
+
+          imageSegmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+
+          poseLandmarker = await vision.PoseLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.5,
+            minPosePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          });
+
+          handLandmarker = await vision.HandLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 2,
+            minHandDetectionConfidence: 0.5,
+            minHandPresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          });
+
+          segmenterReady = true;
+          poseReady = true;
+          handReady = true;
+          paintSegmentationMask(null, canvas2.width, canvas2.height);
+          paintInvertedThresholdMask(null, canvas3.width, canvas3.height);
+          paintRightEdgeFillMask(null, canvas4.width, canvas4.height);
+          paintCenteredParityMask(null, canvas5.width, canvas5.height);
+          paintLeftHalfInvertedParityMask(null, canvas6.width, canvas6.height);
+        } catch (error) {
+          console.error("Failed to initialize MediaPipe segmenter", error);
+          paintSegmentationMask(null, canvas2.width, canvas2.height);
+          paintInvertedThresholdMask(null, canvas3.width, canvas3.height);
+          paintRightEdgeFillMask(null, canvas4.width, canvas4.height);
+          paintCenteredParityMask(null, canvas5.width, canvas5.height);
+          paintLeftHalfInvertedParityMask(null, canvas6.width, canvas6.height);
+        }
+      }
+
+      function processSegmentationFrame() {
+        if (!segmenterReady || !imageSegmenter || segmenterBusy) {
+          return;
+        }
+
+        if (video.readyState < 2 || video.currentTime === segmenterLastVideoTime) {
+          return;
+        }
+
+        segmenterBusy = true;
+        segmenterLastVideoTime = video.currentTime;
+
+        imageSegmenter.segmentForVideo(video, performance.now(), (result) => {
+          const backgroundConfidenceMask = result.confidenceMasks?.[0] ?? null;
+          const poseLandmarks = getPoseLandmarksForVideoFrame(video);
+          const handLandmarks = getHandLandmarksForVideoFrame(video);
+
+          paintSegmentationMask(backgroundConfidenceMask, video.videoWidth, video.videoHeight);
+          const thresholdMask = paintInvertedThresholdMask(backgroundConfidenceMask, video.videoWidth, video.videoHeight);
+          paintOverlayMarkers(poseLandmarks, handLandmarks, video.videoWidth, video.videoHeight);
+          paintRightEdgeFillMask(thresholdMask, video.videoWidth, video.videoHeight);
+          paintCenteredParityMask(thresholdMask, video.videoWidth, video.videoHeight);
+          paintLeftHalfInvertedParityMask(thresholdMask, video.videoWidth, video.videoHeight);
+          segmenterBusy = false;
+        });
+      }
+
+      function getPoseLandmarksForVideoFrame(videoFrame) {
+        if (!poseReady || !poseLandmarker) {
+          return null;
+        }
+
+        const result = poseLandmarker.detectForVideo(videoFrame, performance.now());
+        return result.landmarks?.[0] ?? null;
+      }
+
+      function getHandLandmarksForVideoFrame(videoFrame) {
+        if (!handReady || !handLandmarker) {
+          return [];
+        }
+
+        const result = handLandmarker.detectForVideo(videoFrame, performance.now());
+        return result.landmarks ?? [];
+      }
+
+      function paintSegmentationMask(confidenceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas2.width !== width || canvas2.height !== height) {
+          canvas2.width = width;
+          canvas2.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (confidenceMask) {
+          const mask = confidenceMask.getAsFloat32Array();
+
+          for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+            const intensity = Math.max(0, Math.min(255, Math.round(mask[pixelIndex] * 255)));
+            const targetIndex = pixelIndex * 4;
+
+            pixels[targetIndex] = intensity;
+            pixels[targetIndex + 1] = intensity;
+            pixels[targetIndex + 2] = intensity;
+          }
+        } else {
+          for (let index = 0; index < pixels.length; index += 4) {
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+          }
+        }
+
+        ctx2.putImageData(output, 0, 0);
+      }
+
+      function paintInvertedThresholdMask(confidenceMask, width, height) {
+        if (!width || !height) {
+          return null;
+        }
+
+        if (canvas3.width !== width || canvas3.height !== height) {
+          canvas3.width = width;
+          canvas3.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (confidenceMask) {
+          const mask = confidenceMask.getAsFloat32Array();
+          const threshold = parseInt(maskThresholdInput.value, 10);
+
+          for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+            const invertedIntensity = 255 - Math.max(0, Math.min(255, Math.round(mask[pixelIndex] * 255)));
+            const value = invertedIntensity >= threshold ? 255 : 0;
+            const targetIndex = pixelIndex * 4;
+
+            pixels[targetIndex] = value;
+            pixels[targetIndex + 1] = value;
+            pixels[targetIndex + 2] = value;
+          }
+        } else {
+          for (let index = 0; index < pixels.length; index += 4) {
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+          }
+        }
+
+        ctx3.putImageData(output, 0, 0);
+        return output;
+      }
+
+      function paintOverlayMarkers(poseLandmarks, handLandmarks, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        ctx3.fillStyle = "#ff0000";
+
+        if (poseLandmarks) {
+          for (const index of [9, 10]) {
+            const landmark = poseLandmarks[index];
+
+            if (!landmark) {
+              continue;
+            }
+
+            drawMarkerDot(landmark.x * width, landmark.y * height);
+          }
+        }
+
+        for (const hand of handLandmarks ?? []) {
+          const landmark = hand?.[8];
+
+          if (!landmark) {
+            continue;
+          }
+
+          drawMarkerDot(landmark.x * width, landmark.y * height);
+        }
+      }
+
+      function drawMarkerDot(x, y) {
+        ctx3.beginPath();
+        ctx3.arc(x, y, 5, 0, Math.PI * 2);
+        ctx3.fill();
+      }
+
+      function paintRightEdgeFillMask(sourceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas4.width !== width || canvas4.height !== height) {
+          canvas4.width = width;
+          canvas4.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (!sourceMask) {
+          ctx4.putImageData(output, 0, 0);
+          return;
+        }
+
+        const sourcePixels = sourceMask.data;
+        let rightMostWhiteX = -1;
+
+        for (let pixelIndex = 0; pixelIndex < sourcePixels.length; pixelIndex += 4) {
+          const value = sourcePixels[pixelIndex];
+
+          pixels[pixelIndex] = value;
+          pixels[pixelIndex + 1] = value;
+          pixels[pixelIndex + 2] = value;
+        }
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = width - 1; x >= 0; x -= 1) {
+            const sourceIndex = (y * width + x) * 4;
+
+            if (sourcePixels[sourceIndex] === 255) {
+              rightMostWhiteX = Math.max(rightMostWhiteX, x);
+              break;
+            }
+          }
+        }
+
+        if (rightMostWhiteX >= 0) {
+          for (let y = 0; y < height; y += 1) {
+            for (let x = rightMostWhiteX + 1; x < width; x += 1) {
+              const targetIndex = (y * width + x) * 4;
+
+              pixels[targetIndex] = 255;
+              pixels[targetIndex + 1] = 255;
+              pixels[targetIndex + 2] = 255;
+            }
+          }
+
+          for (let y = 0; y < height; y += 1) {
+            for (let x = 0; x <= rightMostWhiteX; x += 1) {
+              const sourceIndex = (y * width + x) * 4;
+
+              if (sourcePixels[sourceIndex] !== 255) {
+                continue;
+              }
+
+              const mirroredX = rightMostWhiteX + (rightMostWhiteX - x) + 1;
+
+              if (mirroredX >= width) {
+                continue;
+              }
+
+              const targetIndex = (y * width + mirroredX) * 4;
+
+              pixels[targetIndex] = 0;
+              pixels[targetIndex + 1] = 0;
+              pixels[targetIndex + 2] = 0;
+            }
+          }
+        }
+
+        ctx4.putImageData(output, 0, 0);
+      }
+
+      function paintCenteredParityMask(sourceMask, width, height) {
+        const output = createCenteredParityImage(sourceMask, width, height);
+
+        if (!output) {
+          return;
+        }
+
+        if (canvas5.width !== width || canvas5.height !== height) {
+          canvas5.width = width;
+          canvas5.height = height;
+        }
+
+        ctx5.putImageData(output, 0, 0);
+      }
+
+      function paintLeftHalfInvertedParityMask(sourceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas6.width !== width || canvas6.height !== height) {
+          canvas6.width = width;
+          canvas6.height = height;
+        }
+
+        const output = createCenteredParityImage(sourceMask, width, height);
+
+        if (!output) {
+          return;
+        }
+
+        const pixels = output.data;
+        const leftHalfWidth = Math.floor(width / 2);
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < leftHalfWidth; x += 1) {
+            const index = (y * width + x) * 4;
+
+            pixels[index] = 255 - pixels[index];
+            pixels[index + 1] = 255 - pixels[index + 1];
+            pixels[index + 2] = 255 - pixels[index + 2];
+          }
+        }
+
+        ctx6.putImageData(output, 0, 0);
+      }
+
+      function createCenteredParityImage(sourceMask, width, height) {
+        if (!width || !height) {
+          return null;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index] = 255;
+          pixels[index + 1] = 255;
+          pixels[index + 2] = 255;
+          pixels[index + 3] = 255;
+        }
+
+        if (!sourceMask) {
+          return output;
+        }
+
+        const sourcePixels = sourceMask.data;
+        const dividerLeftX = Math.floor(width / 2) - 1;
+        const dividerCenterX = dividerLeftX + 0.5;
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            let overlapCount = 0;
+
+            const originalIndex = (y * width + x) * 4;
+            if (sourcePixels[originalIndex] === 255) {
+              overlapCount += 1;
+            }
+
+            const mirroredSourceX = Math.round(2 * dividerCenterX - x);
+            if (mirroredSourceX >= 0 && mirroredSourceX < width) {
+              const mirroredIndex = (y * width + mirroredSourceX) * 4;
+              if (sourcePixels[mirroredIndex] === 255) {
+                overlapCount += 1;
+              }
+            }
+
+            if (overlapCount % 2 === 1) {
+              const targetIndex = (y * width + x) * 4;
+              pixels[targetIndex] = 0;
+              pixels[targetIndex + 1] = 0;
+              pixels[targetIndex + 2] = 0;
+            }
+          }
+        }
+
+        return output;
+      }
+    </script>
+  </body>
+</html>

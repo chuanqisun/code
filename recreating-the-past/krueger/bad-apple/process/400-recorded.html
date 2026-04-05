@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CMU Walk Playback</title>
+    <style>
+      body {
+        margin: 16px;
+        font-family: sans-serif;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+
+      #timeline {
+        flex: 1;
+        min-width: 240px;
+      }
+
+      #scene {
+        width: 100%;
+        height: 70vh;
+        display: block;
+        border: 1px solid #000;
+        background: #000;
+      }
+
+      .stats {
+        margin-top: 12px;
+        display: grid;
+        gap: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>CMU Walk Playback</h1>
+    <p>Local CMU motion-capture playback with selectable pre-downloaded clips.</p>
+
+    <div class="controls">
+      <label>
+        Subject
+        <select id="subjectSelect"></select>
+      </label>
+      <label>
+        Trial
+        <select id="trialSelect"></select>
+      </label>
+      <button id="loadBtn">Load</button>
+      <button id="toggleBtn" disabled>Loading clip...</button>
+      <input id="timeline" type="range" min="0" max="1" step="0.0001" value="0" />
+      <span id="status">Loading motion data...</span>
+    </div>
+
+    <canvas id="scene"></canvas>
+
+    <div class="stats">
+      <div id="frameValue">Frame: 0 / 0</div>
+      <div id="clipValue">Clip: 02 / 03</div>
+      <div id="durationValue">Duration: 0.00 s</div>
+      <div id="distanceValue">Distance: 0.00 m</div>
+      <div id="rootValue">Root: 0.00, 0.00, 0.00</div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
+
+      const LOCAL_CLIPS = {
+        "02": ["03"],
+        "07": ["01"],
+      };
+      const CMU_LENGTH_TO_METERS = (1 / 0.45) * 0.0254;
+      const FPS = 120;
+      const DEFAULT_SUBJECT = "02";
+      const DEFAULT_TRIAL = "03";
+
+      const canvas = document.getElementById("scene");
+      const subjectSelect = document.getElementById("subjectSelect");
+      const trialSelect = document.getElementById("trialSelect");
+      const loadBtn = document.getElementById("loadBtn");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const timeline = document.getElementById("timeline");
+      const statusEl = document.getElementById("status");
+      const frameValue = document.getElementById("frameValue");
+      const clipValue = document.getElementById("clipValue");
+      const durationValue = document.getElementById("durationValue");
+      const distanceValue = document.getElementById("distanceValue");
+      const rootValue = document.getElementById("rootValue");
+
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000000);
+
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+      camera.position.set(2.5, 2, 4.5);
+
+      const controls = new OrbitControls(camera, canvas);
+      controls.enableDamping = true;
+      controls.target.set(0, 1, 0);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+
+      const light = new THREE.DirectionalLight(0xffffff, 1.2);
+      light.position.set(3, 6, 4);
+      scene.add(light);
+
+      const grid = new THREE.GridHelper(20, 40, 0x666666, 0x333333);
+      scene.add(grid);
+
+      const skeletonGroup = new THREE.Group();
+      scene.add(skeletonGroup);
+
+      const jointGeometry = new THREE.SphereGeometry(0.04, 10, 10);
+      const jointMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+      const rootMaterial = new THREE.MeshStandardMaterial({ color: 0xffaa33 });
+      const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+      const pathMaterial = new THREE.LineBasicMaterial({ color: 0xffaa33 });
+
+      let playback = null;
+      let jointMeshes = [];
+      let boneLines = [];
+      let pathLine = null;
+      let isPlaying = true;
+      let currentTime = 0;
+      let lastTime = performance.now();
+      let updatingTimeline = false;
+      let loadToken = 0;
+
+      populateSubjectSelect(DEFAULT_SUBJECT);
+      populateTrialSelect(DEFAULT_SUBJECT, DEFAULT_TRIAL);
+
+      toggleBtn.addEventListener("click", () => {
+        if (!playback) {
+          return;
+        }
+
+        isPlaying = !isPlaying;
+        toggleBtn.textContent = isPlaying ? "Pause" : "Play";
+      });
+
+      timeline.addEventListener("input", () => {
+        if (!playback || updatingTimeline) {
+          return;
+        }
+
+        isPlaying = false;
+        toggleBtn.textContent = "Play";
+        currentTime = Number(timeline.value) * playback.duration;
+        applyFrame(currentTime);
+      });
+
+      subjectSelect.addEventListener("change", () => {
+        populateTrialSelect(subjectSelect.value);
+        loadClip(subjectSelect.value, trialSelect.value);
+      });
+
+      trialSelect.addEventListener("change", () => {
+        loadClip(subjectSelect.value, trialSelect.value);
+      });
+
+      loadBtn.addEventListener("click", () => {
+        loadClip(subjectSelect.value, trialSelect.value);
+      });
+
+      window.addEventListener("resize", resize);
+
+      init();
+      render();
+
+      async function init() {
+        await loadClip(DEFAULT_SUBJECT, DEFAULT_TRIAL);
+      }
+
+      async function loadClip(subject, trial) {
+        const normalizedSubject = padNumber(subject);
+        const normalizedTrial = padNumber(trial);
+        const token = ++loadToken;
+
+        subjectSelect.value = normalizedSubject;
+        trialSelect.value = normalizedTrial;
+        setLoadingState(true, `Loading subject ${normalizedSubject}, trial ${normalizedTrial}...`);
+
+        try {
+          const [asfText, amcText] = await Promise.all([fetchText(getAsfUrl(normalizedSubject)), fetchText(getAmcUrl(normalizedSubject, normalizedTrial))]);
+
+          if (token !== loadToken) {
+            return;
+          }
+
+          const skeleton = parseAsf(asfText);
+          const frames = parseAmc(amcText);
+          playback = buildPlayback(skeleton, frames);
+          buildScene(playback);
+          currentTime = 0;
+          isPlaying = true;
+          applyFrame(0);
+
+          toggleBtn.textContent = "Pause";
+          statusEl.textContent = "Playing";
+          clipValue.textContent = `Clip: ${normalizedSubject} / ${normalizedTrial}`;
+        } catch (error) {
+          console.error(error);
+          if (token !== loadToken) {
+            return;
+          }
+
+          playback = null;
+          clearScene();
+          frameValue.textContent = "Frame: 0 / 0";
+          durationValue.textContent = "Duration: 0.00 s";
+          distanceValue.textContent = "Distance: 0.00 m";
+          rootValue.textContent = "Root: 0.00, 0.00, 0.00";
+          clipValue.textContent = `Clip: ${normalizedSubject} / ${normalizedTrial}`;
+          statusEl.textContent = `Load failed for ${normalizedSubject} / ${normalizedTrial}`;
+          toggleBtn.textContent = "Load failed";
+        } finally {
+          if (token === loadToken) {
+            setLoadingState(false);
+          }
+        }
+      }
+
+      async function fetchText(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch ${url}`);
+        }
+        return response.text();
+      }
+
+      function padNumber(value) {
+        return String(value).padStart(2, "0");
+      }
+
+      function populateSubjectSelect(initialValue) {
+        subjectSelect.textContent = "";
+
+        for (const subject of Object.keys(LOCAL_CLIPS).sort()) {
+          const option = document.createElement("option");
+          option.value = subject;
+          option.textContent = subject;
+          subjectSelect.append(option);
+        }
+
+        subjectSelect.value = LOCAL_CLIPS[initialValue] ? initialValue : Object.keys(LOCAL_CLIPS)[0];
+      }
+
+      function populateTrialSelect(subject, initialValue = null) {
+        trialSelect.textContent = "";
+        const trials = LOCAL_CLIPS[subject] || [];
+
+        for (const trial of trials) {
+          const option = document.createElement("option");
+          option.value = trial;
+          option.textContent = trial;
+          trialSelect.append(option);
+        }
+
+        if (trials.length === 0) {
+          return;
+        }
+
+        trialSelect.value = initialValue && trials.includes(initialValue) ? initialValue : trials[0];
+      }
+
+      function getAsfUrl(subject) {
+        return `./data/cmu-walk/${subject}.asf`;
+      }
+
+      function getAmcUrl(subject, trial) {
+        return `./data/cmu-walk/${subject}_${trial}.amc`;
+      }
+
+      function setLoadingState(isLoading, message = statusEl.textContent) {
+        loadBtn.disabled = isLoading;
+        subjectSelect.disabled = isLoading;
+        trialSelect.disabled = isLoading;
+        toggleBtn.disabled = isLoading || !playback;
+        if (message) {
+          statusEl.textContent = message;
+        }
+      }
+
+      function parseAsf(text) {
+        const lines = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const bones = new Map();
+        const children = new Map();
+        let index = 0;
+
+        while (index < lines.length) {
+          if (lines[index] === ":bonedata") {
+            index += 1;
+            while (index < lines.length && lines[index] !== ":hierarchy") {
+              if (lines[index] !== "begin") {
+                index += 1;
+                continue;
+              }
+
+              const bone = {
+                name: "",
+                direction: new THREE.Vector3(),
+                length: 0,
+                axis: {
+                  angles: [0, 0, 0],
+                  order: "XYZ",
+                },
+                dof: [],
+              };
+
+              index += 1;
+              while (index < lines.length && lines[index] !== "end") {
+                const line = lines[index];
+                if (line.startsWith("name ")) {
+                  bone.name = line.slice(5).trim();
+                } else if (line.startsWith("direction ")) {
+                  const values = line.slice(10).trim().split(/\s+/).map(Number);
+                  bone.direction.set(values[0], values[1], values[2]).normalize();
+                } else if (line.startsWith("length ")) {
+                  bone.length = Number(line.slice(7).trim()) * CMU_LENGTH_TO_METERS;
+                } else if (line.startsWith("axis ")) {
+                  const parts = line.slice(5).trim().split(/\s+/);
+                  bone.axis = {
+                    angles: [Number(parts[0]), Number(parts[1]), Number(parts[2])],
+                    order: parts[3] || "XYZ",
+                  };
+                } else if (line.startsWith("dof ")) {
+                  bone.dof = line
+                    .slice(4)
+                    .trim()
+                    .split(/\s+/)
+                    .map((value) => value.toUpperCase());
+                }
+                index += 1;
+              }
+
+              bones.set(bone.name, bone);
+              index += 1;
+            }
+            continue;
+          }
+
+          if (lines[index] === ":hierarchy") {
+            index += 1;
+            while (index < lines.length) {
+              const line = lines[index];
+              if (line !== "begin" && line !== "end") {
+                const parts = line.split(/\s+/);
+                children.set(parts[0], parts.slice(1));
+              }
+              index += 1;
+            }
+          }
+
+          index += 1;
+        }
+
+        return { bones, children };
+      }
+
+      function parseAmc(text) {
+        const lines = text.split(/\r?\n/).map((line) => line.trim());
+        const frames = [];
+        let currentFrame = null;
+
+        for (const line of lines) {
+          if (!line || line.startsWith("#") || line.startsWith(":")) {
+            continue;
+          }
+
+          if (/^\d+$/.test(line)) {
+            currentFrame = { frame: Number(line), pose: new Map() };
+            frames.push(currentFrame);
+            continue;
+          }
+
+          if (!currentFrame) {
+            continue;
+          }
+
+          const parts = line.split(/\s+/);
+          currentFrame.pose.set(parts[0], parts.slice(1).map(Number));
+        }
+
+        return frames;
+      }
+
+      function buildPlayback(skeleton, frames) {
+        const solvedFrames = frames.map((frame) => solveFrame(skeleton, frame));
+        const connections = [];
+        const pathPoints = solvedFrames.map((frame) => frame.root.clone());
+        let distance = 0;
+
+        for (const [parent, childNames] of skeleton.children.entries()) {
+          for (const child of childNames) {
+            connections.push([parent, child]);
+          }
+        }
+
+        for (let index = 1; index < pathPoints.length; index += 1) {
+          distance += pathPoints[index - 1].distanceTo(pathPoints[index]);
+        }
+
+        return {
+          skeleton,
+          frames: solvedFrames,
+          connections,
+          duration: solvedFrames.length / FPS,
+          distance,
+          pathPoints,
+        };
+      }
+
+      function solveFrame(skeleton, frame) {
+        const positions = new Map();
+        const rotations = new Map();
+        const rootData = frame.pose.get("root") || [0, 0, 0, 0, 0, 0];
+        const rootPosition = new THREE.Vector3(rootData[0] * CMU_LENGTH_TO_METERS, rootData[1] * CMU_LENGTH_TO_METERS, rootData[2] * CMU_LENGTH_TO_METERS);
+        const rootRotation = eulerToQuaternion(rootData.slice(3));
+
+        positions.set("root", rootPosition.clone());
+        rotations.set("root", rootRotation.clone());
+
+        const rootChildren = skeleton.children.get("root") || [];
+        for (const child of rootChildren) {
+          solveBone(skeleton, frame.pose, child, rootPosition, rootRotation, positions, rotations);
+        }
+
+        return { positions, root: rootPosition };
+      }
+
+      function solveBone(skeleton, pose, boneName, parentPosition, parentRotation, positions, rotations) {
+        const bone = skeleton.bones.get(boneName);
+        if (!bone) {
+          return;
+        }
+
+        const axisRotation = staticEulerToQuaternion(bone.axis.angles, bone.axis.order);
+        const inverseAxisRotation = axisRotation.clone().invert();
+        const localRotation = axisRotation
+          .clone()
+          .multiply(dofToQuaternion(pose.get(boneName) || [], bone.dof))
+          .multiply(inverseAxisRotation);
+        const worldRotation = parentRotation.clone().multiply(localRotation);
+        const startPosition = parentPosition.clone();
+        const endPosition = startPosition.clone().add(bone.direction.clone().multiplyScalar(bone.length).applyQuaternion(worldRotation));
+
+        positions.set(boneName, endPosition);
+        rotations.set(boneName, worldRotation);
+
+        const childNames = skeleton.children.get(boneName) || [];
+        for (const childName of childNames) {
+          solveBone(skeleton, pose, childName, endPosition, worldRotation, positions, rotations);
+        }
+      }
+
+      function eulerToQuaternion(values) {
+        return staticEulerToQuaternion(values, "XYZ");
+      }
+
+      function dofToQuaternion(values, dof) {
+        const anglesByAxis = { X: 0, Y: 0, Z: 0 };
+        const order = [];
+
+        for (let index = 0; index < dof.length; index += 1) {
+          const axis = dof[index].slice(1);
+          anglesByAxis[axis] = values[index] || 0;
+          order.push(axis);
+        }
+
+        return staticEulerToQuaternion(
+          order.map((axis) => anglesByAxis[axis]),
+          order.join("")
+        );
+      }
+
+      function staticEulerToQuaternion(values, order) {
+        const matrix = new THREE.Matrix4().identity();
+
+        for (let index = 0; index < order.length; index += 1) {
+          const angle = THREE.MathUtils.degToRad(values[index] || 0);
+          const axis = order[index];
+          const step = new THREE.Matrix4();
+
+          if (axis === "X") {
+            step.makeRotationX(angle);
+          } else if (axis === "Y") {
+            step.makeRotationY(angle);
+          } else if (axis === "Z") {
+            step.makeRotationZ(angle);
+          } else {
+            continue;
+          }
+
+          matrix.premultiply(step);
+        }
+
+        return new THREE.Quaternion().setFromRotationMatrix(matrix);
+      }
+
+      function buildScene(playbackData) {
+        clearScene();
+        jointMeshes = [];
+        boneLines = [];
+
+        const jointNames = new Set(["root"]);
+        for (const [, child] of playbackData.connections) {
+          jointNames.add(child);
+        }
+
+        for (const jointName of jointNames) {
+          const mesh = new THREE.Mesh(jointGeometry, jointName === "root" ? rootMaterial : jointMaterial);
+          mesh.userData.jointName = jointName;
+          skeletonGroup.add(mesh);
+          jointMeshes.push(mesh);
+        }
+
+        for (const connection of playbackData.connections) {
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 3));
+          const line = new THREE.Line(geometry, lineMaterial);
+          line.userData.connection = connection;
+          skeletonGroup.add(line);
+          boneLines.push(line);
+        }
+
+        const pathGeometry = new THREE.BufferGeometry().setFromPoints(playbackData.pathPoints);
+        pathLine = new THREE.Line(pathGeometry, pathMaterial);
+        scene.add(pathLine);
+
+        durationValue.textContent = `Duration: ${playbackData.duration.toFixed(2)} s`;
+        distanceValue.textContent = `Distance: ${playbackData.distance.toFixed(2)} m`;
+      }
+
+      function clearScene() {
+        skeletonGroup.clear();
+
+        if (pathLine) {
+          scene.remove(pathLine);
+          pathLine.geometry.dispose();
+          pathLine = null;
+        }
+
+        jointMeshes = [];
+        boneLines = [];
+      }
+
+      function applyFrame(timeSeconds) {
+        if (!playback) {
+          return;
+        }
+
+        const frameIndex = Math.min(playback.frames.length - 1, Math.max(0, Math.floor(timeSeconds * FPS)));
+        const frame = playback.frames[frameIndex];
+
+        for (const mesh of jointMeshes) {
+          const position = frame.positions.get(mesh.userData.jointName);
+          if (position) {
+            mesh.position.copy(position);
+          }
+        }
+
+        for (const line of boneLines) {
+          const [parent, child] = line.userData.connection;
+          const start = frame.positions.get(parent);
+          const end = frame.positions.get(child);
+          if (!start || !end) {
+            continue;
+          }
+
+          const positions = line.geometry.attributes.position.array;
+          positions[0] = start.x;
+          positions[1] = start.y;
+          positions[2] = start.z;
+          positions[3] = end.x;
+          positions[4] = end.y;
+          positions[5] = end.z;
+          line.geometry.attributes.position.needsUpdate = true;
+        }
+
+        frameValue.textContent = `Frame: ${frameIndex + 1} / ${playback.frames.length}`;
+        rootValue.textContent = `Root: ${frame.root.x.toFixed(2)}, ${frame.root.y.toFixed(2)}, ${frame.root.z.toFixed(2)}`;
+
+        updatingTimeline = true;
+        timeline.value = String(playback.duration === 0 ? 0 : timeSeconds / playback.duration);
+        updatingTimeline = false;
+
+        controls.target.lerp(frame.root.clone().add(new THREE.Vector3(0, 1, 0)), 0.08);
+      }
+
+      function render(now = performance.now()) {
+        requestAnimationFrame(render);
+
+        const delta = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+
+        if (playback && isPlaying) {
+          if (playback.duration > 0) {
+            currentTime = (currentTime + delta) % playback.duration;
+            applyFrame(currentTime);
+          } else {
+            applyFrame(0);
+          }
+        }
+
+        resize();
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      function resize() {
+        const width = Math.max(1, canvas.clientWidth);
+        const height = Math.max(1, canvas.clientHeight);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+    </script>
+  </body>
+</html>

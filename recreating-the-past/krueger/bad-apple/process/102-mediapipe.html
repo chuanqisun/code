@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webcam Background Subtraction</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .panel {
+        display: inline-block;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      label {
+        display: inline-block;
+        margin-right: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Webcam Background Subtraction</h1>
+
+    <div style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+      <button id="captureBgBtn" disabled>Capture Background</button>
+      <label>
+        Blur Radius K:
+        <input id="blurRadius" type="range" min="0" max="12" value="1" disabled />
+        <span id="blurRadiusValue">1</span>
+      </label>
+      <label>
+        Binary Threshold:
+        <input id="binaryThreshold" type="range" min="0" max="255" value="40" disabled />
+        <span id="binaryThresholdValue">40</span>
+      </label>
+      <label>
+        Mask Threshold:
+        <input id="maskThreshold" type="range" min="0" max="255" value="128" disabled />
+        <span id="maskThresholdValue">128</span>
+      </label>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 1: Live Video</div>
+        <canvas id="canvas1" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 2: Captured Background</div>
+        <canvas id="canvas2" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 3: Background Subtraction</div>
+        <canvas id="canvas3" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 4: Thresholded</div>
+        <canvas id="canvas4" width="320" height="240"></canvas>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 5: Background Confidence Mask</div>
+        <canvas id="canvas5" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 6: Inverted Threshold Mask</div>
+        <canvas id="canvas6" width="320" height="240"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const captureBgBtn = document.getElementById("captureBgBtn");
+      const binaryThresholdInput = document.getElementById("binaryThreshold");
+      const binaryThresholdValue = document.getElementById("binaryThresholdValue");
+      const maskThresholdInput = document.getElementById("maskThreshold");
+      const maskThresholdValue = document.getElementById("maskThresholdValue");
+      const blurRadiusInput = document.getElementById("blurRadius");
+      const blurRadiusValue = document.getElementById("blurRadiusValue");
+
+      const canvas1 = document.getElementById("canvas1");
+      const canvas2 = document.getElementById("canvas2");
+      const canvas3 = document.getElementById("canvas3");
+      const canvas4 = document.getElementById("canvas4");
+      const canvas5 = document.getElementById("canvas5");
+      const canvas6 = document.getElementById("canvas6");
+
+      const ctx1 = canvas1.getContext("2d");
+      const ctx2 = canvas2.getContext("2d");
+      const ctx3 = canvas3.getContext("2d");
+      const ctx4 = canvas4.getContext("2d");
+      const ctx5 = canvas5.getContext("2d");
+      const ctx6 = canvas6.getContext("2d");
+
+      let bgImageData = null;
+      let running = false;
+      let imageSegmenter = null;
+      let segmenterReady = false;
+      let segmenterBusy = false;
+      let segmenterLastVideoTime = -1;
+
+      initializeSegmenter();
+
+      binaryThresholdInput.addEventListener("input", () => {
+        binaryThresholdValue.textContent = binaryThresholdInput.value;
+      });
+
+      maskThresholdInput.addEventListener("input", () => {
+        maskThresholdValue.textContent = maskThresholdInput.value;
+      });
+
+      blurRadiusInput.addEventListener("input", () => {
+        blurRadiusValue.textContent = blurRadiusInput.value;
+
+        if (bgImageData) {
+          ctx2.putImageData(bgImageData, 0, 0);
+        }
+      });
+
+      startBtn.addEventListener("click", async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240 },
+            audio: false,
+          });
+          video.srcObject = stream;
+          await video.play();
+          captureBgBtn.disabled = false;
+          maskThresholdInput.disabled = false;
+          if (!running) {
+            running = true;
+            requestAnimationFrame(processFrame);
+          }
+        } catch (err) {
+          alert("Could not access webcam: " + err.message);
+        }
+      });
+
+      captureBgBtn.addEventListener("click", () => {
+        ctx2.drawImage(video, 0, 0, canvas2.width, canvas2.height);
+        const capturedFrame = ctx2.getImageData(0, 0, canvas2.width, canvas2.height);
+        const grayscaleFrame = grayscaleImage(capturedFrame);
+
+        bgImageData = captureBackgroundFrame(grayscaleFrame);
+        binaryThresholdInput.disabled = false;
+        blurRadiusInput.disabled = false;
+        ctx2.putImageData(bgImageData, 0, 0);
+      });
+
+      function processFrame() {
+        if (!running) return;
+
+        ctx1.drawImage(video, 0, 0, canvas1.width, canvas1.height);
+        const current = ctx1.getImageData(0, 0, canvas1.width, canvas1.height);
+        const grayscaleCurrent = grayscaleImage(current);
+
+        ctx1.putImageData(grayscaleCurrent, 0, 0);
+
+        if (bgImageData) {
+          const blurRadius = parseInt(blurRadiusInput.value, 10);
+          const binaryThreshold = parseInt(binaryThresholdInput.value, 10);
+          const blurredCurrent = blurImage(grayscaleCurrent, blurRadius);
+
+          const subtracted = subtractBackground(blurredCurrent, bgImageData);
+          const thresholded = thresholdImage(subtracted, binaryThreshold);
+
+          ctx2.putImageData(bgImageData, 0, 0);
+          ctx3.putImageData(subtracted, 0, 0);
+          ctx4.putImageData(thresholded, 0, 0);
+        }
+
+        processSegmentationFrame();
+
+        requestAnimationFrame(processFrame);
+      }
+
+      async function initializeSegmenter() {
+        try {
+          const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2");
+          const filesetResolver = await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2/wasm");
+
+          imageSegmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+
+          segmenterReady = true;
+          paintSegmentationMask(null, canvas5.width, canvas5.height);
+          paintInvertedThresholdMask(null, canvas6.width, canvas6.height);
+        } catch (error) {
+          console.error("Failed to initialize MediaPipe segmenter", error);
+          paintSegmentationMask(null, canvas5.width, canvas5.height);
+          paintInvertedThresholdMask(null, canvas6.width, canvas6.height);
+        }
+      }
+
+      function processSegmentationFrame() {
+        if (!segmenterReady || !imageSegmenter || segmenterBusy) {
+          return;
+        }
+
+        if (video.readyState < 2 || video.currentTime === segmenterLastVideoTime) {
+          return;
+        }
+
+        segmenterBusy = true;
+        segmenterLastVideoTime = video.currentTime;
+
+        imageSegmenter.segmentForVideo(video, performance.now(), (result) => {
+          const backgroundConfidenceMask = result.confidenceMasks?.[0] ?? null;
+
+          paintSegmentationMask(backgroundConfidenceMask, video.videoWidth, video.videoHeight);
+          paintInvertedThresholdMask(backgroundConfidenceMask, video.videoWidth, video.videoHeight);
+          segmenterBusy = false;
+        });
+      }
+
+      function paintSegmentationMask(confidenceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas5.width !== width || canvas5.height !== height) {
+          canvas5.width = width;
+          canvas5.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (confidenceMask) {
+          const mask = confidenceMask.getAsFloat32Array();
+
+          for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+            const intensity = Math.max(0, Math.min(255, Math.round(mask[pixelIndex] * 255)));
+            const targetIndex = pixelIndex * 4;
+
+            pixels[targetIndex] = intensity;
+            pixels[targetIndex + 1] = intensity;
+            pixels[targetIndex + 2] = intensity;
+          }
+        } else {
+          for (let index = 0; index < pixels.length; index += 4) {
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+          }
+        }
+
+        ctx5.putImageData(output, 0, 0);
+      }
+
+      function paintInvertedThresholdMask(confidenceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas6.width !== width || canvas6.height !== height) {
+          canvas6.width = width;
+          canvas6.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (confidenceMask) {
+          const mask = confidenceMask.getAsFloat32Array();
+          const threshold = parseInt(maskThresholdInput.value, 10);
+
+          for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+            const invertedIntensity = 255 - Math.max(0, Math.min(255, Math.round(mask[pixelIndex] * 255)));
+            const value = invertedIntensity >= threshold ? 255 : 0;
+            const targetIndex = pixelIndex * 4;
+
+            pixels[targetIndex] = value;
+            pixels[targetIndex + 1] = value;
+            pixels[targetIndex + 2] = value;
+          }
+        } else {
+          for (let index = 0; index < pixels.length; index += 4) {
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+          }
+        }
+
+        ctx6.putImageData(output, 0, 0);
+      }
+
+      function grayscaleImage(imageData) {
+        const grayscale = new ImageData(imageData.width, imageData.height);
+
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const red = imageData.data[i];
+          const green = imageData.data[i + 1];
+          const blue = imageData.data[i + 2];
+          const value = 0.299 * red + 0.587 * green + 0.114 * blue;
+
+          grayscale.data[i] = value;
+          grayscale.data[i + 1] = value;
+          grayscale.data[i + 2] = value;
+          grayscale.data[i + 3] = imageData.data[i + 3];
+        }
+
+        return grayscale;
+      }
+
+      function captureBackgroundFrame(imageData) {
+        const blurRadius = parseInt(blurRadiusInput.value, 10);
+
+        return blurImage(new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height), blurRadius);
+      }
+
+      function blurImage(imageData, radius) {
+        if (radius <= 0) {
+          return new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+        }
+
+        const width = imageData.width;
+        const height = imageData.height;
+        const blurred = new ImageData(width, height);
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            let sum = 0;
+            let count = 0;
+
+            for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+              const sampleY = y + offsetY;
+
+              if (sampleY < 0 || sampleY >= height) {
+                continue;
+              }
+
+              for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+                const sampleX = x + offsetX;
+
+                if (sampleX < 0 || sampleX >= width) {
+                  continue;
+                }
+
+                const sampleIndex = (sampleY * width + sampleX) * 4;
+                sum += imageData.data[sampleIndex];
+                count += 1;
+              }
+            }
+
+            const value = count > 0 ? Math.round(sum / count) : 0;
+            const targetIndex = (y * width + x) * 4;
+
+            blurred.data[targetIndex] = value;
+            blurred.data[targetIndex + 1] = value;
+            blurred.data[targetIndex + 2] = value;
+            blurred.data[targetIndex + 3] = 255;
+          }
+        }
+
+        return blurred;
+      }
+
+      function subtractBackground(currentFrame, backgroundFrame) {
+        const subtracted = new ImageData(currentFrame.width, currentFrame.height);
+
+        for (let i = 0; i < currentFrame.data.length; i += 4) {
+          const dr = Math.abs(currentFrame.data[i] - backgroundFrame.data[i]);
+          const dg = Math.abs(currentFrame.data[i + 1] - backgroundFrame.data[i + 1]);
+          const db = Math.abs(currentFrame.data[i + 2] - backgroundFrame.data[i + 2]);
+          const diff = (dr + dg + db) / 3;
+
+          subtracted.data[i] = diff;
+          subtracted.data[i + 1] = diff;
+          subtracted.data[i + 2] = diff;
+          subtracted.data[i + 3] = 255;
+        }
+
+        return subtracted;
+      }
+
+      function thresholdImage(imageData, threshold) {
+        const thresholded = new ImageData(imageData.width, imageData.height);
+
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const value = imageData.data[i] >= threshold ? 255 : 0;
+
+          thresholded.data[i] = value;
+          thresholded.data[i + 1] = value;
+          thresholded.data[i + 2] = value;
+          thresholded.data[i + 3] = 255;
+        }
+
+        return thresholded;
+      }
+    </script>
+  </body>
+</html>

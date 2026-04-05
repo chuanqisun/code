@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webcam Background Subtraction</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .panel {
+        display: inline-block;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      label {
+        display: inline-block;
+        margin-right: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Webcam Background Subtraction</h1>
+
+    <div style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+      <button id="captureBgBtn" disabled>Capture Background</button>
+      <label>
+        Threshold:
+        <input id="threshold" type="range" min="0" max="255" value="40" />
+        <span id="thresholdValue">40</span>
+      </label>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 1: Live Video</div>
+        <canvas id="canvas1" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 2: Captured Background</div>
+        <canvas id="canvas2" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 3: Background Subtraction</div>
+        <canvas id="canvas3" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 4: Thresholded</div>
+        <canvas id="canvas4" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 5: Blob Contours</div>
+        <canvas id="canvas5" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 6: Largest Component Filled</div>
+        <canvas id="canvas6" width="320" height="240"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const captureBgBtn = document.getElementById("captureBgBtn");
+      const thresholdInput = document.getElementById("threshold");
+      const thresholdValue = document.getElementById("thresholdValue");
+
+      const canvas1 = document.getElementById("canvas1");
+      const canvas2 = document.getElementById("canvas2");
+      const canvas3 = document.getElementById("canvas3");
+      const canvas4 = document.getElementById("canvas4");
+      const canvas5 = document.getElementById("canvas5");
+      const canvas6 = document.getElementById("canvas6");
+
+      const ctx1 = canvas1.getContext("2d");
+      const ctx2 = canvas2.getContext("2d");
+      const ctx3 = canvas3.getContext("2d");
+      const ctx4 = canvas4.getContext("2d");
+      const ctx5 = canvas5.getContext("2d");
+      const ctx6 = canvas6.getContext("2d");
+
+      let bgImageData = null;
+      let running = false;
+
+      thresholdInput.addEventListener("input", () => {
+        thresholdValue.textContent = thresholdInput.value;
+      });
+
+      startBtn.addEventListener("click", async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240 },
+            audio: false,
+          });
+          video.srcObject = stream;
+          await video.play();
+          captureBgBtn.disabled = false;
+          if (!running) {
+            running = true;
+            requestAnimationFrame(processFrame);
+          }
+        } catch (err) {
+          alert("Could not access webcam: " + err.message);
+        }
+      });
+
+      captureBgBtn.addEventListener("click", () => {
+        ctx2.drawImage(video, 0, 0, canvas2.width, canvas2.height);
+        const capturedFrame = ctx2.getImageData(0, 0, canvas2.width, canvas2.height);
+        const grayscaleFrame = grayscaleImage(capturedFrame);
+
+        ctx2.putImageData(grayscaleFrame, 0, 0);
+        bgImageData = captureBackgroundFrame(grayscaleFrame);
+      });
+
+      function processFrame() {
+        if (!running) return;
+
+        ctx1.drawImage(video, 0, 0, canvas1.width, canvas1.height);
+        const current = ctx1.getImageData(0, 0, canvas1.width, canvas1.height);
+        const grayscaleCurrent = grayscaleImage(current);
+
+        ctx1.putImageData(grayscaleCurrent, 0, 0);
+
+        if (bgImageData) {
+          const t = parseInt(thresholdInput.value, 10);
+          const subtracted = subtractBackground(grayscaleCurrent, bgImageData);
+          const thresholded = thresholdImage(subtracted, t);
+          const thresholdMask = imageDataToBinaryMask(thresholded);
+          const contourImage = extractContourImage(thresholdMask, thresholded.width, thresholded.height);
+          const largestComponentMask = findLargestConnectedComponent(thresholdMask, thresholded.width, thresholded.height);
+          const filledLargestComponentMask = fillMaskHoles(largestComponentMask, thresholded.width, thresholded.height);
+          const filledLargestComponent = binaryMaskToImageData(filledLargestComponentMask, thresholded.width, thresholded.height);
+
+          ctx3.putImageData(subtracted, 0, 0);
+          ctx4.putImageData(thresholded, 0, 0);
+          ctx5.putImageData(contourImage, 0, 0);
+          ctx6.putImageData(filledLargestComponent, 0, 0);
+        }
+
+        requestAnimationFrame(processFrame);
+      }
+
+      function grayscaleImage(imageData) {
+        const grayscale = new ImageData(imageData.width, imageData.height);
+
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const red = imageData.data[i];
+          const green = imageData.data[i + 1];
+          const blue = imageData.data[i + 2];
+          const value = 0.299 * red + 0.587 * green + 0.114 * blue;
+
+          grayscale.data[i] = value;
+          grayscale.data[i + 1] = value;
+          grayscale.data[i + 2] = value;
+          grayscale.data[i + 3] = imageData.data[i + 3];
+        }
+
+        return grayscale;
+      }
+
+      function captureBackgroundFrame(imageData) {
+        return new ImageData(new Uint8ClampedArray(imageData.data), imageData.width, imageData.height);
+      }
+
+      function subtractBackground(currentFrame, backgroundFrame) {
+        const subtracted = new ImageData(currentFrame.width, currentFrame.height);
+
+        for (let i = 0; i < currentFrame.data.length; i += 4) {
+          const dr = Math.abs(currentFrame.data[i] - backgroundFrame.data[i]);
+          const dg = Math.abs(currentFrame.data[i + 1] - backgroundFrame.data[i + 1]);
+          const db = Math.abs(currentFrame.data[i + 2] - backgroundFrame.data[i + 2]);
+          const diff = (dr + dg + db) / 3;
+
+          subtracted.data[i] = diff;
+          subtracted.data[i + 1] = diff;
+          subtracted.data[i + 2] = diff;
+          subtracted.data[i + 3] = 255;
+        }
+
+        return subtracted;
+      }
+
+      function thresholdImage(imageData, threshold) {
+        const thresholded = new ImageData(imageData.width, imageData.height);
+
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const value = imageData.data[i] >= threshold ? 255 : 0;
+
+          thresholded.data[i] = value;
+          thresholded.data[i + 1] = value;
+          thresholded.data[i + 2] = value;
+          thresholded.data[i + 3] = 255;
+        }
+
+        return thresholded;
+      }
+
+      function imageDataToBinaryMask(imageData) {
+        const mask = new Uint8Array(imageData.width * imageData.height);
+
+        for (let i = 0, pixelIndex = 0; i < imageData.data.length; i += 4, pixelIndex += 1) {
+          mask[pixelIndex] = imageData.data[i] > 0 ? 1 : 0;
+        }
+
+        return mask;
+      }
+
+      function extractContourImage(mask, width, height) {
+        const contourMask = new Uint8Array(width * height);
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const index = y * width + x;
+
+            if (!mask[index]) {
+              continue;
+            }
+
+            let isContour = false;
+
+            for (let offsetY = -1; offsetY <= 1 && !isContour; offsetY += 1) {
+              for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+                if (offsetX === 0 && offsetY === 0) {
+                  continue;
+                }
+
+                const nx = x + offsetX;
+                const ny = y + offsetY;
+
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                  isContour = true;
+                  break;
+                }
+
+                if (!mask[ny * width + nx]) {
+                  isContour = true;
+                  break;
+                }
+              }
+            }
+
+            contourMask[index] = isContour ? 1 : 0;
+          }
+        }
+
+        return binaryMaskToImageData(contourMask, width, height);
+      }
+
+      function findLargestConnectedComponent(mask, width, height) {
+        const visited = new Uint8Array(width * height);
+        const largestComponent = new Uint8Array(width * height);
+        let largestSize = 0;
+
+        for (let startIndex = 0; startIndex < mask.length; startIndex += 1) {
+          if (!mask[startIndex] || visited[startIndex]) {
+            continue;
+          }
+
+          const queue = [startIndex];
+          const component = [];
+          visited[startIndex] = 1;
+
+          while (queue.length > 0) {
+            const index = queue.pop();
+            component.push(index);
+
+            const x = index % width;
+            const y = Math.floor(index / width);
+
+            for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+              for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+                if (offsetX === 0 && offsetY === 0) {
+                  continue;
+                }
+
+                const nx = x + offsetX;
+                const ny = y + offsetY;
+
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                  continue;
+                }
+
+                const neighborIndex = ny * width + nx;
+
+                if (!mask[neighborIndex] || visited[neighborIndex]) {
+                  continue;
+                }
+
+                visited[neighborIndex] = 1;
+                queue.push(neighborIndex);
+              }
+            }
+          }
+
+          if (component.length > largestSize) {
+            largestComponent.fill(0);
+            largestSize = component.length;
+
+            for (const index of component) {
+              largestComponent[index] = 1;
+            }
+          }
+        }
+
+        return largestComponent;
+      }
+
+      function fillMaskHoles(mask, width, height) {
+        const outsideBackground = new Uint8Array(width * height);
+        const queue = [];
+
+        function enqueueIfBackground(x, y) {
+          if (x < 0 || x >= width || y < 0 || y >= height) {
+            return;
+          }
+
+          const index = y * width + x;
+
+          if (mask[index] || outsideBackground[index]) {
+            return;
+          }
+
+          outsideBackground[index] = 1;
+          queue.push(index);
+        }
+
+        for (let x = 0; x < width; x += 1) {
+          enqueueIfBackground(x, 0);
+          enqueueIfBackground(x, height - 1);
+        }
+
+        for (let y = 0; y < height; y += 1) {
+          enqueueIfBackground(0, y);
+          enqueueIfBackground(width - 1, y);
+        }
+
+        while (queue.length > 0) {
+          const index = queue.pop();
+          const x = index % width;
+          const y = Math.floor(index / width);
+
+          enqueueIfBackground(x + 1, y);
+          enqueueIfBackground(x - 1, y);
+          enqueueIfBackground(x, y + 1);
+          enqueueIfBackground(x, y - 1);
+        }
+
+        const filledMask = new Uint8Array(mask);
+
+        for (let index = 0; index < mask.length; index += 1) {
+          if (!mask[index] && !outsideBackground[index]) {
+            filledMask[index] = 1;
+          }
+        }
+
+        return filledMask;
+      }
+
+      function binaryMaskToImageData(mask, width, height) {
+        const imageData = new ImageData(width, height);
+
+        for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+          const value = mask[pixelIndex] ? 255 : 0;
+          const dataIndex = pixelIndex * 4;
+
+          imageData.data[dataIndex] = value;
+          imageData.data[dataIndex + 1] = value;
+          imageData.data[dataIndex + 2] = value;
+          imageData.data[dataIndex + 3] = 255;
+        }
+
+        return imageData;
+      }
+    </script>
+  </body>
+</html>

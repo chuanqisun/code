@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Body Pose Visualization</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .panel {
+        display: inline-block;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      #canvas3 {
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Webcam Pose Visualization</h1>
+
+    <div style="margin-bottom: 12px">
+      <button id="startBtn" disabled>Loading pose model...</button>
+      <span id="status">Initializing MediaPipe pose landmarker</span>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 1: Live Video</div>
+        <canvas id="canvas1" width="640" height="480"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 2: 2D Pose</div>
+        <canvas id="canvas3" width="640" height="480"></canvas>
+      </div>
+    </div>
+
+    <script type="module">
+      import { PoseLandmarker, FilesetResolver, DrawingUtils } from "https://cdn.skypack.dev/@mediapipe/tasks-vision@0.10.0";
+
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const status = document.getElementById("status");
+
+      const canvas1 = document.getElementById("canvas1");
+      const canvas3 = document.getElementById("canvas3");
+
+      const ctx1 = canvas1.getContext("2d");
+      const ctx3 = canvas3.getContext("2d");
+      const drawingUtils = new DrawingUtils(ctx3);
+
+      let poseLandmarker = null;
+      let webcamRunning = false;
+      let runningMode = "VIDEO";
+      let lastVideoTime = -1;
+
+      initPoseLandmarker();
+      clearPoseCanvas();
+
+      startBtn.addEventListener("click", enableCam);
+
+      async function initPoseLandmarker() {
+        try {
+          const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+
+          poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
+              delegate: "GPU",
+            },
+            runningMode,
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.5,
+            minPosePresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          });
+
+          startBtn.disabled = false;
+          startBtn.textContent = "Start Webcam";
+          status.textContent = "Pose model ready";
+        } catch (error) {
+          console.error("Failed to initialize pose landmarker", error);
+          status.textContent = "Pose model failed to load";
+          startBtn.textContent = "Reload page to retry";
+        }
+      }
+
+      async function enableCam() {
+        if (!poseLandmarker) {
+          return;
+        }
+
+        if (runningMode !== "VIDEO") {
+          runningMode = "VIDEO";
+          await poseLandmarker.setOptions({ runningMode: "VIDEO" });
+        }
+
+        if (webcamRunning) {
+          stopCam();
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+              facingMode: "user",
+            },
+            audio: false,
+          });
+
+          video.srcObject = stream;
+          await video.play();
+
+          webcamRunning = true;
+          startBtn.textContent = "Stop Webcam";
+          status.textContent = "Tracking pose from webcam";
+          syncCanvasSize(video.videoWidth || 640, video.videoHeight || 480);
+          requestAnimationFrame(processFrame);
+        } catch (error) {
+          console.error("Could not access webcam", error);
+          status.textContent = "Webcam access failed";
+        }
+      }
+
+      function stopCam() {
+        webcamRunning = false;
+        lastVideoTime = -1;
+        startBtn.textContent = "Start Webcam";
+        status.textContent = "Pose model ready";
+
+        const stream = video.srcObject;
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+        }
+        video.srcObject = null;
+
+        clearCanvas(ctx1, canvas1);
+        clearPoseCanvas();
+      }
+
+      function processFrame() {
+        if (!webcamRunning) {
+          return;
+        }
+
+        drawVideoFrame();
+        detectPoseFrame();
+        requestAnimationFrame(processFrame);
+      }
+
+      function drawVideoFrame() {
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          return;
+        }
+
+        ctx1.save();
+        ctx1.clearRect(0, 0, canvas1.width, canvas1.height);
+        ctx1.translate(canvas1.width, 0);
+        ctx1.scale(-1, 1);
+        ctx1.drawImage(video, 0, 0, canvas1.width, canvas1.height);
+        ctx1.restore();
+      }
+
+      function detectPoseFrame() {
+        if (!poseLandmarker || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+          return;
+        }
+
+        if (video.currentTime === lastVideoTime) {
+          return;
+        }
+
+        lastVideoTime = video.currentTime;
+        poseLandmarker.detectForVideo(video, performance.now(), (result) => {
+          drawPoseLandmarks(result.landmarks ?? []);
+          status.textContent = result.landmarks?.length ? "Pose detected" : "No pose detected";
+        });
+      }
+
+      function drawPoseLandmarks(landmarkSets) {
+        clearPoseCanvas();
+
+        if (!landmarkSets.length) {
+          return;
+        }
+
+        ctx3.save();
+        ctx3.translate(canvas3.width, 0);
+        ctx3.scale(-1, 1);
+
+        for (const landmarks of landmarkSets) {
+          drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
+            color: "#ffffff",
+            lineWidth: 3,
+          });
+          drawingUtils.drawLandmarks(landmarks, {
+            color: "#ffffff",
+            fillColor: "#ffffff",
+            radius: (data) => DrawingUtils.lerp(data.from.z, -0.15, 0.1, 5, 1),
+          });
+        }
+
+        ctx3.restore();
+      }
+
+      function clearCanvas(context, canvas) {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function clearPoseCanvas() {
+        ctx3.save();
+        ctx3.setTransform(1, 0, 0, 1, 0, 0);
+        ctx3.clearRect(0, 0, canvas3.width, canvas3.height);
+        ctx3.fillStyle = "#000000";
+        ctx3.fillRect(0, 0, canvas3.width, canvas3.height);
+        ctx3.restore();
+      }
+
+      function syncCanvasSize(width, height) {
+        [canvas1, canvas3].forEach((canvas) => {
+          if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+          }
+        });
+
+        clearPoseCanvas();
+      }
+    </script>
+  </body>
+</html>

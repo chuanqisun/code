@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webcam Segmentation Masks</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .panel {
+        display: inline-block;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      label {
+        display: inline-block;
+        margin-right: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Webcam Segmentation Masks</h1>
+
+    <div style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+      <label>
+        Mask Threshold:
+        <input id="maskThreshold" type="range" min="0" max="255" value="128" disabled />
+        <span id="maskThresholdValue">128</span>
+      </label>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div class="row">
+      <div class="panel">
+        <div>Canvas 1: Live Video</div>
+        <canvas id="canvas1" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 2: Background Confidence Mask</div>
+        <canvas id="canvas2" width="320" height="240"></canvas>
+      </div>
+      <div class="panel">
+        <div>Canvas 3: Inverted Threshold Mask</div>
+        <canvas id="canvas3" width="320" height="240"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const maskThresholdInput = document.getElementById("maskThreshold");
+      const maskThresholdValue = document.getElementById("maskThresholdValue");
+
+      const canvas1 = document.getElementById("canvas1");
+      const canvas2 = document.getElementById("canvas2");
+      const canvas3 = document.getElementById("canvas3");
+
+      const ctx1 = canvas1.getContext("2d");
+      const ctx2 = canvas2.getContext("2d");
+      const ctx3 = canvas3.getContext("2d");
+
+      let running = false;
+      let imageSegmenter = null;
+      let segmenterReady = false;
+      let segmenterBusy = false;
+      let segmenterLastVideoTime = -1;
+
+      initializeSegmenter();
+
+      maskThresholdInput.addEventListener("input", () => {
+        maskThresholdValue.textContent = maskThresholdInput.value;
+      });
+
+      startBtn.addEventListener("click", async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240 },
+            audio: false,
+          });
+          video.srcObject = stream;
+          await video.play();
+          maskThresholdInput.disabled = false;
+          if (!running) {
+            running = true;
+            requestAnimationFrame(processFrame);
+          }
+        } catch (err) {
+          alert("Could not access webcam: " + err.message);
+        }
+      });
+
+      function processFrame() {
+        if (!running) return;
+
+        ctx1.drawImage(video, 0, 0, canvas1.width, canvas1.height);
+
+        processSegmentationFrame();
+
+        requestAnimationFrame(processFrame);
+      }
+
+      async function initializeSegmenter() {
+        try {
+          const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2");
+          const filesetResolver = await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.2/wasm");
+
+          imageSegmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+
+          segmenterReady = true;
+          paintSegmentationMask(null, canvas2.width, canvas2.height);
+          paintInvertedThresholdMask(null, canvas3.width, canvas3.height);
+        } catch (error) {
+          console.error("Failed to initialize MediaPipe segmenter", error);
+          paintSegmentationMask(null, canvas2.width, canvas2.height);
+          paintInvertedThresholdMask(null, canvas3.width, canvas3.height);
+        }
+      }
+
+      function processSegmentationFrame() {
+        if (!segmenterReady || !imageSegmenter || segmenterBusy) {
+          return;
+        }
+
+        if (video.readyState < 2 || video.currentTime === segmenterLastVideoTime) {
+          return;
+        }
+
+        segmenterBusy = true;
+        segmenterLastVideoTime = video.currentTime;
+
+        imageSegmenter.segmentForVideo(video, performance.now(), (result) => {
+          const backgroundConfidenceMask = result.confidenceMasks?.[0] ?? null;
+
+          paintSegmentationMask(backgroundConfidenceMask, video.videoWidth, video.videoHeight);
+          paintInvertedThresholdMask(backgroundConfidenceMask, video.videoWidth, video.videoHeight);
+          segmenterBusy = false;
+        });
+      }
+
+      function paintSegmentationMask(confidenceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas2.width !== width || canvas2.height !== height) {
+          canvas2.width = width;
+          canvas2.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (confidenceMask) {
+          const mask = confidenceMask.getAsFloat32Array();
+
+          for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+            const intensity = Math.max(0, Math.min(255, Math.round(mask[pixelIndex] * 255)));
+            const targetIndex = pixelIndex * 4;
+
+            pixels[targetIndex] = intensity;
+            pixels[targetIndex + 1] = intensity;
+            pixels[targetIndex + 2] = intensity;
+          }
+        } else {
+          for (let index = 0; index < pixels.length; index += 4) {
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+          }
+        }
+
+        ctx2.putImageData(output, 0, 0);
+      }
+
+      function paintInvertedThresholdMask(confidenceMask, width, height) {
+        if (!width || !height) {
+          return;
+        }
+
+        if (canvas3.width !== width || canvas3.height !== height) {
+          canvas3.width = width;
+          canvas3.height = height;
+        }
+
+        const output = new ImageData(width, height);
+        const pixels = output.data;
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          pixels[index + 3] = 255;
+        }
+
+        if (confidenceMask) {
+          const mask = confidenceMask.getAsFloat32Array();
+          const threshold = parseInt(maskThresholdInput.value, 10);
+
+          for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+            const invertedIntensity = 255 - Math.max(0, Math.min(255, Math.round(mask[pixelIndex] * 255)));
+            const value = invertedIntensity >= threshold ? 255 : 0;
+            const targetIndex = pixelIndex * 4;
+
+            pixels[targetIndex] = value;
+            pixels[targetIndex + 1] = value;
+            pixels[targetIndex + 2] = value;
+          }
+        } else {
+          for (let index = 0; index < pixels.length; index += 4) {
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+          }
+        }
+
+        ctx3.putImageData(output, 0, 0);
+      }
+    </script>
+  </body>
+</html>

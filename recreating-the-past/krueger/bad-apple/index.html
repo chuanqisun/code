@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bad Apple</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: sans-serif;
+      }
+      body.debug-mode {
+        padding: 16px;
+      }
+      body {
+        background: #000;
+        color: #fff;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .panel {
+        display: inline-block;
+      }
+      .canvas-stack {
+        position: relative;
+        display: inline-block;
+        line-height: 0;
+      }
+      .canvas-stack canvas {
+        position: absolute;
+        inset: 0;
+      }
+      .canvas-stack canvas:first-child {
+        position: relative;
+      }
+      .canvas-stack canvas:last-child {
+        pointer-events: none;
+        background: transparent;
+      }
+      #controls.live {
+        &:not(:hover) {
+          opacity: 0;
+        }
+      }
+      body.debug-mode .panel canvas.is-active {
+        outline: 2px solid #d00;
+        outline-offset: 0;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      label {
+        display: inline-block;
+        margin-right: 12px;
+      }
+      body.presentation-mode {
+        overflow: hidden;
+      }
+      body.presentation-mode h1,
+      body.presentation-mode .debug-only,
+      body.presentation-mode .row:not(.is-active-row),
+      body.presentation-mode .panel:not(.is-active-panel) {
+        display: none;
+      }
+      body.presentation-mode[data-hide-hint="true"] #scriptHint {
+        display: none;
+      }
+      body.presentation-mode #controls {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 10;
+      }
+      body.presentation-mode .row {
+        margin: 0;
+      }
+      body.presentation-mode .panel.is-active-panel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100vw;
+        height: 100vh;
+        background: #000;
+      }
+      body.presentation-mode .panel.is-active-panel > div:not(.canvas-stack) {
+        display: none;
+      }
+      body.presentation-mode .panel.is-active-panel canvas {
+        width: 100vw;
+        height: 100vh;
+        border: 0;
+        object-fit: contain;
+        background: #000;
+      }
+      body.presentation-mode .panel.is-active-panel .canvas-stack canvas:last-child {
+        background: transparent;
+      }
+      body.presentation-mode #scriptHint {
+        position: fixed;
+        left: 50%;
+        bottom: 4vh;
+        transform: translateX(-50%);
+        margin: 0;
+        padding: 0.4em 0.8em;
+        font-size: clamp(20px, 6vw, 50px);
+        line-height: 1.1;
+        color: #fff;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 999px;
+        z-index: 15;
+        text-align: center;
+        pointer-events: none;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "rxjs": "https://esm.sh/rxjs@7.8.2"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="controls" style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+      <button id="debugBtn" type="button">Debug</button>
+      <button id="explodeBtn" class="debug-only" type="button">Explode</button>
+      <label class="debug-only">
+        Mask Threshold:
+        <input id="maskThreshold" type="range" min="0" max="255" value="128" />
+        <span id="maskThresholdValue">128</span>
+      </label>
+      <label class="debug-only">
+        <input id="invertCanvas6" type="checkbox" />
+        Invert Canvas 6
+      </label>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div class="row" data-row-id="row-1">
+      <div class="panel" data-canvas-id="canvas1">
+        <div>Canvas 1: Live Video</div>
+        <canvas id="canvas1" width="320" height="240"></canvas>
+      </div>
+      <div class="panel" data-canvas-id="canvas2">
+        <div>Canvas 2: Background Confidence Mask</div>
+        <canvas id="canvas2" width="320" height="240"></canvas>
+      </div>
+      <div class="panel" data-canvas-id="canvas3">
+        <div>Canvas 3: Inverted Threshold Mask</div>
+        <canvas id="canvas3" width="320" height="240"></canvas>
+      </div>
+    </div>
+    <div class="row" data-row-id="row-2">
+      <div class="panel" data-canvas-id="canvas4">
+        <div>Canvas 4: Mirror Trim</div>
+        <canvas id="canvas4" width="320" height="240"></canvas>
+      </div>
+      <div class="panel" data-canvas-id="canvas5">
+        <div>Canvas 5: Center Divider Even/Odd</div>
+        <canvas id="canvas5" width="320" height="240"></canvas>
+      </div>
+      <div class="panel" data-canvas-id="canvas6">
+        <div>Canvas 6: Left Half Inverted</div>
+        <canvas id="canvas6" width="320" height="240"></canvas>
+      </div>
+      <div class="panel" data-canvas-id="canvas7">
+        <div>Canvas 7: Mirror Shadow Merge</div>
+        <canvas id="canvas7" width="320" height="240"></canvas>
+      </div>
+    </div>
+    <div class="row" data-row-id="row-3">
+      <div class="panel" data-canvas-id="canvas8">
+        <div>Canvas 8: Apple Physics</div>
+        <div class="canvas-stack">
+          <canvas id="canvas8" width="320" height="240"></canvas>
+          <canvas id="canvas8Apples" width="320" height="240"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <p id="scriptHint"></p>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
