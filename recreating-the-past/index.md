@@ -16,14 +16,23 @@
 
 ## Practice
 
-- Background subtraction requires pure wall color and consistent camera exposure
-- In Web API, we don't have raw access to camera input. The auto exposure messes up background substraction
-- Switching to ML based CV in mediapipe, yields much better result with similar latency
-- Playing with object (using physics model)
-- Playing with symmetry
-- Playing with CMU mocap dataset in three.js
-- Endded up with a state machine driven demo: each scene has a transition condition and unique visual effect
-- A lot time was spent on sychronizing audio sound track
+| [Original](https://en.wikipedia.org/wiki/Videoplace) | [Recreated](https://youtu.be/TOqAjIYPzc4) |
+| ---------------------------------------------------- | ----------------------------------------- |
+| ![Original](./krueger/original.webp)                 | ![Recreated](./krueger/recreated.webp)    |
+
+- Notes
+  - [Film studio](https://code.chuanqisun.com/recreating-the-past/krueger/bad-apple/), [Debugger](https://code.chuanqisun.com/recreating-the-past/krueger/bad-apple/?debug=true), [Scripted sequence](https://youtu.be/TOqAjIYPzc4)
+  - Sources
+    - Myron Krueger, Videoplace, 1970s
+    - Romy Achituv & Camille Utterback, Text Rain, 1999
+    - [Bad Apple!!](https://www.youtube.com/watch?v=9lNZ_Rnr7Jc), 2007-2009
+  - Background subtraction requires pure wall color and static camera exposure config
+  - In the Web API, we don't have raw access to camera input. Auto exposure messes up background subtraction
+  - Switched to ML-based CV in MediaPipe for a more robust result with similar latency
+  - Added the apple fall using matter.js (the Text Rain technique can't do bouncing)
+  - Added symmetry and color inversion
+  - Used a state machine to recreate the Bad Apple!! demoscene: each scene has a transition condition and a unique visual effect
+  - Manually cut the soundtrack to fit the video length
 
 ## Week 6: Images
 
