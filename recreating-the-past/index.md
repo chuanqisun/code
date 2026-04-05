@@ -21,7 +21,7 @@
 | ![Original](./krueger/original.webp)                 | ![Recreated](./krueger/recreated.webp)    |
 
 - Notes
-  - [Film studio](https://code.chuanqisun.com/recreating-the-past/krueger/bad-apple/), [Debugger](https://code.chuanqisun.com/recreating-the-past/krueger/bad-apple/?debug=true), [Scripted sequence](https://youtu.be/TOqAjIYPzc4)
+  - [Film studio](https://code.chuanqisun.com/recreating-the-past/krueger/bad-apple/), [Debugger](https://code.chuanqisun.com/recreating-the-past/krueger/bad-apple/?debug=true), [Scripted choreography](https://youtu.be/TOqAjIYPzc4)
   - Sources
     - Myron Krueger, Videoplace, 1970s
     - Romy Achituv & Camille Utterback, Text Rain, 1999
@@ -33,6 +33,7 @@
   - Added symmetry and color inversion
   - Used a state machine to recreate the Bad Apple!! demoscene: each scene has a transition condition and a unique visual effect
   - Manually cut the soundtrack to fit the video length
+  - Process: [Background, Threshold, Contour](./krueger/process/100-cv-techniques.html), [Mediapipe POC](./krueger/process/102-mediapipe.html), [Physics](./krueger/process/104-physics-interior.html), [Symmetry study](./krueger/process/201-symmetry.html), [Pose 3D (failed)](./krueger/process/300-pose.html), [Pose 2D](./krueger/process/301-pose-2d.html)
 
 ## Week 6: Images
 
