@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Phorm</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { font: 14px sans-serif; margin: 16px; place-content: center; }
+      .grid { display: flex; flex-wrap: wrap; place-content: center; }
+      .cell { transition: filter 120ms linear; background: white; }
+      input, select, textarea, button { width: 100%; box-sizing: border-box; }
+      input[type="checkbox"],
+      input[type="radio"],
+      input[type="color"],
+      input[type="range"],
+      input[type="file"],
+      input[type="image"] { width: auto; }
+      textarea { resize: vertical; }
+      .flash { filter: invert(1); }
+      .small { font-size: 12px; color: #444; }
+      [contenteditable], [tabindex] {
+        border: 1px dashed #aaa;
+        padding: 6px;
+        min-height: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="sinkForm">
+      <div class="grid" id="grid">
+        <div class="cell"><button data-triggerable type="button">Button</button></div>
+        <div class="cell"><button data-triggerable type="submit">Submit</button></div>
+        <div class="cell"><button data-triggerable type="reset">Reset</button></div>
+
+        <div class="cell"><input data-triggerable type="button" value="Input Button" /></div>
+        <div class="cell">
+          <label><input data-triggerable type="checkbox" /> Checkbox</label>
+        </div>
+        <div class="cell"><input data-triggerable type="color" value="#3366ff" /></div>
+        <div class="cell"><input data-triggerable type="date" /></div>
+        <div class="cell"><input data-triggerable type="datetime-local" /></div>
+        <div class="cell"><input data-triggerable type="email" placeholder="name@example.com" /></div>
+        <div class="cell"><input data-triggerable type="file" /></div>
+        <div class="cell"><input data-triggerable type="hidden" value="hidden-1" /><span class="hidden-view">hidden-1</span></div>
+        <div class="cell">
+          <input data-triggerable type="image" alt="submit" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" />
+        </div>
+        <div class="cell"><input data-triggerable type="month" /></div>
+        <div class="cell"><input data-triggerable type="number" min="0" max="10" value="3" /></div>
+        <div class="cell"><input data-triggerable type="password" value="password" /></div>
+
+        <div class="cell">
+          <label><input data-triggerable type="radio" name="r1" /> Radio A</label>
+          <label><input data-triggerable type="radio" name="r1" /> Radio B</label>
+        </div>
+
+        <div class="cell"><input data-triggerable type="range" min="0" max="100" value="25" /></div>
+        <div class="cell"><input data-triggerable type="reset" /></div>
+        <div class="cell"><input data-triggerable type="search" placeholder="Search" /></div>
+        <div class="cell"><input data-triggerable type="submit" value="Submit" /></div>
+        <div class="cell"><input data-triggerable type="tel" placeholder="+1 555 555 5555" /></div>
+        <div class="cell"><input data-triggerable type="text" placeholder="Text input" /></div>
+        <div class="cell"><input data-triggerable type="time" /></div>
+        <div class="cell"><input data-triggerable type="url" placeholder="https://example.com" /></div>
+        <div class="cell"><input data-triggerable type="week" /></div>
+
+        <div class="cell">
+          <select data-triggerable>
+            <option>Option 1</option>
+            <option>Option 2</option>
+            <option>Option 3</option>
+          </select>
+        </div>
+
+        <div class="cell">
+          <select data-triggerable multiple size="3">
+            <option>Option A</option>
+            <option>Option B</option>
+            <option>Option C</option>
+            <option>Option D</option>
+          </select>
+        </div>
+
+        <div class="cell">
+          <select data-triggerable>
+            <optgroup label="Group 1">
+              <option>One</option>
+              <option>Two</option>
+            </optgroup>
+            <optgroup label="Group 2">
+              <option>Three</option>
+              <option>Four</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="cell"><textarea data-triggerable rows="3">Sample text</textarea></div>
+        <div class="cell"><a data-triggerable href="#">Link</a></div>
+        <div class="cell">
+          <details data-triggerable>
+            <summary>Summary</summary>
+            <div>Details content</div>
+          </details>
+        </div>
+
+        <div class="cell">
+          <input data-triggerable list="dl" placeholder="Choose" />
+          <datalist id="dl">
+            <option value="Alpha"></option>
+            <option value="Beta"></option>
+            <option value="Gamma"></option>
+          </datalist>
+        </div>
+
+        <div class="cell"><div data-triggerable contenteditable="true">Editable text</div></div>
+        <div class="cell"><div data-triggerable tabindex="0">Focusable div</div></div>
+      </div>
+    </form>
+
+    <script>
+      const form = document.getElementById("sinkForm");
+      const grid = document.getElementById("grid");
+      const words = ["alpha", "beta", "gamma", "delta", "omega", "spark", "ripple", "pulse"];
+      let isRunningCascade = false;
+
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const rand = (n) => Math.floor(Math.random() * n);
+      const pick = (arr) => arr[rand(arr.length)];
+      const chance = (p) => Math.random() < p;
+
+      function allTriggerables() {
+        return Array.from(document.querySelectorAll("[data-triggerable]"));
+      }
+
+      function flashCell(el) {
+        const cell = el.closest(".cell");
+        if (!cell) return;
+        cell.classList.add("flash");
+        if (cell._flashTimer) clearTimeout(cell._flashTimer);
+        cell._flashTimer = setTimeout(() => {
+          cell.classList.remove("flash");
+          cell._flashTimer = null;
+        }, 180);
+      }
+
+      function setTextLikeValue(el, prefix = "v") {
+        el.value = `${prefix}-${pick(words)}-${rand(100)}`;
+      }
+
+      function setDateToday(el) {
+        const d = new Date();
+        el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      }
+
+      function setTimeNow(el) {
+        const d = new Date();
+        el.value = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
+
+      function setMonthNow(el) {
+        const d = new Date();
+        el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      }
+
+      function setWeekNow(el) {
+        const d = new Date();
+        const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        const dayNum = date.getUTCDay() || 7;
+        date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+        el.value = `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+      }
+
+      function setDateTimeNow(el) {
+        const d = new Date();
+        el.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(
+          2,
+          "0"
+        )}:${String(d.getMinutes()).padStart(2, "0")}`;
+      }
+
+      function randomColor() {
+        return (
+          "#" +
+          Math.floor(Math.random() * 0xffffff)
+            .toString(16)
+            .padStart(6, "0")
+        );
+      }
+
+      function removeFlashState(node) {
+        node.classList.remove("flash");
+        if (node._flashTimer) {
+          clearTimeout(node._flashTimer);
+          node._flashTimer = null;
+        }
+        node.querySelectorAll?.(".flash").forEach((n) => {
+          n.classList.remove("flash");
+          if (n._flashTimer) {
+            clearTimeout(n._flashTimer);
+            n._flashTimer = null;
+          }
+        });
+      }
+
+      function cloneCellFromTrigger(el) {
+        const cell = el.closest(".cell");
+        if (!cell) return;
+        const clone = cell.cloneNode(true);
+        removeFlashState(clone);
+        clone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+        const cells = Array.from(grid.children);
+        const index = rand(cells.length + 1);
+        if (index >= cells.length) grid.appendChild(clone);
+        else grid.insertBefore(clone, cells[index]);
+      }
+
+      function triggerElement(el) {
+        flashCell(el);
+        if (chance(0.2)) cloneCellFromTrigger(el);
+
+        if (el.matches("button")) {
+          el.textContent = `Button ${rand(100)}`;
+          return;
+        }
+        if (el.matches("a")) {
+          el.textContent = `Link ${rand(100)}`;
+          return;
+        }
+        if (el.matches("details")) {
+          el.open = !el.open;
+          return;
+        }
+        if (el.matches("dialog")) {
+          el.open ? el.close() : el.show();
+          return;
+        }
+        if (el.hasAttribute("contenteditable")) {
+          el.textContent = `Editable ${pick(words)} ${rand(100)}`;
+          return;
+        }
+        if (el.matches("div[tabindex]")) {
+          el.textContent = `Focusable ${pick(words)} ${rand(100)}`;
+          return;
+        }
+        if (el.matches("textarea")) {
+          el.value = `Textarea ${pick(words)} ${rand(100)}`;
+          return;
+        }
+
+        if (el.matches("select")) {
+          const options = Array.from(el.options);
+          if (!options.length) return;
+          if (el.multiple) {
+            options.forEach((o) => (o.selected = false));
+            const count = 1 + rand(Math.min(2, options.length));
+            for (let i = 0; i < count; i++) options[rand(options.length)].selected = true;
+          } else {
+            el.selectedIndex = rand(options.length);
+          }
+          return;
+        }
+
+        if (el.matches("input")) {
+          switch (el.type) {
+            case "button":
+            case "submit":
+            case "reset":
+              el.value = `${el.type} ${rand(100)}`;
+              return;
+            case "checkbox":
+              el.checked = !el.checked;
+              return;
+            case "radio": {
+              const group = document.querySelectorAll(`input[type="radio"][name="${CSS.escape(el.name)}"]`);
+              if (group.length) group[rand(group.length)].checked = true;
+              return;
+            }
+            case "color":
+              el.value = randomColor();
+              return;
+            case "date":
+              setDateToday(el);
+              return;
+            case "datetime-local":
+              setDateTimeNow(el);
+              return;
+            case "email":
+              el.value = `${pick(words)}${rand(100)}@example.com`;
+              return;
+            case "file": {
+              const note = el.parentElement.querySelector(".fake-file-note");
+              if (note) note.remove();
+              const n = document.createElement("div");
+              n.className = "small fake-file-note";
+              n.textContent = "Cannot set file input programmatically";
+              el.insertAdjacentElement("afterend", n);
+              return;
+            }
+            case "hidden":
+              el.value = `hidden-${rand(1000)}`;
+              const view = el.parentElement.querySelector(".hidden-view");
+              if (view) view.textContent = el.value;
+              return;
+            case "image":
+              el.alt = `image-${rand(100)}`;
+              return;
+            case "month":
+              setMonthNow(el);
+              return;
+            case "number": {
+              const min = el.min === "" ? 0 : Number(el.min);
+              const max = el.max === "" ? 100 : Number(el.max);
+              el.value = String(min + rand(max - min + 1));
+              return;
+            }
+            case "password":
+              el.value = `pw${rand(10000)}`;
+              return;
+            case "range": {
+              const min = el.min === "" ? 0 : Number(el.min);
+              const max = el.max === "" ? 100 : Number(el.max);
+              el.value = String(min + rand(max - min + 1));
+              return;
+            }
+            case "search":
+              setTextLikeValue(el, "search");
+              return;
+            case "tel":
+              el.value = `+1-555-${String(rand(1000)).padStart(3, "0")}-${String(rand(10000)).padStart(4, "0")}`;
+              return;
+            case "text":
+              setTextLikeValue(el, "text");
+              return;
+            case "time":
+              setTimeNow(el);
+              return;
+            case "url":
+              el.value = `https://example.com/${pick(words)}-${rand(100)}`;
+              return;
+            case "week":
+              setWeekNow(el);
+              return;
+            default:
+              setTextLikeValue(el, el.type || "input");
+              return;
+          }
+        }
+      }
+
+      async function runCascade(source) {
+        let queue = [source];
+        while (queue.length) {
+          const el = queue.shift();
+          triggerElement(el);
+          await sleep(20);
+
+          const pool = allTriggerables();
+          for (let i = 0; i < 8 && pool.length; i++) {
+            if (!chance(0.15)) continue;
+            queue.push(pool[rand(pool.length)]);
+          }
+        }
+      }
+
+      async function onTrigger(event) {
+        if (isRunningCascade) return;
+        const root = event.target.closest("[data-triggerable]");
+        if (!root) return;
+
+        if (event.type === "click" && root.matches("a")) event.preventDefault();
+        if (event.type === "click" && root.matches('button[type="submit"], input[type="submit"]')) event.preventDefault();
+        if (event.type === "click" && root.matches('button[type="reset"], input[type="reset"]')) event.preventDefault();
+
+        isRunningCascade = true;
+        try {
+          await runCascade(root);
+        } finally {
+          isRunningCascade = false;
+        }
+      }
+
+      form.addEventListener("click", onTrigger, true);
+      form.addEventListener("change", onTrigger, true);
+      form.addEventListener(
+        "keydown",
+        function (event) {
+          if (isRunningCascade) return;
+          if (event.key === "Enter" || event.key === " ") {
+            const root = event.target.closest("[data-triggerable]");
+            if (root && (root.hasAttribute("contenteditable") || root.matches("[tabindex]"))) onTrigger(event);
+          }
+        },
+        true
+      );
+    </script>
+  </body>
+</html>
