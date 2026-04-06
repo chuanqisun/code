@@ -108,12 +108,11 @@ WORDS</textarea
       const T = 0.7;
       const RADIAL_SEGS = 256;
       const UNIT_W = 0.18;
-      const ANIM_DUR = 1000;
+      const ANIM_DUR = 250;
 
       let discs = [];
       let feed = [];
       let feedIdx = 0;
-      let fifoTimer = null;
       let transition = null;
       const clock = new THREE.Clock();
 
@@ -273,8 +272,6 @@ WORDS</textarea
       }
 
       function buildFromUI() {
-        if (fifoTimer) clearInterval(fifoTimer);
-
         clearAll();
         feed = parseLines("feedWords");
         feedIdx = 0;
@@ -287,8 +284,6 @@ WORDS</textarea
         });
 
         layoutStack();
-
-        fifoTimer = setInterval(tickFIFO, 2000);
       }
 
       document.getElementById("build").addEventListener("click", () => {
@@ -298,10 +293,6 @@ WORDS</textarea
           alert(e.message);
         }
       });
-
-      function easeInOutCubic(t) {
-        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      }
 
       buildFromUI();
 
@@ -324,11 +315,17 @@ WORDS</textarea
             discs.push(transition.incoming);
             transition = null;
             layoutStack();
+
+            // Start the next FIFO step immediately when the previous one finishes.
+            tickFIFO();
           } else {
-            layoutStack(easeInOutCubic(t));
+            layoutStack(t);
           }
         } else {
           layoutStack();
+
+          // Kick off the first transition once the initial stack is built.
+          tickFIFO();
         }
 
         controls.update();
