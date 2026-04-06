@@ -5,19 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Barcode Word Discs</title>
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #ececec; }
-      canvas { display: block; }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #ececec;
+      }
+      canvas {
+        display: block;
+      }
       #ui {
         position: fixed;
         top: 10px;
         left: 10px;
         z-index: 10;
-        background: rgba(255,255,255,.9);
+        background: rgba(255, 255, 255, 0.9);
         padding: 8px;
         border-radius: 6px;
         font: 12px/1.2 sans-serif;
       }
-      #seedWords, #feedWords { width: 320px; }
+      #seedWords,
+      #feedWords {
+        width: 320px;
+      }
     </style>
   </head>
   <body>
@@ -51,7 +62,7 @@ THREE
 DISC
 STACK</textarea
       >
-      <div style="margin-top:6px;"><strong>Incoming FIFO feed</strong> (cycled)</div>
+      <div style="margin-top: 6px"><strong>Incoming FIFO feed</strong> (cycled)</div>
       <textarea id="feedWords" rows="6">
 BARCODE
 ROTATE
@@ -103,6 +114,7 @@ WORDS</textarea
       let feed = [];
       let feedIdx = 0;
       let fifoTimer = null;
+      let transition = null;
       const clock = new THREE.Clock();
 
       function textToBytes(s) {
@@ -165,7 +177,7 @@ WORDS</textarea
         const dir = idxHint % 2 === 0 ? 1 : -1;
         const speed = THREE.MathUtils.randFloat(0.35, 1.35) * dir;
 
-        return { word, mesh, speed, currentY: 0, targetY: 0, animStart: null, animFromY: 0 };
+        return { word, mesh, speed };
       }
 
       function disposeDisc(d) {
@@ -177,27 +189,54 @@ WORDS</textarea
         });
       }
 
-      function targetYForIndex(i, total) {
-        return (total - 1) * T - i * T + T * 0.5;
+      function setDiscHeight(disc, height) {
+        const safeHeight = Math.max(height, 0);
+        disc.mesh.scale.y = safeHeight / T;
+        disc.mesh.visible = safeHeight > 1e-4;
       }
 
-      function assignTargets(animate) {
-        const now = performance.now();
-        for (let i = 0; i < discs.length; i++) {
-          const ty = targetYForIndex(i, discs.length);
-          if (animate) {
-            discs[i].animStart = now;
-            discs[i].animFromY = discs[i].currentY;
-          } else {
-            discs[i].animStart = null;
-            discs[i].currentY = ty;
-          }
-          discs[i].targetY = ty;
+      function setDiscScale(disc, height, radiusScale = 1) {
+        const safeHeight = Math.max(height, 0);
+        const safeRadiusScale = Math.max(radiusScale, 0);
+        disc.mesh.scale.set(safeRadiusScale, safeHeight / T, safeRadiusScale);
+        disc.mesh.visible = safeHeight > 1e-4 && safeRadiusScale > 1e-4;
+      }
+
+      function layoutStack(progress = 0) {
+        const totalHeight = discs.length * T + (transition ? T : 0);
+        let cursorY = totalHeight;
+
+        if (transition) {
+          const outgoingHeight = T * (1 - progress);
+          setDiscScale(transition.outgoing, outgoingHeight, 1 - progress);
+          transition.outgoing.mesh.position.y = cursorY - outgoingHeight * 0.5;
+          cursorY -= outgoingHeight;
         }
-        controls.target.set(0, discs.length * T * 0.5, 0);
+
+        for (const disc of discs) {
+          setDiscScale(disc, T, 1);
+          disc.mesh.position.y = cursorY - T * 0.5;
+          cursorY -= T;
+        }
+
+        if (transition) {
+          const incomingHeight = T * progress;
+          setDiscScale(transition.incoming, incomingHeight, progress);
+          transition.incoming.mesh.position.y = cursorY - incomingHeight * 0.5;
+        }
+
+        controls.target.set(0, totalHeight * 0.5, 0);
       }
 
       function clearAll() {
+        if (transition) {
+          stackGroup.remove(transition.outgoing.mesh);
+          stackGroup.remove(transition.incoming.mesh);
+          disposeDisc(transition.outgoing);
+          disposeDisc(transition.incoming);
+          transition = null;
+        }
+
         while (discs.length) {
           const d = discs.pop();
           stackGroup.remove(d.mesh);
@@ -206,25 +245,23 @@ WORDS</textarea
       }
 
       function tickFIFO() {
-        if (!discs.length || !feed.length) return;
+        if (!discs.length || !feed.length || transition) return;
 
-        const removed = discs.shift();
-        stackGroup.remove(removed.mesh);
-        disposeDisc(removed);
+        const outgoing = discs.shift();
 
         const newWord = feed[feedIdx % feed.length];
         feedIdx++;
 
-        const newDisc = createDisc(newWord, discs.length);
-        const oldBottomY = discs.length > 0 ? discs[discs.length - 1].currentY - T : T * 0.5;
+        const incoming = createDisc(newWord, discs.length);
+        stackGroup.add(incoming.mesh);
 
-        newDisc.currentY = oldBottomY;
-        newDisc.mesh.position.y = oldBottomY;
+        transition = {
+          outgoing,
+          incoming,
+          startTime: performance.now(),
+        };
 
-        discs.push(newDisc);
-        stackGroup.add(newDisc.mesh);
-
-        assignTargets(true);
+        layoutStack(0);
       }
 
       function parseLines(id) {
@@ -249,8 +286,7 @@ WORDS</textarea
           stackGroup.add(d.mesh);
         });
 
-        assignTargets(false);
-        discs.forEach((d) => (d.mesh.position.y = d.currentY));
+        layoutStack();
 
         fifoTimer = setInterval(tickFIFO, 2000);
       }
@@ -275,17 +311,24 @@ WORDS</textarea
 
         for (const d of discs) {
           d.mesh.rotation.y += d.speed * dt;
+        }
 
-          if (d.animStart !== null) {
-            let t = (now - d.animStart) / ANIM_DUR;
-            if (t >= 1) {
-              t = 1;
-              d.animStart = null;
-            }
-            d.currentY = d.animFromY + (d.targetY - d.animFromY) * easeInOutCubic(t);
+        if (transition) {
+          transition.outgoing.mesh.rotation.y += transition.outgoing.speed * dt;
+          transition.incoming.mesh.rotation.y += transition.incoming.speed * dt;
+
+          let t = (now - transition.startTime) / ANIM_DUR;
+          if (t >= 1) {
+            stackGroup.remove(transition.outgoing.mesh);
+            disposeDisc(transition.outgoing);
+            discs.push(transition.incoming);
+            transition = null;
+            layoutStack();
+          } else {
+            layoutStack(easeInOutCubic(t));
           }
-
-          d.mesh.position.y = d.currentY;
+        } else {
+          layoutStack();
         }
 
         controls.update();
