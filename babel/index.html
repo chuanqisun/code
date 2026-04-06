@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Barcode Word Discs</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #ececec; }
+      canvas { display: block; }
+      #ui {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        background: rgba(255,255,255,.9);
+        padding: 8px;
+        border-radius: 6px;
+        font: 12px/1.2 sans-serif;
+      }
+      #seedWords, #feedWords { width: 320px; }
+    </style>
+  </head>
+  <body>
+    <!--
+    App behavior summary:
+    - Renders a vertical stack of thick, concentric white discs in Three.js.
+    - Each disc represents one ASCII word.
+    - A custom barcode algorithm converts each word into 8-bit character patterns.
+    - The total barcode bit count determines the disc circumference, so longer words create larger discs.
+    - The barcode stripes are wrapped around the cylindrical side wall of each disc as black-on-white bands.
+    - All discs share the same vertical axis and touch with no gaps.
+    - Every disc spins continuously around the vertical axis.
+    - Spin direction alternates by disc order, and each disc gets a random angular speed.
+    - The stack operates as a FIFO queue:
+      - the top/oldest disc is removed,
+      - a new word from the feed is added at the bottom,
+      - unchanged discs are not recreated or reset.
+    - On each queue update:
+      1. removal and addition happen instantly without shifting other discs,
+      2. then all remaining/new discs smoothly slide upward by one disc height over 1000ms.
+    - A small UI lets you define the initial stack and the incoming feed words, then rebuild/restart the system.
+    - OrbitControls allow interactive camera rotation around the animated stack.
+  -->
+
+    <div id="ui">
+      <div><strong>Initial stack</strong> (one word per line)</div>
+      <textarea id="seedWords" rows="6">
+HELLO
+WORLD
+THREE
+DISC
+STACK</textarea
+      >
+      <div style="margin-top:6px;"><strong>Incoming FIFO feed</strong> (cycled)</div>
+      <textarea id="feedWords" rows="6">
+BARCODE
+ROTATE
+COLUMN
+WHITE
+ORBIT
+RANDOM
+STREAM
+WORDS</textarea
+      ><br />
+      <button id="build">Build / Restart</button>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xececec);
+
+      const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 200);
+      camera.position.set(12, 10, 14);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
+      keyLight.position.set(8, 12, 10);
+      scene.add(keyLight);
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+      fillLight.position.set(-10, 8, -8);
+      scene.add(fillLight);
+
+      const stackGroup = new THREE.Group();
+      scene.add(stackGroup);
+
+      const T = 0.7;
+      const RADIAL_SEGS = 256;
+      const UNIT_W = 0.18;
+      const ANIM_DUR = 1000;
+
+      let discs = [];
+      let feed = [];
+      let feedIdx = 0;
+      let fifoTimer = null;
+      const clock = new THREE.Clock();
+
+      function textToBytes(s) {
+        const b = [];
+        for (let i = 0; i < s.length; i++) {
+          const c = s.charCodeAt(i);
+          if (c > 127) throw new Error("ASCII only");
+          b.push(c);
+        }
+        return b;
+      }
+
+      function barcodeUnits(word) {
+        const units = [];
+        for (const byte of textToBytes(word)) {
+          for (const ch of byte.toString(2).padStart(8, "0")) {
+            units.push(ch === "1" ? 1 : 0);
+          }
+        }
+        return units;
+      }
+
+      function makeSideTex(units) {
+        const cvs = document.createElement("canvas");
+        cvs.width = Math.max(512, units.length * 12);
+        cvs.height = 64;
+        const ctx = cvs.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, cvs.width, cvs.height);
+        ctx.fillStyle = "#000";
+        const step = cvs.width / units.length;
+        for (let i = 0; i < units.length; i++) {
+          if (units[i]) {
+            const x0 = Math.round(i * step);
+            const x1 = Math.round((i + 1) * step);
+            ctx.fillRect(x0, 0, Math.max(1, x1 - x0), cvs.height);
+          }
+        }
+        const tex = new THREE.CanvasTexture(cvs);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        return tex;
+      }
+
+      function createDisc(word, idxHint) {
+        const units = barcodeUnits(word);
+        const circ = Math.max(units.length, 1) * UNIT_W;
+        const r = circ / (2 * Math.PI);
+
+        const geo = new THREE.CylinderGeometry(r, r, T, RADIAL_SEGS, 1, false);
+        const sideTex = makeSideTex(units);
+        const mats = [
+          new THREE.MeshStandardMaterial({ color: 0xffffff, map: sideTex, roughness: 0.35 }),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 }),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 }),
+        ];
+
+        const mesh = new THREE.Mesh(geo, mats);
+        const dir = idxHint % 2 === 0 ? 1 : -1;
+        const speed = THREE.MathUtils.randFloat(0.35, 1.35) * dir;
+
+        return { word, mesh, speed, currentY: 0, targetY: 0, animStart: null, animFromY: 0 };
+      }
+
+      function disposeDisc(d) {
+        d.mesh.geometry.dispose();
+        const mats = Array.isArray(d.mesh.material) ? d.mesh.material : [d.mesh.material];
+        mats.forEach((m) => {
+          if (m.map) m.map.dispose();
+          m.dispose();
+        });
+      }
+
+      function targetYForIndex(i, total) {
+        return (total - 1) * T - i * T + T * 0.5;
+      }
+
+      function assignTargets(animate) {
+        const now = performance.now();
+        for (let i = 0; i < discs.length; i++) {
+          const ty = targetYForIndex(i, discs.length);
+          if (animate) {
+            discs[i].animStart = now;
+            discs[i].animFromY = discs[i].currentY;
+          } else {
+            discs[i].animStart = null;
+            discs[i].currentY = ty;
+          }
+          discs[i].targetY = ty;
+        }
+        controls.target.set(0, discs.length * T * 0.5, 0);
+      }
+
+      function clearAll() {
+        while (discs.length) {
+          const d = discs.pop();
+          stackGroup.remove(d.mesh);
+          disposeDisc(d);
+        }
+      }
+
+      function tickFIFO() {
+        if (!discs.length || !feed.length) return;
+
+        const removed = discs.shift();
+        stackGroup.remove(removed.mesh);
+        disposeDisc(removed);
+
+        const newWord = feed[feedIdx % feed.length];
+        feedIdx++;
+
+        const newDisc = createDisc(newWord, discs.length);
+        const oldBottomY = discs.length > 0 ? discs[discs.length - 1].currentY - T : T * 0.5;
+
+        newDisc.currentY = oldBottomY;
+        newDisc.mesh.position.y = oldBottomY;
+
+        discs.push(newDisc);
+        stackGroup.add(newDisc.mesh);
+
+        assignTargets(true);
+      }
+
+      function parseLines(id) {
+        return document
+          .getElementById(id)
+          .value.split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+
+      function buildFromUI() {
+        if (fifoTimer) clearInterval(fifoTimer);
+
+        clearAll();
+        feed = parseLines("feedWords");
+        feedIdx = 0;
+
+        const seed = parseLines("seedWords");
+        seed.forEach((w, i) => {
+          const d = createDisc(w, i);
+          discs.push(d);
+          stackGroup.add(d.mesh);
+        });
+
+        assignTargets(false);
+        discs.forEach((d) => (d.mesh.position.y = d.currentY));
+
+        fifoTimer = setInterval(tickFIFO, 2000);
+      }
+
+      document.getElementById("build").addEventListener("click", () => {
+        try {
+          buildFromUI();
+        } catch (e) {
+          alert(e.message);
+        }
+      });
+
+      function easeInOutCubic(t) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+
+      buildFromUI();
+
+      renderer.setAnimationLoop(() => {
+        const dt = clock.getDelta();
+        const now = performance.now();
+
+        for (const d of discs) {
+          d.mesh.rotation.y += d.speed * dt;
+
+          if (d.animStart !== null) {
+            let t = (now - d.animStart) / ANIM_DUR;
+            if (t >= 1) {
+              t = 1;
+              d.animStart = null;
+            }
+            d.currentY = d.animFromY + (d.targetY - d.animFromY) * easeInOutCubic(t);
+          }
+
+          d.mesh.position.y = d.currentY;
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      });
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+    </script>
+  </body>
+</html>
