@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>infinicity</title>
+    <style>
+      #strip {
+        position: relative;
+        height: 540px;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <button id="next">Next</button>
+    </div>
+    <div id="strip"></div>
+
+    <script>
+      const ASPECT_W = 16;
+      const ASPECT_H = 9;
+      const TILE_W = 960;
+      const TILE_H = 540;
+      const OVERLAP = TILE_W / 2;
+      const GROUND = TILE_H - 14;
+
+      const strip = document.getElementById("strip");
+      const nextBtn = document.getElementById("next");
+
+      let tiles = [];
+
+      function rand(min, max) {
+        return Math.random() * (max - min) + min;
+      }
+
+      function randInt(min, max) {
+        return Math.floor(rand(min, max + 1));
+      }
+
+      function chance(p) {
+        return Math.random() < p;
+      }
+
+      function makeBuilding(xMin, xMax) {
+        const typeRoll = Math.random();
+        const width = randInt(36, 130);
+        const x = randInt(xMin, xMax);
+
+        let type = "rect";
+        let height = randInt(110, 260);
+
+        if (typeRoll < 0.28) {
+          type = "rect";
+          height = randInt(100, 260);
+        } else if (typeRoll < 0.52) {
+          type = "tower";
+          height = randInt(170, 360);
+        } else if (typeRoll < 0.74) {
+          type = "tapered";
+          height = randInt(140, 300);
+        } else {
+          type = "setback";
+          height = randInt(150, 320);
+        }
+
+        return {
+          type,
+          x,
+          w: width,
+          h: height,
+          antenna: chance(0.28),
+          antennaH: randInt(10, 55),
+          topBox: chance(0.12),
+          topBoxW: rand(0.2, 0.45),
+          topBoxH: randInt(10, 24),
+          shaftRatio: rand(0.45, 0.7),
+          crownRatio: rand(0.08, 0.16),
+          roofRatio: rand(0.12, 0.22),
+          podium: chance(0.18),
+          podiumH: randInt(14, 30),
+          step1: rand(0.08, 0.18),
+          step2: rand(0.14, 0.24),
+          split1: rand(0.25, 0.4),
+          split2: rand(0.5, 0.75),
+        };
+      }
+
+      function drawRectBuilding(ctx, b) {
+        const y = GROUND - b.h;
+        ctx.fillRect(b.x, y, b.w, b.h);
+
+        if (b.topBox && b.w > 40) {
+          const boxW = b.w * b.topBoxW;
+          const boxX = b.x + (b.w - boxW) * 0.5;
+          ctx.fillRect(boxX, y - b.topBoxH, boxW, b.topBoxH);
+        }
+
+        if (b.antenna) {
+          const ax = b.x + b.w * 0.5;
+          ctx.fillRect(ax - 1, y - b.antennaH, 2, b.antennaH);
+        }
+      }
+
+      function drawTowerBuilding(ctx, b) {
+        const y = GROUND - b.h;
+        const shaftW = b.w * b.shaftRatio;
+        const shaftX = b.x + (b.w - shaftW) / 2;
+        const crownH = b.h * b.crownRatio;
+
+        if (b.podium) {
+          ctx.fillRect(b.x, GROUND - b.podiumH, b.w, b.podiumH);
+        }
+
+        ctx.fillRect(shaftX, y + crownH, shaftW, b.h - crownH);
+
+        ctx.beginPath();
+        ctx.moveTo(shaftX, y + crownH);
+        ctx.lineTo(b.x + b.w / 2, y);
+        ctx.lineTo(shaftX + shaftW, y + crownH);
+        ctx.closePath();
+        ctx.fill();
+
+        if (b.antenna) {
+          ctx.fillRect(b.x + b.w / 2 - 1.5, y - b.antennaH, 3, b.antennaH);
+        }
+      }
+
+      function drawTaperedBuilding(ctx, b) {
+        const y = GROUND - b.h;
+        const roofH = Math.max(16, b.h * b.roofRatio);
+
+        ctx.beginPath();
+        ctx.moveTo(b.x, GROUND);
+        ctx.lineTo(b.x, y + roofH);
+        ctx.lineTo(b.x + b.w / 2, y);
+        ctx.lineTo(b.x + b.w, y + roofH);
+        ctx.lineTo(b.x + b.w, GROUND);
+        ctx.closePath();
+        ctx.fill();
+
+        if (b.antenna) {
+          ctx.fillRect(b.x + b.w / 2 - 1, y - b.antennaH, 2, b.antennaH);
+        }
+      }
+
+      function drawSetbackBuilding(ctx, b) {
+        const y = GROUND - b.h;
+        const step1 = b.w * b.step1;
+        const step2 = b.w * b.step2;
+        const split1 = y + b.h * b.split1;
+        const split2 = y + b.h * b.split2;
+
+        ctx.beginPath();
+        ctx.moveTo(b.x, GROUND);
+        ctx.lineTo(b.x, split2);
+        ctx.lineTo(b.x + step2, split2);
+        ctx.lineTo(b.x + step1, split1);
+        ctx.lineTo(b.x + step1, y);
+        ctx.lineTo(b.x + b.w - step1, y);
+        ctx.lineTo(b.x + b.w - step1, split1);
+        ctx.lineTo(b.x + b.w - step2, split2);
+        ctx.lineTo(b.x + b.w, split2);
+        ctx.lineTo(b.x + b.w, GROUND);
+        ctx.closePath();
+        ctx.fill();
+
+        if (b.antenna) {
+          ctx.fillRect(b.x + b.w / 2 - 1, y - b.antennaH, 2, b.antennaH);
+        }
+      }
+
+      function drawBuilding(ctx, b) {
+        if (b.type === "rect") drawRectBuilding(ctx, b);
+        else if (b.type === "tower") drawTowerBuilding(ctx, b);
+        else if (b.type === "tapered") drawTaperedBuilding(ctx, b);
+        else drawSetbackBuilding(ctx, b);
+      }
+
+      function renderTile(tile) {
+        const ctx = tile.canvas.getContext("2d");
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, TILE_W, TILE_H);
+        ctx.fillStyle = "black";
+
+        for (const b of tile.buildings) {
+          drawBuilding(ctx, b);
+        }
+
+        ctx.fillRect(0, GROUND, TILE_W, TILE_H - GROUND);
+      }
+
+      function normalizeTile(tile) {
+        tile.buildings = tile.buildings.filter((b) => b.x < TILE_W && b.x + b.w > 0);
+      }
+
+      function generateInitialTile() {
+        const buildings = [];
+        for (let i = 0; i < 24; i++) {
+          buildings.push(makeBuilding(-40, TILE_W + 40));
+        }
+        return buildings;
+      }
+
+      function generateNextBuildings(prevBuildings) {
+        const carried = [];
+
+        for (const b of prevBuildings) {
+          const shifted = { ...b, x: b.x - OVERLAP };
+          if (shifted.x + shifted.w > 0) {
+            carried.push(shifted);
+          }
+        }
+
+        const boundaryPad = 120;
+        const xMin = OVERLAP - boundaryPad;
+        const xMax = TILE_W + 40;
+
+        for (let i = 0; i < 12; i++) {
+          carried.push(makeBuilding(xMin, xMax));
+        }
+
+        return carried;
+      }
+
+      function addTile(buildings) {
+        const canvas = document.createElement("canvas");
+        canvas.width = TILE_W;
+        canvas.height = TILE_H;
+        canvas.style.left = tiles.length * OVERLAP + "px";
+
+        strip.appendChild(canvas);
+
+        const tile = { canvas, buildings };
+        normalizeTile(tile);
+        renderTile(tile);
+        tiles.push(tile);
+
+        strip.style.width = TILE_W + (tiles.length - 1) * OVERLAP + "px";
+      }
+
+      function init() {
+        addTile(generateInitialTile());
+      }
+
+      function next() {
+        const prev = tiles[tiles.length - 1];
+        const nextBuildings = generateNextBuildings(prev.buildings);
+        addTile(nextBuildings);
+      }
+
+      nextBtn.addEventListener("click", next);
+      init();
+    </script>
+  </body>
+</html>
