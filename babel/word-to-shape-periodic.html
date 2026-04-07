@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Word Undulating Circle</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #fff;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      .ui {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.97);
+        border: 1px solid #000;
+        padding: 10px;
+        font: 12px/1.2 monospace;
+      }
+      .ui label {
+        display: block;
+        margin: 6px 0 2px;
+      }
+      .ui input,
+      .ui select,
+      .ui button {
+        width: 220px;
+        box-sizing: border-box;
+      }
+      .ui button {
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <div class="ui">
+      <label>word</label>
+      <input id="word" type="text" value="hello" />
+
+      <label>base size (per character)</label>
+      <input id="base" type="number" value="24" step="1" />
+
+      <label>amplitude</label>
+      <input id="amp" type="number" value="34" step="1" />
+
+      <label>transition ms</label>
+      <input id="dur" type="number" value="900" step="50" />
+
+      <label>ascii mapping</label>
+      <select id="map">
+        <option value="jump">jumped ASCII</option>
+        <option value="linear">linear ASCII</option>
+      </select>
+
+      <button id="next" type="button">next</button>
+    </div>
+
+    <script>
+      const WORDS = ["hello", "canvas", "spline", "orbit", "glyph", "signal", "rhythm", "echo", "wave", "loop"];
+      const TAU = Math.PI * 2;
+      const SAMPLE_COUNT = 900;
+      const TENSION = 0.35; // higher = tighter / less overshoot
+      const EPS_RADIUS = 0.001; // keep radius positive so the polar curve stays twist-free
+
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      const wordEl = document.getElementById("word");
+      const baseEl = document.getElementById("base");
+      const ampEl = document.getElementById("amp");
+      const durEl = document.getElementById("dur");
+      const mapEl = document.getElementById("map");
+      const nextEl = document.getElementById("next");
+
+      const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const ease = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
+      const mod = (n, m) => ((n % m) + m) % m;
+
+      function readParams() {
+        return {
+          word: wordEl.value || "hello",
+          base: Number(baseEl.value) || 24,
+          amp: Math.abs(Number(ampEl.value) || 34),
+          dur: Math.max(0, Number(durEl.value) || 900),
+          mode: mapEl.value,
+        };
+      }
+
+      function asciiT(ch, mode) {
+        const span = 95; // printable ASCII [32..126]
+        const idx = mod((ch || " ").charCodeAt(0) - 32, span);
+        return (mode === "linear" ? idx : mod(idx * 37, span)) / (span - 1);
+      }
+
+      function controlRadii(word, baseSize, amp, mode) {
+        const chars = [...(word || "hello")];
+        const n = Math.max(chars.length, 1);
+        const m = n * 2;
+        const baseRadius = baseSize * n;
+        const minRadius = Math.max(EPS_RADIUS, baseRadius - amp);
+        const radii = new Float32Array(m);
+
+        for (let i = 0; i < n; i++) {
+          const t = asciiT(chars[i], mode);
+          radii[i * 2] = Math.max(EPS_RADIUS, baseRadius + (t - 0.5) * 2 * amp); // char node
+          radii[i * 2 + 1] = minRadius; // inserted base node
+        }
+        return radii;
+      }
+
+      // ------------------------------------------------------------
+      // Twist-free / knot-free removal algorithm:
+      //
+      // A direct "delete this control point and move it into a neighbor" strategy
+      // is what creates the tiny knots: two spline spans collapse onto one point,
+      // their tangents can briefly oppose each other, and the curve locally loops.
+      //
+      // Better approach:
+      // 1) Represent the word shape as a periodic scalar radius field R(theta),
+      //    not as a mutable list of cartesian spline vertices.
+      // 2) Build R(theta) from the alternating [char, base, char, base, ...] nodes
+      //    using a periodic cubic spline in POLAR space.
+      // 3) During a transition, sample the *same monotonically increasing angles*
+      //    for both old and new shapes, then interpolate their radii per-angle.
+      //
+      // Why this fixes removal:
+      // - Angles never reorder, so samples cannot cross.
+      // - A removed node does not "collapse into" a merge point. Its influence just
+      //   fades out in the old radius field while the new field fades in.
+      // - Because the curve is always drawn as x = cx + cos(theta)*R(theta),
+      //   y = cy + sin(theta)*R(theta), with R(theta) > 0, the contour stays
+      //   star-shaped and twist-free throughout the morph.
+      //
+      // In short: morph the radial field, not the vertex topology.
+      // ------------------------------------------------------------
+
+      function sampleProfile(word, baseSize, amp, mode) {
+        const r = controlRadii(word, baseSize, amp, mode);
+        const m = r.length;
+        const out = new Float32Array(SAMPLE_COUNT);
+
+        for (let s = 0; s < SAMPLE_COUNT; s++) {
+          const u = (s / SAMPLE_COUNT) * m;
+          const i1 = Math.floor(u) % m;
+          const f = u - Math.floor(u);
+
+          const p0 = r[mod(i1 - 1, m)];
+          const p1 = r[i1];
+          const p2 = r[(i1 + 1) % m];
+          const p3 = r[(i1 + 2) % m];
+
+          const m1 = (1 - TENSION) * (p2 - p0) * 0.5;
+          const m2 = (1 - TENSION) * (p3 - p1) * 0.5;
+
+          const f2 = f * f;
+          const f3 = f2 * f;
+          const h00 = 2 * f3 - 3 * f2 + 1;
+          const h10 = f3 - 2 * f2 + f;
+          const h01 = -2 * f3 + 3 * f2;
+          const h11 = f3 - f2;
+
+          out[s] = Math.max(EPS_RADIUS, h00 * p1 + h10 * m1 + h01 * p2 + h11 * m2);
+        }
+        return out;
+      }
+
+      function draw(profile) {
+        const dpr = devicePixelRatio || 1;
+        const w = innerWidth;
+        const h = innerHeight;
+
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, w, h);
+
+        const cx = w * 0.5;
+        const cy = h * 0.5;
+        const a0 = -Math.PI / 2;
+
+        ctx.beginPath();
+        for (let i = 0; i < profile.length; i++) {
+          const a = a0 + (i / profile.length) * TAU;
+          const rr = profile[i];
+          const x = cx + Math.cos(a) * rr;
+          const y = cy + Math.sin(a) * rr;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 3;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+
+      function mixProfiles(a, b, t, out) {
+        const e = ease(t);
+        for (let i = 0; i < a.length; i++) out[i] = lerp(a[i], b[i], e);
+        return out;
+      }
+
+      const state = {
+        currentWord: wordEl.value || "hello",
+        current: null,
+        transition: null,
+        buffer: new Float32Array(SAMPLE_COUNT),
+        raf: 0,
+      };
+
+      function currentProfileAt(now) {
+        if (!state.transition) return state.current;
+        const tr = state.transition;
+        const t = tr.dur === 0 ? 1 : clamp((now - tr.start) / tr.dur, 0, 1);
+        return mixProfiles(tr.from, tr.to, t, state.buffer);
+      }
+
+      function startTransition(nextWord) {
+        const p = readParams();
+        const now = performance.now();
+        const from = state.current ? currentProfileAt(now).slice() : sampleProfile(state.currentWord, p.base, p.amp, p.mode);
+        const to = sampleProfile(nextWord, p.base, p.amp, p.mode);
+
+        state.transition = {
+          from,
+          to,
+          start: now,
+          dur: p.dur,
+        };
+        state.currentWord = nextWord;
+
+        if (!state.raf) state.raf = requestAnimationFrame(frame);
+      }
+
+      function frame(now) {
+        const tr = state.transition;
+        if (!tr) {
+          state.raf = 0;
+          if (state.current) draw(state.current);
+          return;
+        }
+
+        const t = tr.dur === 0 ? 1 : clamp((now - tr.start) / tr.dur, 0, 1);
+        const profile = mixProfiles(tr.from, tr.to, t, state.buffer);
+        draw(profile);
+
+        if (t < 1) {
+          state.raf = requestAnimationFrame(frame);
+        } else {
+          state.current = tr.to;
+          state.transition = null;
+          state.raf = 0;
+          draw(state.current);
+        }
+      }
+
+      function redrawStatic() {
+        const p = readParams();
+        state.currentWord = p.word;
+        state.current = sampleProfile(p.word, p.base, p.amp, p.mode);
+        state.transition = null;
+        draw(state.current);
+      }
+
+      function nextWord() {
+        const current = wordEl.value || "hello";
+        let next = current;
+        while (WORDS.length > 1 && next === current) {
+          next = WORDS[(Math.random() * WORDS.length) | 0];
+        }
+        wordEl.value = next;
+        startTransition(next);
+      }
+
+      wordEl.addEventListener("input", () => startTransition(wordEl.value || "hello"));
+      wordEl.addEventListener("change", () => startTransition(wordEl.value || "hello"));
+      [baseEl, ampEl, durEl, mapEl].forEach((el) => {
+        el.addEventListener("input", () => startTransition(wordEl.value || "hello"));
+        el.addEventListener("change", () => startTransition(wordEl.value || "hello"));
+      });
+      nextEl.addEventListener("click", nextWord);
+
+      addEventListener("resize", () => {
+        const now = performance.now();
+        draw(currentProfileAt(now) || state.current);
+      });
+
+      redrawStatic();
+    </script>
+  </body>
+</html>
