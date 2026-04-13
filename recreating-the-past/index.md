@@ -30,6 +30,7 @@
 - Instead of using an existing time-lapse, I want to use real-time footage from a webcam.
 - Can I bring Etienne-Jules Marey's [chrono-sculpture technique](https://greg.org/archive/2024/01/16/the-sculptures-of-etienne-jules-marey.html)?
 - I tried slit scan, but it is directional and requires choreography. What if we isolate the body from the scene using the technique from the previous week?
+- Process: [Hand tracking](./vasulka/experiments/100-mediapipe-setup.html), [Palm orientation](./vasulka/experiments/101-mediapipe-twist.html), [Manual rewind](./vasulka/experiments/300-rewind.html), [Slit scan (not interesting)](./vasulka/experiments/600-slit-scan.html), [Body separation](./vasulka/experiments/700-body-memory.html), [Body trace](./vasulka/experiments/800-composition.html)
 
 ## Week 7: Body
 
