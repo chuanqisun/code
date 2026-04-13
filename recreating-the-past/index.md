@@ -1,5 +1,36 @@
 # Recreating The Past
 
+## Week 8: Glitch
+
+### Watch
+
+- [Glitch with Rutt Etra, Slit scan, image history](https://www.dropbox.com/s/edb51j4sdy8bw4k/async_7_9.mp4?dl=0)
+
+### Read
+
+> Let us look at machine aesthetics as formed by functionality and dysfunctionality, and then proceed to the concept of glitches as computing’s aesthetic core, as marks of (dys)functions, (re)actions and (e)motions that are worked out in human-computer assemblages.
+>
+> Functional elements are later used as nonfunctional design elements that are appreciated Glitch 113 as “beautiful” by users not least due to the cultural memory of their origin
+>
+> Error sets free the irrational potential and works out the fundamental concepts and forces that bind people and machines. An error [is] a sign of the absence of an ideal functionality, whether it be understood in the technical, social or economic sense.
+>
+> -- Olga Goriunova and Alexei Shulgin, _Glitch_ from Software Studies, edited by Matthew Fuller
+
+### Practice
+
+| [Original](https://alvarocassinelli.com/khronos-projector/) | [Recreated](https://www.youtube.com/shorts/N_AZrjKjHFM) |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
+| ![Original](./vasulka/original.webp)                        | ![Recreated](./vasulka/recreated.webp)                  |
+
+- Notes
+  - [Recorded demo](https://www.youtube.com/watch?v=0V7LAdV-e4c), [Studio](./vasulka/)
+  - Source
+    - Alvaro Cassinelli, Masatoshi Ishikawa, [KHRONOS PROJECTOR (2004)](https://alvarocassinelli.com/khronos-projector/)
+- The possibility of realizing a tangible time machine almost brought me to tears. I had to make one as soon as I saw the KHRONOS PROJECTOR.
+- Instead of using an existing time-lapse, I want to use real-time footage from a webcam.
+- Can I bring Etienne-Jules Marey's [chrono-sculpture technique](https://greg.org/archive/2024/01/16/the-sculptures-of-etienne-jules-marey.html)?
+- I tried slit scan, but it is directional and requires choreography. What if we isolate the body from the scene using the technique from the previous week?
+
 ## Week 7: Body
 
 ### Watch

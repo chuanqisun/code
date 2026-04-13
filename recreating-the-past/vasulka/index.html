@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glitch</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        font-family: sans-serif;
+        background: #fff;
+        color: #111;
+      }
+
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+
+      label {
+        display: block;
+      }
+
+      input {
+        width: 100%;
+        max-width: 300px;
+      }
+
+      meter {
+        width: 100%;
+        max-width: 300px;
+        height: 20px;
+      }
+
+      .camera-controls {
+        margin-bottom: 12px;
+      }
+
+      .controls-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .present-stage {
+        display: contents;
+      }
+
+      .present-mode {
+        padding: 0;
+        overflow: hidden;
+        background: #000;
+        color: #fff;
+
+        .camera-controls {
+          position: fixed;
+          top: 16px;
+          left: 16px;
+          z-index: 20;
+          margin: 0;
+          &:not(:hover) {
+            opacity: 0;
+          }
+        }
+
+        .controls-panel,
+        .grid canvas:not(#bodyHistoryCanvas) {
+          display: none;
+        }
+
+        .present-stage {
+          position: fixed;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          background: #000;
+        }
+
+        .grid {
+          display: block;
+          margin: 0;
+        }
+
+        #bodyHistoryCanvas {
+          border: 0;
+          background: #000;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="camera-controls">
+      <button id="startBtn">Start</button>
+      <button id="presentBtn" type="button" hidden>Present</button>
+      <button id="downloadBtn" type="button" hidden>Download</button>
+      <button id="debugBtn" type="button" hidden>Debug</button>
+    </div>
+
+    <div class="controls-panel">
+      <div>
+        <label for="bodyThresholdSlider">Body threshold: <span id="bodyThresholdValue">128</span></label>
+        <input id="bodyThresholdSlider" type="range" min="0" max="255" value="128" step="1" />
+      </div>
+
+      <div>
+        <label for="handOpennessMeter">
+          Hand openness: <span id="handOpennessValue">n/a</span> (<span id="handOpenThresholdValue">50</span> open /
+          <span id="handCloseThresholdValue">30</span> close)
+        </label>
+        <meter id="handOpennessMeter" min="0" max="120" low="30" high="50" optimum="50" value="0"></meter>
+      </div>
+
+      <div>
+        <label for="handOpenThresholdSlider">Hand open threshold: <span id="handOpenThresholdSliderValue">50</span></label>
+        <input id="handOpenThresholdSlider" type="range" min="0" max="120" value="35" step="1" />
+      </div>
+
+      <div>
+        <label for="handCloseThresholdSlider">Hand close threshold: <span id="handCloseThresholdSliderValue">30</span></label>
+        <input id="handCloseThresholdSlider" type="range" min="0" max="120" value="20" step="1" />
+      </div>
+
+      <div>
+        <label for="historySlider">History</label>
+        <input id="historySlider" type="range" min="-120" max="0" value="0" step="1" />
+        <label for="historyDepth">Depth</label>
+        <input id="historyDepth" type="range" min="1" max="120" value="1" step="1" />
+      </div>
+
+      <pre id="stats" style="margin-top: 12px">[]</pre>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <div id="presentStage" class="present-stage">
+      <div class="grid">
+        <canvas id="liveCanvas"></canvas>
+        <canvas id="bodyCanvas"></canvas>
+        <canvas id="historyCanvas"></canvas>
+        <canvas id="bodyHistoryCanvas"></canvas>
+      </div>
+    </div>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

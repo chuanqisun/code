@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glitch</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+      label {
+        display: block;
+      }
+      input {
+        width: 100%;
+        max-width: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+    </div>
+
+    <div>
+      <label for="bodyThresholdSlider">Body threshold: <span id="bodyThresholdValue">128</span></label>
+      <input id="bodyThresholdSlider" type="range" min="0" max="255" value="128" step="1" />
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <canvas id="liveCanvas" width="320" height="240"></canvas>
+    <canvas id="bodyCanvas" width="320" height="240"></canvas>
+    <canvas id="historyCanvas" width="320" height="240"></canvas>
+    <canvas id="bodyHistoryCanvas" width="320" height="240"></canvas>
+    <div>
+      <label for="historySlider">History</label>
+      <input id="historySlider" type="range" min="0" max="0" value="0" step="1" />
+      <label for="historyDepth">Depth</label>
+      <input id="historyDepth" type="range" min="1" max="100" value="30" step="1" />
+    </div>
+    <pre id="stats" style="margin-top: 12px">[]</pre>
+
+    <script type="module">
+      import { fromEvent, animationFrames, concatMap, throttleTime, switchMap } from "https://esm.sh/rxjs@7.8.2";
+
+      const MEDIAPIPE_TASKS_VISION_VERSION = "0.10.34";
+      const MEDIAPIPE_TASKS_VISION_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_TASKS_VISION_VERSION}`;
+      const MEDIAPIPE_WASM_URL = `${MEDIAPIPE_TASKS_VISION_URL}/wasm`;
+      const IMAGE_SEGMENTER_MODEL_URL =
+        "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite";
+      const HAND_LANDMARKER_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const liveCanvas = document.getElementById("liveCanvas");
+      const bodyCanvas = document.getElementById("bodyCanvas");
+      const historyCanvas = document.getElementById("historyCanvas");
+      const bodyHistoryCanvas = document.getElementById("bodyHistoryCanvas");
+      const historySlider = document.getElementById("historySlider");
+      const historyDepthSlider = document.getElementById("historyDepth");
+      const bodyThresholdSlider = document.getElementById("bodyThresholdSlider");
+      const bodyThresholdValue = document.getElementById("bodyThresholdValue");
+      const stats = document.getElementById("stats");
+      const liveCtx = liveCanvas.getContext("2d");
+      const bodyCtx = bodyCanvas.getContext("2d");
+      const historyCtx = historyCanvas.getContext("2d");
+      const bodyHistoryCtx = bodyHistoryCanvas.getContext("2d");
+
+      const smoothedHandDepths = [];
+      const smoothedHandOpenness = [];
+      const handPresenceFrameCounts = [];
+      const HAND_INITIAL_PRESENCE_FRAME_COUNT = 10;
+      const FINGERTIP_INDICES = [4, 8, 12, 16, 20];
+      const DEPTH_SMOOTHING_FACTOR = 0.5;
+      const OPENNESS_SMOOTHING_FACTOR = 0.8;
+      const OPEN_THRESHOLD = 0.05;
+      const BODY_ALPHA_SCALE = 255;
+      const DEFAULT_BODY_THRESHOLD = 128;
+      const IDEAL_FRAME_RATE = 30;
+      let bodySegmentThreshold = DEFAULT_BODY_THRESHOLD;
+
+      function getHistoryFrameLimit() {
+        const nextLimit = Number.parseInt(historyDepthSlider.max, 10);
+        return Number.isNaN(nextLimit) || nextLimit < 1 ? 1 : nextLimit;
+      }
+
+      function getBodyHistoryDepth() {
+        const nextDepth = Number.parseInt(historyDepthSlider.value, 10);
+        return Number.isNaN(nextDepth) || nextDepth < 1 ? 1 : nextDepth;
+      }
+
+      bodyThresholdSlider.addEventListener("input", () => {
+        const nextThreshold = Number.parseInt(bodyThresholdSlider.value, 10);
+        bodySegmentThreshold = Number.isNaN(nextThreshold) ? DEFAULT_BODY_THRESHOLD : nextThreshold;
+        bodyThresholdValue.textContent = String(bodySegmentThreshold);
+      });
+
+      class WebcamController {
+        constructor(videoElement) {
+          this.video = videoElement;
+          this.running = false;
+          this.startPromise = null;
+        }
+
+        async start() {
+          if (this.startPromise) {
+            return this.startPromise;
+          }
+
+          if (this.running) {
+            return;
+          }
+
+          this.startPromise = this.startInternal();
+
+          try {
+            await this.startPromise;
+          } finally {
+            this.startPromise = null;
+          }
+        }
+
+        async startInternal() {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240, frameRate: { ideal: IDEAL_FRAME_RATE, max: IDEAL_FRAME_RATE } },
+            audio: false,
+          });
+
+          this.video.srcObject = stream;
+          await this.video.play();
+          this.running = true;
+        }
+      }
+
+      const webcam = new WebcamController(video);
+
+      class HistoryFrameManager {
+        constructor({ renderTargets, slider, getFrameLimit }) {
+          this.renderTargets = renderTargets;
+          this.slider = slider;
+          this.getFrameLimit = getFrameLimit;
+          this.frames = [];
+          this.selectedFrameIndex = 0;
+          this.followsLatestFrame = true;
+
+          this.slider.addEventListener("input", () => {
+            const nextIndex = Number.parseInt(this.slider.value, 10);
+            this.selectedFrameIndex = Number.isNaN(nextIndex) ? 0 : nextIndex;
+            this.followsLatestFrame = this.selectedFrameIndex >= this.frames.length - 1;
+            this.render();
+          });
+        }
+
+        captureFrame(frameSet) {
+          this.frames.push(frameSet);
+          const frameLimit = this.getFrameLimit();
+
+          while (this.frames.length > frameLimit) {
+            this.frames.shift();
+          }
+
+          this.syncSlider();
+        }
+
+        trimToFrameLimit() {
+          const frameLimit = this.getFrameLimit();
+
+          while (this.frames.length > frameLimit) {
+            this.frames.shift();
+          }
+
+          this.syncSlider();
+        }
+
+        render() {
+          const frameSet = this.frames[this.selectedFrameIndex];
+
+          if (!frameSet) {
+            for (const renderTarget of this.renderTargets) {
+              renderTarget.context.clearRect(0, 0, renderTarget.canvas.width, renderTarget.canvas.height);
+            }
+            return;
+          }
+
+          for (const renderTarget of this.renderTargets) {
+            renderTarget.context.clearRect(0, 0, renderTarget.canvas.width, renderTarget.canvas.height);
+
+            if (typeof renderTarget.render === "function") {
+              renderTarget.render({
+                context: renderTarget.context,
+                canvas: renderTarget.canvas,
+                frameSet,
+                frames: this.frames,
+                selectedFrameIndex: this.selectedFrameIndex,
+              });
+              continue;
+            }
+
+            if (typeof renderTarget.compositeFrameCount === "number" && renderTarget.compositeFrameCount > 1) {
+              const startIndex = Math.max(0, this.selectedFrameIndex - renderTarget.compositeFrameCount + 1);
+
+              for (let frameIndex = startIndex; frameIndex <= this.selectedFrameIndex; frameIndex += 1) {
+                const compositeFrame = this.frames[frameIndex]?.[renderTarget.key];
+
+                if (!compositeFrame) {
+                  continue;
+                }
+
+                renderTarget.context.drawImage(compositeFrame, 0, 0, renderTarget.canvas.width, renderTarget.canvas.height);
+              }
+
+              continue;
+            }
+
+            const frame = frameSet[renderTarget.key];
+
+            if (!frame) {
+              continue;
+            }
+
+            renderTarget.context.drawImage(frame, 0, 0, renderTarget.canvas.width, renderTarget.canvas.height);
+          }
+        }
+
+        syncSlider() {
+          const maxIndex = Math.max(this.frames.length - 1, 0);
+
+          if (this.followsLatestFrame) {
+            this.selectedFrameIndex = maxIndex;
+          } else {
+            this.selectedFrameIndex = Math.min(this.selectedFrameIndex, maxIndex);
+          }
+
+          this.slider.max = String(maxIndex);
+          this.slider.value = String(this.selectedFrameIndex);
+          this.slider.disabled = this.frames.length <= 1;
+        }
+      }
+
+      const historyFrameManager = new HistoryFrameManager({
+        renderTargets: [
+          { key: "full", canvas: historyCanvas, context: historyCtx },
+          {
+            canvas: bodyHistoryCanvas,
+            context: bodyHistoryCtx,
+            render: ({ context, canvas, frameSet, frames, selectedFrameIndex }) => {
+              const currentFullFrame = frameSet?.full;
+
+              if (currentFullFrame) {
+                context.drawImage(currentFullFrame, 0, 0, canvas.width, canvas.height);
+              }
+
+              const startIndex = Math.max(0, selectedFrameIndex - getBodyHistoryDepth() + 1);
+
+              for (let frameIndex = startIndex; frameIndex <= selectedFrameIndex; frameIndex += 1) {
+                const bodyFrame = frames[frameIndex]?.body;
+
+                if (!bodyFrame) {
+                  continue;
+                }
+
+                context.drawImage(bodyFrame, 0, 0, canvas.width, canvas.height);
+              }
+            },
+          },
+        ],
+        slider: historySlider,
+        getFrameLimit: getHistoryFrameLimit,
+      });
+
+      historyDepthSlider.addEventListener("input", () => {
+        historyFrameManager.trimToFrameLimit();
+        historyFrameManager.render();
+      });
+
+      fromEvent(startBtn, "click")
+        .pipe(
+          concatMap(() => initializeVisionTasks()),
+          concatMap(async ({ handLandmarker, imageSegmenter }) => {
+            await webcam.start();
+            return { handLandmarker, imageSegmenter };
+          }),
+          switchMap(({ handLandmarker, imageSegmenter }) =>
+            animationFrames().pipe(
+              throttleTime(1000 / IDEAL_FRAME_RATE),
+              concatMap(async ({ elapsed }) => {
+                liveCtx.drawImage(video, 0, 0, liveCanvas.width, liveCanvas.height);
+                const backgroundConfidenceMask = await getBodySegmentationConfidenceMask(video, imageSegmenter, elapsed);
+                const handLandmarks = getHandLandmarksForVideoFrame(video, handLandmarker, elapsed);
+                const handMetrics = calculateHandMetrics(handLandmarks);
+                const bodyFrame = createBodyForegroundFrame(liveCanvas, backgroundConfidenceMask);
+                bodyCtx.clearRect(0, 0, bodyCanvas.width, bodyCanvas.height);
+                bodyCtx.drawImage(bodyFrame, 0, 0, bodyCanvas.width, bodyCanvas.height);
+                historyFrameManager.captureFrame({
+                  full: cloneCanvasFrame(liveCanvas),
+                  body: bodyFrame,
+                });
+                renderHandMarkers(handLandmarks, liveCanvas.width, liveCanvas.height);
+                historyFrameManager.render();
+                logHandStats(handLandmarks, handMetrics);
+              })
+            )
+          )
+        )
+        .subscribe();
+
+      async function initializeVisionTasks() {
+        try {
+          const vision = await import(MEDIAPIPE_TASKS_VISION_URL);
+          const filesetResolver = await vision.FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
+
+          const imageSegmenter = await vision.ImageSegmenter.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath: IMAGE_SEGMENTER_MODEL_URL,
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            outputCategoryMask: false,
+            outputConfidenceMasks: true,
+          });
+
+          const handLandmarker = await vision.HandLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath: HAND_LANDMARKER_MODEL_URL,
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 2,
+            minHandDetectionConfidence: 0.5,
+            minHandPresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          });
+
+          return { handLandmarker, imageSegmenter };
+        } catch (error) {
+          console.error("Failed to initialize MediaPipe vision tasks", error);
+          throw error;
+        }
+      }
+
+      async function getBodySegmentationConfidenceMask(videoFrame, imageSegmenter, timestamp) {
+        if (!imageSegmenter) {
+          return null;
+        }
+
+        const result = await new Promise((resolve) => imageSegmenter.segmentForVideo(videoFrame, timestamp, resolve));
+
+        return result?.confidenceMasks?.[0] ?? null;
+      }
+
+      function getHandLandmarksForVideoFrame(videoFrame, handLandmarker, timestamp) {
+        if (!handLandmarker) {
+          return [];
+        }
+
+        const result = handLandmarker.detectForVideo(videoFrame, timestamp);
+        return result.landmarks ?? [];
+      }
+
+      function cloneCanvasFrame(sourceCanvas) {
+        const frame = document.createElement("canvas");
+        frame.width = sourceCanvas.width;
+        frame.height = sourceCanvas.height;
+        frame.getContext("2d").drawImage(sourceCanvas, 0, 0, frame.width, frame.height);
+        return frame;
+      }
+
+      function createBodyForegroundFrame(sourceCanvas, backgroundConfidenceMask) {
+        const outputCanvas = document.createElement("canvas");
+        outputCanvas.width = sourceCanvas.width;
+        outputCanvas.height = sourceCanvas.height;
+
+        const outputContext = outputCanvas.getContext("2d");
+        const sourceContext = sourceCanvas.getContext("2d");
+        const sourceImageData = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+        const outputImageData = new ImageData(sourceCanvas.width, sourceCanvas.height);
+        const sourcePixels = sourceImageData.data;
+        const outputPixels = outputImageData.data;
+
+        if (!backgroundConfidenceMask) {
+          outputContext.putImageData(outputImageData, 0, 0);
+          return outputCanvas;
+        }
+
+        const mask = backgroundConfidenceMask.getAsFloat32Array();
+
+        for (let pixelIndex = 0; pixelIndex < mask.length; pixelIndex += 1) {
+          const sourceIndex = pixelIndex * 4;
+          const backgroundAlpha = Math.max(0, Math.min(1, mask[pixelIndex]));
+          const bodyAlpha = 1 - backgroundAlpha;
+          const bodyAlphaValue = Math.round(bodyAlpha * BODY_ALPHA_SCALE);
+
+          outputPixels[sourceIndex] = sourcePixels[sourceIndex];
+          outputPixels[sourceIndex + 1] = sourcePixels[sourceIndex + 1];
+          outputPixels[sourceIndex + 2] = sourcePixels[sourceIndex + 2];
+          outputPixels[sourceIndex + 3] = bodyAlphaValue >= bodySegmentThreshold ? bodyAlphaValue : 0;
+        }
+
+        outputContext.putImageData(outputImageData, 0, 0);
+        return outputCanvas;
+      }
+
+      function calculateHandMetrics(handLandmarks) {
+        const metrics = [];
+
+        for (const [handIndex, hand] of (handLandmarks ?? []).entries()) {
+          if (Array.isArray(hand) && hand.length > 0) {
+            handPresenceFrameCounts[handIndex] = (handPresenceFrameCounts[handIndex] ?? 0) + 1;
+          } else {
+            handPresenceFrameCounts[handIndex] = 0;
+            smoothedHandOpenness[handIndex] = undefined;
+          }
+
+          const fingertips = [];
+          let zTotal = 0;
+          let zCount = 0;
+
+          for (const landmarkIndex of FINGERTIP_INDICES) {
+            const landmark = hand?.[landmarkIndex];
+
+            if (!landmark) {
+              continue;
+            }
+            fingertips.push(landmark);
+
+            if (typeof landmark.z === "number" && !Number.isNaN(landmark.z)) {
+              zTotal += landmark.z;
+              zCount += 1;
+            }
+          }
+
+          if (zCount === 0) {
+            metrics.push({ averageZ: undefined, openness: undefined });
+            continue;
+          }
+
+          const averageZ = zTotal / zCount;
+          const previousZ = smoothedHandDepths[handIndex];
+          const smoothedZ = smoothWithExponentialDecay(previousZ, averageZ, DEPTH_SMOOTHING_FACTOR);
+          let smoothedOpenness;
+
+          if (handPresenceFrameCounts[handIndex] >= HAND_INITIAL_PRESENCE_FRAME_COUNT) {
+            const openness = calculateAverageDistanceFromCenter(fingertips);
+            const previousOpenness = smoothedHandOpenness[handIndex];
+            smoothedOpenness = smoothWithExponentialDecay(previousOpenness, openness, OPENNESS_SMOOTHING_FACTOR);
+          }
+
+          smoothedHandDepths[handIndex] = smoothedZ;
+          smoothedHandOpenness[handIndex] = smoothedOpenness;
+          metrics.push({ averageZ: smoothedZ, openness: smoothedOpenness });
+        }
+
+        smoothedHandDepths.length = metrics.length;
+        smoothedHandOpenness.length = metrics.length;
+        handPresenceFrameCounts.length = metrics.length;
+
+        return metrics;
+      }
+
+      function calculateAverageDistanceFromCenter(landmarks) {
+        if (!Array.isArray(landmarks) || landmarks.length === 0) {
+          return undefined;
+        }
+
+        let xTotal = 0;
+        let yTotal = 0;
+        let zTotal = 0;
+
+        for (const landmark of landmarks) {
+          xTotal += landmark.x;
+          yTotal += landmark.y;
+          zTotal += landmark.z;
+        }
+
+        const centerX = xTotal / landmarks.length;
+        const centerY = yTotal / landmarks.length;
+        const centerZ = zTotal / landmarks.length;
+
+        let distanceTotal = 0;
+
+        for (const landmark of landmarks) {
+          const dx = landmark.x - centerX;
+          const dy = landmark.y - centerY;
+          const dz = landmark.z - centerZ;
+          distanceTotal += Math.hypot(dx, dy, dz);
+        }
+
+        return distanceTotal / landmarks.length;
+      }
+
+      function smoothWithExponentialDecay(previousValue, nextValue, smoothingFactor) {
+        if (typeof nextValue !== "number" || Number.isNaN(nextValue)) {
+          return undefined;
+        }
+
+        if (typeof previousValue !== "number" || Number.isNaN(previousValue)) {
+          return nextValue;
+        }
+
+        return previousValue + (nextValue - previousValue) * smoothingFactor;
+      }
+
+      function renderHandMarkers(handLandmarks, width, height) {
+        for (const [handIndex, hand] of (handLandmarks ?? []).entries()) {
+          const smoothedOpenness = smoothedHandOpenness[handIndex];
+          liveCtx.fillStyle = typeof smoothedOpenness === "number" && smoothedOpenness > OPEN_THRESHOLD ? "#00ffff" : "#ff0000";
+
+          for (const landmarkIndex of FINGERTIP_INDICES) {
+            const landmark = hand?.[landmarkIndex];
+
+            if (!landmark) {
+              continue;
+            }
+
+            drawMarkerDot(landmark.x * width, landmark.y * height);
+          }
+        }
+      }
+
+      function logHandStats(handLandmarks, handMetrics) {
+        const fingertipStats = [];
+
+        for (const [handIndex, hand] of (handLandmarks ?? []).entries()) {
+          for (const landmarkIndex of FINGERTIP_INDICES) {
+            const landmark = hand?.[landmarkIndex];
+
+            if (!landmark) {
+              continue;
+            }
+
+            fingertipStats.push(
+              [
+                `hand=${handIndex}`,
+                `finger=${landmarkIndex}`,
+                `x=${formatCoordinate(landmark.x)}`,
+                `y=${formatCoordinate(landmark.y)}`,
+                `z=${formatCoordinate(landmark.z)}`,
+              ].join(" ")
+            );
+          }
+
+          const smoothedZ = handMetrics?.[handIndex]?.averageZ;
+          const smoothedOpenness = handMetrics?.[handIndex]?.openness;
+
+          if (typeof smoothedZ === "number") {
+            fingertipStats.push(`hand=${handIndex} z=${formatCoordinate(smoothedZ)}`);
+          }
+
+          if (typeof smoothedOpenness === "number") {
+            fingertipStats.push(`hand=${handIndex} openness=${formatCoordinate(smoothedOpenness)}`);
+          }
+        }
+
+        stats.textContent = fingertipStats.join("\n") || "No fingertips detected";
+      }
+
+      function formatCoordinate(value) {
+        if (typeof value !== "number" || Number.isNaN(value)) return "n/a";
+        return value.toFixed(4);
+      }
+
+      function drawMarkerDot(x, y) {
+        liveCtx.beginPath();
+        liveCtx.arc(x, y, 5, 0, Math.PI * 2);
+        liveCtx.fill();
+      }
+    </script>
+  </body>
+</html>

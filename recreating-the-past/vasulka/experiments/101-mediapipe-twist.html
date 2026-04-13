@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Glitch</title>
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+      canvas,
+      video {
+        border: 1px solid #000;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="margin-bottom: 12px">
+      <button id="startBtn">Start Webcam</button>
+    </div>
+
+    <video id="video" autoplay playsinline muted style="display: none"></video>
+
+    <canvas id="canvas1" width="320" height="240"></canvas>
+    <pre id="stats" style="margin-top: 12px">[]</pre>
+
+    <script>
+      const video = document.getElementById("video");
+      const startBtn = document.getElementById("startBtn");
+      const canvas1 = document.getElementById("canvas1");
+      const stats = document.getElementById("stats");
+      const ctx1 = canvas1.getContext("2d");
+
+      const smoothedHandDepths = [];
+
+      class WebcamController {
+        constructor(videoElement) {
+          this.video = videoElement;
+          this.running = false;
+          this.startPromise = null;
+        }
+
+        async start() {
+          if (this.startPromise) {
+            return this.startPromise;
+          }
+
+          if (this.running) {
+            return;
+          }
+
+          this.startPromise = this.startInternal();
+
+          try {
+            await this.startPromise;
+          } finally {
+            this.startPromise = null;
+          }
+        }
+
+        async startInternal() {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240 },
+            audio: false,
+          });
+
+          this.video.srcObject = stream;
+          await this.video.play();
+          this.running = true;
+        }
+      }
+
+      const webcam = new WebcamController(video);
+
+      startBtn.addEventListener("click", async () => {
+        const handLandmarker = await initializeHandLandmarker();
+
+        async function processFrame() {
+          ctx1.drawImage(video, 0, 0, canvas1.width, canvas1.height);
+          const handTracking = await getHandTrackingForVideoFrame(video, handLandmarker);
+          const smoothedDepths = smoothHandDepths(handTracking.landmarks);
+          const palmOrientations = getPalmOrientations(handTracking.landmarks, handTracking.handednesses);
+          renderHandMarkers(handTracking.landmarks, canvas1.width, canvas1.height);
+          logHandStats(handTracking.landmarks, smoothedDepths, palmOrientations, handTracking.handednesses);
+          requestAnimationFrame(processFrame);
+        }
+
+        await webcam.start();
+        requestAnimationFrame(processFrame);
+      });
+
+      async function initializeHandLandmarker() {
+        try {
+          const vision = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34");
+          const filesetResolver = await vision.FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm");
+
+          handLandmarker = await vision.HandLandmarker.createFromOptions(filesetResolver, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 2,
+            minHandDetectionConfidence: 0.5,
+            minHandPresenceConfidence: 0.5,
+            minTrackingConfidence: 0.5,
+          });
+
+          return handLandmarker;
+        } catch (error) {
+          console.error("Failed to initialize MediaPipe hand landmarker", error);
+          throw error;
+        }
+      }
+
+      async function getHandTrackingForVideoFrame(videoFrame, handLandmarker) {
+        if (!handLandmarker) {
+          return { landmarks: [], handednesses: [] };
+        }
+
+        const result = handLandmarker.detectForVideo(videoFrame, performance.now());
+        return {
+          landmarks: result.landmarks ?? [],
+          handednesses: (result.handednesses ?? []).map((entries) => entries?.[0]?.categoryName ?? "Unknown"),
+        };
+      }
+
+      function smoothHandDepths(handLandmarks) {
+        const fingertipIndices = [4, 8, 12, 16, 20];
+        const smoothedDepths = [];
+
+        for (const [handIndex, hand] of (handLandmarks ?? []).entries()) {
+          let zTotal = 0;
+          let zCount = 0;
+
+          for (const landmarkIndex of fingertipIndices) {
+            const landmark = hand?.[landmarkIndex];
+
+            if (!landmark) {
+              continue;
+            }
+
+            if (typeof landmark.z === "number" && !Number.isNaN(landmark.z)) {
+              zTotal += landmark.z;
+              zCount += 1;
+            }
+          }
+
+          if (zCount === 0) {
+            smoothedDepths.push(undefined);
+            continue;
+          }
+
+          const averageZ = zTotal / zCount;
+          const previousZ = smoothedHandDepths[handIndex];
+          const smoothedZ = typeof previousZ === "number" ? previousZ * 0.2 + averageZ * 0.8 : averageZ;
+
+          smoothedHandDepths[handIndex] = smoothedZ;
+          smoothedDepths.push(smoothedZ);
+        }
+
+        smoothedHandDepths.length = smoothedDepths.length;
+
+        return smoothedDepths;
+      }
+
+      function getPalmOrientations(handLandmarks, handednesses) {
+        const orientations = [];
+
+        for (const [handIndex, hand] of (handLandmarks ?? []).entries()) {
+          const wrist = hand?.[0];
+          const indexMcp = hand?.[5];
+          const pinkyMcp = hand?.[17];
+
+          if (!wrist || !indexMcp || !pinkyMcp) {
+            orientations.push(undefined);
+            continue;
+          }
+
+          const wristToIndex = subtractLandmarks(indexMcp, wrist);
+          const wristToPinky = subtractLandmarks(pinkyMcp, wrist);
+          const palmNormal = crossProduct(wristToIndex, wristToPinky);
+          const normalLength = vectorLength(palmNormal);
+
+          if (normalLength === 0) {
+            orientations.push(undefined);
+            continue;
+          }
+
+          const handedness = handednesses?.[handIndex];
+          const handednessSign = handedness === "Left" ? -1 : 1;
+          const normalizedZ = clamp((palmNormal.z / normalLength) * handednessSign, -1, 1);
+          const degrees = Math.asin(normalizedZ) * (180 / Math.PI);
+
+          orientations.push(degrees);
+        }
+
+        return orientations;
+      }
+
+      function renderHandMarkers(handLandmarks, width, height) {
+        const fingertipIndices = [4, 8, 12, 16, 20];
+
+        ctx1.fillStyle = "#ff0000";
+
+        for (const hand of handLandmarks ?? []) {
+          for (const landmarkIndex of fingertipIndices) {
+            const landmark = hand?.[landmarkIndex];
+
+            if (!landmark) {
+              continue;
+            }
+
+            drawMarkerDot(landmark.x * width, landmark.y * height);
+          }
+        }
+      }
+
+      function logHandStats(handLandmarks, smoothedDepths, palmOrientations, handednesses) {
+        const fingertipStats = [];
+        const fingertipIndices = [4, 8, 12, 16, 20];
+
+        for (const [handIndex, hand] of (handLandmarks ?? []).entries()) {
+          fingertipStats.push(`hand=${handIndex} label=${handednesses?.[handIndex] ?? "Unknown"}`);
+
+          for (const landmarkIndex of fingertipIndices) {
+            const landmark = hand?.[landmarkIndex];
+
+            if (!landmark) {
+              continue;
+            }
+
+            fingertipStats.push(
+              [
+                `hand=${handIndex}`,
+                `finger=${landmarkIndex}`,
+                `x=${formatCoordinate(landmark.x)}`,
+                `y=${formatCoordinate(landmark.y)}`,
+                `z=${formatCoordinate(landmark.z)}`,
+              ].join(" ")
+            );
+          }
+
+          const smoothedZ = smoothedDepths?.[handIndex];
+
+          if (typeof smoothedZ === "number") {
+            fingertipStats.push(`hand=${handIndex} z=${formatCoordinate(smoothedZ)}`);
+          }
+
+          const orientation = palmOrientations?.[handIndex];
+
+          if (typeof orientation === "number") {
+            fingertipStats.push(`hand=${handIndex} palm=${formatCoordinate(orientation)}deg`);
+          }
+        }
+
+        stats.textContent = fingertipStats.join("\n") || "No fingertips detected";
+      }
+
+      function subtractLandmarks(pointA, pointB) {
+        return {
+          x: pointA.x - pointB.x,
+          y: pointA.y - pointB.y,
+          z: pointA.z - pointB.z,
+        };
+      }
+
+      function crossProduct(vectorA, vectorB) {
+        return {
+          x: vectorA.y * vectorB.z - vectorA.z * vectorB.y,
+          y: vectorA.z * vectorB.x - vectorA.x * vectorB.z,
+          z: vectorA.x * vectorB.y - vectorA.y * vectorB.x,
+        };
+      }
+
+      function vectorLength(vector) {
+        return Math.sqrt(vector.x ** 2 + vector.y ** 2 + vector.z ** 2);
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function formatCoordinate(value) {
+        if (typeof value !== "number" || Number.isNaN(value)) return "n/a";
+        return value.toFixed(4);
+      }
+
+      function drawMarkerDot(x, y) {
+        ctx1.beginPath();
+        ctx1.arc(x, y, 5, 0, Math.PI * 2);
+        ctx1.fill();
+      }
+    </script>
+  </body>
+</html>
