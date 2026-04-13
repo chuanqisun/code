@@ -50,6 +50,16 @@
         margin-top: 12px;
       }
 
+      .debug-panel {
+        margin-top: 12px;
+      }
+
+      .debug-panel pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
       .present-stage {
         display: contents;
       }
@@ -72,6 +82,7 @@
         }
 
         .controls-panel,
+        .debug-panel,
         .grid canvas:not(#bodyHistoryCanvas) {
           display: none;
         }
@@ -134,8 +145,6 @@
         <label for="historyDepth">Depth</label>
         <input id="historyDepth" type="range" min="1" max="120" value="1" step="1" />
       </div>
-
-      <pre id="stats" style="margin-top: 12px">[]</pre>
     </div>
 
     <video id="video" autoplay playsinline muted style="display: none"></video>
@@ -148,6 +157,11 @@
         <canvas id="bodyHistoryCanvas"></canvas>
       </div>
     </div>
+
+    <div class="debug-panel">
+      <pre id="stats">[]</pre>
+    </div>
+
     <script type="module" src="main.js"></script>
   </body>
 </html>
