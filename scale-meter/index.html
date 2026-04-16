@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adjustable Dual Scale</title>
+    <style>
+      html, body {
+        margin: 0;
+        background: #000;
+        color: #fff;
+        font-family: sans-serif;
+        height: 100%;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      .wrap {
+        width: 960px;
+        max-width: 95vw;
+      }
+      .controls {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      label {
+        display: grid;
+        grid-template-columns: 140px 1fr 70px;
+        gap: 10px;
+        align-items: center;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      canvas {
+        background: #000;
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="controls">
+        <label>
+          <span>cm width</span>
+          <input id="cmWidthInput" type="range" min="200" max="820" value="740" />
+          <span id="cmWidthValue">740 px</span>
+        </label>
+        <label>
+          <span>Å width</span>
+          <input id="aWidthInput" type="range" min="200" max="820" value="740" />
+          <span id="aWidthValue">740 px</span>
+        </label>
+      </div>
+
+      <canvas id="scaleCanvas" width="960" height="280"></canvas>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("scaleCanvas");
+      const ctx = canvas.getContext("2d");
+
+      const cmWidthInput = document.getElementById("cmWidthInput");
+      const aWidthInput = document.getElementById("aWidthInput");
+      const cmWidthValue = document.getElementById("cmWidthValue");
+      const aWidthValue = document.getElementById("aWidthValue");
+
+      const startX = 70;
+      const axisY = 140;
+      const divisions = 10;
+
+      function drawScale(startX, axisY, totalWidth, direction) {
+        const segmentWidth = totalWidth / divisions;
+
+        for (let i = 0; i <= divisions; i++) {
+          const x = startX + i * segmentWidth;
+
+          // major tick
+          ctx.beginPath();
+          ctx.moveTo(x, axisY);
+          ctx.lineTo(x, axisY + direction * 35);
+          ctx.stroke();
+
+          // half tick
+          if (i < divisions) {
+            const halfX = x + segmentWidth / 2;
+            ctx.beginPath();
+            ctx.moveTo(halfX, axisY);
+            ctx.lineTo(halfX, axisY + direction * 20);
+            ctx.stroke();
+          }
+        }
+      }
+
+      function render() {
+        const cmWidth = Number(cmWidthInput.value);
+        const aWidth = Number(aWidthInput.value);
+
+        cmWidthValue.textContent = `${cmWidth} px`;
+        aWidthValue.textContent = `${aWidth} px`;
+
+        const axisWidth = Math.max(cmWidth, aWidth);
+        const axisEndX = startX + axisWidth;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#fff";
+        ctx.fillStyle = "#fff";
+        ctx.lineWidth = 2;
+
+        // shared axis spans whichever scale is longer
+        ctx.beginPath();
+        ctx.moveTo(startX, axisY);
+        ctx.lineTo(axisEndX, axisY);
+        ctx.stroke();
+
+        // top: cm
+        drawScale(startX, axisY, cmWidth, -1);
+
+        // bottom: angstrom
+        drawScale(startX, axisY, aWidth, 1);
+
+        // labels
+        ctx.font = "28px sans-serif";
+        ctx.textAlign = "right";
+
+        ctx.textBaseline = "bottom";
+        ctx.fillText("1 cm", startX + cmWidth, axisY - 45);
+
+        ctx.textBaseline = "top";
+        ctx.fillText("10 Å", startX + aWidth, axisY + 45);
+      }
+
+      cmWidthInput.addEventListener("input", render);
+      aWidthInput.addEventListener("input", render);
+
+      render();
+    </script>
+  </body>
+</html>
