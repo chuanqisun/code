@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Link Deduplicator</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: 1rem auto;
+        padding: 0 1rem;
+        font-family: system-ui, sans-serif;
+      }
+      textarea {
+        width: 100%;
+        min-height: 30vh;
+        font-family: monospace;
+        box-sizing: border-box;
+      }
+      .row {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: .5rem 0;
+      }
+      output {
+        display: block;
+        font-size: .9em;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Markdown Link Deduplicator</h1>
+    <p>Paste a numbered markdown list of links. Duplicates (by URL) are removed, keeping the first occurrence. Items are renumbered sequentially.</p>
+
+    <label for="input"><strong>Input:</strong></label>
+    <textarea id="input" placeholder="1. [Title](https://example.com)&#10;2. [Another](https://example.org)"></textarea>
+
+    <div class="row">
+      <button id="dedup">Deduplicate</button>
+      <button id="copy">Copy Output</button>
+      <button id="clear">Clear</button>
+      <output id="stats"></output>
+    </div>
+
+    <label for="output"><strong>Output:</strong></label>
+    <textarea id="output" readonly></textarea>
+
+    <label for="duplicates"><strong>Duplicates removed:</strong></label>
+    <textarea id="duplicates" readonly></textarea>
+
+    <script>
+      const input = document.getElementById("input");
+      const output = document.getElementById("output");
+      const duplicates = document.getElementById("duplicates");
+      const stats = document.getElementById("stats");
+
+      function dedup() {
+        const text = input.value;
+        const regex = /^\s*\d+\.\s*\[([^\]]*)\]\(([^)]+)\)\s*$/gm;
+        const seen = new Map();
+        const dups = [];
+        let total = 0;
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+          total++;
+          const title = m[1];
+          const url = m[2].trim();
+          if (!seen.has(url)) {
+            seen.set(url, title);
+          } else {
+            dups.push({ title, url, firstTitle: seen.get(url) });
+          }
+        }
+        const lines = [];
+        let i = 1;
+        for (const [url, title] of seen) {
+          lines.push(`${i}. [${title}](${url})`);
+          i++;
+        }
+        output.value = lines.join("\n");
+
+        const dupLines = dups.map((d, idx) => `${idx + 1}. [${d.title}](${d.url})  — kept as: "${d.firstTitle}"`);
+        duplicates.value = dupLines.join("\n");
+
+        stats.textContent = `Parsed ${total} items, ${seen.size} unique (${dups.length} duplicates removed).`;
+      }
+
+      document.getElementById("dedup").addEventListener("click", dedup);
+
+      document.getElementById("copy").addEventListener("click", async () => {
+        if (!output.value) return;
+        try {
+          await navigator.clipboard.writeText(output.value);
+          stats.textContent = "Copied to clipboard.";
+        } catch {
+          output.select();
+          document.execCommand("copy");
+        }
+      });
+
+      document.getElementById("clear").addEventListener("click", () => {
+        input.value = "";
+        output.value = "";
+        duplicates.value = "";
+        stats.textContent = "";
+      });
+    </script>
+  </body>
+</html>

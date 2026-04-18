@@ -18,6 +18,7 @@
 - [Kanji Inscription](./kanji-inscription/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview/)
+- [Markdown unique links](./markdown-unique-links/)
 - [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
 - [PDF → Markdown](./pdf-to-md/)
