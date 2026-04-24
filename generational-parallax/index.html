@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generational Parallax Closure</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #fafafa;
+    color: #1a1a1a;
+    line-height: 1.5;
+    padding: 2rem 1rem;
+    min-height: 100vh;
+  }
+  
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+  }
+  
+  .subtitle {
+    color: #666;
+    font-size: 0.95rem;
+    margin-bottom: 2.5rem;
+  }
+  
+  .inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .input-group {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  label {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  input[type="number"] {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 1rem;
+    background: #fff;
+    transition: border-color 0.15s;
+  }
+  
+  input[type="number"]:focus {
+    outline: none;
+    border-color: #1a1a1a;
+  }
+  
+  .slider-section {
+    margin-bottom: 2.5rem;
+  }
+  
+  .slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.8rem;
+  }
+  
+  .slider-label .age {
+    font-size: 2rem;
+    font-weight: 300;
+    letter-spacing: -0.03em;
+  }
+  
+  input[type="range"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    outline: none;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #1a1a1a;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  
+  input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: #1a1a1a;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+  
+  .visualization {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    padding: 2rem 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .viz-title {
+    font-size: 0.8rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 1.5rem;
+  }
+  
+  .timeline {
+    position: relative;
+    height: 60px;
+    margin-bottom: 1rem;
+  }
+  
+  .timeline-track {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #e8e8e8;
+    transform: translateY(-50%);
+  }
+  
+  .timeline-known {
+    position: absolute;
+    top: 50%;
+    height: 8px;
+    background: #1a1a1a;
+    transform: translateY(-50%);
+    border-radius: 4px;
+    transition: all 0.3s ease;
+  }
+  
+  .timeline-gap {
+    position: absolute;
+    top: 50%;
+    height: 8px;
+    background: repeating-linear-gradient(
+      45deg,
+      #ff6b6b,
+      #ff6b6b 4px,
+      #fff 4px,
+      #fff 8px
+    );
+    transform: translateY(-50%);
+    border-radius: 4px;
+    transition: all 0.3s ease;
+  }
+  
+  .marker {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    text-align: center;
+    transition: left 0.3s ease;
+  }
+  
+  .marker-line {
+    width: 1px;
+    height: 60px;
+    background: #bbb;
+    margin: 0 auto;
+  }
+  
+  .marker-label {
+    font-size: 0.7rem;
+    color: #888;
+    white-space: nowrap;
+    position: absolute;
+    top: 62px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.2rem;
+    margin-top: 2.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid #eee;
+    font-size: 0.85rem;
+  }
+  
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #555;
+  }
+  
+  .legend-swatch {
+    width: 20px;
+    height: 8px;
+    border-radius: 2px;
+  }
+  
+  .swatch-known { background: #1a1a1a; }
+  .swatch-gap {
+    background: repeating-linear-gradient(
+      45deg,
+      #ff6b6b,
+      #ff6b6b 3px,
+      #fff 3px,
+      #fff 6px
+    );
+  }
+  
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .stat {
+    padding: 1rem;
+    background: #f5f5f5;
+    border-radius: 8px;
+  }
+  
+  .stat-value {
+    font-size: 1.8rem;
+    font-weight: 300;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.2rem;
+  }
+  
+  .stat-label {
+    font-size: 0.75rem;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  .insight {
+    padding: 1rem 1.2rem;
+    background: #f9f9f9;
+    border-left: 3px solid #1a1a1a;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #333;
+    line-height: 1.6;
+  }
+  
+  .insight.closed {
+    border-left-color: #4caf50;
+  }
+  
+  @media (max-width: 500px) {
+    body { padding: 1.5rem 1rem; }
+    h1 { font-size: 1.3rem; }
+    .slider-label .age { font-size: 1.6rem; }
+    .visualization { padding: 1.5rem 1rem; }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <h1>Generational Parallax Closure</h1>
+    <p class="subtitle">Visualize how the mystery of your parent's early life shrinks as you age.</p>
+    
+    <div class="inputs">
+      <div class="input-group">
+        <label for="parentYear">Parent's Birth Year</label>
+        <input type="number" id="parentYear" value="1965" min="1900" max="2025">
+      </div>
+      <div class="input-group">
+        <label for="userYear">Your Birth Year</label>
+        <input type="number" id="userYear" value="1995" min="1900" max="2025">
+      </div>
+    </div>
+    
+    <div class="slider-section">
+      <div class="slider-label">
+        <label>Your Current Age</label>
+        <span class="age" id="ageDisplay">30</span>
+      </div>
+      <input type="range" id="ageSlider" min="0" max="80" value="30">
+    </div>
+    
+    <div class="visualization">
+      <div class="viz-title">Your Parent's Life Timeline</div>
+      
+      <div class="timeline" id="timeline">
+        <div class="timeline-track"></div>
+        <div class="timeline-gap" id="gapBar"></div>
+        <div class="timeline-known" id="knownBar"></div>
+        <div class="marker" id="markerBirth">
+          <div class="marker-line"></div>
+          <div class="marker-label">Parent born</div>
+        </div>
+        <div class="marker" id="markerYou">
+          <div class="marker-line"></div>
+          <div class="marker-label">You born</div>
+        </div>
+        <div class="marker" id="markerNow">
+          <div class="marker-line"></div>
+          <div class="marker-label">Parent now</div>
+        </div>
+      </div>
+      
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-swatch swatch-known"></div>
+          <span>Experientially known</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch swatch-gap"></div>
+          <span>Mystery gap</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-value" id="gapValue">0</div>
+        <div class="stat-label">Years of gap</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="closureValue">0%</div>
+        <div class="stat-label">Closure</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="parentAgeValue">0</div>
+        <div class="stat-label">Parent's age now</div>
+      </div>
+    </div>
+    
+    <div class="insight" id="insight">
+      Adjust the slider to see the gap close.
+    </div>
+  </div>
+
+<script>
+  const parentYearInput = document.getElementById('parentYear');
+  const userYearInput = document.getElementById('userYear');
+  const ageSlider = document.getElementById('ageSlider');
+  const ageDisplay = document.getElementById('ageDisplay');
+  const gapBar = document.getElementById('gapBar');
+  const knownBar = document.getElementById('knownBar');
+  const markerBirth = document.getElementById('markerBirth');
+  const markerYou = document.getElementById('markerYou');
+  const markerNow = document.getElementById('markerNow');
+  const gapValue = document.getElementById('gapValue');
+  const closureValue = document.getElementById('closureValue');
+  const parentAgeValue = document.getElementById('parentAgeValue');
+  const insight = document.getElementById('insight');
+  
+  function update() {
+    const parentYear = parseInt(parentYearInput.value) || 1965;
+    const userYear = parseInt(userYearInput.value) || 1995;
+    const userAge = parseInt(ageSlider.value);
+    
+    ageDisplay.textContent = userAge;
+    
+    const parentAgeAtBirth = userYear - parentYear;
+    const currentYear = userYear + userAge;
+    const parentAgeNow = currentYear - parentYear;
+    
+    // Known period logic:
+    // User experientially knows parent's life from:
+    //   - the ages they remember parent (roughly parent's age when user was ~5 onwards)
+    //   - plus their own lived experience up to their current age
+    //     (so they understand parent's life from parent's birth up to parent's age = userAge)
+    //
+    // Mystery gap = parent's life between (userAge) and (parentAgeAtBirth + 5 approx)
+    // Simplified: gap is between (userAge) and (parentAgeAtBirth)
+    
+    const memoryStartAge = parentAgeAtBirth + 5; // parent's age when user starts forming memories
+    const experiencedUpTo = userAge; // user knows what it's like to be this age
+    
+    const gapStart = Math.min(experiencedUpTo, memoryStartAge);
+    const gapEnd = Math.max(experiencedUpTo, memoryStartAge);
+    const gapSize = Math.max(0, memoryStartAge - experiencedUpTo);
+    
+    const totalSpan = Math.max(parentAgeNow, memoryStartAge + 10);
+    
+    // Position bars
+    const pct = (v) => (v / totalSpan) * 100;
+    
+    // Known region 1: 0 to experiencedUpTo (user has lived these ages)
+    // Known region 2: memoryStartAge to parentAgeNow (user remembers parent at these ages)
+    // Gap: experiencedUpTo to memoryStartAge
+    
+    if (gapSize > 0) {
+      // Still a gap
+      knownBar.style.left = '0%';
+      knownBar.style.width = pct(experiencedUpTo) + '%';
+      
+      gapBar.style.left = pct(experiencedUpTo) + '%';
+      gapBar.style.width = pct(memoryStartAge - experiencedUpTo) + '%';
+      gapBar.style.display = 'block';
+      
+      // Second known region rendered as extended known bar 
+      const knownBar2Left = pct(memoryStartAge);
+      const knownBar2Width = pct(parentAgeNow - memoryStartAge);
+      
+      // We need a second known bar - use gradient background or second element
+      // Simpler: extend by creating combined background
+      knownBar.style.background = `linear-gradient(to right, 
+        #1a1a1a 0%, 
+        #1a1a1a ${pct(experiencedUpTo)}%, 
+        transparent ${pct(experiencedUpTo)}%, 
+        transparent ${pct(memoryStartAge)}%, 
+        #1a1a1a ${pct(memoryStartAge)}%, 
+        #1a1a1a ${pct(parentAgeNow)}%, 
+        transparent ${pct(parentAgeNow)}%)`;
+      knownBar.style.left = '0%';
+      knownBar.style.width = '100%';
+    } else {
+      // Gap closed
+      gapBar.style.display = 'none';
+      knownBar.style.background = `linear-gradient(to right, 
+        #4caf50 0%, 
+        #4caf50 ${pct(parentAgeNow)}%, 
+        transparent ${pct(parentAgeNow)}%)`;
+      knownBar.style.left = '0%';
+      knownBar.style.width = '100%';
+    }
+    
+    // Markers
+    markerBirth.style.left = '0%';
+    markerYou.style.left = pct(parentAgeAtBirth) + '%';
+    markerNow.style.left = pct(parentAgeNow) + '%';
+    
+    // Stats
+    gapValue.textContent = gapSize;
+    const maxGap = memoryStartAge;
+    const closure = maxGap > 0 ? Math.round(((maxGap - gapSize) / maxGap) * 100) : 100;
+    closureValue.textContent = closure + '%';
+    parentAgeValue.textContent = parentAgeNow;
+    
+    // Insight
+    if (gapSize === 0) {
+      insight.classList.add('closed');
+      insight.textContent = `Closure complete. At ${userAge}, you have personally lived through every stage of your parent's life up to your earliest memories of them. The mystery middle has collapsed.`;
+    } else if (gapSize < 5) {
+      insight.classList.remove('closed');
+      insight.textContent = `Nearly closed. Only ${gapSize} years of your parent's life remain outside your experiential reach.`;
+    } else if (userAge < parentAgeAtBirth) {
+      insight.classList.remove('closed');
+      insight.textContent = `You are younger than your parent was when they had you. A ${gapSize}-year gap of their life still feels abstract.`;
+    } else {
+      insight.classList.remove('closed');
+      insight.textContent = `The gap is narrowing. ${gapSize} years of your parent's early adulthood still lie beyond your lived experience.`;
+    }
+  }
+  
+  [parentYearInput, userYearInput, ageSlider].forEach(el => {
+    el.addEventListener('input', update);
+  });
+  
+  update();
+</script>
+</body>
+</html>

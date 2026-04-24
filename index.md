@@ -58,6 +58,7 @@
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
 - [Face that is none](https://code.chuanqisun.com/recreating-the-past/salavon/demo.html)
+- [Generational Parallax](./generational-parallax/)
 - [Grid Draw](https://chuanqisun.github.io/grid-draw/)
 - [Groq transcription](./groq-transcription/)
 - [Groupthink](https://chuanqisun.github.io/groupthink/)
