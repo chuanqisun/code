@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const aspect = width / height;
+      const frustumSize = 4;
+
+      const camera = new THREE.OrthographicCamera((-frustumSize * aspect) / 2, (frustumSize * aspect) / 2, frustumSize / 2, -frustumSize / 2, 0.1, 100);
+      camera.position.set(3, 3, 3);
+      camera.lookAt(0, 0, 0);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(width, height);
+      renderer.setClearColor(0xffffff);
+      document.body.appendChild(renderer.domElement);
+
+      const size = 1.5;
+      const geometry = new THREE.BoxGeometry(size, size, size);
+
+      // No cube surface mesh is added — only edges are rendered.
+
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0x000000 }));
+      scene.add(edges);
+
+      const s = size / 2;
+
+      const cubeEdges = [
+        [
+          [-s, -s, -s],
+          [s, -s, -s],
+        ],
+        [
+          [s, -s, -s],
+          [s, s, -s],
+        ],
+        [
+          [s, s, -s],
+          [-s, s, -s],
+        ],
+        [
+          [-s, s, -s],
+          [-s, -s, -s],
+        ],
+
+        [
+          [-s, -s, s],
+          [s, -s, s],
+        ],
+        [
+          [s, -s, s],
+          [s, s, s],
+        ],
+        [
+          [s, s, s],
+          [-s, s, s],
+        ],
+        [
+          [-s, s, s],
+          [-s, -s, s],
+        ],
+
+        [
+          [-s, -s, -s],
+          [-s, -s, s],
+        ],
+        [
+          [s, -s, -s],
+          [s, -s, s],
+        ],
+        [
+          [s, s, -s],
+          [s, s, s],
+        ],
+        [
+          [-s, s, -s],
+          [-s, s, s],
+        ],
+      ];
+
+      const boldCount = THREE.MathUtils.randInt(3, 5);
+      const shuffled = cubeEdges.sort(() => Math.random() - 0.5);
+      const boldEdges = shuffled.slice(0, boldCount);
+
+      boldEdges.forEach(([a, b]) => {
+        const start = new THREE.Vector3(...a);
+        const end = new THREE.Vector3(...b);
+        const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        const dir = new THREE.Vector3().subVectors(end, start);
+        const length = dir.length();
+
+        const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, length, 16), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+
+        cylinder.position.copy(mid);
+        cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+
+        scene.add(cylinder);
+      });
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      window.addEventListener("resize", () => {
+        const aspect = window.innerWidth / window.innerHeight;
+        camera.left = (-frustumSize * aspect) / 2;
+        camera.right = (frustumSize * aspect) / 2;
+        camera.top = frustumSize / 2;
+        camera.bottom = -frustumSize / 2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>

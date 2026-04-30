@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Animated Random Polar Flow Field on Pseudo-3D Sphere</title>
+    <style>
+      body {
+        margin: 0;
+        background: #fbf1c7;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      const BG = "#fbf1c7";
+
+      // Gruvbox palette
+      const gruvbox = ["#cc241d", "#98971a", "#d79921", "#458588", "#b16286", "#689d6a", "#d65d0e", "#928374", "#3c3836", "#665c54"];
+
+      const SPACING = 12;
+      const STEP = 2;
+      const MAX_STEPS = 220;
+      const SEED_TRIES = 8000;
+      const MIN_LENGTH = 12;
+      const LINE_WIDTH = 2.4;
+
+      let time = 0;
+
+      // -------------------- seeded randomness --------------------
+      function makeRand(seedValue) {
+        let seed = seedValue;
+
+        return function rand() {
+          seed = (1664525 * seed + 1013904223) >>> 0;
+          return seed / 4294967296;
+        };
+      }
+
+      // -------------------- random polar flow field --------------------
+      const FIELD_TERMS = 24;
+      const fieldRand = makeRand(987654321);
+
+      const polarTerms = Array.from({ length: FIELD_TERMS }, () => ({
+        angularFreq: Math.floor(1 + fieldRand() * 10),
+        radialFreq: 0.6 + fieldRand() * 6.5,
+        phase: fieldRand() * Math.PI * 2,
+        speed: -0.9 + fieldRand() * 1.8,
+        weight: -1 + fieldRand() * 2,
+      }));
+
+      function fieldAngle(x, y, t) {
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        const dx = x - cx;
+        const dy = y - cy;
+
+        const theta = Math.atan2(dy, dx);
+        const radius = Math.sqrt(dx * dx + dy * dy);
+
+        const maxRadius = Math.sqrt(cx * cx + cy * cy);
+        const r = radius / maxRadius;
+
+        let noiseAngle = 0;
+
+        for (const term of polarTerms) {
+          noiseAngle += term.weight * Math.sin(theta * term.angularFreq + r * term.radialFreq * Math.PI * 2 + term.phase + t * term.speed);
+        }
+
+        // Additional offset prevents the field from feeling centered/origin-only.
+        const wobble = 0.8 * Math.sin(dx * 0.0031 + dy * 0.0017 + t * 0.6) + 0.6 * Math.cos(dx * -0.0019 + dy * 0.0029 - t * 0.4);
+
+        const radialAngle = theta;
+        const tangentAngle = theta + Math.PI / 2;
+
+        return tangentAngle * 0.38 + radialAngle * 0.12 + noiseAngle * 0.9 + wobble * 0.7;
+      }
+
+      // -------------------- sphere projection --------------------
+      function getSphere() {
+        return {
+          cx: canvas.width / 2,
+          cy: canvas.height / 2,
+          r: Math.min(canvas.width, canvas.height) * 0.42,
+
+          // fixed view rotation
+          rotY: -0.65,
+          rotX: 0.25,
+        };
+      }
+
+      function rotateSphere(x, y, z, sphere) {
+        // Y rotation
+        const cy = Math.cos(sphere.rotY);
+        const sy = Math.sin(sphere.rotY);
+
+        const x1 = x * cy + z * sy;
+        const z1 = -x * sy + z * cy;
+
+        // X rotation
+        const cx = Math.cos(sphere.rotX);
+        const sx = Math.sin(sphere.rotX);
+
+        const y2 = y * cx - z1 * sx;
+        const z2 = y * sx + z1 * cx;
+
+        return { x: x1, y: y2, z: z2 };
+      }
+
+      function project(u, v) {
+        const sphere = getSphere();
+
+        // Map 2D flow-field coordinates to longitude/latitude.
+        const lon = (u / canvas.width - 0.5) * Math.PI * 2;
+        const lat = (v / canvas.height - 0.5) * Math.PI;
+
+        const r = sphere.r;
+
+        let x = r * Math.cos(lat) * Math.sin(lon);
+        let y = r * Math.sin(lat);
+        let z = r * Math.cos(lat) * Math.cos(lon);
+
+        const p = rotateSphere(x, y, z, sphere);
+
+        // Backside invisible.
+        // Viewer is on positive z side.
+        if (p.z <= 0) return null;
+
+        return {
+          x: sphere.cx + p.x,
+          y: sphere.cy + p.y,
+          z: p.z,
+        };
+      }
+
+      function drawSphereBase() {
+        const sphere = getSphere();
+
+        ctx.save();
+
+        ctx.beginPath();
+        ctx.arc(sphere.cx, sphere.cy, sphere.r, 0, Math.PI * 2);
+        ctx.fillStyle = "#ebdbb2";
+        ctx.fill();
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#d5c4a1";
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      // -------------------- occupancy grid --------------------
+      function buildGrid() {
+        const cellSize = SPACING / Math.sqrt(2);
+        const gridW = Math.ceil(canvas.width / cellSize);
+        const gridH = Math.ceil(canvas.height / cellSize);
+        const grid = Array.from({ length: gridW * gridH }, () => []);
+
+        function idx(cx, cy) {
+          return cy * gridW + cx;
+        }
+
+        function addPoint(x, y) {
+          const cx = Math.floor(x / cellSize);
+          const cy = Math.floor(y / cellSize);
+
+          if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
+
+          grid[idx(cx, cy)].push({ x, y });
+        }
+
+        function farEnough(x, y, minDist = SPACING) {
+          const cx = Math.floor(x / cellSize);
+          const cy = Math.floor(y / cellSize);
+          const r2 = minDist * minDist;
+
+          for (let oy = -1; oy <= 1; oy++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              const nx = cx + ox;
+              const ny = cy + oy;
+
+              if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+
+              for (const p of grid[idx(nx, ny)]) {
+                const dx = p.x - x;
+                const dy = p.y - y;
+
+                if (dx * dx + dy * dy < r2) return false;
+              }
+            }
+          }
+
+          return true;
+        }
+
+        return { addPoint, farEnough };
+      }
+
+      function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+      }
+
+      // -------------------- streamline tracing --------------------
+      function trace(x0, y0, dir, t, occ) {
+        const pts = [];
+        let x = x0;
+        let y = y0;
+
+        for (let i = 0; i < MAX_STEPS; i++) {
+          const a = fieldAngle(x, y, t) + (dir < 0 ? Math.PI : 0);
+
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+
+          if (!inBounds(nx, ny)) break;
+          if (i > 2 && !occ.farEnough(nx, ny, SPACING * 0.9)) break;
+
+          pts.push({ x: nx, y: ny });
+
+          x = nx;
+          y = ny;
+        }
+
+        return pts;
+      }
+
+      function makeStreamline(x, y, t, occ) {
+        if (!occ.farEnough(x, y, SPACING)) return null;
+
+        const back = trace(x, y, -1, t, occ).reverse();
+        const fwd = trace(x, y, +1, t, occ);
+
+        const pts = [...back, { x, y }, ...fwd];
+
+        if (pts.length < MIN_LENGTH) return null;
+
+        for (const p of pts) {
+          occ.addPoint(p.x, p.y);
+        }
+
+        return pts;
+      }
+
+      // -------------------- draw visible colored segments --------------------
+      function drawColoredSegmentsOnSphere(pts, rand) {
+        if (pts.length < 2) return;
+
+        ctx.lineWidth = LINE_WIDTH;
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "round";
+
+        let i = 0;
+
+        while (i < pts.length - 1) {
+          const segLen = Math.floor(6 + rand() * 22);
+          const end = Math.min(i + segLen, pts.length - 1);
+
+          ctx.beginPath();
+
+          let drawing = false;
+          let hasVisiblePart = false;
+
+          for (let j = i; j <= end; j++) {
+            const p = project(pts[j].x, pts[j].y);
+
+            // If a point is on the backside, break the visible stroke.
+            if (!p) {
+              drawing = false;
+              continue;
+            }
+
+            if (!drawing) {
+              ctx.moveTo(p.x, p.y);
+              drawing = true;
+            } else {
+              ctx.lineTo(p.x, p.y);
+              hasVisiblePart = true;
+            }
+          }
+
+          if (hasVisiblePart) {
+            ctx.strokeStyle = gruvbox[Math.floor(rand() * gruvbox.length)];
+            ctx.stroke();
+          }
+
+          i = end;
+        }
+      }
+
+      // -------------------- frame rendering --------------------
+      function drawFrame(t) {
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawSphereBase();
+
+        const sphere = getSphere();
+
+        ctx.save();
+
+        // Clip everything to the visible sphere disk.
+        ctx.beginPath();
+        ctx.arc(sphere.cx, sphere.cy, sphere.r, 0, Math.PI * 2);
+        ctx.clip();
+
+        const occ = buildGrid();
+
+        // Deterministic seed pattern reduces flicker between frames.
+        const rand = makeRand(1234567);
+
+        for (let i = 0; i < SEED_TRIES; i++) {
+          const x = rand() * canvas.width;
+          const y = rand() * canvas.height;
+
+          const line = makeStreamline(x, y, t, occ);
+
+          if (!line) continue;
+
+          drawColoredSegmentsOnSphere(line, rand);
+        }
+
+        ctx.restore();
+      }
+
+      // -------------------- animation --------------------
+      function animate() {
+        time += 0.01;
+        drawFrame(time);
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>

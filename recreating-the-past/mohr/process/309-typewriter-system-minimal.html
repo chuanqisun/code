@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { SplitCubePairDisplay } from "./split-cube-display.js";
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0xffffff);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.localClippingEnabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const COLS = 6;
+      const ROWS = 6;
+
+      const CELL_W = 1.75;
+      const CELL_H = 1.45;
+
+      const gridW = (COLS - 1) * CELL_W;
+      const gridH = (ROWS - 1) * CELL_H;
+
+      const marginX = CELL_W * 0.9;
+      const marginY = CELL_H * 0.9;
+
+      const worldW = gridW + marginX * 2;
+      const worldH = gridH + marginY * 2;
+
+      function makeCamera() {
+        const aspect = window.innerWidth / window.innerHeight;
+        let w = worldW;
+        let h = worldH;
+
+        if (w / h > aspect) h = w / aspect;
+        else w = h * aspect;
+
+        const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 100);
+        cam.position.set(0, 0, 10);
+        cam.lookAt(0, 0, 0);
+        return cam;
+      }
+
+      let camera = makeCamera();
+
+      // Horizontal background line: depth-tested so cube depth shell blocks it.
+      const backgroundLineMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: true,
+        depthWrite: false,
+      });
+
+      // Vertical split line: always on top.
+      const foregroundSplitMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const displays = [];
+      const clickTargets = [];
+      const DISPLAY_COUNT = COLS * ROWS;
+      const TRANSITION_DURATION = 2000;
+      const RANDOM_STATE = ".";
+      const BLANK_STATE = "-";
+      const STATE_SEQUENCE = [RANDOM_STATE, BLANK_STATE, ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123456789"];
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
+      function normalizeState(value) {
+        const normalized = String(value ?? RANDOM_STATE)
+          .trim()
+          .toUpperCase();
+
+        if (normalized === "" || normalized === " " || normalized === RANDOM_STATE || normalized === "+") {
+          return RANDOM_STATE;
+        }
+
+        return STATE_SEQUENCE.includes(normalized) ? normalized : RANDOM_STATE;
+      }
+
+      function readInitStates() {
+        const params = new URLSearchParams(window.location.search);
+        const raw = String(params.get("init") ?? "").toUpperCase();
+
+        return Array.from({ length: DISPLAY_COUNT }, (_, index) => normalizeState(raw[index] ?? RANDOM_STATE));
+      }
+
+      function writeInitStates(states) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("init", states.join(""));
+
+        const search = params.toString();
+        const nextUrl = `${window.location.pathname}?${search}${window.location.hash}`;
+        history.replaceState(null, "", nextUrl);
+      }
+
+      function syncUrlToDisplays() {
+        writeInitStates(displays.map((display) => display.currentState ?? RANDOM_STATE));
+      }
+
+      function nextState(currentState) {
+        const index = STATE_SEQUENCE.indexOf(currentState);
+        return STATE_SEQUENCE[(index + 1) % STATE_SEQUENCE.length];
+      }
+
+      function applyDisplayState(display, state, durationMs, startTimeMs) {
+        const normalizedState = normalizeState(state);
+
+        if (display) {
+          display.currentState = normalizedState;
+        }
+
+        if (normalizedState === RANDOM_STATE) {
+          const targets = display ? [display] : displays;
+
+          targets.forEach((targetDisplay) => {
+            targetDisplay.startRandomMotion(startTimeMs, TRANSITION_DURATION, { immediateEdges: durationMs <= 0 });
+          });
+          return;
+        }
+
+        const targets = display ? [display] : displays;
+        targets.forEach((targetDisplay) => {
+          targetDisplay.setCharacter(normalizedState, durationMs, startTimeMs);
+        });
+      }
+
+      function initializeDisplayState(display, state, startTimeMs) {
+        const normalizedState = normalizeState(state);
+
+        applyDisplayState(display, BLANK_STATE, 0, startTimeMs);
+
+        if (normalizedState !== BLANK_STATE) {
+          applyDisplayState(display, normalizedState, TRANSITION_DURATION, startTimeMs);
+        }
+      }
+
+      function advanceDisplayState(display, now) {
+        const currentState = display.currentState ?? RANDOM_STATE;
+        const next = nextState(currentState);
+        applyDisplayState(display, next, TRANSITION_DURATION, now);
+        syncUrlToDisplays();
+      }
+
+      function findDisplayFromHit(object) {
+        let current = object;
+
+        while (current) {
+          if (current.userData?.display) {
+            return current.userData.display;
+          }
+
+          current = current.parent;
+        }
+
+        return null;
+      }
+
+      function onPointerDown(event) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+
+        const hits = raycaster.intersectObjects(clickTargets, true);
+
+        if (hits.length > 0) {
+          const display = findDisplayFromHit(hits[0].object);
+
+          if (display) {
+            advanceDisplayState(display, performance.now());
+          }
+        }
+      }
+
+      // 1: horizontal background lines (blocked by depth shells).
+      for (let r = 0; r < ROWS; r++) {
+        const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-worldW, y, -0.5), new THREE.Vector3(worldW, y, -0.5)]);
+
+        const line = new THREE.Line(geom, backgroundLineMat);
+        line.renderOrder = 1;
+        scene.add(line);
+      }
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const x = (c - (COLS - 1) / 2) * CELL_W;
+          const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+          const display = new SplitCubePairDisplay({ scene, splitX: x, x, y });
+          display.currentState = RANDOM_STATE;
+          display.object3d.userData.display = display;
+          displays.push(display);
+          clickTargets.push(display.object3d);
+        }
+      }
+
+      // 4: vertical split lines, always on top.
+      for (let c = 0; c < COLS; c++) {
+        const x = (c - (COLS - 1) / 2) * CELL_W;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, -worldH, 0), new THREE.Vector3(x, worldH, 0)]);
+
+        const line = new THREE.Line(geom, foregroundSplitMat);
+        line.renderOrder = 4;
+        scene.add(line);
+      }
+
+      const startTime = performance.now();
+      const initialStates = readInitStates();
+
+      displays.forEach((display, index) => {
+        initializeDisplayState(display, initialStates[index], startTime);
+      });
+      syncUrlToDisplays();
+
+      function animate(now) {
+        displays.forEach((display) => {
+          display.update(now);
+        });
+
+        renderer.render(scene, camera);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera = makeCamera();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #f1ece9;
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+      canvas {
+        display: block;
+      }
+      dialog {
+        width: min(32rem, calc(100vw - 2rem));
+        border: 1px solid #000;
+        padding: 1.5rem 1.5rem 1.25rem;
+        background: #fff;
+        color: #000;
+        box-sizing: border-box;
+      }
+      dialog::backdrop {
+        background: rgba(255, 255, 255, 0.92);
+      }
+      .launch-dialog {
+        display: grid;
+        gap: 1rem;
+      }
+      .launch-dialog h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      .launch-dialog ul {
+        margin: 0;
+        display: grid;
+        padding-left: 2ch;
+        gap: 0.45rem;
+        line-height: 1.4;
+      }
+      .launch-dialog form {
+        display: flex;
+        justify-content: center;
+      }
+      .launch-dialog button {
+        min-width: 8rem;
+        padding: 0.5rem 1rem;
+        border: 1px solid #000;
+        border-radius: 0;
+        background: #000;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      p {
+        margin: 0;
+      }
+
+      a {
+        color: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <dialog id="launch-dialog">
+      <div class="launch-dialog">
+        <h1>Typed Interface</h1>
+        <ul>
+          <li>Enter text with keyboard</li>
+          <li>A-Z 0-9 for alphanumeric characters</li>
+          <li>Space for empty slot</li>
+          <li>? for indeterminate slot</li>
+          <li>Backspace and Delete to remove</li>
+        </ul>
+        <p>Based on <a href="https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/" target="_blank">Manfred Mohr, P-197 J, 1979</a></p>
+        <form method="dialog">
+          <button type="submit">Start</button>
+        </form>
+      </div>
+    </dialog>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { SplitCubePairDisplay } from "./process/split-cube-display.js";
+
+      const launchDialog = document.getElementById("launch-dialog");
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0xf1ece9);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.localClippingEnabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const COLS = 6;
+      const ROWS = 6;
+
+      const CELL_W = 1.75;
+      const CELL_H = 1.45;
+
+      const gridW = (COLS - 1) * CELL_W;
+      const gridH = (ROWS - 1) * CELL_H;
+
+      const marginX = CELL_W * 0.9;
+      const marginY = CELL_H * 0.9;
+
+      const worldW = gridW + marginX * 2;
+      const worldH = gridH + marginY * 2;
+      const LINE_EXTENT = Math.max(worldW, worldH) * 20;
+
+      function makeCamera() {
+        const aspect = window.innerWidth / window.innerHeight;
+        let w = worldW;
+        let h = worldH;
+
+        if (w / h > aspect) h = w / aspect;
+        else w = h * aspect;
+
+        const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 100);
+        cam.position.set(0, 0, 10);
+        cam.lookAt(0, 0, 0);
+        return cam;
+      }
+
+      let camera = makeCamera();
+
+      // Horizontal background line: depth-tested so cube depth shell blocks it.
+      const backgroundLineMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: true,
+        depthWrite: false,
+      });
+
+      // Vertical split line: always on top.
+      const foregroundSplitMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf1ece9);
+
+      const displays = [];
+      const clickTargets = [];
+      const DISPLAY_COUNT = COLS * ROWS;
+      const TRANSITION_DURATION = 2000;
+      const RANDOM_STATE = ".";
+      const BLANK_STATE = "-";
+      const STATE_SEQUENCE = [RANDOM_STATE, BLANK_STATE, ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123456789"];
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let cursorIndex = 0;
+
+      function normalizeState(value) {
+        const normalized = String(value ?? RANDOM_STATE)
+          .trim()
+          .toUpperCase();
+
+        if (normalized === "" || normalized === " " || normalized === RANDOM_STATE || normalized === "+") {
+          return RANDOM_STATE;
+        }
+
+        return STATE_SEQUENCE.includes(normalized) ? normalized : RANDOM_STATE;
+      }
+
+      function readInitStates() {
+        const params = new URLSearchParams(window.location.search);
+        const raw = String(params.get("init") ?? "").toUpperCase();
+
+        return Array.from({ length: DISPLAY_COUNT }, (_, index) => normalizeState(raw[index] ?? RANDOM_STATE));
+      }
+
+      function writeInitStates(states) {
+        const params = new URLSearchParams(window.location.search);
+        params.set("init", states.join(""));
+
+        const search = params.toString();
+        const nextUrl = `${window.location.pathname}?${search}${window.location.hash}`;
+        history.replaceState(null, "", nextUrl);
+      }
+
+      function syncUrlToDisplays() {
+        writeInitStates(displays.map((display) => display.currentState ?? RANDOM_STATE));
+      }
+
+      function nextState(currentState) {
+        const index = STATE_SEQUENCE.indexOf(currentState);
+        return STATE_SEQUENCE[(index + 1) % STATE_SEQUENCE.length];
+      }
+
+      function applyDisplayState(display, state, durationMs, startTimeMs) {
+        const normalizedState = normalizeState(state);
+
+        if (display) {
+          display.currentState = normalizedState;
+        }
+
+        if (normalizedState === RANDOM_STATE) {
+          const targets = display ? [display] : displays;
+
+          targets.forEach((targetDisplay) => {
+            targetDisplay.startRandomMotion(startTimeMs, TRANSITION_DURATION, { immediateEdges: durationMs <= 0 });
+          });
+          return;
+        }
+
+        const targets = display ? [display] : displays;
+        targets.forEach((targetDisplay) => {
+          targetDisplay.setCharacter(normalizedState, durationMs, startTimeMs);
+        });
+      }
+
+      function applyDisplayStateIfChanged(display, state, durationMs, startTimeMs) {
+        const normalizedState = normalizeState(state);
+        const currentState = display.currentState ?? RANDOM_STATE;
+
+        if (currentState === normalizedState) {
+          return false;
+        }
+
+        applyDisplayState(display, normalizedState, durationMs, startTimeMs);
+        return true;
+      }
+
+      function initializeDisplayState(display, state, startTimeMs) {
+        const normalizedState = normalizeState(state);
+
+        applyDisplayState(display, BLANK_STATE, 0, startTimeMs);
+
+        if (normalizedState !== BLANK_STATE) {
+          applyDisplayState(display, normalizedState, TRANSITION_DURATION, startTimeMs);
+        }
+      }
+
+      function initializeAllDisplays(states, startTimeMs) {
+        displays.forEach((display, index) => {
+          initializeDisplayState(display, states[index], startTimeMs);
+        });
+      }
+
+      function setAllDisplaysToBlank(startTimeMs) {
+        displays.forEach((display) => {
+          applyDisplayState(display, BLANK_STATE, 0, startTimeMs);
+        });
+      }
+
+      function advanceDisplayState(display, now) {
+        const currentState = display.currentState ?? RANDOM_STATE;
+        const next = nextState(currentState);
+        applyDisplayState(display, next, TRANSITION_DURATION, now);
+        syncUrlToDisplays();
+      }
+
+      function keyToState(key) {
+        if (/^[A-Z0-9]$/i.test(key)) {
+          return key.toUpperCase();
+        }
+
+        if (key === " " || key === "-" || key === "_") {
+          return BLANK_STATE;
+        }
+
+        if (key === "?" || key === "." || key === "*") {
+          return RANDOM_STATE;
+        }
+
+        return null;
+      }
+
+      function insertStateAtCursor(state, now) {
+        if (cursorIndex >= DISPLAY_COUNT) {
+          return;
+        }
+
+        applyDisplayState(displays[cursorIndex], state, TRANSITION_DURATION, now);
+        cursorIndex += 1;
+        syncUrlToDisplays();
+      }
+
+      function handleBackspace(now) {
+        if (cursorIndex <= 0) {
+          return;
+        }
+
+        cursorIndex -= 1;
+        applyDisplayStateIfChanged(displays[cursorIndex], BLANK_STATE, TRANSITION_DURATION, now);
+        syncUrlToDisplays();
+      }
+
+      function handleDelete(now) {
+        if (cursorIndex >= DISPLAY_COUNT) {
+          return;
+        }
+
+        const nextStates = displays.map((display) => display.currentState ?? RANDOM_STATE);
+
+        for (let index = cursorIndex; index < DISPLAY_COUNT - 1; index++) {
+          nextStates[index] = nextStates[index + 1];
+        }
+
+        nextStates[DISPLAY_COUNT - 1] = BLANK_STATE;
+
+        nextStates.forEach((state, index) => {
+          applyDisplayStateIfChanged(displays[index], state, TRANSITION_DURATION, now);
+        });
+
+        syncUrlToDisplays();
+      }
+
+      function onKeyDown(event) {
+        if (launchDialog?.open) {
+          return;
+        }
+
+        if (event.ctrlKey || event.metaKey || event.altKey) {
+          return;
+        }
+
+        if (event.key === "Backspace") {
+          event.preventDefault();
+          handleBackspace(performance.now());
+          return;
+        }
+
+        if (event.key === "Delete") {
+          event.preventDefault();
+          handleDelete(performance.now());
+          return;
+        }
+
+        const nextInputState = keyToState(event.key);
+
+        if (nextInputState === null) {
+          return;
+        }
+
+        event.preventDefault();
+        insertStateAtCursor(nextInputState, performance.now());
+      }
+
+      function findDisplayFromHit(object) {
+        let current = object;
+
+        while (current) {
+          if (current.userData?.display) {
+            return current.userData.display;
+          }
+
+          current = current.parent;
+        }
+
+        return null;
+      }
+
+      function onPointerDown(event) {
+        if (launchDialog?.open) {
+          return;
+        }
+
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+
+        const hits = raycaster.intersectObjects(clickTargets, true);
+
+        if (hits.length > 0) {
+          const display = findDisplayFromHit(hits[0].object);
+
+          if (display) {
+            advanceDisplayState(display, performance.now());
+          }
+        }
+      }
+
+      // 1: horizontal background lines (blocked by depth shells).
+      for (let r = 0; r < ROWS; r++) {
+        const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-LINE_EXTENT, y, -0.5), new THREE.Vector3(LINE_EXTENT, y, -0.5)]);
+
+        const line = new THREE.Line(geom, backgroundLineMat);
+        line.renderOrder = 1;
+        scene.add(line);
+      }
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const x = (c - (COLS - 1) / 2) * CELL_W;
+          const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+          const display = new SplitCubePairDisplay({ scene, splitX: x, x, y });
+          display.currentState = RANDOM_STATE;
+          display.object3d.userData.display = display;
+          displays.push(display);
+          clickTargets.push(display.object3d);
+        }
+      }
+
+      // 4: vertical split lines, always on top.
+      for (let c = 0; c < COLS; c++) {
+        const x = (c - (COLS - 1) / 2) * CELL_W;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, -LINE_EXTENT, 0), new THREE.Vector3(x, LINE_EXTENT, 0)]);
+
+        const line = new THREE.Line(geom, foregroundSplitMat);
+        line.renderOrder = 4;
+        scene.add(line);
+      }
+
+      const startTime = performance.now();
+      const initialStates = readInitStates();
+      const hasPendingUrlMessage = initialStates.some((state) => state !== RANDOM_STATE);
+
+      if (hasPendingUrlMessage) {
+        setAllDisplaysToBlank(startTime);
+      } else {
+        initializeAllDisplays(initialStates, startTime);
+      }
+      cursorIndex = 0;
+
+      if (!hasPendingUrlMessage) {
+        syncUrlToDisplays();
+      }
+
+      function animate(now) {
+        displays.forEach((display) => {
+          display.update(now);
+        });
+
+        renderer.render(scene, camera);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("keydown", onKeyDown);
+
+      if (launchDialog && typeof launchDialog.showModal === "function") {
+        launchDialog.showModal();
+        launchDialog.addEventListener(
+          "close",
+          () => {
+            if (hasPendingUrlMessage) {
+              initializeAllDisplays(initialStates, performance.now());
+              syncUrlToDisplays();
+            }
+
+            renderer.domElement.focus?.();
+            window.focus();
+          },
+          { once: true }
+        );
+      }
+
+      launchDialog.querySelector("button[type=submit]")?.focus();
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera = makeCamera();
+      });
+    </script>
+  </body>
+</html>

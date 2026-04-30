@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { DISPLAY_SEQUENCE, SplitCubePairDisplay } from "./split-cube-display.js";
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0xffffff);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.localClippingEnabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const COLS = 6;
+      const ROWS = 6;
+
+      const CELL_W = 1.75;
+      const CELL_H = 1.45;
+
+      const gridW = (COLS - 1) * CELL_W;
+      const gridH = (ROWS - 1) * CELL_H;
+
+      const marginX = CELL_W * 0.9;
+      const marginY = CELL_H * 0.9;
+
+      const worldW = gridW + marginX * 2;
+      const worldH = gridH + marginY * 2;
+
+      function makeCamera() {
+        const aspect = window.innerWidth / window.innerHeight;
+        let w = worldW;
+        let h = worldH;
+
+        if (w / h > aspect) h = w / aspect;
+        else w = h * aspect;
+
+        const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 100);
+        cam.position.set(0, 0, 10);
+        cam.lookAt(0, 0, 0);
+        return cam;
+      }
+
+      let camera = makeCamera();
+
+      // Horizontal background line: depth-tested so cube depth shell blocks it.
+      const backgroundLineMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: true,
+        depthWrite: false,
+      });
+
+      // Vertical split line: always on top.
+      const foregroundSplitMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const displays = [];
+      const TRANSITION_DURATION = 2000;
+      const SHUFFLE_INTERVAL = 3000;
+
+      function shuffleSequence(sequence) {
+        const characters = sequence.split("");
+
+        for (let index = characters.length - 1; index > 0; index--) {
+          const swapIndex = Math.floor(Math.random() * (index + 1));
+          [characters[index], characters[swapIndex]] = [characters[swapIndex], characters[index]];
+        }
+
+        return characters.join("");
+      }
+
+      function applySequence(sequence, durationMs, startTimeMs) {
+        displays.forEach((display, index) => {
+          display.setCharacter(sequence[index], durationMs, startTimeMs);
+        });
+      }
+
+      function nextShuffledSequence(currentSequence) {
+        let nextSequence = currentSequence;
+
+        while (nextSequence === currentSequence) {
+          nextSequence = shuffleSequence(DISPLAY_SEQUENCE);
+        }
+
+        return nextSequence;
+      }
+
+      // 1: horizontal background lines (blocked by depth shells).
+      for (let r = 0; r < ROWS; r++) {
+        const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-worldW, y, -0.5), new THREE.Vector3(worldW, y, -0.5)]);
+
+        const line = new THREE.Line(geom, backgroundLineMat);
+        line.renderOrder = 1;
+        scene.add(line);
+      }
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const x = (c - (COLS - 1) / 2) * CELL_W;
+          const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+          const display = new SplitCubePairDisplay({ scene, splitX: x, x, y });
+          displays.push(display);
+        }
+      }
+
+      // 4: vertical split lines, always on top.
+      for (let c = 0; c < COLS; c++) {
+        const x = (c - (COLS - 1) / 2) * CELL_W;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, -worldH, 0), new THREE.Vector3(x, worldH, 0)]);
+
+        const line = new THREE.Line(geom, foregroundSplitMat);
+        line.renderOrder = 4;
+        scene.add(line);
+      }
+
+      const startTime = performance.now();
+      let currentSequence = DISPLAY_SEQUENCE;
+      let nextShuffleAt = startTime + SHUFFLE_INTERVAL;
+
+      displays.forEach((display) => {
+        display.startRandomMotion(startTime);
+      });
+
+      applySequence(currentSequence, TRANSITION_DURATION, startTime);
+
+      function animate(now) {
+        if (now >= nextShuffleAt) {
+          currentSequence = nextShuffledSequence(currentSequence);
+          applySequence(currentSequence, TRANSITION_DURATION, now);
+          nextShuffleAt = now + SHUFFLE_INTERVAL;
+        }
+
+        displays.forEach((display) => {
+          display.update(now);
+        });
+
+        renderer.render(scene, camera);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera = makeCamera();
+      });
+    </script>
+  </body>
+</html>

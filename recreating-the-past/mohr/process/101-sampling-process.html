@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Animated Flow Field</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f5f1e8;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      resize();
+      addEventListener("resize", () => location.reload());
+
+      // ---------- style ----------
+      const BG = "#f5f1e8";
+      const STROKE = "#111";
+
+      // ---------- parameters ----------
+      const SPACING = 10;
+      const STEP = 2.0;
+      const MAX_STEPS = 500;
+      const MIN_LENGTH = 20;
+      const LINE_WIDTH = 2.0;
+
+      const SEEDS_PER_FRAME = 80; // attempts each frame
+      const LINES_PER_FRAME = 6; // accepted lines drawn each frame
+
+      // ---------- background ----------
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = STROKE;
+      ctx.lineWidth = LINE_WIDTH;
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "round";
+
+      // ---------- flow field ----------
+      function fieldAngle(x, y) {
+        const s = 0.0022;
+        return 2.4 * (0.9 * Math.sin(x * s) + 0.7 * Math.cos(y * s * 1.31) + 0.6 * Math.sin((x + y) * s * 0.7) + 0.5 * Math.cos((x - y) * s * 0.9));
+      }
+
+      // ---------- occupancy grid ----------
+      const cellSize = SPACING / Math.sqrt(2);
+      const gridW = Math.ceil(canvas.width / cellSize);
+      const gridH = Math.ceil(canvas.height / cellSize);
+      const grid = Array.from({ length: gridW * gridH }, () => []);
+
+      function gridIndex(cx, cy) {
+        return cy * gridW + cx;
+      }
+
+      function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+      }
+
+      function addPointToGrid(x, y) {
+        const cx = Math.floor(x / cellSize);
+        const cy = Math.floor(y / cellSize);
+        if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
+        grid[gridIndex(cx, cy)].push({ x, y });
+      }
+
+      function isFarEnough(x, y, minDist = SPACING) {
+        const cx = Math.floor(x / cellSize);
+        const cy = Math.floor(y / cellSize);
+        const r2 = minDist * minDist;
+
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            const nx = cx + ox;
+            const ny = cy + oy;
+            if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+            const cell = grid[gridIndex(nx, ny)];
+            for (let i = 0; i < cell.length; i++) {
+              const p = cell[i];
+              const dx = p.x - x;
+              const dy = p.y - y;
+              if (dx * dx + dy * dy < r2) return false;
+            }
+          }
+        }
+        return true;
+      }
+
+      // ---------- streamline tracing ----------
+      function trace(x0, y0, dir) {
+        const pts = [];
+        let x = x0,
+          y = y0;
+
+        for (let i = 0; i < MAX_STEPS; i++) {
+          const a = fieldAngle(x, y) + (dir < 0 ? Math.PI : 0);
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+
+          if (!inBounds(nx, ny)) break;
+          if (i > 2 && !isFarEnough(nx, ny, SPACING * 0.9)) break;
+
+          pts.push({ x: nx, y: ny });
+          x = nx;
+          y = ny;
+        }
+        return pts;
+      }
+
+      function makeStreamline(x, y) {
+        if (!isFarEnough(x, y, SPACING)) return null;
+
+        const back = trace(x, y, -1).reverse();
+        const fwd = trace(x, y, +1);
+        const pts = [...back, { x, y }, ...fwd];
+
+        if (pts.length < MIN_LENGTH) return null;
+
+        for (const p of pts) addPointToGrid(p.x, p.y);
+        return pts;
+      }
+
+      // ---------- draw ----------
+      function drawLine(pts) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x, pts[i].y);
+        }
+        ctx.stroke();
+      }
+
+      // ---------- animation ----------
+      let deadFrames = 0;
+
+      function frame() {
+        let accepted = 0;
+
+        for (let i = 0; i < SEEDS_PER_FRAME; i++) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          const line = makeStreamline(x, y);
+
+          if (line) {
+            drawLine(line);
+            accepted++;
+            if (accepted >= LINES_PER_FRAME) break;
+          }
+        }
+
+        if (accepted === 0) {
+          deadFrames++;
+        } else {
+          deadFrames = 0;
+        }
+
+        // stop after enough frames with no more successful placements
+        if (deadFrames < 60) {
+          requestAnimationFrame(frame);
+        } else {
+          console.log("Done");
+        }
+      }
+
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>

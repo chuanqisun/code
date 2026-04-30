@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #f5f1e8;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      // ---------- params ----------
+      const SPACING = 14;
+      const STEP = 2.0;
+      const MAX_LEN = 400; // max points per line
+      const MIN_LEN = 16; // below this, line dies
+      const GROW_PER_FRAME = 3; // points added per end per frame
+      const SHRINK_PER_FRAME = 3; // points removed per end per frame when crowded
+      const SEEDS_PER_FRAME = 1000;
+      const SEED_TRIES = 200;
+      const LINE_WIDTH = 2;
+
+      // ---------- time-varying field ----------
+      let T = 0;
+      function fieldAngle(x, y, t) {
+        const s = 0.0022;
+        return (
+          2.4 *
+          (0.9 * Math.sin(x * s + t * 0.2) +
+            0.7 * Math.cos(y * s * 1.31 + t * 0.17) +
+            0.6 * Math.sin((x + y) * s * 0.7 + t * 0.13) +
+            0.5 * Math.cos((x - y) * s * 0.9 - t * 0.1))
+        );
+      }
+
+      // ---------- spatial grid (rebuilt each frame) ----------
+      let cellSize, gridW, gridH, grid;
+      function rebuildGrid(lines) {
+        cellSize = SPACING / Math.sqrt(2);
+        gridW = Math.ceil(canvas.width / cellSize);
+        gridH = Math.ceil(canvas.height / cellSize);
+        grid = new Array(gridW * gridH);
+        for (let i = 0; i < grid.length; i++) grid[i] = [];
+
+        for (const line of lines) {
+          for (const p of line.pts) {
+            const cx = Math.floor(p.x / cellSize);
+            const cy = Math.floor(p.y / cellSize);
+            if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) continue;
+            grid[cy * gridW + cx].push({ x: p.x, y: p.y, line });
+          }
+        }
+      }
+
+      function nearbyTooClose(x, y, ownLine, minDist) {
+        const cx = Math.floor(x / cellSize);
+        const cy = Math.floor(y / cellSize);
+        const r2 = minDist * minDist;
+        for (let oy = -1; oy <= 1; oy++)
+          for (let ox = -1; ox <= 1; ox++) {
+            const nx = cx + ox,
+              ny = cy + oy;
+            if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+            const cell = grid[ny * gridW + nx];
+            for (let i = 0; i < cell.length; i++) {
+              const p = cell[i];
+              if (p.line === ownLine) continue; // ignore self
+              const dx = p.x - x,
+                dy = p.y - y;
+              if (dx * dx + dy * dy < r2) return true;
+            }
+          }
+        return false;
+      }
+
+      function inBounds(x, y) {
+        return x >= 0 && y >= 0 && x < canvas.width && y < canvas.height;
+      }
+
+      // ---------- line model ----------
+      // line.pts: array of {x,y}, ordered head -> tail
+      // We grow/shrink at both ends.
+      let lines = [];
+
+      function tryExtend(line, atHead) {
+        if (line.pts.length >= MAX_LEN) return false;
+        const p = atHead ? line.pts[0] : line.pts[line.pts.length - 1];
+        const q = atHead ? line.pts[1] : line.pts[line.pts.length - 2];
+
+        // direction = away from neighbor; if line has only 1 point, use field
+        let dirX, dirY;
+        if (q) {
+          dirX = p.x - q.x;
+          dirY = p.y - q.y;
+          const L = Math.hypot(dirX, dirY) || 1;
+          dirX /= L;
+          dirY /= L;
+          // re-align with field so it follows current field
+          const a = fieldAngle(p.x, p.y, T);
+          let fx = Math.cos(a),
+            fy = Math.sin(a);
+          if (fx * dirX + fy * dirY < 0) {
+            fx = -fx;
+            fy = -fy;
+          }
+          dirX = fx;
+          dirY = fy;
+        } else {
+          const a = fieldAngle(p.x, p.y, T) + (atHead ? Math.PI : 0);
+          dirX = Math.cos(a);
+          dirY = Math.sin(a);
+        }
+
+        const nx = p.x + dirX * STEP;
+        const ny = p.y + dirY * STEP;
+        if (!inBounds(nx, ny)) return false;
+        if (nearbyTooClose(nx, ny, line, SPACING * 0.9)) return false;
+
+        if (atHead) line.pts.unshift({ x: nx, y: ny });
+        else line.pts.push({ x: nx, y: ny });
+        return true;
+      }
+
+      function endpointCrowded(line, atHead) {
+        const p = atHead ? line.pts[0] : line.pts[line.pts.length - 1];
+        return nearbyTooClose(p.x, p.y, line, SPACING * 0.75);
+      }
+
+      function updateLines() {
+        // grow / shrink
+        for (const line of lines) {
+          // shrink crowded ends first
+          let shrunk = 0;
+          while (shrunk < SHRINK_PER_FRAME && line.pts.length > 2 && endpointCrowded(line, true)) {
+            line.pts.shift();
+            shrunk++;
+          }
+          shrunk = 0;
+          while (shrunk < SHRINK_PER_FRAME && line.pts.length > 2 && endpointCrowded(line, false)) {
+            line.pts.pop();
+            shrunk++;
+          }
+          // grow if there's space
+          for (let i = 0; i < GROW_PER_FRAME; i++) if (!tryExtend(line, true)) break;
+          for (let i = 0; i < GROW_PER_FRAME; i++) if (!tryExtend(line, false)) break;
+        }
+
+        // remove dead lines
+        lines = lines.filter((l) => l.pts.length >= MIN_LEN || l.young);
+        // age young lines so they get a grace period to grow
+        for (const l of lines)
+          if (l.young !== undefined) {
+            l.young--;
+            if (l.young <= 0) delete l.young;
+          }
+
+        // seed new lines
+        for (let s = 0; s < SEEDS_PER_FRAME; s++) {
+          let placed = false;
+          for (let t = 0; t < 5; t++) {
+            const x = Math.random() * canvas.width;
+            const y = Math.random() * canvas.height;
+            if (!nearbyTooClose(x, y, null, SPACING)) {
+              const line = { pts: [{ x, y }], young: 30 };
+              lines.push(line);
+              // push into grid immediately so other seeds in this frame avoid it
+              const cx = Math.floor(x / cellSize),
+                cy = Math.floor(y / cellSize);
+              if (cx >= 0 && cy >= 0 && cx < gridW && cy < gridH) grid[cy * gridW + cx].push({ x, y, line });
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) continue;
+        }
+      }
+
+      // ---------- drawing ----------
+      function draw() {
+        ctx.fillStyle = "#f5f1e8";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#111";
+        ctx.lineWidth = LINE_WIDTH;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+
+        for (const line of lines) {
+          if (line.pts.length < 2) continue;
+
+          // fade the last few points at each end for smooth growth/shrink
+          const pts = line.pts;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.stroke();
+        }
+      }
+
+      // ---------- main loop ----------
+      function frame() {
+        T += 0.01; // <- speed of field change
+        rebuildGrid(lines);
+        updateLines();
+        draw();
+        requestAnimationFrame(frame);
+      }
+      frame();
+    </script>
+  </body>
+</html>

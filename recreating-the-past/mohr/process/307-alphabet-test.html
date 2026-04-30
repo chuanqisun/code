@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { font } from "../font.js";
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0xffffff);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.localClippingEnabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const COLS = 6;
+      const ROWS = 6;
+
+      const CUBE = 0.82;
+      const half = CUBE / 2;
+
+      const CELL_W = 1.75;
+      const CELL_H = 1.45;
+
+      const gridW = (COLS - 1) * CELL_W;
+      const gridH = (ROWS - 1) * CELL_H;
+
+      const marginX = CELL_W * 0.9;
+      const marginY = CELL_H * 0.9;
+
+      const worldW = gridW + marginX * 2;
+      const worldH = gridH + marginY * 2;
+
+      function makeCamera() {
+        const aspect = window.innerWidth / window.innerHeight;
+        let w = worldW;
+        let h = worldH;
+
+        if (w / h > aspect) h = w / aspect;
+        else w = h * aspect;
+
+        const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 100);
+        cam.position.set(0, 0, 10);
+        cam.lookAt(0, 0, 0);
+        return cam;
+      }
+
+      let camera = makeCamera();
+
+      const edgePoints = [
+        [
+          [-half, -half, -half],
+          [half, -half, -half],
+        ],
+        [
+          [half, -half, -half],
+          [half, half, -half],
+        ],
+        [
+          [half, half, -half],
+          [-half, half, -half],
+        ],
+        [
+          [-half, half, -half],
+          [-half, -half, -half],
+        ],
+
+        [
+          [-half, -half, half],
+          [half, -half, half],
+        ],
+        [
+          [half, -half, half],
+          [half, half, half],
+        ],
+        [
+          [half, half, half],
+          [-half, half, half],
+        ],
+        [
+          [-half, half, half],
+          [-half, -half, half],
+        ],
+
+        [
+          [-half, -half, -half],
+          [-half, -half, half],
+        ],
+        [
+          [half, -half, -half],
+          [half, -half, half],
+        ],
+        [
+          [half, half, -half],
+          [half, half, half],
+        ],
+        [
+          [-half, half, -half],
+          [-half, half, half],
+        ],
+      ];
+
+      const letters = Object.keys(font);
+
+      function getLetterConfig(index) {
+        const letter = letters[index % letters.length];
+        const config = font[letter];
+
+        return {
+          letter,
+          boldEdges: config.boldEdges,
+          rotation: {
+            x: THREE.MathUtils.degToRad(config.rotation.x),
+            y: THREE.MathUtils.degToRad(config.rotation.y),
+            z: THREE.MathUtils.degToRad(config.rotation.z),
+          },
+        };
+      }
+
+      const cubeGeometry = new THREE.BoxGeometry(CUBE, CUBE, CUBE);
+      const edgeGeometry = new THREE.EdgesGeometry(cubeGeometry);
+
+      // Horizontal background line: depth-tested so cube depth shell blocks it.
+      const backgroundLineMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: true,
+        depthWrite: false,
+      });
+
+      // Vertical split line: always on top.
+      const foregroundSplitMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      function clippedMaterials(splitX, side) {
+        const plane = side === "left" ? new THREE.Plane(new THREE.Vector3(-1, 0, 0), splitX) : new THREE.Plane(new THREE.Vector3(1, 0, 0), -splitX);
+
+        return {
+          // Cube edges: ignore depth so back edges show through (transparent surfaces).
+          line: new THREE.LineBasicMaterial({
+            color: 0x000000,
+            depthTest: false,
+            depthWrite: false,
+            clippingPlanes: [plane],
+          }),
+          black: new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            depthTest: false,
+            depthWrite: false,
+            clippingPlanes: [plane],
+          }),
+          // Invisible depth shell: writes depth only, so horizontal line is occluded.
+          depth: new THREE.MeshBasicMaterial({
+            colorWrite: false,
+            depthWrite: true,
+            depthTest: true,
+            clippingPlanes: [plane],
+          }),
+        };
+      }
+
+      function createCube(boldEdges, splitX, side) {
+        const mats = clippedMaterials(splitX, side);
+        const group = new THREE.Group();
+
+        // 0: invisible shell writes cube depth.
+        const shell = new THREE.Mesh(cubeGeometry, mats.depth);
+        shell.renderOrder = 0;
+        group.add(shell);
+
+        // 2: all 12 cube edges, drawn ignoring depth → back edges visible.
+        const edges = new THREE.LineSegments(edgeGeometry, mats.line);
+        edges.renderOrder = 2;
+        group.add(edges);
+
+        // 3: bold cube edges, also ignoring depth.
+        boldEdges.forEach((i) => {
+          const [a, b] = edgePoints[i];
+
+          const start = new THREE.Vector3(...a);
+          const end = new THREE.Vector3(...b);
+          const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+          const dir = new THREE.Vector3().subVectors(end, start);
+
+          const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, dir.length(), 12), mats.black);
+
+          cyl.position.copy(mid);
+          cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+
+          cyl.renderOrder = 3;
+          group.add(cyl);
+        });
+
+        return group;
+      }
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const pairs = [];
+
+      const ANIMATION_DURATION = 2000;
+
+      function createMotion() {
+        return {
+          startX: (Math.random() - 0.5) * 2.4,
+          startY: (Math.random() - 0.5) * 2.4,
+          startZ: (Math.random() - 0.5) * 1.2,
+          phaseX: Math.random() * Math.PI * 2,
+          phaseY: Math.random() * Math.PI * 2,
+          phaseZ: Math.random() * Math.PI * 2,
+          speedX: 1.4 + Math.random() * 2.0,
+          speedY: 1.4 + Math.random() * 2.0,
+          speedZ: 1.8 + Math.random() * 2.2,
+          wobbleX: 0.12 + Math.random() * 0.28,
+          wobbleY: 0.12 + Math.random() * 0.28,
+          wobbleZ: 0.06 + Math.random() * 0.16,
+        };
+      }
+
+      function easeInOutCubic(value) {
+        return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+      }
+
+      function setCubeRotation(cube, motion, finalRotation, progress, elapsedSeconds) {
+        const eased = easeInOutCubic(progress);
+        const decay = 1 - eased;
+
+        cube.rotation.set(
+          THREE.MathUtils.lerp(motion.startX, finalRotation.x, eased) + Math.sin(elapsedSeconds * motion.speedX + motion.phaseX) * motion.wobbleX * decay,
+          THREE.MathUtils.lerp(motion.startY, finalRotation.y, eased) + Math.sin(elapsedSeconds * motion.speedY + motion.phaseY) * motion.wobbleY * decay,
+          THREE.MathUtils.lerp(motion.startZ, finalRotation.z, eased) + Math.sin(elapsedSeconds * motion.speedZ + motion.phaseZ) * motion.wobbleZ * decay
+        );
+      }
+
+      // 1: horizontal background lines (blocked by depth shells).
+      for (let r = 0; r < ROWS; r++) {
+        const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-worldW, y, -0.5), new THREE.Vector3(worldW, y, -0.5)]);
+
+        const line = new THREE.Line(geom, backgroundLineMat);
+        line.renderOrder = 1;
+        scene.add(line);
+      }
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const x = (c - (COLS - 1) / 2) * CELL_W;
+          const y = ((ROWS - 1) / 2 - r) * CELL_H;
+
+          const letterConfig = getLetterConfig(r * COLS + c);
+
+          const leftCube = createCube(letterConfig.boldEdges, x, "left");
+          const rightCube = createCube(letterConfig.boldEdges, x, "right");
+
+          leftCube.position.set(x, y, 0);
+          rightCube.position.set(x, y, 0);
+
+          scene.add(leftCube);
+          scene.add(rightCube);
+
+          pairs.push({
+            leftCube,
+            rightCube,
+            finalRotation: letterConfig.rotation,
+            leftMotion: createMotion(),
+            rightMotion: createMotion(),
+          });
+        }
+      }
+
+      // 4: vertical split lines, always on top.
+      for (let c = 0; c < COLS; c++) {
+        const x = (c - (COLS - 1) / 2) * CELL_W;
+
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x, -worldH, 0), new THREE.Vector3(x, worldH, 0)]);
+
+        const line = new THREE.Line(geom, foregroundSplitMat);
+        line.renderOrder = 4;
+        scene.add(line);
+      }
+
+      function animate(now) {
+        const elapsed = Math.min(now, ANIMATION_DURATION);
+        const elapsedSeconds = elapsed / 1000;
+        const progress = elapsed / ANIMATION_DURATION;
+
+        pairs.forEach((pair) => {
+          setCubeRotation(pair.leftCube, pair.leftMotion, pair.finalRotation, progress, elapsedSeconds);
+          setCubeRotation(pair.rightCube, pair.rightMotion, pair.finalRotation, progress, elapsedSeconds);
+        });
+
+        renderer.render(scene, camera);
+
+        if (elapsed < ANIMATION_DURATION) requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera = makeCamera();
+      });
+    </script>
+  </body>
+</html>

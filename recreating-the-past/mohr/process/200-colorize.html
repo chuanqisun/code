@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gruvbox Continuous Flow Segments</title>
+    <style>
+      body {
+        margin: 0;
+        background: #fbf1c7;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      const BG = "#fbf1c7";
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Gruvbox palette
+      const gruvbox = [
+        "#cc241d", // red
+        "#98971a", // green
+        "#d79921", // yellow
+        "#458588", // blue
+        "#b16286", // purple
+        "#689d6a", // aqua
+        "#d65d0e", // orange
+        "#928374", // gray
+        "#3c3836", // dark fg
+        "#665c54", // dark gray
+      ];
+
+      function rand(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+
+      function randRange(a, b) {
+        return a + Math.random() * (b - a);
+      }
+
+      // -------------------- flow field --------------------
+      function fieldAngle(x, y) {
+        const s = 0.0022;
+        return 2.4 * (0.9 * Math.sin(x * s) + 0.7 * Math.cos(y * s * 1.31) + 0.6 * Math.sin((x + y) * s * 0.7) + 0.5 * Math.cos((x - y) * s * 0.9));
+      }
+
+      // -------------------- spacing control --------------------
+      const SPACING = 10;
+      const STEP = 2.0;
+      const MAX_STEPS = 500;
+      const SEED_TRIES = 30000;
+      const MIN_LENGTH = 20;
+      const LINE_WIDTH = 3.0;
+
+      const cellSize = SPACING / Math.sqrt(2);
+      const gridW = Math.ceil(canvas.width / cellSize);
+      const gridH = Math.ceil(canvas.height / cellSize);
+      const grid = Array.from({ length: gridW * gridH }, () => []);
+
+      function gridIndex(cx, cy) {
+        return cy * gridW + cx;
+      }
+
+      function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+      }
+
+      function addPointToGrid(x, y) {
+        const cx = Math.floor(x / cellSize);
+        const cy = Math.floor(y / cellSize);
+        if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
+        grid[gridIndex(cx, cy)].push({ x, y });
+      }
+
+      function isFarEnough(x, y, minDist = SPACING) {
+        const cx = Math.floor(x / cellSize);
+        const cy = Math.floor(y / cellSize);
+        const r2 = minDist * minDist;
+
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            const nx = cx + ox;
+            const ny = cy + oy;
+            if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+
+            const cell = grid[gridIndex(nx, ny)];
+            for (const p of cell) {
+              const dx = p.x - x;
+              const dy = p.y - y;
+              if (dx * dx + dy * dy < r2) return false;
+            }
+          }
+        }
+
+        return true;
+      }
+
+      // -------------------- streamline tracing --------------------
+      function trace(x0, y0, dir) {
+        const pts = [];
+        let x = x0;
+        let y = y0;
+
+        for (let i = 0; i < MAX_STEPS; i++) {
+          const a = fieldAngle(x, y) + (dir < 0 ? Math.PI : 0);
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+
+          if (!inBounds(nx, ny)) break;
+          if (i > 2 && !isFarEnough(nx, ny, SPACING * 0.9)) break;
+
+          pts.push({ x: nx, y: ny });
+          x = nx;
+          y = ny;
+        }
+
+        return pts;
+      }
+
+      function makeStreamline(x, y) {
+        if (!isFarEnough(x, y, SPACING)) return null;
+
+        const back = trace(x, y, -1).reverse();
+        const fwd = trace(x, y, +1);
+        const pts = [...back, { x, y }, ...fwd];
+
+        if (pts.length < MIN_LENGTH) return null;
+
+        for (const p of pts) addPointToGrid(p.x, p.y);
+
+        return pts;
+      }
+
+      // -------------------- continuous colored subdivision --------------------
+      function drawColoredSegments(pts) {
+        if (pts.length < 2) return;
+
+        ctx.lineWidth = LINE_WIDTH;
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "round";
+
+        let i = 0;
+
+        while (i < pts.length - 1) {
+          const segLen = Math.floor(randRange(6, 28));
+          const end = Math.min(i + segLen, pts.length - 1);
+
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x, pts[i].y);
+
+          for (let j = i + 1; j <= end; j++) {
+            ctx.lineTo(pts[j].x, pts[j].y);
+          }
+
+          ctx.strokeStyle = rand(gruvbox);
+          ctx.stroke();
+
+          // no gap: next segment starts exactly at the previous endpoint
+          i = end;
+        }
+      }
+
+      // -------------------- generate --------------------
+      for (let i = 0; i < SEED_TRIES; i++) {
+        const x = Math.random() * canvas.width;
+        const y = Math.random() * canvas.height;
+
+        const line = makeStreamline(x, y);
+        if (line) drawColoredSegments(line);
+      }
+    </script>
+  </body>
+</html>

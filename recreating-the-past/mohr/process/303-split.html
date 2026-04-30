@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setClearColor(0xffffff);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setScissorTest(true);
+      document.body.appendChild(renderer.domElement);
+
+      const frustumSize = 4;
+      const cubeSize = 1.45;
+      const half = cubeSize / 2;
+
+      function makeCamera(viewAspect) {
+        const cam = new THREE.OrthographicCamera((-frustumSize * viewAspect) / 2, (frustumSize * viewAspect) / 2, frustumSize / 2, -frustumSize / 2, 0.1, 100);
+        cam.position.set(0, 0, 6);
+        cam.lookAt(0, 0, 0);
+        return cam;
+      }
+
+      let viewAspect = window.innerWidth / 2 / window.innerHeight;
+      const leftCamera = makeCamera(viewAspect);
+      const rightCamera = makeCamera(viewAspect);
+
+      const edgePoints = [
+        [
+          [-half, -half, -half],
+          [half, -half, -half],
+        ],
+        [
+          [half, -half, -half],
+          [half, half, -half],
+        ],
+        [
+          [half, half, -half],
+          [-half, half, -half],
+        ],
+        [
+          [-half, half, -half],
+          [-half, -half, -half],
+        ],
+
+        [
+          [-half, -half, half],
+          [half, -half, half],
+        ],
+        [
+          [half, -half, half],
+          [half, half, half],
+        ],
+        [
+          [half, half, half],
+          [-half, half, half],
+        ],
+        [
+          [-half, half, half],
+          [-half, -half, half],
+        ],
+
+        [
+          [-half, -half, -half],
+          [-half, -half, half],
+        ],
+        [
+          [half, -half, -half],
+          [half, -half, half],
+        ],
+        [
+          [half, half, -half],
+          [half, half, half],
+        ],
+        [
+          [-half, half, -half],
+          [-half, half, half],
+        ],
+      ];
+
+      function createCube() {
+        const group = new THREE.Group();
+
+        const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0x000000 }));
+        group.add(edges);
+
+        const boldCount = THREE.MathUtils.randInt(3, 5);
+        const shuffled = [...edgePoints].sort(() => Math.random() - 0.5);
+        shuffled.slice(0, boldCount).forEach(([a, b]) => {
+          const start = new THREE.Vector3(...a);
+          const end = new THREE.Vector3(...b);
+          const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+          const dir = new THREE.Vector3().subVectors(end, start);
+          const length = dir.length();
+
+          const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, length, 16), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+
+          cylinder.position.copy(mid);
+          cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+
+          group.add(cylinder);
+        });
+
+        return group;
+      }
+
+      const leftScene = new THREE.Scene();
+      const rightScene = new THREE.Scene();
+      leftScene.background = new THREE.Color(0xffffff);
+      rightScene.background = new THREE.Color(0xffffff);
+
+      const leftCube = createCube();
+      const rightCube = leftCube.clone(true);
+
+      // Center of each cube lies exactly on the vertical divider.
+      // For the left viewport, this means placing it on the right edge of that camera view.
+      // For the right viewport, this means placing it on the left edge of that camera view.
+      function positionCubesOnDivider() {
+        const viewWidth = frustumSize * viewAspect;
+        leftCube.position.x = viewWidth / 2;
+        rightCube.position.x = -viewWidth / 2;
+      }
+
+      positionCubesOnDivider();
+
+      leftScene.add(leftCube);
+      rightScene.add(rightCube);
+
+      let t = 0;
+
+      function updateCameras() {
+        viewAspect = window.innerWidth / 2 / window.innerHeight;
+
+        [leftCamera, rightCamera].forEach((cam) => {
+          cam.left = (-frustumSize * viewAspect) / 2;
+          cam.right = (frustumSize * viewAspect) / 2;
+          cam.top = frustumSize / 2;
+          cam.bottom = -frustumSize / 2;
+          cam.updateProjectionMatrix();
+        });
+
+        positionCubesOnDivider();
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        t += 0.012;
+
+        const rx = Math.sin(t * 1.1) * 0.9;
+        const ry = Math.sin(t * 0.8) * 0.9;
+        const rz = Math.sin(t * 1.4) * 0.45;
+
+        leftCube.rotation.set(rx, ry, rz);
+        rightCube.rotation.set(-rx, -ry, -rz);
+
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const halfW = Math.floor(w / 2);
+
+        renderer.clear();
+
+        // Left half of first cube
+        renderer.setViewport(0, 0, halfW, h);
+        renderer.setScissor(0, 0, halfW, h);
+        renderer.render(leftScene, leftCamera);
+
+        // Right half of second cube
+        renderer.setViewport(halfW, 0, w - halfW, h);
+        renderer.setScissor(halfW, 0, w - halfW, h);
+        renderer.render(rightScene, rightCamera);
+      }
+
+      animate();
+
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        updateCameras();
+      });
+    </script>
+  </body>
+</html>

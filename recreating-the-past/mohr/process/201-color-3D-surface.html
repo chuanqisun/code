@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Animated Gruvbox Flow Field on Randomly Rotating 3D Surface</title>
+    <style>
+      body {
+        margin: 0;
+        background: #fbf1c7;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      const BG = "#fbf1c7";
+
+      const gruvbox = ["#cc241d", "#98971a", "#d79921", "#458588", "#b16286", "#689d6a", "#d65d0e", "#928374", "#3c3836", "#665c54"];
+
+      const SPACING = 12;
+      const STEP = 2;
+      const MAX_STEPS = 220;
+      const SEED_TRIES = 8000;
+      const MIN_LENGTH = 12;
+      const LINE_WIDTH = 2.4;
+
+      let time = 0;
+
+      // -------------------- deterministic random --------------------
+      function makeRand(seed = 1234567) {
+        return function rand() {
+          seed = (1664525 * seed + 1013904223) >>> 0;
+          return seed / 4294967296;
+        };
+      }
+
+      function pick(arr, r) {
+        return arr[Math.floor(r() * arr.length)];
+      }
+
+      function randRange(a, b, r) {
+        return a + r() * (b - a);
+      }
+
+      // -------------------- animated flow field --------------------
+      function fieldAngle(x, y, t) {
+        const s = 0.0025;
+        return (
+          2.0 *
+          (Math.sin(x * s + t * 0.7) +
+            0.8 * Math.cos(y * s * 1.3 - t * 0.5) +
+            0.6 * Math.sin((x + y) * s * 0.7 + t * 0.9) +
+            0.35 * Math.cos((x - y) * s * 1.1 - t * 0.6))
+        );
+      }
+
+      // -------------------- animated 3D surface --------------------
+      function surfaceHeight(x, y, t) {
+        return 85 * Math.sin(x * 0.006 + t * 0.55) + 65 * Math.cos(y * 0.005 - t * 0.45) + 45 * Math.sin((x + y) * 0.004 + t * 0.35);
+      }
+
+      // Smooth random-looking rotation over all axes
+      function rotationAngles(t) {
+        return {
+          x: Math.sin(t * 0.31) * Math.PI,
+          y: Math.cos(t * 0.27) * Math.PI,
+          z: Math.sin(t * 0.19 + 1.7) * Math.PI,
+        };
+      }
+
+      function rotate3D(x, y, z, ax, ay, az) {
+        // X rotation
+        let cy = y * Math.cos(ax) - z * Math.sin(ax);
+        let cz = y * Math.sin(ax) + z * Math.cos(ax);
+        y = cy;
+        z = cz;
+
+        // Y rotation
+        let cx = x * Math.cos(ay) + z * Math.sin(ay);
+        cz = -x * Math.sin(ay) + z * Math.cos(ay);
+        x = cx;
+        z = cz;
+
+        // Z rotation
+        cx = x * Math.cos(az) - y * Math.sin(az);
+        cy = x * Math.sin(az) + y * Math.cos(az);
+        x = cx;
+        y = cy;
+
+        return { x, y, z };
+      }
+
+      function project(u, v, t) {
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        let x = u - cx;
+        let y = v - cy;
+        let z = surfaceHeight(x, y, t);
+
+        // Fit object in screen
+        const modelScale = 0.62;
+        x *= modelScale;
+        y *= modelScale;
+        z *= 1.15;
+
+        const r = rotationAngles(t);
+        const q = rotate3D(x, y, z, r.x, r.y, r.z);
+
+        const depth = 1200;
+        const scale = depth / (depth + q.z);
+
+        return {
+          x: cx + q.x * scale,
+          y: cy + q.y * scale,
+          z: q.z,
+          scale,
+        };
+      }
+
+      // -------------------- occupancy grid --------------------
+      function buildGrid() {
+        const cellSize = SPACING / Math.sqrt(2);
+        const gridW = Math.ceil(canvas.width / cellSize);
+        const gridH = Math.ceil(canvas.height / cellSize);
+        const grid = Array.from({ length: gridW * gridH }, () => []);
+
+        function idx(cx, cy) {
+          return cy * gridW + cx;
+        }
+
+        function addPoint(x, y) {
+          const cx = Math.floor(x / cellSize);
+          const cy = Math.floor(y / cellSize);
+          if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
+          grid[idx(cx, cy)].push({ x, y });
+        }
+
+        function farEnough(x, y, minDist = SPACING) {
+          const cx = Math.floor(x / cellSize);
+          const cy = Math.floor(y / cellSize);
+          const r2 = minDist * minDist;
+
+          for (let oy = -1; oy <= 1; oy++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              const nx = cx + ox;
+              const ny = cy + oy;
+              if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+
+              for (const p of grid[idx(nx, ny)]) {
+                const dx = p.x - x;
+                const dy = p.y - y;
+                if (dx * dx + dy * dy < r2) return false;
+              }
+            }
+          }
+
+          return true;
+        }
+
+        return { addPoint, farEnough };
+      }
+
+      // -------------------- streamline tracing --------------------
+      function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+      }
+
+      function trace(x0, y0, dir, t, occ) {
+        const pts = [];
+        let x = x0;
+        let y = y0;
+
+        for (let i = 0; i < MAX_STEPS; i++) {
+          const a = fieldAngle(x, y, t) + (dir < 0 ? Math.PI : 0);
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+
+          if (!inBounds(nx, ny)) break;
+          if (i > 2 && !occ.farEnough(nx, ny, SPACING * 0.9)) break;
+
+          pts.push({ x: nx, y: ny });
+          x = nx;
+          y = ny;
+        }
+
+        return pts;
+      }
+
+      function makeStreamline(x, y, t, occ) {
+        if (!occ.farEnough(x, y, SPACING)) return null;
+
+        const back = trace(x, y, -1, t, occ).reverse();
+        const fwd = trace(x, y, +1, t, occ);
+        const pts = [...back, { x, y }, ...fwd];
+
+        if (pts.length < MIN_LENGTH) return null;
+
+        for (const p of pts) occ.addPoint(p.x, p.y);
+        return pts;
+      }
+
+      // -------------------- drawing --------------------
+      function drawSurfaceGrid(t) {
+        ctx.strokeStyle = "rgba(60, 56, 54, 0.10)";
+        ctx.lineWidth = 1;
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "round";
+
+        const step = 70;
+        const detail = 10;
+
+        for (let y = 0; y <= canvas.height; y += step) {
+          ctx.beginPath();
+          for (let x = 0; x <= canvas.width; x += detail) {
+            const p = project(x, y, t);
+            if (x === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          }
+          ctx.stroke();
+        }
+
+        for (let x = 0; x <= canvas.width; x += step) {
+          ctx.beginPath();
+          for (let y = 0; y <= canvas.height; y += detail) {
+            const p = project(x, y, t);
+            if (y === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      function drawColoredSegments(pts, t, rand) {
+        if (pts.length < 2) return;
+
+        let i = 0;
+
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "round";
+
+        while (i < pts.length - 1) {
+          const segLen = Math.floor(randRange(6, 28, rand));
+          const end = Math.min(i + segLen, pts.length - 1);
+
+          const p0 = project(pts[i].x, pts[i].y, t);
+
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+
+          let avgScale = p0.scale;
+
+          for (let j = i + 1; j <= end; j++) {
+            const p = project(pts[j].x, pts[j].y, t);
+            avgScale += p.scale;
+            ctx.lineTo(p.x, p.y);
+          }
+
+          avgScale /= Math.max(1, end - i + 1);
+
+          ctx.lineWidth = LINE_WIDTH * avgScale;
+          ctx.strokeStyle = pick(gruvbox, rand);
+          ctx.stroke();
+
+          i = end;
+        }
+      }
+
+      function drawFrame(t) {
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        drawSurfaceGrid(t);
+
+        const occ = buildGrid();
+
+        // Stable seed pattern/color choices per frame
+        const rand = makeRand(1234567);
+
+        for (let i = 0; i < SEED_TRIES; i++) {
+          const x = rand() * canvas.width;
+          const y = rand() * canvas.height;
+
+          const line = makeStreamline(x, y, t, occ);
+          if (!line) continue;
+
+          drawColoredSegments(line, t, rand);
+        }
+      }
+
+      function animate() {
+        time += 0.01;
+        drawFrame(time);
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>

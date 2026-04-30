@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Animated Evenly-Spaced Flow Lines</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f5f1e8;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      // ---------- params ----------
+      const BG = "#f5f1e8";
+      const SPACING = 14; // target distance between lines
+      const STEP = 2; // integration step
+      const MAX_HALF_LEN = 260; // max arc length per side
+      const GROW_SPEED = 80; // px/sec endpoint growth
+      const SHRINK_SPEED = 140; // px/sec retraction
+      const FIELD_SPEED = 0.15; // how fast field morphs
+      const SPAWN_PER_FRAME = 40; // seed attempts per frame
+      const LINE_WIDTH = 2;
+
+      // ---------- field ----------
+      function fieldAngle(x, y, t) {
+        const s = 0.0022;
+        return 2.2 * (Math.sin(x * s + t * 0.7) + 0.8 * Math.cos(y * s * 1.3 - t * 0.5) + 0.6 * Math.sin((x + y) * s * 0.7 + t * 0.9));
+      }
+
+      // ---------- spatial grid ----------
+      const cellSize = SPACING / Math.SQRT2;
+      let gridW, gridH, grid;
+      function rebuildGridDims() {
+        gridW = Math.ceil(canvas.width / cellSize);
+        gridH = Math.ceil(canvas.height / cellSize);
+      }
+      rebuildGridDims();
+
+      function clearGrid() {
+        grid = new Array(gridW * gridH);
+        for (let i = 0; i < grid.length; i++) grid[i] = null;
+      }
+      function gridAdd(x, y, owner) {
+        const cx = Math.floor(x / cellSize),
+          cy = Math.floor(y / cellSize);
+        if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
+        const k = cy * gridW + cx;
+        if (!grid[k]) grid[k] = [];
+        grid[k].push({ x, y, owner });
+      }
+      function farEnough(x, y, minDist, ignoreOwner) {
+        const cx = Math.floor(x / cellSize),
+          cy = Math.floor(y / cellSize);
+        const r2 = minDist * minDist;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            const nx = cx + ox,
+              ny = cy + oy;
+            if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+            const cell = grid[ny * gridW + nx];
+            if (!cell) continue;
+            for (const p of cell) {
+              if (p.owner === ignoreOwner) continue;
+              const dx = p.x - x,
+                dy = p.y - y;
+              if (dx * dx + dy * dy < r2) return false;
+            }
+          }
+        }
+        return true;
+      }
+      function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+      }
+
+      // ---------- line management ----------
+      const lines = [];
+
+      function integrateFromSeed(seed, dir, maxLen, t) {
+        // returns array of points starting near seed going in dir, total arc length <= maxLen
+        const pts = [];
+        let x = seed.x,
+          y = seed.y;
+        let acc = 0;
+        while (acc < maxLen) {
+          const a = fieldAngle(x, y, t) + (dir < 0 ? Math.PI : 0);
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+          if (!inBounds(nx, ny)) break;
+          pts.push({ x: nx, y: ny });
+          acc += STEP;
+          x = nx;
+          y = ny;
+        }
+        return pts;
+      }
+
+      function rebuildLineGeometry(line, t) {
+        const back = integrateFromSeed(line.seed, -1, line.lenB, t).reverse();
+        const fwd = integrateFromSeed(line.seed, +1, line.lenF, t);
+        line.pts = [...back, { x: line.seed.x, y: line.seed.y }, ...fwd];
+      }
+
+      function endpointForward(line) {
+        return line.pts[line.pts.length - 1];
+      }
+      function endpointBackward(line) {
+        return line.pts[0];
+      }
+
+      function trySpawn(t) {
+        for (let i = 0; i < SPAWN_PER_FRAME; i++) {
+          const x = Math.random() * canvas.width;
+          const y = Math.random() * canvas.height;
+          if (!farEnough(x, y, SPACING, null)) continue;
+
+          const line = {
+            seed: { x, y },
+            pts: [{ x, y }],
+            lenF: 0,
+            lenB: 0,
+            targetF: MAX_HALF_LEN,
+            targetB: MAX_HALF_LEN,
+            alive: true,
+          };
+          lines.push(line);
+          // add seed to grid so neighbors don't spawn on top this same frame
+          gridAdd(x, y, line);
+        }
+      }
+
+      function moveToward(cur, target, maxDelta) {
+        if (cur < target) return Math.min(target, cur + maxDelta);
+        if (cur > target) return Math.max(target, cur - maxDelta);
+        return cur;
+      }
+
+      // ---------- main loop ----------
+      let time = 0;
+      let lastT = performance.now();
+
+      function frame(now) {
+        const dt = Math.min(0.05, (now - lastT) / 1000);
+        lastT = now;
+        time += dt * FIELD_SPEED;
+
+        // 1. rebuild grid using current pts
+        clearGrid();
+        for (const line of lines) {
+          for (const p of line.pts) gridAdd(p.x, p.y, line);
+        }
+
+        // 2. re-integrate geometry for new field
+        for (const line of lines) rebuildLineGeometry(line, time);
+
+        // rebuild grid again from updated geometry
+        clearGrid();
+        for (const line of lines) {
+          for (const p of line.pts) gridAdd(p.x, p.y, line);
+        }
+
+        // 3. grow / shrink each end
+        for (const line of lines) {
+          const ef = endpointForward(line);
+          const eb = endpointBackward(line);
+
+          // forward
+          const canGrowF = inBounds(ef.x, ef.y) && line.lenF < MAX_HALF_LEN && farEnough(ef.x, ef.y, SPACING * 0.9, line);
+          line.targetF = canGrowF ? MAX_HALF_LEN : 0;
+
+          // if blocked, also actively shrink
+          const blockedF = !inBounds(ef.x, ef.y) || !farEnough(ef.x, ef.y, SPACING * 0.75, line);
+          if (blockedF) line.targetF = Math.max(0, line.lenF - 1);
+
+          // backward
+          const canGrowB = inBounds(eb.x, eb.y) && line.lenB < MAX_HALF_LEN && farEnough(eb.x, eb.y, SPACING * 0.9, line);
+          line.targetB = canGrowB ? MAX_HALF_LEN : 0;
+
+          const blockedB = !inBounds(eb.x, eb.y) || !farEnough(eb.x, eb.y, SPACING * 0.75, line);
+          if (blockedB) line.targetB = Math.max(0, line.lenB - 1);
+
+          // animate toward target
+          const growStep = GROW_SPEED * dt;
+          const shrinkStep = SHRINK_SPEED * dt;
+          line.lenF = moveToward(line.lenF, line.targetF, line.targetF > line.lenF ? growStep : shrinkStep);
+          line.lenB = moveToward(line.lenB, line.targetB, line.targetB > line.lenB ? growStep : shrinkStep);
+
+          if (line.lenF + line.lenB < 0.5 && line.targetF + line.targetB < 0.5) {
+            line.alive = false;
+          }
+        }
+
+        // 4. cull dead
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (!lines[i].alive) lines.splice(i, 1);
+        }
+
+        // 5. spawn new
+        trySpawn(time);
+
+        // 6. final geometry update (for the newly grown lengths)
+        for (const line of lines) rebuildLineGeometry(line, time);
+
+        // 7. draw
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#111";
+        ctx.lineWidth = LINE_WIDTH;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        for (const line of lines) {
+          if (line.pts.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(line.pts[0].x, line.pts[0].y);
+          for (let i = 1; i < line.pts.length; i++) {
+            ctx.lineTo(line.pts[i].x, line.pts[i].y);
+          }
+          ctx.stroke();
+        }
+
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame((t) => {
+        lastT = t;
+        frame(t);
+      });
+      addEventListener("resize", () => {
+        resize();
+        rebuildGridDims();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      }
+      canvas {
+        display: block;
+      }
+
+      .panel {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 10;
+        width: min(320px, calc(100vw - 32px));
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(0, 0, 0, 0.14);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(10px);
+      }
+
+      .panel h1 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .panel p {
+        margin: 0 0 12px;
+        font-size: 11px;
+        line-height: 1.4;
+        color: rgba(0, 0, 0, 0.65);
+      }
+
+      .panel + .panel {
+        left: auto;
+        right: 16px;
+        width: min(280px, calc(100vw - 32px));
+      }
+
+      .views {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .edge-controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px 10px;
+      }
+
+      .edge-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .edge-toggle input {
+        margin: 0;
+      }
+
+      .state-display {
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: rgba(0, 0, 0, 0.03);
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      button {
+        padding: 9px 10px;
+        border: 1px solid #000;
+        border-radius: 0;
+        background: #fff;
+        color: #111;
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        text-align: left;
+      }
+
+      button:hover,
+      button.is-active {
+        background: #111;
+        color: #fff;
+      }
+
+      @media (max-width: 560px) {
+        .views {
+          grid-template-columns: 1fr;
+        }
+
+        .edge-controls {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .panel + .panel {
+          top: auto;
+          left: 16px;
+          right: 16px;
+          bottom: 16px;
+          width: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>Canonical Views</h1>
+      <p>These presets rotate the cube itself while the camera stays fixed.</p>
+      <div class="views">
+        <button type="button" data-view="front">Front</button>
+        <button type="button" data-view="three-band">Three Band</button>
+        <button type="button" data-view="top-band">Top Band</button>
+        <button type="button" data-view="side-band">Side Band</button>
+        <button type="button" data-view="isometric">Isometric</button>
+        <button type="button" data-view="isometric-rotated">Isometric Rotated</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h1>Edges</h1>
+      <p>Toggle bold weight by edge index. This stays in sync with canvas clicks.</p>
+      <div class="edge-controls" id="edge-controls"></div>
+      <pre class="state-display" id="state-display"></pre>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const aspect = width / height;
+      const frustumSize = 4;
+      const viewButtons = [...document.querySelectorAll("[data-view]")];
+      const edgeControls = document.getElementById("edge-controls");
+      const stateDisplay = document.getElementById("state-display");
+
+      const camera = new THREE.OrthographicCamera((-frustumSize * aspect) / 2, (frustumSize * aspect) / 2, frustumSize / 2, -frustumSize / 2, 0.1, 100);
+      camera.position.set(0, 0, 3);
+      camera.lookAt(0, 0, 0);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(width, height);
+      renderer.setClearColor(0xffffff);
+      document.body.appendChild(renderer.domElement);
+
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      raycaster.params.Line.threshold = 0.08;
+
+      const size = 1.5;
+      const geometry = new THREE.BoxGeometry(size, size, size);
+      const cubeGroup = new THREE.Group();
+      scene.add(cubeGroup);
+      const presetEuler = new THREE.Euler();
+      const displayEuler = new THREE.Euler();
+      const edgeVisuals = [];
+      const edgeState = [];
+      const edgeCheckboxes = [];
+      const canonicalViews = {
+        front: [0, 0, 0],
+        "three-band": [-30, 0, 0],
+        "top-band": [-45, 0, 0],
+        "side-band": [0, 45, 0],
+        isometric: [-35.2643897, 45, 0],
+        "isometric-rotated": [-50.7684795, 24.0948425, 26.5650512],
+      };
+
+      const s = size / 2;
+
+      const cubeEdges = [
+        [
+          [-s, -s, -s],
+          [s, -s, -s],
+        ],
+        [
+          [s, -s, -s],
+          [s, s, -s],
+        ],
+        [
+          [s, s, -s],
+          [-s, s, -s],
+        ],
+        [
+          [-s, s, -s],
+          [-s, -s, -s],
+        ],
+
+        [
+          [-s, -s, s],
+          [s, -s, s],
+        ],
+        [
+          [s, -s, s],
+          [s, s, s],
+        ],
+        [
+          [s, s, s],
+          [-s, s, s],
+        ],
+        [
+          [-s, s, s],
+          [-s, -s, s],
+        ],
+
+        [
+          [-s, -s, -s],
+          [-s, -s, s],
+        ],
+        [
+          [s, -s, -s],
+          [s, -s, s],
+        ],
+        [
+          [s, s, -s],
+          [s, s, s],
+        ],
+        [
+          [-s, s, -s],
+          [-s, s, s],
+        ],
+      ];
+
+      const boldCount = THREE.MathUtils.randInt(3, 5);
+      const boldEdgeIndices = new Set(
+        cubeEdges
+          .map((_, index) => index)
+          .sort(() => Math.random() - 0.5)
+          .slice(0, boldCount)
+      );
+
+      function createEdgeVisual(a, b, edgeIndex) {
+        const start = new THREE.Vector3(...a);
+        const end = new THREE.Vector3(...b);
+        const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        const dir = new THREE.Vector3().subVectors(end, start);
+        const length = dir.length();
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+        const line = new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color: 0x000000 }));
+        const cylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, length, 16), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+
+        line.userData.edgeIndex = edgeIndex;
+        cylinder.userData.edgeIndex = edgeIndex;
+
+        cylinder.position.copy(mid);
+        cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+
+        cubeGroup.add(line);
+        cubeGroup.add(cylinder);
+
+        return {
+          line,
+          cylinder,
+        };
+      }
+
+      function syncEdgeCheckbox(edgeIndex) {
+        const checkbox = edgeCheckboxes[edgeIndex];
+
+        if (checkbox) {
+          checkbox.checked = edgeState[edgeIndex];
+        }
+      }
+
+      function updateStateDisplay() {
+        displayEuler.setFromQuaternion(cubeGroup.quaternion, "XYZ");
+
+        const state = {
+          rotation: {
+            x: Number(THREE.MathUtils.radToDeg(displayEuler.x).toFixed(3)),
+            y: Number(THREE.MathUtils.radToDeg(displayEuler.y).toFixed(3)),
+            z: Number(THREE.MathUtils.radToDeg(displayEuler.z).toFixed(3)),
+          },
+          boldEdges: edgeState.flatMap((isBold, edgeIndex) => (isBold ? [edgeIndex] : [])),
+        };
+
+        stateDisplay.textContent = JSON.stringify(state, null, 2);
+      }
+
+      function setEdgeBold(edgeIndex, isBold) {
+        const edgeVisual = edgeVisuals[edgeIndex];
+
+        if (!edgeVisual) {
+          return;
+        }
+
+        edgeState[edgeIndex] = isBold;
+        edgeVisual.line.visible = !isBold;
+        edgeVisual.cylinder.visible = isBold;
+        syncEdgeCheckbox(edgeIndex);
+        updateStateDisplay();
+      }
+
+      function buildEdgeControls() {
+        cubeEdges.forEach((_, edgeIndex) => {
+          const label = document.createElement("label");
+          label.className = "edge-toggle";
+
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.dataset.edgeIndex = edgeIndex;
+          checkbox.addEventListener("change", () => {
+            setEdgeBold(edgeIndex, checkbox.checked);
+          });
+
+          const text = document.createElement("span");
+          text.textContent = `Edge ${edgeIndex}`;
+
+          label.append(checkbox, text);
+          edgeControls.appendChild(label);
+          edgeCheckboxes[edgeIndex] = checkbox;
+        });
+      }
+
+      buildEdgeControls();
+
+      cubeEdges.forEach(([a, b], edgeIndex) => {
+        edgeVisuals[edgeIndex] = createEdgeVisual(a, b, edgeIndex);
+        setEdgeBold(edgeIndex, boldEdgeIndices.has(edgeIndex));
+      });
+
+      function toggleEdge(edgeIndex) {
+        const edgeVisual = edgeVisuals[edgeIndex];
+
+        if (!edgeVisual) {
+          return;
+        }
+
+        setEdgeBold(edgeIndex, !edgeState[edgeIndex]);
+      }
+
+      function setCanonicalView(viewName) {
+        const angles = canonicalViews[viewName];
+
+        if (!angles) {
+          return;
+        }
+
+        presetEuler.set(THREE.MathUtils.degToRad(angles[0]), THREE.MathUtils.degToRad(angles[1]), THREE.MathUtils.degToRad(angles[2]), "XYZ");
+        cubeGroup.quaternion.setFromEuler(presetEuler);
+
+        viewButtons.forEach((button) => {
+          button.classList.toggle("is-active", button.dataset.view === viewName);
+        });
+
+        updateStateDisplay();
+      }
+
+      viewButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          setCanonicalView(button.dataset.view);
+        });
+      });
+
+      setCanonicalView("front");
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.enableRotate = false;
+
+      renderer.domElement.addEventListener("click", (event) => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+
+        const intersections = raycaster.intersectObjects(cubeGroup.children, false);
+        const hit = intersections.find((intersection) => Number.isInteger(intersection.object.userData.edgeIndex));
+
+        if (hit) {
+          toggleEdge(hit.object.userData.edgeIndex);
+        }
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      window.addEventListener("resize", () => {
+        const aspect = window.innerWidth / window.innerHeight;
+        camera.left = (-frustumSize * aspect) / 2;
+        camera.right = (frustumSize * aspect) / 2;
+        camera.top = frustumSize / 2;
+        camera.bottom = -frustumSize / 2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>

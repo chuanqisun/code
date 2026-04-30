@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Animated Flow Field</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f5f1e8;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+
+      function resize() {
+        canvas.width = innerWidth;
+        canvas.height = innerHeight;
+      }
+      addEventListener("resize", resize);
+      resize();
+
+      const BG = "#f5f1e8";
+      const SPACING = 12;
+      const STEP = 2;
+      const MAX_STEPS = 220;
+      const SEED_TRIES = 8000;
+      const MIN_LENGTH = 12;
+      const LINE_WIDTH = 2;
+
+      let time = 0;
+
+      function fieldAngle(x, y, t) {
+        const s = 0.0025;
+        return 2.0 * (Math.sin(x * s + t * 0.7) + 0.8 * Math.cos(y * s * 1.3 - t * 0.5) + 0.6 * Math.sin((x + y) * s * 0.7 + t * 0.9));
+      }
+
+      function buildGrid() {
+        const cellSize = SPACING / Math.sqrt(2);
+        const gridW = Math.ceil(canvas.width / cellSize);
+        const gridH = Math.ceil(canvas.height / cellSize);
+        const grid = Array.from({ length: gridW * gridH }, () => []);
+
+        function idx(cx, cy) {
+          return cy * gridW + cx;
+        }
+
+        function addPoint(x, y) {
+          const cx = Math.floor(x / cellSize);
+          const cy = Math.floor(y / cellSize);
+          if (cx < 0 || cy < 0 || cx >= gridW || cy >= gridH) return;
+          grid[idx(cx, cy)].push({ x, y });
+        }
+
+        function farEnough(x, y, minDist = SPACING) {
+          const cx = Math.floor(x / cellSize);
+          const cy = Math.floor(y / cellSize);
+          const r2 = minDist * minDist;
+
+          for (let oy = -1; oy <= 1; oy++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              const nx = cx + ox,
+                ny = cy + oy;
+              if (nx < 0 || ny < 0 || nx >= gridW || ny >= gridH) continue;
+              for (const p of grid[idx(nx, ny)]) {
+                const dx = p.x - x,
+                  dy = p.y - y;
+                if (dx * dx + dy * dy < r2) return false;
+              }
+            }
+          }
+          return true;
+        }
+
+        return { addPoint, farEnough };
+      }
+
+      function inBounds(x, y) {
+        return x >= 0 && x < canvas.width && y >= 0 && y < canvas.height;
+      }
+
+      function trace(x0, y0, dir, t, occ) {
+        const pts = [];
+        let x = x0,
+          y = y0;
+
+        for (let i = 0; i < MAX_STEPS; i++) {
+          const a = fieldAngle(x, y, t) + (dir < 0 ? Math.PI : 0);
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+
+          if (!inBounds(nx, ny)) break;
+          if (i > 2 && !occ.farEnough(nx, ny, SPACING * 0.9)) break;
+
+          pts.push({ x: nx, y: ny });
+          x = nx;
+          y = ny;
+        }
+
+        return pts;
+      }
+
+      function makeStreamline(x, y, t, occ) {
+        if (!occ.farEnough(x, y, SPACING)) return null;
+
+        const back = trace(x, y, -1, t, occ).reverse();
+        const fwd = trace(x, y, +1, t, occ);
+        const pts = [...back, { x, y }, ...fwd];
+
+        if (pts.length < MIN_LENGTH) return null;
+        for (const p of pts) occ.addPoint(p.x, p.y);
+        return pts;
+      }
+
+      function drawFrame(t) {
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = "#111";
+        ctx.lineWidth = LINE_WIDTH;
+        ctx.lineCap = "butt";
+        ctx.lineJoin = "round";
+
+        const occ = buildGrid();
+
+        // deterministic pseudo-random seed pattern helps reduce flicker
+        let seed = 1234567;
+        function rand() {
+          seed = (1664525 * seed + 1013904223) >>> 0;
+          return seed / 4294967296;
+        }
+
+        for (let i = 0; i < SEED_TRIES; i++) {
+          const x = rand() * canvas.width;
+          const y = rand() * canvas.height;
+          const line = makeStreamline(x, y, t, occ);
+          if (!line) continue;
+
+          ctx.beginPath();
+          ctx.moveTo(line[0].x, line[0].y);
+          for (let j = 1; j < line.length; j++) {
+            ctx.lineTo(line[j].x, line[j].y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      function animate() {
+        time += 0.01; // slower/faster morph speed
+        drawFrame(time);
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
