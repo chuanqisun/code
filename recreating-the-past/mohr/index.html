@@ -21,7 +21,7 @@
         box-sizing: border-box;
       }
       dialog::backdrop {
-        background: rgba(255, 255, 255, 0.85);
+        background: rgba(255, 255, 255, 0.8);
       }
       .launch-dialog {
         display: grid;
@@ -106,14 +106,16 @@
       const worldW = gridW + marginX * 2;
       const worldH = gridH + marginY * 2;
       const LINE_EXTENT = Math.max(worldW, worldH) * 20;
+      const MAX_DISPLAY_SIZE_PX = 1200;
 
       function makeCamera() {
-        const aspect = window.innerWidth / window.innerHeight;
-        let w = worldW;
-        let h = worldH;
-
-        if (w / h > aspect) h = w / aspect;
-        else w = h * aspect;
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        const contentW = Math.min(viewportW, MAX_DISPLAY_SIZE_PX);
+        const contentH = Math.min(viewportH, MAX_DISPLAY_SIZE_PX);
+        const unitsPerPixel = Math.max(worldW / contentW, worldH / contentH);
+        const w = viewportW * unitsPerPixel;
+        const h = viewportH * unitsPerPixel;
 
         const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 100);
         cam.position.set(0, 0, 10);
@@ -143,6 +145,7 @@
       const displays = [];
       const clickTargets = [];
       const DISPLAY_COUNT = COLS * ROWS;
+      const INITIAL_TRANSITION_DURATION = 3000;
       const TRANSITION_DURATION = 2000;
       const RANDOM_STATE = ".";
       const BLANK_STATE = "-";
@@ -222,25 +225,15 @@
         return true;
       }
 
-      function initializeDisplayState(display, state, startTimeMs) {
-        const normalizedState = normalizeState(state);
-
-        applyDisplayState(display, BLANK_STATE, 0, startTimeMs);
-
-        if (normalizedState !== BLANK_STATE) {
-          applyDisplayState(display, normalizedState, TRANSITION_DURATION, startTimeMs);
-        }
-      }
-
-      function initializeAllDisplays(states, startTimeMs) {
-        displays.forEach((display, index) => {
-          initializeDisplayState(display, states[index], startTimeMs);
+      function setAllDisplaysToRandom(startTimeMs) {
+        displays.forEach((display) => {
+          applyDisplayState(display, RANDOM_STATE, 0, startTimeMs);
         });
       }
 
-      function setAllDisplaysToBlank(startTimeMs) {
-        displays.forEach((display) => {
-          applyDisplayState(display, BLANK_STATE, 0, startTimeMs);
+      function transitionDisplaysToStates(states, startTimeMs) {
+        displays.forEach((display, index) => {
+          applyDisplayStateIfChanged(display, states[index], INITIAL_TRANSITION_DURATION, startTimeMs);
         });
       }
 
@@ -413,11 +406,7 @@
       const initialStates = readInitStates();
       const hasPendingUrlMessage = initialStates.some((state) => state !== RANDOM_STATE);
 
-      if (hasPendingUrlMessage) {
-        setAllDisplaysToBlank(startTime);
-      } else {
-        initializeAllDisplays(initialStates, startTime);
-      }
+      setAllDisplaysToRandom(startTime);
       cursorIndex = 0;
 
       if (!hasPendingUrlMessage) {
@@ -444,7 +433,7 @@
           "close",
           () => {
             if (hasPendingUrlMessage) {
-              initializeAllDisplays(initialStates, performance.now());
+              transitionDisplaysToStates(initialStates, performance.now());
               syncUrlToDisplays();
             }
 
