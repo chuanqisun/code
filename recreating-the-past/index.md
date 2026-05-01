@@ -12,12 +12,9 @@
 
 ### Pratice
 
-- Original:
-  - Title: P-197 J, 1979
-  - Link: https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/
-- Recreated
-  - Live app link: https://code.chuanqisun.com/recreating-the-past/mohr/?
-  - <video muted autoplay loop playsinline src="./mohr/recreated.mp4"></video>
+| [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?)        |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| ![P-197 J, 1979](./mohr/original.webp)                                          | <video muted autoplay loop playsinline src="./mohr/recreated.mp4"></video> |
 
 ## Week 8: Glitch
 
