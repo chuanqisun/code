@@ -1,5 +1,22 @@
 # Recreating The Past
 
+## Week 9: Final Project - Manfred Mohr
+
+### Watch
+
+???
+
+### Read
+
+???
+
+### Pratice
+
+Original:
+
+- Title: P-197 J, 1979
+- Link: https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/
+
 ## Week 8: Glitch
 
 ### Watch
