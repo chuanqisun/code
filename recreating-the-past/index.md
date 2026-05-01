@@ -2,15 +2,46 @@
 
 ## Week 9: Final Project - Manfred Mohr
 
-### Watch
+- Theme: Programming Art, From Dream to Reality
+- Music as the basis for understanding art, inspiring concepts around linearity, time, instrumentation.
 
-???
+### Timeline
 
-### Read
+- Timeline:
+- 1938, Born in Pforzheim, Germany
+- High school, hacking with radio technology and play saxophone in public
+- 1957, training at Pforzheim School of Art and Crafts, goldsmith
+- 1961, Influenced by Max Bense, The Programming of Beauty
+- 1962, Tour with the band Rocky Volcano, painting merging with music score
+- 1962, Moved to Paris, resistor and capacitor symbols start to appear
+- 1963, K.R.H. Sonderborg
+- 1966, Pierre Barbaud, Initiation A La Composition Musiccale Automatique, Introduction to Automated Musical Composition
+- 1969, First drawing on Computer at Centre Universitaire Expérimental de Vincennes
+- 1970, Worked with Control Data 6400 Computer and Benson plotter
+- 1973, Developed a visual language involving cubes
+- 1981, Moved to New York
 
-???
+### Influenced by
 
-### Pratice
+| Art                                                               | Notes                                                                                                                                              |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![Bense](./mohr/research/max-bense.webp)                          | 1961, Max Bense, Information Aesthetics, The Programming of Beauty. With focus on deconstructed, mathematical and numerical analysis of visual art |
+| ![Hommage a K. R. H. Sonderborg #3](./mohr/research/hommage.webp) | 1963, Manfred Mohr, Hommage a K. R. H. Sonderborg #3                                                                                               |
+| ![Sonderborg](./mohr/research/krh-sonderborg.webp)                | 1977, K.R.H Sonderborg, utitled, abstract but process revealing                                                                                    |
+| ![777 MHz](./mohr/research/777-mhz.jpg)                           | 1967, Manfred Mohr, 777 MHz, inspired by radio technology                                                                                          |
+| ![Bild-1967 Zeichnung A](./mohr/research/radio.webp)              | 1967, Manfred Mohr, Bild-1967 Zeichnung A                                                                                                          |
+
+### Cube origins
+
+| Art                                      | Notes                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------- |
+| ![Cube 01](./mohr/research/cube-01.webp) | 1973-1974, Cubic Limit                                                    |
+| ![Cube 02](./mohr/research/cube-02.webp) | 1975, Cube combinatorial studies                                          |
+| ![Cube 03](./mohr/research/cube-03.webp) | 1973, P-154c1, Plotter Edges of Geometric Objects used as an Alphabet     |
+| ![Cube 05](./mohr/research/cube-05.webp) | 1975-1978, P-188, Cubic Limit, linear transform from one shape to another |
+| ![Cube 04](./mohr/research/cube-04.webp) | 1984/1994, Divisibility II, 4-cut, shaped canvases                        |
+
+## Pratice
 
 | [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?)        |
 | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
