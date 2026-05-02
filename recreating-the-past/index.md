@@ -12,9 +12,9 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 >
 > Why couldn't I invent something which encompasses everything? I looked for a graphical instrument and the cube came into my mind
 >
-> I gained an alphabet [of cube] which was the beginning of my whole new life
+> I gained an alphabet [of the cube] which was the beginning of my whole new life
 >
-> When I did cutting the cube, I wanted to destory the cube, not the cube itself the structure, but the symmetry [of the cube].
+> When I did cutting the cube, I wanted to destroy the cube, not the cube itself the structure, but the symmetry [of the cube].
 >
 > If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants
 >
@@ -28,7 +28,7 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 >
 > Inventing a logic would represent my artistic ideas.
 >
-> The cube became my instrument, and I started "playing" with it as I would do with a musical instruement.
+> The cube became my instrument, and I started "playing" with it as I would do with a musical instrument.
 >
 > In music you have twelve half-tones, but you don't play them all together.
 >
@@ -38,20 +38,20 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 >
 > [Randomness] gives solutions one can't think of.
 >
-> I dream of an electroni ink [...] you can paint on the wall and it becomes a digital screen.
+> I dream of an electronic ink [...] you can paint on the wall and it becomes a digital screen.
 >
 > — [Interview with Manfred Mohr, 2016 and 2017, by Francesca Franco](https://mit.primo.exlibrisgroup.com/permalink/01MIT_INST/e9b68l/cdi_proquest_ebookcentralchapters_7141570_10_60)
 
 ### Practice
 
 > "My initial alphabet was the twelve lines of the cube"  
-> -- Manfred Mohn
+> -- Manfred Mohr
 
 | [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?) |
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | ![P-197 J, 1979](./mohr/original-small.webp)                                    | ![P-197 J, 1979 Recreated](./mohr/recreated.gif)                    |
 
-The system allows user to interactively enter a message into the grid, using either mouse or keyboard. Upon reload, the grid with animation into the desired state.
+The system allows the user to interactively enter a message into the grid, using either mouse or keyboard. Upon reload, the grid animates into the desired state.
 
 <video muted autoplay loop playsinline>
   <source src="./mohr/recreated.mp4" type="video/mp4">
@@ -65,8 +65,8 @@ The system allows user to interactively enter a message into the grid, using eit
   1. [Pair and cut](./mohr/process/303-split.html)
   1. [Grid](./mohr/process/305-grid.html)
   1. [Alphabet test](./mohr/process/307-alphabet-test.html)
-- To help design the display logic for each alphanumeric character, I created a [Type foundry tool](./mohr/process/400-foundry.html) that allows me to interactively rotate and cube and toggle the edges for the desired effect.
-- The rotation requires an additional turn to generate enough visual complex
+- To help design the display logic for each alphanumeric character, I created a [Type foundry tool](./mohr/process/400-foundry.html) that allows me to interactively rotate a cube and toggle the edges for the desired effect.
+- The rotation requires an additional turn to generate enough visual complexity
 - The thickened edges were interpolated from state to state
 
 ### Timeline
@@ -78,7 +78,7 @@ The system allows user to interactively enter a message into the grid, using eit
 - 1962, Tour with the band Rocky Volcano, painting merging with music score
 - 1962, Moved to Paris, resistor and capacitor symbols start to appear
 - 1963, K.R.H. Sonderborg
-- **1966, Pierre Barbaud, Initiation A La Composition Musiccale Automatique, Introduction to Automated Musical Composition**
+- **1966, Pierre Barbaud, Initiation A La Composition Musicale Automatique, Introduction to Automated Musical Composition**
 - **1969, First drawing on Computer at Centre Universitaire Expérimental de Vincennes**
 - 1970, Worked with Control Data 6400 Computer and Benson plotter
 - 1973, Developed a visual language involving cubes
@@ -86,7 +86,7 @@ The system allows user to interactively enter a message into the grid, using eit
 
 ### Technique
 
-Benson Plotter in der Centre de Calcul de la Météorologie National, 1971 / © Manfred Mohr
+Benson Plotter in der Centre de Calcul de la Météorologie Nationale, 1971 / © Manfred Mohr
 
 ![Plotter](./mohr/research/plotter.webp)
 
@@ -105,7 +105,7 @@ Punching hollerith computer cards
 | ![Bense](./mohr/research/max-bense.webp)                          | 1961, Max Bense, Information Aesthetics, The Programming of Beauty. Gained rationalism. With focus on deconstructed, mathematical and numerical analysis of visual art |
 | ![Hommage a K. R. H. Sonderborg #3](./mohr/research/hommage.webp) | 1963, Manfred Mohr, Hommage a K. R. H. Sonderborg #3, (abstract expressionism was not the future)                                                                      |
 | ![Pierre Barbaud](./mohr/research/pierre-barbaud.webp)            | 1967, Pierre Barbaud, Computer Music composer. Gained insight on programmability and procedural composition                                                            |
-| ![Sonderborg](./mohr/research/krh-sonderborg.webp)                | 1977, K.R.H Sonderborg, utitled, abstract but process revealing                                                                                                        |
+| ![Sonderborg](./mohr/research/krh-sonderborg.webp)                | 1977, K.R.H Sonderborg, untitled, abstract but process revealing                                                                                                       |
 | ![777 MHz](./mohr/research/777-mhz.jpg)                           | 1967, Manfred Mohr, 777 MHz, inspired by radio technology                                                                                                              |
 | ![Bild-1967 Zeichnung A](./mohr/research/radio.webp)              | 1967, Manfred Mohr, Bild-1967 Zeichnung A                                                                                                                              |
 
