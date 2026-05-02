@@ -1,6 +1,6 @@
 # Recreating The Past
 
-## Week 9: Final Project - Manfred Mohr - Rational Algorithms as Art
+## Week 9: Final Project - Manfred Mohr - Rational Aesthetics
 
 Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Calcul de la Météorologie Nationale, 1971 / © Manfred Mohr
 
