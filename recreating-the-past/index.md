@@ -14,7 +14,7 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 >
 > "I gained an alphabet [of the cube] which was the beginning of my whole new life"
 >
-> "When I did cutting the cube, I wanted to destroy the cube, not the cube itself the structure, but the symmetry [of the cube]."
+> **"When I did cutting the cube, I wanted to destroy the cube, not the cube itself the structure, but the symmetry [of the cube]."**
 >
 > "If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants"
 >
@@ -28,9 +28,9 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 >
 > "Inventing a logic would represent my artistic ideas."
 >
-> "The cube became my instrument, and I started "playing" with it as I would do with a musical instrument."
+> **"The cube became my instrument, and I started "playing" with it as I would do with a musical instrument."**
 >
-> "In music you have twelve half-tones, but you don't play them all together."
+> **"In music you have twelve half-tones, but you don't play them all together."**
 >
 > "I don't come from a visual approach; I come from a logical approach."
 >
