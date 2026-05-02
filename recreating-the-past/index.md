@@ -8,37 +8,37 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 
 ### Watch
 
-> I always refer to music so my first computer drawings were linear, left to right, like writing
+> "I always refer to music so my first computer drawings were linear, left to right, like writing"
 >
-> Why couldn't I invent something which encompasses everything? I looked for a graphical instrument and the cube came into my mind
+> "Why couldn't I invent something which encompasses everything? I looked for a graphical instrument and the cube came into my mind"
 >
-> I gained an alphabet [of the cube] which was the beginning of my whole new life
+> "I gained an alphabet [of the cube] which was the beginning of my whole new life"
 >
-> When I did cutting the cube, I wanted to destroy the cube, not the cube itself the structure, but the symmetry [of the cube].
+> "When I did cutting the cube, I wanted to destroy the cube, not the cube itself the structure, but the symmetry [of the cube]."
 >
-> If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants
+> "If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants"
 >
 > — [The Art of Generative Thinking, 2021 ](https://www.youtube.com/watch?v=lfdMnFvXBwc)
 
 ### Read
 
-> My art [before computer] was getting more systematic, more geometric, but it was not rational. [...] I finally understood that I had to write algorithms and programs [...] to create a rational construct.
+> "My art [before computer] was getting more systematic, more geometric, but it was not rational. [...] I finally understood that I had to write algorithms and programs [...] to create a rational construct."
 >
-> The idea of my work is based on inventing an algorithm.
+> "The idea of my work is based on inventing an algorithm."
 >
-> Inventing a logic would represent my artistic ideas.
+> "Inventing a logic would represent my artistic ideas."
 >
-> The cube became my instrument, and I started "playing" with it as I would do with a musical instrument.
+> "The cube became my instrument, and I started "playing" with it as I would do with a musical instrument."
 >
-> In music you have twelve half-tones, but you don't play them all together.
+> "In music you have twelve half-tones, but you don't play them all together."
 >
-> I don't come from a visual approach; I come from a logical approach.
+> "I don't come from a visual approach; I come from a logical approach."
 >
-> An artist always has to find his tools or invent them.
+> "An artist always has to find his tools or invent them."
 >
-> [Randomness] gives solutions one can't think of.
+> "[Randomness] gives solutions one can't think of."
 >
-> I dream of an electronic ink [...] you can paint on the wall and it becomes a digital screen.
+> "I dream of an electronic ink [...] you can paint on the wall and it becomes a digital screen."
 >
 > — [Interview with Manfred Mohr, 2016 and 2017, by Francesca Franco](https://mit.primo.exlibrisgroup.com/permalink/01MIT_INST/e9b68l/cdi_proquest_ebookcentralchapters_7141570_10_60)
 
