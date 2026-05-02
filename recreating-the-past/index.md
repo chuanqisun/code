@@ -1,6 +1,10 @@
 # Recreating The Past
 
-## Week 9: Final Project - Manfred Mohr
+## Week 9: Final Project - Manfred Mohr - Rational Algorithms as Art
+
+Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Calcul de la Météorologie Nationale, 1971 / © Manfred Mohr
+
+![Plotter](./mohr/research/bio-photo.webp)
 
 ### Watch
 
@@ -13,12 +17,35 @@
 > When I did cutting the cube, I wanted to destory the cube, not the cube itself the structure, but the symmetry [of the cube].
 >
 > If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants
-
-- [The Art of Generative Thinking | Manfred Mohr in Conversation](https://www.youtube.com/watch?v=lfdMnFvXBwc)
+>
+> — [The Art of Generative Thinking | 2021 ](https://www.youtube.com/watch?v=lfdMnFvXBwc)
 
 ### Read
 
+> My art [before computer] was getting more systematic, more geometric, but it was not rational. [...] I finally understood that I had to write algorithms and programs [...] to create a rational construct.
+>
+> The idea of my work is based on inventing an algorithm.
+>
+> Inventing a logic would represent my artistic ideas.
+>
+> The cube became my instrument, and I started "playing" with it as I would do with a musical instruement.
+>
+> In music you have twelve half-tones, but you don't play them all together.
+>
+> I don't come from a visual approach; I come from a logical approach.
+>
+> An artist always has to find his tools or invent them.
+>
+> [Randomness] gives solutions one can't think of.
+>
+> I dream of an electroni ink [...] you can paint on the wall and it becomes a digital screen.
+>
+> — [Interview with Manfred Mohr, 2016 and 2017, by Francesca Franco](https://mit.primo.exlibrisgroup.com/permalink/01MIT_INST/e9b68l/cdi_proquest_ebookcentralchapters_7141570_10_60)
+
 ### Practice
+
+> "My initial alphabet was the twelve lines of the cube"  
+> -- Manfred Mohn
 
 | [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?)        |
 | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -40,18 +67,30 @@
 - 1973, Developed a visual language involving cubes
 - 1981, Moved to New York
 
-### Quotes
+### Technique
+
+Benson Plotter in der Centre de Calcul de la Météorologie National, 1971 / © Manfred Mohr
+
+![Plotter](./mohr/research/plotter.webp)
+
+Punching hollerith computer cards
+
+![Punch card](./mohr/research/punch-card.webp)
+
+> I started by learning Fortran, and I still write in Fortran
+> -- Manfred Mohr, 2017
 
 ### Influenced by
 
-| Art                                                               | Notes                                                                                                                                              |
-| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ![Jazz](./mohr/research/jazz.webp)                                | 1950s, live jazz player                                                                                                                            |
-| ![Bense](./mohr/research/max-bense.webp)                          | 1961, Max Bense, Information Aesthetics, The Programming of Beauty. With focus on deconstructed, mathematical and numerical analysis of visual art |
-| ![Hommage a K. R. H. Sonderborg #3](./mohr/research/hommage.webp) | 1963, Manfred Mohr, Hommage a K. R. H. Sonderborg #3                                                                                               |
-| ![Sonderborg](./mohr/research/krh-sonderborg.webp)                | 1977, K.R.H Sonderborg, utitled, abstract but process revealing                                                                                    |
-| ![777 MHz](./mohr/research/777-mhz.jpg)                           | 1967, Manfred Mohr, 777 MHz, inspired by radio technology                                                                                          |
-| ![Bild-1967 Zeichnung A](./mohr/research/radio.webp)              | 1967, Manfred Mohr, Bild-1967 Zeichnung A                                                                                                          |
+| Art                                                               | Notes                                                                                                                                                                  |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![Jazz](./mohr/research/jazz.webp)                                | 1950s, live jazz player                                                                                                                                                |
+| ![Bense](./mohr/research/max-bense.webp)                          | 1961, Max Bense, Information Aesthetics, The Programming of Beauty. Gained rationalism. With focus on deconstructed, mathematical and numerical analysis of visual art |
+| ![Hommage a K. R. H. Sonderborg #3](./mohr/research/hommage.webp) | 1963, Manfred Mohr, Hommage a K. R. H. Sonderborg #3, (abstract expressionism was not the future)                                                                      |
+| ![Pierre Barbaud](./mohr/research/pierre-barbaud.webp)            | 1967, Pierre Barbaud, Computer Music composer. Gained insight on programmability and procedural composition                                                            |
+| ![Sonderborg](./mohr/research/krh-sonderborg.webp)                | 1977, K.R.H Sonderborg, utitled, abstract but process revealing                                                                                                        |
+| ![777 MHz](./mohr/research/777-mhz.jpg)                           | 1967, Manfred Mohr, 777 MHz, inspired by radio technology                                                                                                              |
+| ![Bild-1967 Zeichnung A](./mohr/research/radio.webp)              | 1967, Manfred Mohr, Bild-1967 Zeichnung A                                                                                                                              |
 
 ### Cube origins
 
