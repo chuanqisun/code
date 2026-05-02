@@ -53,6 +53,15 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 
 - [Live app](https://code.chuanqisun.com/recreating-the-past/mohr/?init=....................................), [Full alphabet](https://code.chuanqisun.com/recreating-the-past/mohr/?init=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ), [Recorded demo](./mohr/recreated.mp4)
 - Source: P-197 J, 1979, Manfred Mohr
+- Process:
+  1. [Cube](./mohr/process/300-cube.html)
+  1. [Random edge](./mohr/process/301-cube-skeleton.html)
+  1. [Pair and cut](./mohr/process/303-split.html)
+  1. [Grid](./mohr/process/305-grid.html)
+  1. [Alphabet test](./mohr/process/307-alphabet-test.html)
+- To help design the display logic for each alphanumeric character, I created a [Type foundry tool](./mohr/process/400-foundry.html) that allows me to interactively rotate and cube and toggle the edges for the desired effect.
+- The rotation requires an additional turn to generate enough visual complex
+- The thickened edges were interpolated from state to state
 
 ### Timeline
 
