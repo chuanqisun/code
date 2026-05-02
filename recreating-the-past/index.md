@@ -53,7 +53,7 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 
 The system allows the user to interactively enter a message into the grid, using either mouse or keyboard. Upon reload, the grid animates into the desired state.
 
-<video muted autoplay loop playsinline>
+<video muted autoplay loop playsinline style="width: 100%">
   <source src="./mohr/recreated.mp4" type="video/mp4">
 </video>
 
