@@ -2,13 +2,32 @@
 
 ## Week 9: Final Project - Manfred Mohr
 
-- Theme: Programming Art, From Dream to Reality
-- Music as the basis for understanding art, inspiring concepts around linearity, time, instrumentation.
+### Watch
+
+> I always refer to music so my first computer drawings were linear, left to right, like writing
+>
+> Why couldn't I invent something which encompasses everything? I looked for a graphical instrument and the cube came into my mind
+>
+> I gained an alphabet [of cube] which was the beginning of my whole new life
+>
+> When I did cutting the cube, I wanted to destory the cube, not the cube itself the structure, but the symmetry [of the cube].
+>
+> If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants
+
+- [The Art of Generative Thinking | Manfred Mohr in Conversation](https://www.youtube.com/watch?v=lfdMnFvXBwc)
+
+### Read
+
+### Practice
+
+| [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?)        |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| ![P-197 J, 1979](./mohr/original.webp)                                          | <video muted autoplay loop playsinline src="./mohr/recreated.mp4"></video> |
 
 ### Timeline
 
 - Timeline:
-- 1938, Born in Pforzheim, Germany
+- 1938, Born in Pforzheim, Germany, Jeweler family.
 - High school, hacking with radio technology and play saxophone in public
 - 1957, training at Pforzheim School of Art and Crafts, goldsmith
 - 1961, Influenced by Max Bense, The Programming of Beauty
@@ -21,10 +40,13 @@
 - 1973, Developed a visual language involving cubes
 - 1981, Moved to New York
 
+### Quotes
+
 ### Influenced by
 
 | Art                                                               | Notes                                                                                                                                              |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![Jazz](./mohr/research/jazz.webp)                                | 1950s, live jazz player                                                                                                                            |
 | ![Bense](./mohr/research/max-bense.webp)                          | 1961, Max Bense, Information Aesthetics, The Programming of Beauty. With focus on deconstructed, mathematical and numerical analysis of visual art |
 | ![Hommage a K. R. H. Sonderborg #3](./mohr/research/hommage.webp) | 1963, Manfred Mohr, Hommage a K. R. H. Sonderborg #3                                                                                               |
 | ![Sonderborg](./mohr/research/krh-sonderborg.webp)                | 1977, K.R.H Sonderborg, utitled, abstract but process revealing                                                                                    |
@@ -40,12 +62,6 @@
 | ![Cube 03](./mohr/research/cube-03.webp) | 1973, P-154c1, Plotter Edges of Geometric Objects used as an Alphabet     |
 | ![Cube 05](./mohr/research/cube-05.webp) | 1975-1978, P-188, Cubic Limit, linear transform from one shape to another |
 | ![Cube 04](./mohr/research/cube-04.webp) | 1984/1994, Divisibility II, 4-cut, shaped canvases                        |
-
-## Pratice
-
-| [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?)        |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| ![P-197 J, 1979](./mohr/original.webp)                                          | <video muted autoplay loop playsinline src="./mohr/recreated.mp4"></video> |
 
 ## Week 8: Glitch
 
@@ -67,7 +83,7 @@
 
 | [Original](https://alvarocassinelli.com/khronos-projector/) | [Recreated](https://www.youtube.com/shorts/N_AZrjKjHFM) |
 | ----------------------------------------------------------- | ------------------------------------------------------- |
-| ![Original](./vasulka/original.webp)                        | ![Recreated](./vasulka/recreated.webp)                  |
+| ![Original](./vasulka/original.webp)                        | ![Recreated](./vasulka/recreated.gif)                   |
 
 - Notes
   - [Recorded demo](https://www.youtube.com/watch?v=0V7LAdV-e4c), [Studio](./vasulka/)
