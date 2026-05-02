@@ -18,7 +18,7 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 >
 > If you look at an art piece, [...], my homework has nothing to do with what the viewer has to see, [...], I show a result and this result is the confrontation to the viewer, but he can do with it what he wants
 >
-> — [The Art of Generative Thinking | 2021 ](https://www.youtube.com/watch?v=lfdMnFvXBwc)
+> — [The Art of Generative Thinking, 2021 ](https://www.youtube.com/watch?v=lfdMnFvXBwc)
 
 ### Read
 
@@ -47,22 +47,24 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 > "My initial alphabet was the twelve lines of the cube"  
 > -- Manfred Mohn
 
-| [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?)        |
-| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| ![P-197 J, 1979](./mohr/original.webp)                                          | <video muted autoplay loop playsinline src="./mohr/recreated.mp4"></video> |
+| [Original](https://www.mercedes-benz.art/en/artwork/p-197-j-manfred-mohr-1979/) | [Recreated](https://code.chuanqisun.com/recreating-the-past/mohr/?) |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| ![P-197 J, 1979](./mohr/original-small.webp)                                    | ![P-197 J, 1979 Recreated](./mohr/recreated.gif)                    |
+
+- [Live app](https://code.chuanqisun.com/recreating-the-past/mohr/?init=....................................), [Full alphabet](https://code.chuanqisun.com/recreating-the-past/mohr/?init=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ), [Recorded demo](./mohr/recreated.mp4)
+- Source: P-197 J, 1979, Manfred Mohr
 
 ### Timeline
 
-- Timeline:
 - 1938, Born in Pforzheim, Germany, Jeweler family.
 - High school, hacking with radio technology and play saxophone in public
 - 1957, training at Pforzheim School of Art and Crafts, goldsmith
-- 1961, Influenced by Max Bense, The Programming of Beauty
+- **1961, Influenced by Max Bense, The Programming of Beauty**
 - 1962, Tour with the band Rocky Volcano, painting merging with music score
 - 1962, Moved to Paris, resistor and capacitor symbols start to appear
 - 1963, K.R.H. Sonderborg
-- 1966, Pierre Barbaud, Initiation A La Composition Musiccale Automatique, Introduction to Automated Musical Composition
-- 1969, First drawing on Computer at Centre Universitaire Expérimental de Vincennes
+- **1966, Pierre Barbaud, Initiation A La Composition Musiccale Automatique, Introduction to Automated Musical Composition**
+- **1969, First drawing on Computer at Centre Universitaire Expérimental de Vincennes**
 - 1970, Worked with Control Data 6400 Computer and Benson plotter
 - 1973, Developed a visual language involving cubes
 - 1981, Moved to New York
