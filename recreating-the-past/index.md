@@ -86,6 +86,9 @@ The system allows the user to interactively enter a message into the grid, using
 
 ### Technique
 
+> I started by learning Fortran, and I still write in Fortran
+> -- Manfred Mohr, 2017
+
 Benson Plotter in der Centre de Calcul de la Météorologie Nationale, 1971 / © Manfred Mohr
 
 ![Plotter](./mohr/research/plotter.webp)
@@ -93,9 +96,6 @@ Benson Plotter in der Centre de Calcul de la Météorologie Nationale, 1971 / ©
 Punching hollerith computer cards
 
 ![Punch card](./mohr/research/punch-card.webp)
-
-> I started by learning Fortran, and I still write in Fortran
-> -- Manfred Mohr, 2017
 
 ### Influenced by
 
@@ -139,7 +139,7 @@ Punching hollerith computer cards
 
 | [Original](https://alvarocassinelli.com/khronos-projector/) | [Recreated](https://www.youtube.com/shorts/N_AZrjKjHFM) |
 | ----------------------------------------------------------- | ------------------------------------------------------- |
-| ![Original](./vasulka/original.webp)                        | ![Recreated](./vasulka/recreated.gif)                   |
+| ![Original](./vasulka/original.webp)                        | ![Recreated](./vasulka/recreated.webp)                  |
 
 - Notes
   - [Recorded demo](https://www.youtube.com/watch?v=0V7LAdV-e4c), [Studio](./vasulka/)
