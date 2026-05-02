@@ -51,7 +51,7 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | ![P-197 J, 1979](./mohr/original-small.webp)                                    | ![P-197 J, 1979 Recreated](./mohr/recreated.gif)                    |
 
-**Alphabet display**
+The system allows user to interactively enter a message into the grid, using either mouse or keyboard. Upon reload, the grid with animation into the desired state.
 
 <video muted autoplay loop playsinline>
   <source src="./mohr/recreated.mp4" type="video/mp4">
