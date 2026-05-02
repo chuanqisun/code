@@ -51,6 +51,12 @@ Manfred Mohr and Estarose Wolfson look at the Benson plotter in the Centre de Ca
 | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | ![P-197 J, 1979](./mohr/original-small.webp)                                    | ![P-197 J, 1979 Recreated](./mohr/recreated.gif)                    |
 
+**Alphabet display**
+
+<video muted autoplay loop playsinline>
+  <source src="./mohr/recreated.mp4" type="video/mp4">
+</video>
+
 - [Live app](https://code.chuanqisun.com/recreating-the-past/mohr/?init=....................................), [Full alphabet](https://code.chuanqisun.com/recreating-the-past/mohr/?init=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ), [Recorded demo](./mohr/recreated.mp4)
 - Source: P-197 J, 1979, Manfred Mohr
 - Process:
