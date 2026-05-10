@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>total human pixels</title>
+    <style>
+      html, body {
+        margin: 0;
+        overflow: hidden;
+        background: #080b12;
+        color: white;
+        font-family: system-ui, sans-serif;
+      }
+
+      #hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        padding: 10px 12px;
+        background: rgba(0,0,0,0.65);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 8px;
+        font-size: 13px;
+        line-height: 1.35;
+        pointer-events: none;
+        white-space: pre;
+      }
+
+      #tooltip {
+        position: fixed;
+        display: none;
+        padding: 8px 10px;
+        background: rgba(0,0,0,0.82);
+        border: 1px solid rgba(255,255,255,0.22);
+        border-radius: 7px;
+        font-size: 12px;
+        line-height: 1.35;
+        pointer-events: none;
+        white-space: pre;
+        color: white;
+        z-index: 10;
+      }
+
+      canvas {
+        display: block;
+        cursor: grab;
+      }
+
+      canvas:active {
+        cursor: grabbing;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud"></div>
+    <div id="tooltip"></div>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const hud = document.getElementById("hud");
+      const tooltip = document.getElementById("tooltip");
+
+      const WORLD_DOTS = 8_000_000_000;
+      const MAX_DOTS_PER_FRAME = 70_000;
+      const TILE_PIXEL_SIZE_TARGET = 160;
+      const POINTS_PER_TILE_SAMPLE = 650;
+      const HOVER_RADIUS_PX = 7;
+
+      let W = 0;
+      let H = 0;
+
+      let scale = Math.min(window.innerWidth, window.innerHeight);
+      let offsetX = 0;
+      let offsetY = 0;
+
+      let mouseX = -9999;
+      let mouseY = -9999;
+      let hoveredDot = null;
+      let renderedPointIndex = [];
+
+      let needsRender = true;
+
+      function requestRender() {
+        needsRender = true;
+      }
+
+      function resize() {
+        W = canvas.width = window.innerWidth * devicePixelRatio;
+        H = canvas.height = window.innerHeight * devicePixelRatio;
+        canvas.style.width = window.innerWidth + "px";
+        canvas.style.height = window.innerHeight + "px";
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+        requestRender();
+      }
+
+      window.addEventListener("resize", resize);
+      resize();
+
+      function hash32(a) {
+        a |= 0;
+        a = a ^ 61 ^ (a >>> 16);
+        a = Math.imul(a, 9);
+        a = a ^ (a >>> 4);
+        a = Math.imul(a, 0x27d4eb2d);
+        a = a ^ (a >>> 15);
+        return a >>> 0;
+      }
+
+      function rand01(seed) {
+        return hash32(seed) / 4294967295;
+      }
+
+      function densityAt(x, y) {
+        let d = 0.18;
+
+        const blobs = [
+          [0.28, 0.35, 0.02, 4.0],
+          [0.68, 0.55, 0.04, 3.0],
+          [0.52, 0.22, 0.015, 2.5],
+          [0.38, 0.75, 0.03, 2.8],
+          [0.8, 0.8, 0.018, 3.5],
+        ];
+
+        for (const [cx, cy, s, amp] of blobs) {
+          const dx = x - cx;
+          const dy = y - cy;
+          d += amp * Math.exp(-(dx * dx + dy * dy) / s);
+        }
+
+        d += 0.35 * Math.abs(Math.sin(x * 36) * Math.cos(y * 31));
+        return d;
+      }
+
+      function tileDotCount(z, tx, ty) {
+        const n = 1 << z;
+        const cx = (tx + 0.5) / n;
+        const cy = (ty + 0.5) / n;
+        const base = WORLD_DOTS / (n * n);
+
+        const d = densityAt(cx, cy);
+        const noise = 0.75 + rand01((z * 73856093) ^ (tx * 19349663) ^ (ty * 83492791)) * 0.5;
+
+        return Math.floor(base * d * noise);
+      }
+
+      function makeGlobalDotId(z, tx, ty, i) {
+        const n = 1 << z;
+        const tileLinear = BigInt(ty) * BigInt(n) + BigInt(tx);
+
+        return (BigInt(z) * 10_000_000_000_000_000n + tileLinear * 10_000n + BigInt(i)).toString();
+      }
+
+      function worldToScreenX(x) {
+        return (x - offsetX) * scale;
+      }
+
+      function worldToScreenY(y) {
+        return (y - offsetY) * scale;
+      }
+
+      function screenToWorldX(x) {
+        return x / scale + offsetX;
+      }
+
+      function screenToWorldY(y) {
+        return y / scale + offsetY;
+      }
+
+      function chooseTileZoom() {
+        const worldUnitsPerTargetTile = TILE_PIXEL_SIZE_TARGET / scale;
+        let z = Math.ceil(Math.log2(1 / worldUnitsPerTargetTile));
+        z = Math.max(0, Math.min(24, z));
+        return z;
+      }
+
+      function drawAggregateTile(z, tx, ty, count) {
+        const n = 1 << z;
+        const x0 = tx / n;
+        const y0 = ty / n;
+        const x1 = (tx + 1) / n;
+        const y1 = (ty + 1) / n;
+
+        const sx = worldToScreenX(x0);
+        const sy = worldToScreenY(y0);
+        const sw = (x1 - x0) * scale;
+        const sh = (y1 - y0) * scale;
+
+        const intensity = Math.min(1, Math.log10(count + 1) / 7.5);
+        const alpha = 0.1 + intensity * 0.65;
+
+        ctx.fillStyle = `rgba(${Math.floor(80 + intensity * 120)}, ${Math.floor(120 + intensity * 100)}, 255, ${alpha})`;
+        ctx.fillRect(sx, sy, Math.max(1, sw), Math.max(1, sh));
+
+        ctx.strokeStyle = "rgba(255,255,255,0.035)";
+        ctx.strokeRect(sx, sy, sw, sh);
+      }
+
+      function generatePointInTile(z, tx, ty, i) {
+        const n = 1 << z;
+        const x0 = tx / n;
+        const y0 = ty / n;
+        const tileSize = 1 / n;
+
+        const baseSeed = hash32((z * 92837111) ^ (tx * 689287499) ^ (ty * 283923481));
+
+        const rx = rand01(baseSeed + i * 2 + 1);
+        const ry = rand01(baseSeed + i * 2 + 2);
+
+        const wx = x0 + rx * tileSize;
+        const wy = y0 + ry * tileSize;
+
+        return {
+          id: makeGlobalDotId(z, tx, ty, i),
+          wx,
+          wy,
+          sx: worldToScreenX(wx),
+          sy: worldToScreenY(wy),
+          z,
+          tx,
+          ty,
+          localIndex: i,
+        };
+      }
+
+      function drawPointTile(z, tx, ty, count, remainingBudget) {
+        const sampleCount = Math.min(POINTS_PER_TILE_SAMPLE, count, remainingBudget);
+
+        ctx.fillStyle = "rgba(130, 190, 255, 0.85)";
+
+        for (let i = 0; i < sampleCount; i++) {
+          const p = generatePointInTile(z, tx, ty, i);
+
+          ctx.fillRect(p.sx, p.sy, 1.2, 1.2);
+          renderedPointIndex.push(p);
+        }
+
+        return sampleCount;
+      }
+
+      function updateHover() {
+        let best = null;
+        let bestD2 = HOVER_RADIUS_PX * HOVER_RADIUS_PX;
+
+        for (const p of renderedPointIndex) {
+          const dx = p.sx - mouseX;
+          const dy = p.sy - mouseY;
+          const d2 = dx * dx + dy * dy;
+
+          if (d2 < bestD2) {
+            bestD2 = d2;
+            best = p;
+          }
+        }
+
+        hoveredDot = best;
+      }
+
+      function drawHoveredDot() {
+        if (!hoveredDot) return;
+
+        ctx.beginPath();
+        ctx.arc(hoveredDot.sx, hoveredDot.sy, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(hoveredDot.sx, hoveredDot.sy, 3, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,220,90,1)";
+        ctx.fill();
+      }
+
+      function updateTooltip() {
+        if (!hoveredDot) {
+          tooltip.style.display = "none";
+          return;
+        }
+
+        tooltip.style.display = "block";
+        tooltip.style.left = `${mouseX + 14}px`;
+        tooltip.style.top = `${mouseY + 14}px`;
+
+        tooltip.textContent = `Dot
+ID: ${hoveredDot.id}
+World X: ${hoveredDot.wx.toFixed(8)}
+World Y: ${hoveredDot.wy.toFixed(8)}
+Tile: z${hoveredDot.z}/${hoveredDot.tx}/${hoveredDot.ty}
+Local index: ${hoveredDot.localIndex}`;
+      }
+
+      function render() {
+        renderedPointIndex = [];
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = "#080b12";
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+        const viewMinX = Math.max(0, screenToWorldX(0));
+        const viewMinY = Math.max(0, screenToWorldY(0));
+        const viewMaxX = Math.min(1, screenToWorldX(window.innerWidth));
+        const viewMaxY = Math.min(1, screenToWorldY(window.innerHeight));
+
+        const z = chooseTileZoom();
+        const n = 1 << z;
+
+        const minTx = Math.max(0, Math.floor(viewMinX * n));
+        const maxTx = Math.min(n - 1, Math.floor(viewMaxX * n));
+        const minTy = Math.max(0, Math.floor(viewMinY * n));
+        const maxTy = Math.min(n - 1, Math.floor(viewMaxY * n));
+
+        let visibleTiles = 0;
+        let aggregateTiles = 0;
+        let pointTiles = 0;
+        let renderedDots = 0;
+        let representedDots = 0;
+
+        for (let ty = minTy; ty <= maxTy; ty++) {
+          for (let tx = minTx; tx <= maxTx; tx++) {
+            visibleTiles++;
+
+            const count = tileDotCount(z, tx, ty);
+            representedDots += count;
+
+            const tileScreenSize = scale / n;
+            const pointsPerPixel = count / Math.max(1, tileScreenSize * tileScreenSize);
+
+            const shouldAggregate = pointsPerPixel > 0.25 || renderedDots >= MAX_DOTS_PER_FRAME;
+
+            if (shouldAggregate) {
+              aggregateTiles++;
+              drawAggregateTile(z, tx, ty, count);
+            } else {
+              pointTiles++;
+              renderedDots += drawPointTile(z, tx, ty, count, MAX_DOTS_PER_FRAME - renderedDots);
+            }
+          }
+        }
+
+        updateHover();
+        drawHoveredDot();
+        updateTooltip();
+
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(worldToScreenX(0), worldToScreenY(0), scale, scale);
+
+        hud.textContent = `Virtualized 8B Dot MVP
+Pan: drag   Zoom: wheel
+Hover: rendered dot
+
+Scale: ${scale.toFixed(0)} px/world
+Tile zoom: z${z}
+Visible tiles: ${visibleTiles}
+Aggregate tiles: ${aggregateTiles}
+Point tiles: ${pointTiles}
+Rendered pickable dots: ${renderedDots.toLocaleString()}
+Represented dots in view: ${representedDots.toLocaleString()}
+Global simulated dots: ${WORLD_DOTS.toLocaleString()}
+
+Hovered ID:
+${hoveredDot ? hoveredDot.id : "none"}`;
+      }
+
+      function loop() {
+        if (needsRender) {
+          needsRender = false;
+          render();
+        }
+        requestAnimationFrame(loop);
+      }
+
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      canvas.addEventListener("mousedown", (e) => {
+        dragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+
+      window.addEventListener("mouseup", () => {
+        dragging = false;
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+
+        if (dragging) {
+          const dx = e.clientX - lastX;
+          const dy = e.clientY - lastY;
+
+          offsetX -= dx / scale;
+          offsetY -= dy / scale;
+
+          lastX = e.clientX;
+          lastY = e.clientY;
+
+          clampCamera();
+        }
+
+        requestRender();
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        mouseX = -9999;
+        mouseY = -9999;
+        hoveredDot = null;
+        tooltip.style.display = "none";
+        requestRender();
+      });
+
+      canvas.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+
+          const mx = e.clientX;
+          const my = e.clientY;
+
+          const beforeX = screenToWorldX(mx);
+          const beforeY = screenToWorldY(my);
+
+          const zoomFactor = Math.exp(-e.deltaY * 0.001);
+          scale *= zoomFactor;
+          scale = Math.max(200, Math.min(1 << 28, scale));
+
+          const afterX = screenToWorldX(mx);
+          const afterY = screenToWorldY(my);
+
+          offsetX += beforeX - afterX;
+          offsetY += beforeY - afterY;
+
+          clampCamera();
+          requestRender();
+        },
+        { passive: false }
+      );
+
+      function clampCamera() {
+        const viewW = window.innerWidth / scale;
+        const viewH = window.innerHeight / scale;
+
+        if (viewW >= 1) {
+          offsetX = (1 - viewW) / 2;
+        } else {
+          offsetX = Math.max(0, Math.min(1 - viewW, offsetX));
+        }
+
+        if (viewH >= 1) {
+          offsetY = (1 - viewH) / 2;
+        } else {
+          offsetY = Math.max(0, Math.min(1 - viewH, offsetY));
+        }
+      }
+
+      clampCamera();
+      requestRender();
+      loop();
+    </script>
+  </body>
+</html>
