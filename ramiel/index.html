@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ramiel Morphology</title>
+    <style>
+      body { margin: 0; background: #fff; font-family: sans-serif; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(4, 1fr);
+        gap: 2px;
+        width: 100vw;
+        height: 100vh;
+      }
+      .cell { position: relative; overflow: hidden; }
+      .label {
+        position: absolute;
+        top: 6px;
+        left: 8px;
+        font-size: 11px;
+        color: #1a3a8f;
+        z-index: 2;
+        pointer-events: none;
+        letter-spacing: 0.5px;
+      }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+
+      const RAMIEL_BLUE = 0x1f3fbf;
+
+      const mat = new THREE.MeshBasicMaterial({ color: RAMIEL_BLUE });
+      const blueDouble = new THREE.MeshBasicMaterial({ color: RAMIEL_BLUE, side: THREE.DoubleSide });
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+
+      const forms = [
+        { name: "1. Octahedron", build: makeOctahedron },
+        { name: "2. Hourglass", build: makeHourglass },
+        { name: "3. 3D Cross", build: makeCross },
+        { name: "4. Ring of Spikes", build: makeRing },
+        { name: "5. Cannon", build: makeCannon },
+        { name: "6. Cracked Shell", build: makeCracked },
+        { name: "7. Five-Point Star", build: makeStar },
+        { name: "8. Return", build: makeReturn },
+      ];
+
+      const grid = document.getElementById("grid");
+      const scenes = [];
+
+      forms.forEach((f, i) => {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = f.name;
+        cell.appendChild(label);
+
+        grid.appendChild(cell);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setClearColor(0xffffff, 0);
+        cell.appendChild(renderer.domElement);
+
+        const scene = new THREE.Scene();
+
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+        camera.position.set(0, 0, 6);
+
+        const group = new THREE.Group();
+        scene.add(group);
+
+        f.build(group);
+
+        scenes.push({ cell, renderer, scene, camera, group, index: i });
+      });
+
+      function resize() {
+        scenes.forEach((s) => {
+          const w = s.cell.clientWidth;
+          const h = s.cell.clientHeight;
+          s.renderer.setSize(w, h, false);
+          s.camera.aspect = w / h;
+          s.camera.updateProjectionMatrix();
+        });
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      function addSolid(group, geom, material = mat) {
+        const mesh = new THREE.Mesh(geom, material);
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom), edgeMat);
+        mesh.add(edges);
+        group.add(mesh);
+        return mesh;
+      }
+
+      function makeOctahedron(group) {
+        addSolid(group, new THREE.OctahedronGeometry(1.4, 0));
+      }
+
+      function makeHourglass(group) {
+        const top = addSolid(group, new THREE.ConeGeometry(1.1, 1.6, 4));
+        top.position.y = 0.8;
+
+        const bottom = addSolid(group, new THREE.ConeGeometry(1.1, 1.6, 4));
+        bottom.position.y = -0.8;
+        bottom.rotation.x = Math.PI;
+
+        addSolid(group, new THREE.OctahedronGeometry(0.25, 0));
+      }
+
+      function makeCross(group) {
+        const axes = [
+          [1, 0, 0],
+          [-1, 0, 0],
+          [0, 1, 0],
+          [0, -1, 0],
+          [0, 0, 1],
+          [0, 0, -1],
+        ];
+
+        axes.forEach((a) => {
+          const g = new THREE.OctahedronGeometry(0.5, 0);
+          g.scale(a[0] ? 2.2 : 1, a[1] ? 2.2 : 1, a[2] ? 2.2 : 1);
+          const m = addSolid(group, g);
+          m.position.set(a[0] * 0.65, a[1] * 0.65, a[2] * 0.65);
+        });
+
+        addSolid(group, new THREE.OctahedronGeometry(0.45, 0));
+      }
+
+      function makeRing(group) {
+        const count = 14;
+        const radius = 1.3;
+
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2;
+          const g = new THREE.OctahedronGeometry(0.35, 0);
+          g.scale(0.5, 0.5, 1.6);
+
+          const m = addSolid(group, g);
+          m.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0);
+          m.lookAt(0, 0, 0);
+        }
+
+        addSolid(group, new THREE.OctahedronGeometry(0.4, 0));
+      }
+
+      function makeCannon(group) {
+        for (let i = 0; i < 5; i++) {
+          const t = i / 4;
+          const r = 0.4 + t * 0.9;
+          const g = new THREE.CylinderGeometry(r, r * 0.85, 0.35, 8, 1, true);
+
+          const mesh = addSolid(group, g);
+          mesh.rotation.x = Math.PI / 2;
+          mesh.position.z = -0.6 + i * 0.4;
+        }
+
+        const back = addSolid(group, new THREE.OctahedronGeometry(0.8, 0));
+        back.position.z = -1.3;
+
+        const tip = addSolid(group, new THREE.OctahedronGeometry(0.25, 0));
+        tip.position.z = 1.3;
+      }
+
+      function makeCracked(group) {
+        const baseGeom = new THREE.OctahedronGeometry(1.4, 0);
+        const pos = baseGeom.attributes.position;
+
+        for (let i = 0; i < pos.count; i += 3) {
+          const a = new THREE.Vector3().fromBufferAttribute(pos, i);
+          const b = new THREE.Vector3().fromBufferAttribute(pos, i + 1);
+          const c = new THREE.Vector3().fromBufferAttribute(pos, i + 2);
+
+          const center = new THREE.Vector3().add(a).add(b).add(c).divideScalar(3);
+
+          const shardGeom = new THREE.BufferGeometry();
+          shardGeom.setAttribute(
+            "position",
+            new THREE.BufferAttribute(
+              new Float32Array([
+                a.x - center.x,
+                a.y - center.y,
+                a.z - center.z,
+                b.x - center.x,
+                b.y - center.y,
+                b.z - center.z,
+                c.x - center.x,
+                c.y - center.y,
+                c.z - center.z,
+              ]),
+              3
+            )
+          );
+          shardGeom.computeVertexNormals();
+
+          const shard = new THREE.Mesh(shardGeom, blueDouble);
+          shard.position.copy(center).add(center.clone().normalize().multiplyScalar(0.35));
+
+          const edges = new THREE.LineSegments(new THREE.EdgesGeometry(shardGeom), edgeMat);
+          shard.add(edges);
+
+          group.add(shard);
+        }
+
+        group.add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), new THREE.MeshBasicMaterial({ color: 0xff1a1a })));
+      }
+
+      function makeStar(group) {
+        const shape = new THREE.Shape();
+        const outer = 1.5;
+        const inner = 0.6;
+
+        for (let i = 0; i < 10; i++) {
+          const r = i % 2 === 0 ? outer : inner;
+          const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+          const x = Math.cos(a) * r;
+          const y = Math.sin(a) * r;
+          if (i === 0) shape.moveTo(x, y);
+          else shape.lineTo(x, y);
+        }
+
+        shape.closePath();
+
+        const geom = new THREE.ExtrudeGeometry(shape, {
+          depth: 0.3,
+          bevelEnabled: true,
+          bevelSize: 0.08,
+          bevelThickness: 0.1,
+          bevelSegments: 1,
+        });
+
+        geom.center();
+        addSolid(group, geom);
+      }
+
+      function makeReturn(group) {
+        addSolid(group, new THREE.OctahedronGeometry(1.4, 0));
+
+        const halo = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.OctahedronGeometry(1.75, 0)),
+          new THREE.LineBasicMaterial({ color: RAMIEL_BLUE, transparent: true, opacity: 0.4 })
+        );
+        group.add(halo);
+      }
+
+      const clock = new THREE.Clock();
+
+      function animate() {
+        const t = clock.getElapsedTime();
+
+        scenes.forEach((s, i) => {
+          s.group.rotation.y = t * 0.5 + i;
+          s.group.rotation.x = Math.sin(t * 0.3 + i) * 0.3;
+          s.renderer.render(s.scene, s.camera);
+        });
+
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
