@@ -68,6 +68,7 @@
 - [How To Speak LLM](https://chuanqisun.github.io/how-to-speak-llm/)
 - [HumanGPT](https://chuanqisun.github.io/human-gpt/)
 - [Icosahedron](./icosahedron/)
+- [Idea Garden](https://chuanqisun.github.io/idea-garden/)
 - [Infinicity](./infinicity/)
 - [Infinite Canvas](./infinite-canvas/)
 - [InkForm](https://chuanqisun.github.io/ink-form/107-pipeline.html)
