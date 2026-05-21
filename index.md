@@ -29,6 +29,7 @@
 - [JSON ↔ YAML](./json-to-yaml)
 - [OpenAI Code Interpreter](./openai-code-interpreter/)
 - [Paper](https://chuanqisun.github.io/paper/)
+- [PDF → Markdown](https://cloudflare-markdown-converter.fast.workers.dev/)
 - [Plotter/Emoji](./plotters/emoji.html)
 - [Plotter/TTF](./plotters/ttf.html)
 - [Plotter/Hershey+JSON](./plotters/hershey-json.html)
