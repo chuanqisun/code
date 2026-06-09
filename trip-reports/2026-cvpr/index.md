@@ -6,7 +6,7 @@ Denver | June 2026
 
 - **Vision Language Models (VLMs):** A highly active research area. While there is a lot of work on 2D and 3D image generation, the maturity of technologies (like ChatGPT image and "nano banana") has shifted focus toward text-to-video, generative video, and highly specialized 3D model generation.
 - **Incremental vs. Quantum Leaps:** Most papers are solving highly specific problems and making minor benchmark improvements rather than introducing net-new, ground-breaking ideas.
-- **Cool Highlight:** One notable paper takes a photo of a food plate and uses language models to infer its nutritional value.
+- **Cool Highlight:** One notable paper takes a photo of a food plate and uses language models to infer its nutritional value. Another project took a photo of Gundam and decomposed it into parts!
 
 ## Industry Trends
 
