@@ -61,6 +61,7 @@
 
 - [One of the demo talks I gave](https://youtu.be/gEJOLYvtNb8?si=xATtYiHHq2f-Av6A)
 - [Project setup details](https://www.youtube.com/shorts/iQCbSj86YMA)
+- [Count the autonomous vehicles (with one outlier)](https://www.instagram.com/reels/DZRcAlTt_rJ/)
 
 ## Photo gallery
 
@@ -78,8 +79,6 @@ I ran into Tom White from Media Lab, Aesthetics and Computation Group. Such a sp
 
 I visited the Media Archeology Lab at Colorado University Boulder. Lots of childhood memories captured in those vintage machines!  
 ![Media Archeology Lab](./media-archeology-lab.webp)
-
-Count the autonomous vehicles in this [instagram reel](https://www.instagram.com/reels/DZRcAlTt_rJ/)
 
 Color Beyond Capture: A Two-Ink Printing Process: A researcher named Christopher Swift invented a two-color pinting process that creates the illusion of full color photos. The implication is huge: we can compress and restore photos using only two colors! This research is guided by the human psychology of color perception, not spectral analysis.
 
