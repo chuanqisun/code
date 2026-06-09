@@ -1,12 +1,14 @@
-# **CVPR 2026 — Trip Report**
+# CVPR 2026
 
-### **Research Trends**
+Denver | June 2026
+
+## Research Trends
 
 - **Vision Language Models (VLMs):** A highly active research area. While there is a lot of work on 2D and 3D image generation, the maturity of technologies (like ChatGPT image and "nano banana") has shifted focus toward text-to-video, generative video, and highly specialized 3D model generation.
 - **Incremental vs. Quantum Leaps:** Most papers are solving highly specific problems and making minor benchmark improvements rather than introducing net-new, ground-breaking ideas.
 - **Cool Highlight:** One notable paper takes a photo of a food plate and uses language models to infer its nutritional value.
 
-### **Industry Trends**
+## Industry Trends
 
 - **Robotics & Automation:** Massive presence of robotics companies using machine learning and computer vision to automate cars, trucks, drones, robots, and mini food-delivery robots.
 - **Big Tech Focus:**
@@ -17,21 +19,21 @@
 
 ---
 
-### **Art Gallery**
+## Art Gallery
 
-#### **Quick Stats & Context**
+### **Quick Stats & Context**
 
 - **Curator:** Luba Elliott (curating since CVPR introduced the art gallery in 2024).
 - **Acceptance:** ~140+ accepted submissions, with **24 in-gallery installations**.
 - **Major Trend:** A clear shift away from 2D printed/pixel art. The gallery heavily rewards interactivity, webcam-based real-time tracking, and projects that bring abstract AI concepts into the physical space.
 
-#### **The 3 Award Winners (Selected from the 24 In-Gallery Exhibits)**
+### **The 3 Award Winners (Selected from the 24 In-Gallery Exhibits)**
 
 1. **Dream Brush:** Won the **Art Award for Best Presentation**.
 2. **[Rest!](https://thecvf-art.com/project.php?year=2026&artist=peekaboo-by-avital-meshi&id=936) (by Avital Meshi & Dorte Bjerre Jensen):** Won **Most Critical Art Piece**. A performance art installation where the artist sleeps on a mattress throughout the entire conference, receiving AI's instructions on how to sleep and what to think. It critically plays on the idea that as AI agents take over our labor, humans can finally take a rest.
 3. **[artefact(s): LeNet-1](https://thecvf-art.com/project.php?year=2026&artist=nick-oh&id=992) (by Nick Oh & Alex Park):** Physicalizes a convolutional neural network (CNN) in physical space using light, glass, silicon, LEDs, and resin panels. It acts as an intentional preservation of digital architecture, countering the way software typically disappears.
 
-#### **Key Exhibit Highlights**
+### **Key Exhibit Highlights**
 
 - **[Techno-juggling](https://thecvf-art.com/project.php?year=2026&artist=nicolas-romano&id=993) (by Nicolas Romano):**
   - **The Setup:** A tangible juggling system where users manipulate physical tennis balls on a tabletop, triggering colorful visual effects on an underlying screen.
@@ -57,13 +59,15 @@
 - **The Curator’s Taste:** The curator leans strongly toward easy-to-understand, tactile, and highly interactive physical projects rather than deep, abstract, or purely philosophical inquiries.
 - **Designing for the Physical Space:** Physical presence and interactivity drive the most audience engagement. As the art world becomes increasingly saturated with virtual, pixel-based, and generated 2D images, TMG should focus on establishing and maintaining a strong tangible presence.
 
-## Videos
+## Fun stuff
+
+### Videos
 
 - [One of the demo talks I gave](https://youtu.be/gEJOLYvtNb8?si=xATtYiHHq2f-Av6A)
 - [Project setup details](https://www.youtube.com/shorts/iQCbSj86YMA)
 - [Count the autonomous vehicles (with one outlier)](https://www.instagram.com/reels/DZRcAlTt_rJ/)
 
-## Photo gallery
+### Photo gallery
 
 I gave five demo talks, usually attracting a crowd.  
 ![Demo in progress](./demo-crowd.webp)
