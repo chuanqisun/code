@@ -16,6 +16,7 @@ Denver | June 2026
   - **NVIDIA:** Showing off hardware and their machine learning ecosystem.
   - **Google:** Present, though their exact focus wasn't entirely clear.
   - **Tencent & Alibaba:** Promoting their own proprietary AI models.
+- All the best paper awards went into industry. Academic seems neglected. Hypothesis being the lack of compute resources for impactful research in academia.
 
 ## Art Gallery
 
