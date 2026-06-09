@@ -17,23 +17,21 @@ Denver | June 2026
   - **Google:** Present, though their exact focus wasn't entirely clear.
   - **Tencent & Alibaba:** Promoting their own proprietary AI models.
 
----
-
 ## Art Gallery
 
-### **Quick Stats & Context**
+### Quick Stats & Context
 
 - **Curator:** Luba Elliott (curating since CVPR introduced the art gallery in 2024).
 - **Acceptance:** ~140+ accepted submissions, with **24 in-gallery installations**.
 - **Major Trend:** A clear shift away from 2D printed/pixel art. The gallery heavily rewards interactivity, webcam-based real-time tracking, and projects that bring abstract AI concepts into the physical space.
 
-### **The 3 Award Winners (Selected from the 24 In-Gallery Exhibits)**
+### Award Winners (Selected from the 24 In-Gallery Exhibits and 140 Accepted Artworks)
 
 1. **Dream Brush:** Won the **Art Award for Best Presentation**.
 2. **[Rest!](https://thecvf-art.com/project.php?year=2026&artist=peekaboo-by-avital-meshi&id=936) (by Avital Meshi & Dorte Bjerre Jensen):** Won **Most Critical Art Piece**. A performance art installation where the artist sleeps on a mattress throughout the entire conference, receiving AI's instructions on how to sleep and what to think. It critically plays on the idea that as AI agents take over our labor, humans can finally take a rest.
 3. **[artefact(s): LeNet-1](https://thecvf-art.com/project.php?year=2026&artist=nick-oh&id=992) (by Nick Oh & Alex Park):** Physicalizes a convolutional neural network (CNN) in physical space using light, glass, silicon, LEDs, and resin panels. It acts as an intentional preservation of digital architecture, countering the way software typically disappears.
 
-### **Key Exhibit Highlights**
+### Key Exhibit Highlights
 
 - **[Techno-juggling](https://thecvf-art.com/project.php?year=2026&artist=nicolas-romano&id=993) (by Nicolas Romano):**
   - **The Setup:** A tangible juggling system where users manipulate physical tennis balls on a tabletop, triggering colorful visual effects on an underlying screen.
@@ -54,7 +52,7 @@ Denver | June 2026
 
 ---
 
-### **Key Takeaways for TMG**
+### Key Takeaways for TMG
 
 - **The Curator’s Taste:** The curator leans strongly toward easy-to-understand, tactile, and highly interactive physical projects rather than deep, abstract, or purely philosophical inquiries.
 - **Designing for the Physical Space:** Physical presence and interactivity drive the most audience engagement. As the art world becomes increasingly saturated with virtual, pixel-based, and generated 2D images, TMG should focus on establishing and maintaining a strong tangible presence.
