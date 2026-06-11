@@ -59,6 +59,7 @@
 - [Dot grid field](./dot-grid-field/)
 - [Drag to select](./drag-to-select/)
 - [Electric sheep](./electric-sheep/)
+- [Fable Knot](./fable-knot/)
 - [Face that is none](https://code.chuanqisun.com/recreating-the-past/salavon/demo.html)
 - [Generational Parallax](./generational-parallax/)
 - [Grid Draw](https://chuanqisun.github.io/grid-draw/)
