@@ -1,0 +1,269 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Fable Knot</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #fff;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #hint {
+        position: fixed;
+        left: 8px;
+        top: 8px;
+        color: #000;
+        font: 12px monospace;
+        opacity: 0.55;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hint">fable knot</div>
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.180.0/build/three.module.js";
+      import { OrbitControls } from "https://esm.sh/three@0.180.0/examples/jsm/controls/OrbitControls.js";
+
+      /* ----------------------------------------------------------------------
+   A continuously morphing closed-loop hyperknot. The curve lives on a
+   wavy torus but now carries a deep stack of drifting harmonics — both
+   radial and vertical — plus a slowly breathing winding modulation,
+   pushing it into alien, deeply self-entangled territory while always
+   staying a smooth closed loop (integer base frequencies, float drift).
+
+   Pen-and-ink stipple aesthetics, equal-weight strokes, perspective cam.
+---------------------------------------------------------------------- */
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const FOV = 60;
+      const camera = new THREE.PerspectiveCamera(FOV, innerWidth / innerHeight, 0.1, 100);
+      camera.position.set(13, 11, 13);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 0.5, 0);
+
+      const GROUND_Y = -4.8;
+      const FLOAT_Y = 1.0;
+      const STROKE_PX = 1.0;
+
+      function getThicknessFactor() {
+        const fovRad = (FOV * Math.PI) / 180;
+        const h = window.innerHeight * Math.min(devicePixelRatio, 2);
+        return (2.0 * Math.tan(fovRad / 2.0)) / h;
+      }
+
+      /* ---------- materials (same ink style) ---------- */
+      const stippleMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uLight: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
+          uW: { value: STROKE_PX },
+        },
+        vertexShader: `
+    varying vec3 vN;
+    void main(){
+      vN = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+        fragmentShader: `
+    varying vec3 vN;
+    uniform vec3 uLight;
+    uniform float uW;
+    void main(){
+      vec3 n = normalize(vN);
+      float l = clamp(dot(n, uLight)*0.5 + 0.5, 0.0, 1.0);
+      float dark = 1.0 - l;
+      vec2 p = mat2(0.7071, -0.7071, 0.7071, 0.7071) * gl_FragCoord.xy;
+      float cell = uW * 4.0;
+      vec2 g = mod(p, cell) - cell*0.5;
+      float t = smoothstep(0.10, 1.3, dark);
+      float r = t * cell * 0.78;
+      vec2 id = floor(p / cell);
+      float j = fract(sin(dot(id, vec2(127.1, 311.7))) * 43758.5453);
+      g += (vec2(j, fract(j*7.31)) - 0.5) * uW * 0.8;
+      float ink = 1.0 - step(r, length(g));
+      gl_FragColor = vec4(vec3(1.0 - ink), 1.0);
+    }`,
+      });
+
+      const hullMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        uniforms: {
+          uW: { value: STROKE_PX },
+          uThicknessFactor: { value: getThicknessFactor() },
+        },
+        vertexShader: `
+    uniform float uW;
+    uniform float uThicknessFactor;
+    void main(){
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vec3 vn = normalize(normalMatrix * normal);
+      mv.xyz += vn * (-mv.z * uThicknessFactor * uW);
+      gl_Position = projectionMatrix * mv;
+    }`,
+        fragmentShader: `void main(){ gl_FragColor = vec4(0.0,0.0,0.0,1.0); }`,
+      });
+
+      /* =========================== morphing hyperknot =========================== */
+      /* Closed curve:
+     θ(t)  = 2π t * P + S·sin(W·2πt + φ)        (winding wobble: still closed,
+                                                  since the wobble term is 2π-periodic)
+     r(t)  = R + Σ_k A_k(time) cos(k·2πt + φ_k)   — k up to 13
+     y(t)  = Σ_k B_k(time) sin(k·2πt + ψ_k)       — k up to 11
+   Amplitude envelopes swell and fade with incommensurate slow frequencies,
+   so complexity itself ebbs between "knot" and "impossible tangle".        */
+
+      class MorphCurve extends THREE.Curve {
+        constructor() {
+          super();
+          this.time = 0;
+        }
+        getPoint(t, target = new THREE.Vector3()) {
+          const T = this.time * 5;
+          const u = t * Math.PI * 2;
+
+          // higher base winding + periodic winding wobble => self-overcrossing orbits
+          const P = 3;
+          const wobble = (0.6 + 0.5 * Math.sin(T * 0.09)) * Math.sin(4 * u + T * 0.16);
+          const theta = u * P + wobble + 0.35 * Math.sin(T * 0.21);
+
+          // ---- radial harmonic stack (k = 3,5,7,9,11,13) ----
+          const A3 = 0.9 + 0.6 * Math.sin(T * 0.31);
+          const A5 = 0.7 + 0.55 * Math.sin(T * 0.17 + 1.7);
+          const A7 = 0.55 + 0.5 * Math.sin(T * 0.41 + 4.0);
+          const A9 = 0.45 + 0.45 * Math.sin(T * 0.137 + 2.2);
+          const A11 = 0.35 + 0.35 * Math.sin(T * 0.083 + 5.5);
+          const A13 = 0.3 * Math.sin(T * 0.057 + 0.8);
+          const p3 = T * 0.23,
+            p5 = -T * 0.13,
+            p7 = T * 0.07,
+            p9 = -T * 0.19,
+            p11 = T * 0.11,
+            p13 = -T * 0.05;
+
+          // ---- vertical harmonic stack (k = 2,3,5,7,9,11) ----
+          const B2 = 0.5 * Math.sin(T * 0.11 + 5.1);
+          const B3 = 1.1 + 0.6 * Math.sin(T * 0.27 + 0.9);
+          const B5 = 0.85 + 0.6 * Math.sin(T * 0.19 + 2.6);
+          const B7 = 0.6 + 0.55 * Math.sin(T * 0.149 + 3.8);
+          const B9 = 0.45 + 0.4 * Math.sin(T * 0.101 + 1.3);
+          const B11 = 0.35 * Math.sin(T * 0.067 + 4.4);
+          const q2 = T * 0.05,
+            q3 = -T * 0.17,
+            q5 = T * 0.29,
+            q7 = -T * 0.103,
+            q9 = T * 0.073,
+            q11 = -T * 0.043;
+
+          const r =
+            3.0 +
+            A3 * Math.cos(3 * u + p3) +
+            A5 * Math.cos(5 * u + p5) +
+            A7 * Math.cos(7 * u + p7) +
+            A9 * Math.cos(9 * u + p9) +
+            A11 * Math.cos(11 * u + p11) +
+            A13 * Math.cos(13 * u + p13);
+
+          const y =
+            B2 * Math.sin(2 * u + q2) +
+            B3 * Math.sin(3 * u + q3) +
+            B5 * Math.sin(5 * u + q5) +
+            B7 * Math.sin(7 * u + q7) +
+            B9 * Math.sin(9 * u + q9) +
+            B11 * Math.sin(11 * u + q11);
+
+          return target.set(r * Math.cos(theta), y, r * Math.sin(theta));
+        }
+      }
+
+      const curve = new MorphCurve();
+      // thinner tube + far more segments so high-frequency tangles stay smooth
+      const TUBE_R = 0.42,
+        TUBE_SEG = 900,
+        RAD_SEG = 12;
+
+      const subject = new THREE.Group();
+      subject.position.y = FLOAT_Y;
+      scene.add(subject);
+
+      let geo = new THREE.TubeGeometry(curve, TUBE_SEG, TUBE_R, RAD_SEG, true);
+      const meshFill = new THREE.Mesh(geo, stippleMat);
+      const meshHull = new THREE.Mesh(geo, hullMat);
+      subject.add(meshFill, meshHull);
+
+      function rebuild(time) {
+        curve.time = time;
+        const next = new THREE.TubeGeometry(curve, TUBE_SEG, TUBE_R, RAD_SEG, true);
+        meshFill.geometry.dispose();
+        meshFill.geometry = next;
+        meshHull.geometry = next;
+      }
+
+      /* ---------- ground shadow ---------- */
+      const shadowMat = new THREE.ShaderMaterial({
+        transparent: true,
+        uniforms: { uW: { value: STROKE_PX }, uT: { value: 0 } },
+        vertexShader: `
+    varying vec2 vUv;
+    void main(){
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+        fragmentShader: `
+    uniform float uW;
+    uniform float uT;
+    varying vec2 vUv;
+    void main(){
+      float d = length(vUv - 0.5);
+      float rr = 0.30 + 0.05 * sin(uT * 0.31);
+      float ring = 1.0 - smoothstep(0.0, 0.24, abs(d - rr));
+      float fall = ring * 0.85 + (1.0 - smoothstep(0.0, 0.3, d)) * 0.25;
+      vec2 p = mat2(0.7071, -0.7071, 0.7071, 0.7071) * gl_FragCoord.xy;
+      float cell = uW * 4.0;
+      vec2 g = mod(p, cell) - cell*0.5;
+      float r = fall * cell * 0.42;
+      float ink = 1.0 - step(r, length(g));
+      gl_FragColor = vec4(0.0, 0.0, 0.0, ink);
+    }`,
+      });
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(7.2, 48), shadowMat);
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = GROUND_Y;
+      scene.add(disc);
+
+      /* =========================== loop & events =========================== */
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        hullMat.uniforms.uThicknessFactor.value = getThicknessFactor();
+      });
+
+      const clock = new THREE.Clock();
+      (function loop() {
+        requestAnimationFrame(loop);
+        const t = clock.getElapsedTime();
+
+        rebuild(t);
+        subject.rotation.y += 0.008;
+        shadowMat.uniforms.uT.value = t;
+
+        controls.update();
+        renderer.render(scene, camera);
+      })();
+    </script>
+  </body>
+</html>
