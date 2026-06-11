@@ -40,6 +40,7 @@
 
 ## Experiments
 
+- [3D Text Editor](./3d-text-editor/)
 - [Ancient Robots](./ancient-robots/)
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
