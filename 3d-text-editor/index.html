@@ -73,9 +73,6 @@
         const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-H, -H, -H), new THREE.Vector3(-H, -H, -H).add(dir.multiplyScalar(6))]);
         scene.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color })));
       }
-      axisLine(new THREE.Vector3(1, 0, 0), 0xcc3355);
-      axisLine(new THREE.Vector3(0, 1, 0), 0x33cc77);
-      axisLine(new THREE.Vector3(0, 0, 1), 0x3377ff);
 
       // ---- state ----
       let axis = 2;
