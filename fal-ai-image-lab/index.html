@@ -556,6 +556,8 @@
         { value: "landscape_16_9", label: "Landscape 16:9" },
       ];
 
+      const gptImage2EditSizeChoices = [{ value: "auto", label: "auto" }, ...fluxSizeChoices];
+
       const MODELS = [
         new FalModelProvider({
           id: "fal-ai/gpt-image-2",
@@ -578,6 +580,49 @@
           ],
           buildInput({ prompt, options }) {
             return { prompt, image_size: options.image_size };
+          },
+        }),
+
+        new FalModelProvider({
+          id: "openai/gpt-image-2/edit",
+          label: "gpt-image-2/edit",
+          endpoint: "openai/gpt-image-2/edit",
+          capabilities: { imageToImage: true },
+          options: [
+            { key: "image_size", label: "Image size", type: "select", default: "auto", choices: gptImage2EditSizeChoices },
+            {
+              key: "quality",
+              label: "Quality",
+              type: "select",
+              default: "high",
+              choices: [
+                { value: "low", label: "low" },
+                { value: "medium", label: "medium" },
+                { value: "high", label: "high" },
+              ],
+            },
+            { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 4 },
+            {
+              key: "output_format",
+              label: "Format",
+              type: "select",
+              default: "png",
+              choices: [
+                { value: "png", label: "png" },
+                { value: "jpeg", label: "jpeg" },
+                { value: "webp", label: "webp" },
+              ],
+            },
+          ],
+          buildInput({ prompt, imageDataUrls, options }) {
+            return {
+              prompt,
+              image_urls: imageDataUrls,
+              image_size: options.image_size || "auto",
+              quality: options.quality || "high",
+              num_images: options.num_images || 1,
+              output_format: options.output_format || "png",
+            };
           },
         }),
 
