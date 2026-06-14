@@ -11,6 +11,7 @@
 - [Emoji → Pixel Art](./emoji-to-pixel-art/)
 - [ESPP cost basis calculator](./espp-cost-basis-calculator/)
 - [Euler to Quaternion](./euler-to-quaternion/)
+- [fal.ai Image Lab](./fal-ai-image-lab/)
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [Gemini Image Lab](./gemini-image-lab/)
 - [Gemini Video Lab](./gemini-video-lab/)
