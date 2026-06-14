@@ -256,11 +256,28 @@
         margin-bottom: 8px;
       }
 
-      .output-item-text {
+      .output-status {
+        color: var(--color-text-secondary);
+        font-size: 14px;
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
+      .output-prompt {
+        color: var(--color-text-primary);
+        font-size: 14px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        margin-bottom: 8px;
+      }
+
+      .output-result-text {
         color: var(--color-text-secondary);
         font-size: 14px;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
+        margin-bottom: 8px;
       }
 
       .output-meta {
@@ -556,7 +573,7 @@
         { value: "landscape_16_9", label: "Landscape 16:9" },
       ];
 
-      const gptImage2EditSizeChoices = [{ value: "auto", label: "auto" }, ...fluxSizeChoices];
+      const gptImage2SizeChoices = [{ value: "auto", label: "auto" }, ...fluxSizeChoices];
 
       const MODELS = [
         new FalModelProvider({
@@ -564,22 +581,11 @@
           label: "gpt-image-2",
           endpoint: "fal-ai/gpt-image-2",
           capabilities: { imageToImage: false },
-          options: [
-            {
-              key: "image_size",
-              label: "Image size",
-              type: "select",
-              default: "auto",
-              choices: [
-                { value: "auto", label: "auto" },
-                { value: "1024x1024", label: "1024x1024" },
-                { value: "1536x1024", label: "1536x1024" },
-                { value: "1024x1536", label: "1024x1536" },
-              ],
-            },
-          ],
+          options: [{ key: "image_size", label: "Image size", type: "select", default: "auto", choices: gptImage2SizeChoices }],
           buildInput({ prompt, options }) {
-            return { prompt, image_size: options.image_size };
+            const validSizes = new Set(gptImage2SizeChoices.map((choice) => choice.value));
+            const imageSize = validSizes.has(options.image_size) ? options.image_size : "auto";
+            return { prompt, image_size: imageSize };
           },
         }),
 
@@ -589,7 +595,7 @@
           endpoint: "openai/gpt-image-2/edit",
           capabilities: { imageToImage: true },
           options: [
-            { key: "image_size", label: "Image size", type: "select", default: "auto", choices: gptImage2EditSizeChoices },
+            { key: "image_size", label: "Image size", type: "select", default: "auto", choices: gptImage2SizeChoices },
             {
               key: "quality",
               label: "Quality",
@@ -726,7 +732,6 @@
       class FalImageLab {
         static DB_NAME = "fal-image-lab-reference-ui";
         static STORE_NAME = "keyval";
-        static PLACEHOLDER_IMAGE = "https://placehold.co/800";
 
         constructor() {
           this.messages = [];
@@ -735,6 +740,7 @@
           this.nextOutputId = 1;
           this.selectedModelId = MODELS[0].id;
           this.optionState = {};
+          this.elapsedTimer = null;
 
           this.store = createStore(FalImageLab.DB_NAME, FalImageLab.STORE_NAME);
 
@@ -787,6 +793,14 @@
           this.elements.modelSelect.value = this.selectedModelId;
 
           this.optionState = (await get("optionState", this.store)) || {};
+
+          if (
+            this.optionState["fal-ai/gpt-image-2"]?.image_size &&
+            !gptImage2SizeChoices.some((c) => c.value === this.optionState["fal-ai/gpt-image-2"].image_size)
+          ) {
+            this.optionState["fal-ai/gpt-image-2"].image_size = "auto";
+            await set("optionState", this.optionState, this.store);
+          }
 
           const messages = await get("messages", this.store);
           if (Array.isArray(messages)) {
@@ -989,32 +1003,79 @@
           await set("messages", this.messages, this.store);
         }
 
+        buildOutputRequest({ modelId, parameters }) {
+          const { prompt, imageDataUrls } = this.model.buildMessagesInput(this.messages);
+          const input = {
+            ...this.model.buildInput({ prompt, imageDataUrls, options: parameters }),
+            sync_mode: true,
+          };
+
+          return {
+            modelId,
+            endpoint: this.model.endpoint,
+            input,
+          };
+        }
+
         addOutput({ modelId, parameters }) {
           const id = String(this.nextOutputId++);
+          const request = this.buildOutputRequest({ modelId, parameters });
+          const prompt = request.input.prompt || "";
+
           this.outputs.unshift({
             id,
-            images: [FalImageLab.PLACEHOLDER_IMAGE],
-            text: "Generating...",
+            images: [],
+            prompt,
+            resultText: "",
             loading: true,
             error: false,
             raw: null,
-            input: null,
+            input: request.input,
+            request,
             modelId,
             parameters,
             startedAt: Date.now(),
             completedAt: null,
             elapsedMs: null,
           });
+
           this.renderOutputs();
+          this.startElapsedTimer();
           return id;
         }
 
-        updateOutput(id, { images, text, raw, input, loading = false, error = false, completedAt = Date.now() }) {
+        updateRunningOutputs() {
+          const now = Date.now();
+
+          for (const output of this.outputs) {
+            if (!output.loading || !output.startedAt) continue;
+            output.elapsedMs = now - output.startedAt;
+            const status = document.querySelector(`[data-output-id="${output.id}"] .output-status`);
+            const prompt = document.querySelector(`[data-output-id="${output.id}"] .output-prompt`);
+            if (status) status.textContent = `Elapsed: ${FalImageLab.formatElapsed(output.elapsedMs, output.startedAt, output.completedAt)}`;
+            if (prompt) prompt.textContent = output.prompt || "(no text prompt)";
+          }
+
+          if (!this.outputs.some((o) => o.loading)) this.stopElapsedTimer();
+        }
+
+        startElapsedTimer() {
+          if (this.elapsedTimer) return;
+          this.elapsedTimer = setInterval(() => this.updateRunningOutputs(), 100);
+        }
+
+        stopElapsedTimer() {
+          if (!this.elapsedTimer) return;
+          clearInterval(this.elapsedTimer);
+          this.elapsedTimer = null;
+        }
+
+        updateOutput(id, { images, resultText, raw, input, loading = false, error = false, completedAt = Date.now() }) {
           const output = this.outputs.find((o) => o.id === id);
           if (!output) return;
 
-          output.images = images?.length ? images : output.images;
-          output.text = text;
+          output.images = images?.length ? images : [];
+          output.resultText = resultText || "";
           output.raw = raw ?? output.raw;
           output.input = input ?? output.input;
           output.loading = loading;
@@ -1023,18 +1084,21 @@
           output.elapsedMs = output.startedAt ? completedAt - output.startedAt : null;
 
           this.renderOutputs();
+          if (!this.outputs.some((o) => o.loading)) this.stopElapsedTimer();
           this.saveOutputs();
         }
 
         deleteOutput(id) {
           this.outputs = this.outputs.filter((o) => o.id !== id);
           this.renderOutputs();
+          if (!this.outputs.some((o) => o.loading)) this.stopElapsedTimer();
           this.saveOutputs();
         }
 
         deleteAllOutputs() {
           this.outputs = [];
           this.renderOutputs();
+          this.stopElapsedTimer();
           this.saveOutputs();
         }
 
@@ -1054,9 +1118,22 @@
         createOutputElement(output) {
           const item = document.createElement("div");
           item.className = "output-item";
+          item.dataset.outputId = output.id;
 
           const content = document.createElement("div");
           content.className = "output-item-content";
+
+          const status = document.createElement("div");
+          status.className = "output-status";
+          status.title = "output-status";
+          status.textContent = `${output.loading ? "Elapsed" : output.error ? "Failed after" : "Completed in"}: ${FalImageLab.formatElapsed(output.elapsedMs, output.startedAt, output.completedAt)}`;
+          content.appendChild(status);
+
+          const prompt = document.createElement("div");
+          prompt.className = "output-prompt";
+          prompt.title = "output-prompt";
+          prompt.textContent = `${output.loading ? "" : `[${FalImageLab.formatElapsed(output.elapsedMs, output.startedAt, output.completedAt)}] `}${output.prompt || "(no text prompt)"}`;
+          content.appendChild(prompt);
 
           for (const imageUrl of output.images || []) {
             const image = document.createElement("img");
@@ -1067,31 +1144,33 @@
             content.appendChild(image);
           }
 
-          const text = document.createElement("div");
-          text.className = "output-item-text";
-          text.title = "output-text";
-          text.textContent = output.text || "";
-          content.appendChild(text);
-
-          const meta = document.createElement("div");
-          meta.className = "output-meta";
-          meta.title = "output-metadata";
-          meta.textContent = [
-            `model: ${output.modelId || "unknown"}`,
-            `elapsed: ${FalImageLab.formatElapsed(output.elapsedMs, output.startedAt, output.completedAt)}`,
-            `parameters: ${JSON.stringify(output.parameters || {}, null, 2)}`,
-          ].join("\n");
-          content.appendChild(meta);
-
-          if (output.error && (output.raw || output.input)) {
-            const details = document.createElement("details");
-            const summary = document.createElement("summary");
-            summary.textContent = "Error details";
-            const pre = document.createElement("pre");
-            pre.textContent = JSON.stringify({ input: output.input, data: output.raw }, null, 2);
-            details.append(summary, pre);
-            content.appendChild(details);
+          if (output.resultText) {
+            const resultText = document.createElement("div");
+            resultText.className = "output-result-text";
+            resultText.title = "output-result-text";
+            resultText.textContent = output.resultText;
+            content.appendChild(resultText);
           }
+
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          summary.textContent = "Request details";
+          const pre = document.createElement("pre");
+          const inputDetails = { ...(output.input || output.request?.input || {}) };
+          delete inputDetails.image_urls;
+          pre.textContent = JSON.stringify(
+            {
+              modelId: output.modelId || "unknown",
+              endpoint: output.request?.endpoint || MODELS.find((m) => m.id === output.modelId)?.endpoint || output.modelId || "unknown",
+              input: inputDetails,
+              parameters: output.parameters || {},
+              ...(output.error ? { error: output.raw } : {}),
+            },
+            null,
+            2,
+          );
+          details.append(summary, pre);
+          content.appendChild(details);
 
           item.appendChild(content);
 
@@ -1144,18 +1223,18 @@
             });
 
             this.updateOutput(outputId, {
-              images: result.images.length ? result.images : [FalImageLab.PLACEHOLDER_IMAGE],
-              text: result.images.length ? result.text || "Image successfully generated." : "Generation complete, but no image was returned.",
+              images: result.images,
+              resultText: result.images.length ? result.text || "" : "Generation complete, but no image was returned.",
               raw: result.raw,
               input: result.input,
               error: false,
             });
           } catch (error) {
             this.updateOutput(outputId, {
-              images: [FalImageLab.PLACEHOLDER_IMAGE],
-              text: `Error: ${error.message || String(error)}`,
+              images: [],
+              resultText: `Error: ${error.message || String(error)}`,
               raw: error.raw || { message: error.message || String(error) },
-              input: {
+              input: this.outputs.find((o) => o.id === outputId)?.input || {
                 modelId: this.model.id,
                 parameters,
               },
@@ -1165,10 +1244,10 @@
         }
 
         static formatElapsed(elapsedMs, startedAt, completedAt) {
-          if (elapsedMs == null && startedAt && !completedAt) return "running";
+          if (elapsedMs == null && startedAt && !completedAt) elapsedMs = Date.now() - startedAt;
           if (elapsedMs == null) return "unknown";
           if (elapsedMs < 1000) return `${elapsedMs}ms`;
-          return `${(elapsedMs / 1000).toFixed(2)}s`;
+          return `${(elapsedMs / 1000).toFixed(1)}s`;
         }
 
         static fileToDataUrl(file) {
