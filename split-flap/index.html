@@ -2,6 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
     <style>
       html,
       body {
@@ -11,10 +12,17 @@
         background: #1a1a1a;
         font-family: monospace;
         user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
       }
+
       canvas {
         display: block;
         outline: none;
+        touch-action: none;
       }
     </style>
   </head>
@@ -324,31 +332,89 @@
       window.addEventListener("resize", resize);
       resize();
 
-      /* ---------- Hover Effect (Cursor Styling) ---------- */
+      /* ---------- Touch / Mouse Unified Pointer Raycasting ---------- */
       const raycaster = new THREE.Raycaster();
       const pointer = new THREE.Vector2();
 
-      window.addEventListener("pointermove", (e) => {
-        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      let isPointerDown = false;
+      let currentHeldFlap = null;
+      let holdIntervalId = null;
 
-        raycaster.setFromCamera(pointer, camera);
-        const hits = raycaster.intersectObjects(raycastTargets, false);
-        document.body.style.cursor = hits.length ? "pointer" : "default";
-      });
-
-      /* ---------- Single Click Top-Level Tap Handling ---------- */
-      window.addEventListener("click", (e) => {
-        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      function getIntersectedFlap(clientX, clientY) {
+        pointer.x = (clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(clientY / window.innerHeight) * 2 + 1;
 
         raycaster.setFromCamera(pointer, camera);
         const hits = raycaster.intersectObjects(raycastTargets, false);
         if (hits.length) {
-          const flap = hits[0].object.userData.flap;
-          if (flap) flap.advance();
+          return hits[0].object.userData.flap;
+        }
+        return null;
+      }
+
+      function startHolding(flap) {
+        if (currentHeldFlap === flap) return;
+        stopHolding();
+
+        currentHeldFlap = flap;
+        if (flap) {
+          flap.advance();
+          // Setup continuous advance speed proportional to transition flip rates
+          const holdDelay = Math.max(120, (1000 / SPEED) * 1.15);
+          holdIntervalId = setInterval(() => {
+            if (currentHeldFlap) {
+              currentHeldFlap.advance();
+            }
+          }, holdDelay);
+        }
+      }
+
+      function stopHolding() {
+        if (holdIntervalId) {
+          clearInterval(holdIntervalId);
+          holdIntervalId = null;
+        }
+        currentHeldFlap = null;
+      }
+
+      /* Event Listeners handling Drag, Swipe, Press-Hold seamlessly across Touch + Desktop Mouse */
+      window.addEventListener("pointerdown", (e) => {
+        // Only respond to main trigger button actions
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+
+        isPointerDown = true;
+        const flap = getIntersectedFlap(e.clientX, e.clientY);
+        if (flap) {
+          startHolding(flap);
         }
       });
+
+      window.addEventListener("pointermove", (e) => {
+        const flap = getIntersectedFlap(e.clientX, e.clientY);
+        document.body.style.cursor = flap ? "pointer" : "default";
+
+        if (isPointerDown) {
+          if (flap) {
+            // Swiping/Dragging triggers immediate holding shift onto newly intersected flap
+            startHolding(flap);
+          } else {
+            stopHolding();
+          }
+        }
+      });
+
+      window.addEventListener("pointerup", () => {
+        isPointerDown = false;
+        stopHolding();
+      });
+
+      window.addEventListener("pointercancel", () => {
+        isPointerDown = false;
+        stopHolding();
+      });
+
+      // Explicitly prevent mobile native holds from pulling up context option lists
+      window.addEventListener("contextmenu", (e) => e.preventDefault());
 
       /* ---------- Main Render and Physics Cycle ---------- */
       function animate() {
