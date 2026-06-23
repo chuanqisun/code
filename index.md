@@ -97,6 +97,7 @@
 - [Shape display](./shape-display/)
 - [Shared Space](./shared-space/)
 - [Spaceship](./spaceship/)
+- [Split-flap](./split-flap/)
 - [System Card](./sys-card/)
 - [Text Rain](./text-rain/)
 - [Total Human Pixels](./total-human-pixels/)
