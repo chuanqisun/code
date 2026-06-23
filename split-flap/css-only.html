@@ -1,0 +1,226 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        background: #333;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+        padding: 40px;
+        font-family: monospace;
+        color: #fff;
+      }
+      #board {
+        display: grid;
+        grid-template-columns: repeat(4, auto);
+        gap: 10px;
+        background: #222;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+        cursor: pointer;
+        user-select: none;
+      }
+      .info {
+        font-size: 16px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="info">Click any flap to advance its character</div>
+    <div id="board"></div>
+
+    <script>
+      class SplitFlap extends HTMLElement {
+        static CHARS = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+        static get observedAttributes() {
+          return ["value", "size", "speed"];
+        }
+
+        constructor() {
+          super();
+          this.current = " ";
+          this.busy = false;
+          this.queueTarget = null;
+          this.size = 70; // Default width in px
+          this.speed = 4; // Default letters per second
+          const root = this.attachShadow({ mode: "open" });
+          root.innerHTML = `
+      <style>
+        :host { display: inline-block; }
+        .flap {
+          position: relative;
+          width: var(--w, 70px);
+          height: var(--h, 100px);
+          perspective: 300px;
+        }
+        .half {
+          position: absolute;
+          left: 0;
+          width: 100%;
+          height: var(--hh, 50px);
+          background: #fff;
+          color: #000;
+          overflow: hidden;
+          font-size: var(--fs, 80px);
+          font-weight: bold;
+          text-align: center;
+          box-sizing: border-box;
+          user-select: none;
+        }
+        .top { top: 0; border-bottom: 1px solid #ccc; border-radius: 5px 5px 0 0; }
+        .bottom { bottom: 0; border-radius: 0 0 5px 5px; }
+        .half span { display: block; line-height: var(--h, 100px); }
+        .bottom span { transform: translateY(calc(-1 * var(--hh, 50px))); }
+        .flip { transform-style: preserve-3d; backface-visibility: hidden; }
+        .flip-top { top: 0; transform-origin: bottom; z-index: 2; }
+        .flip-bottom { bottom: 0; transform-origin: top; z-index: 2; transform: rotateX(90deg); }
+        .animate-top { animation: flipTop var(--dur, 0.125s) ease-in forwards; }
+        .animate-bottom { animation: flipBottom var(--dur, 0.125s) ease-out var(--dur, 0.125s) forwards; }
+        @keyframes flipTop { 0% { transform: rotateX(0); } 100% { transform: rotateX(-90deg); } }
+        @keyframes flipBottom { 0% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+      </style>
+      <div class="flap">
+        <div class="half top sTop"><span></span></div>
+        <div class="half bottom sBottom"><span></span></div>
+        <div class="half top flip flip-top"><span></span></div>
+        <div class="half bottom flip flip-bottom"><span></span></div>
+      </div>`;
+          this.sTop = root.querySelector(".sTop span");
+          this.sBottom = root.querySelector(".sBottom span");
+          this.fTop = root.querySelector(".flip-top");
+          this.fBottom = root.querySelector(".flip-bottom");
+          this.fTopS = this.fTop.querySelector("span");
+          this.fBottomS = this.fBottom.querySelector("span");
+        }
+
+        connectedCallback() {
+          if (this.hasAttribute("size")) this.size = parseFloat(this.getAttribute("size")) || 70;
+          if (this.hasAttribute("speed")) this.speed = parseFloat(this.getAttribute("speed")) || 4;
+          this.applySize();
+          this.render(this.current);
+          if (this.hasAttribute("value")) this.go(this.getAttribute("value"));
+        }
+
+        attributeChangedCallback(name, oldV, newV) {
+          if (!this.fTop) return;
+          if (name === "size") {
+            this.size = parseFloat(newV) || 70;
+            this.applySize();
+          }
+          if (name === "speed") {
+            this.speed = parseFloat(newV) || 4;
+          }
+          if (name === "value") {
+            this.go(newV);
+          }
+        }
+
+        // Adjust proportional dimensions using single width parameter
+        applySize() {
+          const w = this.size;
+          const h = w * (100 / 70);
+          const hh = h / 2;
+          const fs = w * (80 / 70);
+          const flap = this.shadowRoot.querySelector(".flap");
+          flap.style.setProperty("--w", w + "px");
+          flap.style.setProperty("--h", h + "px");
+          flap.style.setProperty("--hh", hh + "px");
+          flap.style.setProperty("--fs", fs + "px");
+        }
+
+        render(c) {
+          this.sTop.textContent = c;
+          this.sBottom.textContent = c;
+          this.fTopS.textContent = c;
+          this.fBottomS.textContent = c;
+        }
+
+        normalize(v) {
+          v = (v || " ").toUpperCase().charAt(0) || " ";
+          return SplitFlap.CHARS.indexOf(v) < 0 ? " " : v;
+        }
+
+        flipOnce(from, to) {
+          return new Promise((res) => {
+            // Complete transition cycle takes 1/speed seconds. Each half animation takes half of that.
+            const halfDuration = 1 / this.speed / 2;
+            this.fTop.style.setProperty("--dur", halfDuration + "s");
+            this.fBottom.style.setProperty("--dur", halfDuration + "s");
+
+            this.sTop.textContent = to;
+            this.sBottom.textContent = from;
+            this.fTopS.textContent = from;
+            this.fBottomS.textContent = to;
+            this.fTop.classList.remove("animate-top");
+            this.fBottom.classList.remove("animate-bottom");
+            void this.fTop.offsetWidth; // Force reflow
+            this.fTop.classList.add("animate-top");
+            this.fBottom.classList.add("animate-bottom");
+
+            setTimeout(
+              () => {
+                this.render(to);
+                res();
+              },
+              halfDuration * 2 * 1000,
+            );
+          });
+        }
+
+        async go(value) {
+          const target = this.normalize(value);
+          this.queueTarget = target;
+          if (this.busy) return;
+          this.busy = true;
+          let idx = SplitFlap.CHARS.indexOf(this.current);
+          while (this.current !== this.queueTarget) {
+            idx = (idx + 1) % SplitFlap.CHARS.length;
+            const next = SplitFlap.CHARS[idx];
+            await this.flipOnce(this.current, next);
+            this.current = next;
+          }
+          this.fTop.classList.remove("animate-top");
+          this.fBottom.classList.remove("animate-bottom");
+          this.busy = false;
+        }
+      }
+      customElements.define("split-flap", SplitFlap);
+
+      /* ---------- Build interactive 4x4 board ---------- */
+      const board = document.getElementById("board");
+      const N = 4;
+      const FLAP_WIDTH = 80; // Customizable component size width in pixels
+      const FLAP_SPEED = 8; // Customizable speed (letters per second)
+
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < N * N; i++) {
+        const flap = document.createElement("split-flap");
+        flap.setAttribute("size", FLAP_WIDTH);
+        flap.setAttribute("speed", FLAP_SPEED);
+        flap.setAttribute("value", " ");
+        frag.appendChild(flap);
+      }
+      board.appendChild(frag);
+
+      /* All interactions are caught only at the board (top level) container element. */
+      board.addEventListener("click", (event) => {
+        // Find the exact split-flap element that was clicked via event path routing
+        const flapInstance = event.target.closest("split-flap");
+        if (!flapInstance || flapInstance === board) return;
+
+        const chars = SplitFlap.CHARS;
+        const currentIndex = chars.indexOf(flapInstance.current);
+        const nextIndex = (currentIndex + 1) % chars.length;
+        const nextChar = chars[nextIndex];
+
+        flapInstance.setAttribute("value", nextChar);
+      });
+    </script>
+  </body>
+</html>
