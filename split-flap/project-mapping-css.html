@@ -599,15 +599,15 @@
       const lightCtx = lightCanvas.getContext("2d");
 
       const blendParams = {
-        lightStrength: { label: "Light Strength", min: 0, max: 1, step: 0.01, value: 0.85, def: 0.85 },
-        exposure: { label: "Exposure", min: -1, max: 1, step: 0.01, value: 0, def: 0 },
-        contrast: { label: "Contrast", min: 0.3, max: 2.5, step: 0.01, value: 1, def: 1 },
+        lightStrength: { label: "Light Strength", min: 0, max: 1, step: 0.01, value: 0.63, def: 0.63 },
+        exposure: { label: "Exposure", min: -1, max: 1, step: 0.01, value: 0.4, def: 0.4 },
+        contrast: { label: "Contrast", min: 0.3, max: 2.5, step: 0.01, value: 1.87, def: 1.87 },
         black: { label: "Black Level", min: 0, max: 0.6, step: 0.01, value: 0, def: 0 },
-        white: { label: "White Level", min: 0.4, max: 1.5, step: 0.01, value: 1, def: 1 },
-        gamma: { label: "Gamma", min: 0.2, max: 3, step: 0.01, value: 1, def: 1 },
-        tint: { label: "Color Tint", min: 0, max: 1, step: 0.01, value: 0.5, def: 0.5 },
-        saturation: { label: "Tint Saturation", min: 0, max: 2, step: 0.01, value: 1, def: 1 },
-        softness: { label: "Falloff Softness", min: 0, max: 1, step: 0.01, value: 0, def: 0 },
+        white: { label: "White Level", min: 0.4, max: 1.5, step: 0.01, value: 0.55, def: 0.55 },
+        gamma: { label: "Gamma", min: 0.2, max: 3, step: 0.01, value: 0.86, def: 0.86 },
+        tint: { label: "Color Tint", min: 0, max: 1, step: 0.01, value: 0, def: 0 },
+        saturation: { label: "Tint Saturation", min: 0, max: 2, step: 0.01, value: 0, def: 0 },
+        softness: { label: "Falloff Softness", min: 0, max: 1, step: 0.01, value: 0.38, def: 0.38 },
       };
 
       function loadBlend() {
@@ -827,8 +827,13 @@
       });
 
       /* ---------- Calibration state & UI ---------- */
-      let calibrationPoints = [];
-      let calibrationStep = -1;
+      let calibrationPoints = [
+        { x: 767.19921875, y: 338.19921875 },
+        { x: 1122.28515625, y: 294.9140625 },
+        { x: 1117.43359375, y: 652.84375 },
+        { x: 803.59765625, y: 730.3359375 },
+      ];
+      let calibrationStep = 4;
       let handlesShown = false;
       let adjustMode = false;
 
