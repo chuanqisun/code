@@ -22,8 +22,6 @@
         outline: none;
         touch-action: none;
       }
-      /* Lighting overlay: multiplies the rendered board with the blackboard's
-         natural lighting gradient so the off-black blends into the scene. */
       #lightmap {
         position: absolute;
         inset: 0;
@@ -188,8 +186,6 @@
         color: black;
         font-weight: bold;
         transition: transform 0.1s ease;
-        pointer-events: auto;
-        touch-action: none;
       }
       .handle:hover {
         background: #66ff66;
@@ -492,25 +488,43 @@
       boardGroup.visible = false; // hidden until calibration done
       scene.add(boardGroup);
 
+      // Inner extent of the flap grid (used for bezel / backing plate).
+      const halfX = offX + (FLAP_W * 1.08) / 2,
+        halfY = offY + (cellH * 1.06) / 2;
+
+      // Bezel roughly one flap-width wide around the whole grid. The backing
+      // plate is a single near-black plane that fills every grid gap (including
+      // the gap between the bezel edge and the outer flaps) so that the dark
+      // seams read as near-black instead of showing the room behind.
+      const BEZEL = FLAP_W;
+      const outX = halfX + BEZEL,
+        outY = halfY + BEZEL;
+      const GAP_COLOR = 0x181818;
+      const backPlate = new THREE.Mesh(new THREE.PlaneGeometry(outX * 2, outY * 2), new THREE.MeshBasicMaterial({ color: GAP_COLOR }));
+      backPlate.position.z = -0.2;
+      boardGroup.add(backPlate);
+
       const flaps = [],
         raycastTargets = [];
       for (let r = 0; r < N; r++)
         for (let c = 0; c < N; c++) {
           const f = new Flap(FLAP_W, SPEED);
+          f.row = r;
+          f.col = c;
+          f.rippleActive = false;
+          f.nextAdvance = 0;
           f.group.position.set(c * stepX - offX, offY - r * stepY, 0);
           boardGroup.add(f.group);
           flaps.push(f);
           f.group.traverse((o) => o.userData.flap && raycastTargets.push(o));
         }
 
-      // Board bounding corners in local/world space (board stays at identity).
-      const halfX = offX + (FLAP_W * 1.08) / 2,
-        halfY = offY + (cellH * 1.06) / 2;
+      // Board bounding corners (outer bezel edge) in world space.
       const BOARD_CORNERS = [
-        new THREE.Vector3(-halfX, halfY, 0), // TL
-        new THREE.Vector3(halfX, halfY, 0), // TR
-        new THREE.Vector3(halfX, -halfY, 0), // BR
-        new THREE.Vector3(-halfX, -halfY, 0), // BL
+        new THREE.Vector3(-outX, outY, 0), // TL
+        new THREE.Vector3(outX, outY, 0), // TR
+        new THREE.Vector3(outX, -outY, 0), // BR
+        new THREE.Vector3(-outX, -outY, 0), // BL
       ];
 
       /* ---------- Exact 4-point Homography Projection Mapping ---------- */
@@ -574,21 +588,10 @@
         scheduleLightmap();
       }
 
-      /* ---------- Lighting blend ----------
-         Strategy: the blackboard in base.webp carries a brightness (and subtle
-         color) gradient from the room lighting. We sample that ONLY inside the
-         calibrated quad, normalize against the brightest spot of the board
-         region (the "fully lit" reference), then run the value through a
-         configurable tone pipeline (black/white levels -> gamma -> contrast ->
-         exposure -> strength) and apply a color tint pulled from the scene.
-         The resulting RGB lightmap is laid over the render with
-         mix-blend-mode:multiply, so the off-black and white letters inherit
-         the exact lighting falloff & color cast of the surrounding blackboard.
-      */
+      /* ---------- Lighting blend ---------- */
       const lightCanvas = document.getElementById("lightmap");
       const lightCtx = lightCanvas.getContext("2d");
 
-      // Configurable blend parameters
       const blendParams = {
         lightStrength: { label: "Light Strength", min: 0, max: 1, step: 0.01, value: 0.85, def: 0.85 },
         exposure: { label: "Exposure", min: -1, max: 1, step: 0.01, value: 0, def: 0 },
@@ -676,7 +679,6 @@
         lightCanvas.width = W;
         lightCanvas.height = H;
 
-        // background "contain" display rect
         const imgAspect = bgImgW / bgImgH,
           winAspect = W / H;
         if (imgAspect > winAspect) {
@@ -695,7 +697,6 @@
         const minY = Math.max(0, Math.floor(Math.min(q[0].y, q[1].y, q[2].y, q[3].y)));
         const maxY = Math.min(H - 1, Math.ceil(Math.max(q[0].y, q[1].y, q[2].y, q[3].y)));
 
-        // Pass 1: find brightest luminance inside the board region (reference).
         let maxB = 1e-6;
         for (let y = minY; y <= maxY; y++) {
           for (let x = minX; x <= maxX; x++) {
@@ -721,27 +722,19 @@
             if (!rgb) continue;
             const l = lum(rgb[0], rgb[1], rgb[2]);
 
-            // normalized brightness relative to brightest spot
             let n = l / maxB;
-            // input levels (black/white)
             n = (n - P.black) / wMinusB;
             n = clamp01(n);
-            // gamma
             if (P.gamma !== 1) n = Math.pow(n, P.gamma);
-            // softness: ease the falloff (smoothstep blend)
             if (P.softness > 0) {
               const ss = n * n * (3 - 2 * n);
               n = n + (ss - n) * P.softness;
             }
-            // contrast around mid
             n = (n - 0.5) * P.contrast + 0.5;
-            // exposure
             n *= expGain;
             n = clamp01(n);
-            // strength blend toward neutral white
             let f = 1 - P.lightStrength * (1 - n);
 
-            // color tint pulled from the scene's chroma
             let tr = 1,
               tg = 1,
               tb = 1;
@@ -876,7 +869,6 @@
         updateHandlesUI();
       }
 
-      // Restore saved calibration
       try {
         const saved = localStorage.getItem("splitFlapCalibrationPoints");
         if (saved) {
@@ -891,7 +883,6 @@
         console.warn("Calibration load failed:", e);
       }
 
-      // Handle dragging — realtime update of mapping + lightmap
       let activeDrag = null;
       document.querySelectorAll(".handle").forEach((handle) => {
         const idx = +handle.dataset.idx;
@@ -907,7 +898,7 @@
           e.stopPropagation();
           calibrationPoints[idx] = { x: e.clientX, y: e.clientY };
           updateHandlesUI();
-          applyCalibration(); // realtime render mapping + scheduled lightmap
+          applyCalibration();
         });
         const stop = (e) => {
           if (activeDrag === null) return;
@@ -922,7 +913,6 @@
         handle.addEventListener("pointercancel", stop);
       });
 
-      // Menu buttons
       startBtn.addEventListener("click", () => {
         setAdjustMode(false);
         calibrationPoints = [];
@@ -961,7 +951,6 @@
         lightCanvas.style.display = "none";
       });
 
-      // Collapse menu
       const menuContainer = document.getElementById("menu-container");
       const collapseIcon = document.getElementById("collapse-icon");
       document.getElementById("menu-header").addEventListener("click", () => {
@@ -1002,9 +991,7 @@
       /* ---------- Pointer / raycasting (inverse homography aware) ---------- */
       const raycaster = new THREE.Raycaster();
       const pointer = new THREE.Vector2();
-      let isPointerDown = false,
-        currentHeldFlap = null,
-        holdInterval = null;
+      let isPointerDown = false;
 
       function getIntersectedFlap(cx, cy) {
         let x = cx,
@@ -1020,19 +1007,67 @@
         const hits = raycaster.intersectObjects(raycastTargets, false);
         return hits.length ? hits[0].object.userData.flap : null;
       }
-      function startHolding(flap) {
-        if (currentHeldFlap === flap) return;
-        stopHolding();
-        currentHeldFlap = flap;
-        if (flap) {
-          flap.advance();
-          holdInterval = setInterval(() => currentHeldFlap && currentHeldFlap.advance(), Math.max(120, (1000 / SPEED) * 1.15));
+
+      /* ---------- Ripple-based hold interaction ----------
+         Pressing & holding a flap starts a ripple at that flap. Its outer
+         radius grows over time so the affected ring of flaps spreads outward.
+         Affected flaps keep advancing while inside the ripple. On release the
+         ripple's outer edge freezes and an inner "stop" radius grows from the
+         center outward, so the effect dies from the middle and chases out to
+         the edges before vanishing.
+      */
+      let ripples = [];
+      let currentRipple = null;
+      const EXPAND_SPEED = 11; // cells / second (grow while held)
+      const COLLAPSE_SPEED = 11; // cells / second (die from center on release)
+      const HOLD_PERIOD = Math.max(120, (1000 / SPEED) * 1.15);
+
+      function createRipple(flap) {
+        const r = { cr: flap.row, cc: flap.col, outer: 0, inner: 0, releasing: false };
+        ripples.push(r);
+        currentRipple = r;
+      }
+      function moveRipple(flap) {
+        if (currentRipple && !currentRipple.releasing && flap) {
+          currentRipple.cr = flap.row;
+          currentRipple.cc = flap.col;
         }
       }
-      function stopHolding() {
-        if (holdInterval) clearInterval(holdInterval);
-        holdInterval = null;
-        currentHeldFlap = null;
+      function releaseRipple() {
+        if (currentRipple) currentRipple.releasing = true;
+        currentRipple = null;
+      }
+
+      function updateRipples(now, dt) {
+        for (const r of ripples) {
+          if (!r.releasing) r.outer += EXPAND_SPEED * dt;
+          else r.inner += COLLAPSE_SPEED * dt;
+        }
+        // discard ripples whose stop-front has overtaken their outer edge
+        ripples = ripples.filter((r) => !(r.releasing && r.inner >= r.outer));
+
+        for (const f of flaps) {
+          let active = false;
+          for (const r of ripples) {
+            const d = Math.hypot(f.row - r.cr, f.col - r.cc);
+            if (d <= r.outer && d > r.inner) {
+              active = true;
+              break;
+            }
+          }
+          if (active) {
+            if (!f.rippleActive) {
+              f.rippleActive = true;
+              f.nextAdvance = now; // flip immediately when the wavefront arrives
+            }
+            if (now >= f.nextAdvance) {
+              f.advance();
+              f.nextAdvance = now + HOLD_PERIOD;
+            }
+          } else {
+            f.rippleActive = false;
+          }
+        }
       }
 
       window.addEventListener("pointerdown", (e) => {
@@ -1052,12 +1087,12 @@
           }
           return;
         }
-        if (adjustMode) return; // don't flip while adjusting corners
+        if (adjustMode) return;
         if (e.pointerType === "mouse" && e.button !== 0) return;
         if (!boardGroup.visible) return;
         isPointerDown = true;
         const flap = getIntersectedFlap(e.clientX, e.clientY);
-        if (flap) startHolding(flap);
+        if (flap) createRipple(flap);
       });
 
       window.addEventListener("pointermove", (e) => {
@@ -1073,23 +1108,27 @@
         }
         const flap = getIntersectedFlap(e.clientX, e.clientY);
         document.body.style.cursor = flap ? "pointer" : "default";
-        if (isPointerDown) flap ? startHolding(flap) : stopHolding();
+        if (isPointerDown && currentRipple) moveRipple(flap);
       });
 
       window.addEventListener("pointerup", () => {
         isPointerDown = false;
-        stopHolding();
+        releaseRipple();
       });
       window.addEventListener("pointercancel", () => {
         isPointerDown = false;
-        stopHolding();
+        releaseRipple();
       });
       window.addEventListener("contextmenu", (e) => e.preventDefault());
 
       /* ---------- Render loop ---------- */
+      let lastTime = performance.now();
       function animate() {
         requestAnimationFrame(animate);
         const now = performance.now();
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        updateRipples(now, dt);
         for (const f of flaps) f.update(now);
         renderer.render(scene, camera);
       }
