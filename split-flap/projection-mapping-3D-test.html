@@ -1,0 +1,971 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #000000 url("base.webp") no-repeat center center;
+        background-size: contain;
+        font-family: monospace;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      canvas {
+        display: block;
+        outline: none;
+        touch-action: none;
+      }
+
+      #overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(15, 15, 15, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        transition: opacity 0.4s ease;
+      }
+
+      #start-btn {
+        background: #222;
+        color: #fff;
+        border: 2px solid #444;
+        padding: 16px 32px;
+        font-size: 32px;
+        font-family: monospace;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        cursor: pointer;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        border-radius: 6px;
+        transition: all 0.2s ease;
+        outline: none;
+      }
+
+      #start-btn:hover {
+        background: #333;
+        border-color: #f0f0f0;
+        box-shadow: 0 10px 40px rgba(255, 255, 255, 0.1);
+      }
+
+      #start-btn:active {
+        transform: scale(0.95);
+      }
+
+      /* ---------- Modern Controls Overlay Menu ---------- */
+      #menu-container {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 320px;
+        background: rgba(20, 20, 20, 0.85);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: #e0e0e0;
+        font-family: monospace;
+        font-size: 13px;
+        z-index: 10;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
+        display: flex;
+        flex-direction: column;
+        transition: max-height 0.3s ease;
+        max-height: 95vh;
+      }
+
+      #menu-container.collapsed {
+        max-height: 38px;
+      }
+
+      #menu-header {
+        background: rgba(30, 30, 30, 0.9);
+        padding: 10px 14px;
+        font-weight: bold;
+        letter-spacing: 1.5px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+      }
+
+      #menu-header:hover {
+        background: rgba(40, 40, 40, 0.9);
+      }
+
+      #menu-content {
+        padding: 14px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .menu-section {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        padding-bottom: 10px;
+        margin-bottom: 4px;
+      }
+
+      .menu-section:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-bottom: 0;
+      }
+
+      .menu-section-title {
+        font-weight: bold;
+        color: #fff;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+      }
+
+      .menu-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+      }
+
+      .menu-row label {
+        flex: 1;
+        color: #aaa;
+        font-size: 12px;
+      }
+
+      .menu-row span {
+        font-weight: bold;
+        color: #ffffff;
+        min-width: 45px;
+        text-align: right;
+        margin-left: 8px;
+        font-size: 11px;
+      }
+
+      .menu-row input[type="range"] {
+        flex: 1.5;
+        width: 100%;
+        background: #333;
+        accent-color: #ffffff;
+        height: 4px;
+        border-radius: 2px;
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .menu-row input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #ffffff;
+        cursor: pointer;
+        border: 1px solid #1a1a1a;
+      }
+
+      .preset-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 4px;
+      }
+
+      .preset-btn {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border: 1px solid #444;
+        padding: 6px;
+        font-family: monospace;
+        font-size: 11px;
+        cursor: pointer;
+        border-radius: 4px;
+        text-align: center;
+        transition: all 0.15s ease;
+        outline: none;
+      }
+
+      .preset-btn:hover {
+        background: #3a3a3a;
+        border-color: #ffffff;
+        color: #fff;
+      }
+
+      .preset-btn:active {
+        transform: scale(0.97);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay">
+      <button id="start-btn">Start</button>
+    </div>
+
+    <!-- Controls Overlay Menu -->
+    <div id="menu-container">
+      <div id="menu-header">
+        <span>CONTROLS</span>
+        <span id="collapse-icon">[-]</span>
+      </div>
+      <div id="menu-content">
+        <!-- Camera Lens Section -->
+        <div class="menu-section">
+          <div class="menu-section-title">Camera Lens</div>
+          <div class="menu-row">
+            <label for="fov-slider">FOV</label>
+            <input type="range" id="fov-slider" min="10" max="110" step="1" value="45" />
+            <span id="fov-val">45°</span>
+          </div>
+        </div>
+
+        <!-- Camera Position Section -->
+        <div class="menu-section">
+          <div class="menu-section-title">Camera Position</div>
+          <div class="menu-row">
+            <label for="camX-slider">Pos X</label>
+            <input type="range" id="camX-slider" min="-100" max="100" step="1" value="15" />
+            <span id="camX-val">15</span>
+          </div>
+          <div class="menu-row">
+            <label for="camY-slider">Pos Y</label>
+            <input type="range" id="camY-slider" min="-100" max="100" step="1" value="20" />
+            <span id="camY-val">20</span>
+          </div>
+          <div class="menu-row">
+            <label for="camZ-slider">Pos Z</label>
+            <input type="range" id="camZ-slider" min="10" max="200" step="1" value="45" />
+            <span id="camZ-val">45</span>
+          </div>
+        </div>
+
+        <!-- Camera Target Section -->
+        <div class="menu-section">
+          <div class="menu-section-title">Camera Target</div>
+          <div class="menu-row">
+            <label for="lookX-slider">LookAt X</label>
+            <input type="range" id="lookX-slider" min="-50" max="50" step="1" value="0" />
+            <span id="lookX-val">0</span>
+          </div>
+          <div class="menu-row">
+            <label for="lookY-slider">LookAt Y</label>
+            <input type="range" id="lookY-slider" min="-50" max="50" step="1" value="0" />
+            <span id="lookY-val">0</span>
+          </div>
+          <div class="menu-row">
+            <label for="lookZ-slider">LookAt Z</label>
+            <input type="range" id="lookZ-slider" min="-50" max="50" step="1" value="0" />
+            <span id="lookZ-val">0</span>
+          </div>
+        </div>
+
+        <!-- Board Position Section -->
+        <div class="menu-section">
+          <div class="menu-section-title">Board Position</div>
+          <div class="menu-row">
+            <label for="objX-slider">Pos X</label>
+            <input type="range" id="objX-slider" min="-50" max="50" step="1" value="0" />
+            <span id="objX-val">0</span>
+          </div>
+          <div class="menu-row">
+            <label for="objY-slider">Pos Y</label>
+            <input type="range" id="objY-slider" min="-50" max="50" step="1" value="0" />
+            <span id="objY-val">0</span>
+          </div>
+          <div class="menu-row">
+            <label for="objZ-slider">Pos Z</label>
+            <input type="range" id="objZ-slider" min="-50" max="50" step="1" value="0" />
+            <span id="objZ-val">0</span>
+          </div>
+        </div>
+
+        <!-- Board Rotation Section -->
+        <div class="menu-section">
+          <div class="menu-section-title">Board Rotation</div>
+          <div class="menu-row">
+            <label for="objRotX-slider">Rot X</label>
+            <input type="range" id="objRotX-slider" min="-180" max="180" step="1" value="0" />
+            <span id="objRotX-val">0°</span>
+          </div>
+          <div class="menu-row">
+            <label for="objRotY-slider">Rot Y</label>
+            <input type="range" id="objRotY-slider" min="-180" max="180" step="1" value="0" />
+            <span id="objRotY-val">0°</span>
+          </div>
+          <div class="menu-row">
+            <label for="objRotZ-slider">Rot Z</label>
+            <input type="range" id="objRotZ-slider" min="-180" max="180" step="1" value="0" />
+            <span id="objRotZ-val">0°</span>
+          </div>
+        </div>
+
+        <!-- Presets Section -->
+        <div class="menu-section">
+          <div class="menu-section-title">View Presets</div>
+          <div class="preset-buttons">
+            <button class="preset-btn" id="btn-preset-iso">Isometric</button>
+            <button class="preset-btn" id="btn-preset-front">Frontal</button>
+            <button class="preset-btn" id="btn-preset-side">Side Angle</button>
+            <button class="preset-btn" id="btn-preset-reset">Reset All</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.184.0/build/three.module.js";
+
+      const CHARS = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+
+      /* ---------- Web Audio API Sound Setup ---------- */
+      let audioCtx = null;
+      let cachedBuffers = [];
+
+      async function initAudio() {
+        if (audioCtx) return;
+        try {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContextClass) return;
+          audioCtx = new AudioContextClass();
+
+          const response = await fetch("flap-sound.mp3");
+          if (!response.ok) throw new Error("Could not fetch flap-sound.mp3");
+          const arrayBuffer = await response.arrayBuffer();
+          const originalBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+          // Pre-generate 12 variations with randomized playback rate using OfflineAudioContext
+          const numVariations = 12;
+          const variations = [];
+          const OfflineAudioContextClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+
+          if (OfflineAudioContextClass) {
+            for (let i = 0; i < numVariations; i++) {
+              // Playback rate between 0.85 and 1.15 with a bit of randomness
+              const rate = 0.85 + (i / (numVariations - 1)) * 0.3 + (Math.random() - 0.5) * 0.05;
+              const offlineCtx = new OfflineAudioContextClass(
+                originalBuffer.numberOfChannels,
+                Math.ceil(originalBuffer.length / rate),
+                originalBuffer.sampleRate,
+              );
+
+              const source = offlineCtx.createBufferSource();
+              source.buffer = originalBuffer;
+              source.playbackRate.setValueAtTime(rate, 0);
+              source.connect(offlineCtx.destination);
+
+              source.start(0);
+              const renderedBuffer = await offlineCtx.startRendering();
+              variations.push(renderedBuffer);
+            }
+            cachedBuffers = variations;
+          } else {
+            // Fallback if OfflineAudioContext is not supported
+            cachedBuffers = [originalBuffer];
+          }
+        } catch (e) {
+          console.error("Failed to initialize or pre-generate flap sounds:", e);
+        }
+      }
+
+      function resumeAudio() {
+        if (!audioCtx) {
+          initAudio();
+        } else if (audioCtx.state === "suspended") {
+          audioCtx.resume().catch(() => {});
+        }
+      }
+
+      const MAX_CONCURRENT_SOUNDS = 32;
+      let activeSounds = [];
+
+      function playFlapSound(boardJitter = 0) {
+        if (!audioCtx || cachedBuffers.length === 0) return;
+
+        if (audioCtx.state === "suspended") {
+          audioCtx.resume().catch(() => {});
+        }
+
+        const now = audioCtx.currentTime;
+
+        // Clean up completed sounds
+        activeSounds = activeSounds.filter((sound) => sound.endTime > now);
+
+        // Limit concurrent sounds (voice stealing)
+        if (activeSounds.length >= MAX_CONCURRENT_SOUNDS) {
+          const oldest = activeSounds.shift();
+          try {
+            // Rapidly fade out oldest sound to prevent pops/clicks
+            oldest.gainNode.gain.cancelScheduledValues(now);
+            oldest.gainNode.gain.setValueAtTime(oldest.gainNode.gain.value || 0.5, now);
+            oldest.gainNode.gain.linearRampToValueAtTime(0.0, now + 0.05);
+            oldest.source.stop(now + 0.05);
+          } catch (e) {
+            // Source might have already stopped
+          }
+        }
+
+        // Timing jitter: board-specific physical jitter + random dynamic jitter (0 to 20ms)
+        const jitter = boardJitter + Math.random() * 0.02;
+        const playTime = now + jitter;
+
+        // Select a pre-generated pitched buffer variation
+        const bufferIndex = Math.floor(Math.random() * cachedBuffers.length);
+        const buffer = cachedBuffers[bufferIndex];
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+
+        // Add volume (gain) variation
+        const gainNode = audioCtx.createGain();
+        const initialGain = 0.45 + Math.random() * 0.35;
+        gainNode.gain.setValueAtTime(initialGain, playTime);
+
+        source.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        source.start(playTime);
+
+        // Track active sound
+        activeSounds.push({
+          source,
+          gainNode,
+          endTime: playTime + buffer.duration,
+        });
+      }
+
+      // Start pre-loading immediately
+      initAudio();
+
+      /* ---------- Character Textures (Cached) ---------- */
+      const texCache = {};
+      function charTexture(ch) {
+        if (texCache[ch]) return texCache[ch];
+        const c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 180;
+        const ctx = c.getContext("2d");
+
+        // Background flap color (matte dark charcoal)
+        ctx.fillStyle = "#1e1e1e";
+        ctx.fillRect(0, 0, 128, 180);
+
+        // Bold high-contrast white text
+        ctx.fillStyle = "#f0f0f0";
+        ctx.font = "bold 130px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(ch, 64, 94);
+
+        // High-contrast physically convincing split line overlay
+        ctx.fillStyle = "#0a0a0a";
+        ctx.fillRect(0, 88, 128, 4);
+
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        texCache[ch] = t;
+        return t;
+      }
+
+      function normalize(v) {
+        v = (v || " ").toUpperCase().charAt(0) || " ";
+        return CHARS.indexOf(v) < 0 ? " " : v;
+      }
+
+      /* ---------- Half-Plane Geometry Generator ---------- */
+      function makeHalfGeometry(W, H, vMin, vMax) {
+        const g = new THREE.PlaneGeometry(W, H);
+        const uv = g.attributes.uv;
+        for (let i = 0; i < uv.count; i++) {
+          const v = uv.getY(i); // 0 at bottom, 1 at top
+          uv.setY(i, v === 1 ? vMax : vMin);
+        }
+        uv.needsUpdate = true;
+        return g;
+      }
+
+      /* ---------- Interactive 3D Flap Class ---------- */
+      class Flap {
+        constructor(W, speed) {
+          this.W = W;
+          this.H = W * (100 / 70);
+          this.speed = speed;
+
+          // Start with a randomized character to create visual interest
+          this.current = CHARS[Math.floor(Math.random() * CHARS.length)];
+          this.busy = false;
+          this.queueTarget = null;
+          this.anim = null;
+          this.audioJitter = Math.random() * 0.035; // unique timing jitter per board
+
+          const hh = this.H / 2;
+          this.group = new THREE.Group();
+
+          // 3D Dark matte frame back-plate
+          const frameGeo = new THREE.BoxGeometry(this.W * 1.08, this.H * 1.06, 0.12);
+          const frameMat = new THREE.MeshBasicMaterial({ color: 0x0d0d0d });
+          const frame = new THREE.Mesh(frameGeo, frameMat);
+          frame.position.z = -0.06;
+          this.group.add(frame);
+
+          // Subtle 3D center cylinder axle
+          const axleGeo = new THREE.CylinderGeometry(0.025, 0.025, this.W * 1.04, 8);
+          const axleMat = new THREE.MeshBasicMaterial({ color: 0x050505 });
+          const axle = new THREE.Mesh(axleGeo, axleMat);
+          axle.rotation.z = Math.PI / 2;
+          axle.position.set(0, 0, 0.02);
+          this.group.add(axle);
+
+          const baseTex = charTexture(this.current);
+
+          // Static Halves (Zeroth layer)
+          this.topStatic = new THREE.Mesh(makeHalfGeometry(this.W, hh, 0.5, 1.0), new THREE.MeshBasicMaterial({ map: baseTex, side: THREE.DoubleSide }));
+          this.topStatic.position.set(0, hh / 2, 0.005);
+
+          this.bottomStatic = new THREE.Mesh(makeHalfGeometry(this.W, hh, 0.0, 0.5), new THREE.MeshBasicMaterial({ map: baseTex, side: THREE.DoubleSide }));
+          this.bottomStatic.position.set(0, -hh / 2, 0.005);
+
+          // Dynamic pivots (pivot aligned perfectly on the center split line)
+          this.topLeafPivot = new THREE.Group();
+          this.topLeaf = new THREE.Mesh(makeHalfGeometry(this.W, hh, 0.5, 1.0), new THREE.MeshBasicMaterial({ map: baseTex, side: THREE.DoubleSide }));
+          this.topLeaf.position.set(0, hh / 2, 0.015);
+          this.topLeafPivot.add(this.topLeaf);
+          this.topLeafPivot.visible = false;
+
+          this.bottomLeafPivot = new THREE.Group();
+          this.bottomLeaf = new THREE.Mesh(makeHalfGeometry(this.W, hh, 0.0, 0.5), new THREE.MeshBasicMaterial({ map: baseTex, side: THREE.DoubleSide }));
+          this.bottomLeaf.position.set(0, -hh / 2, 0.015);
+          this.bottomLeafPivot.add(this.bottomLeaf);
+          this.bottomLeafPivot.visible = false;
+
+          this.group.add(this.topStatic, this.bottomStatic, this.topLeafPivot, this.bottomLeafPivot);
+
+          // Tag clickable assets for Top-Level Raycaster
+          [this.topStatic, this.bottomStatic, frame].forEach((m) => (m.userData.flap = this));
+        }
+
+        setMap(mesh, ch) {
+          mesh.material.map = charTexture(ch);
+          mesh.material.needsUpdate = true;
+        }
+
+        flipOnce(from, to) {
+          playFlapSound(this.audioJitter);
+          return new Promise((res) => {
+            // Setup textures immediately for the split states
+            this.setMap(this.topStatic, to);
+            this.setMap(this.topLeaf, from);
+            this.setMap(this.bottomLeaf, to);
+
+            this.topLeafPivot.visible = true;
+            this.bottomLeafPivot.visible = false;
+
+            // Pivot starts flat against upper frame
+            this.topLeafPivot.rotation.x = 0;
+            this.bottomLeafPivot.rotation.x = -Math.PI / 2;
+
+            this.anim = { start: performance.now(), dur: 1000 / this.speed, to, res };
+          });
+        }
+
+        update(now) {
+          if (!this.anim) return;
+          const a = this.anim;
+          let t = (now - a.start) / a.dur;
+          if (t > 1) t = 1;
+
+          if (t < 0.5) {
+            // First phase: Top flap falls forward towards viewer (0 to 90 degrees)
+            const p = t / 0.5;
+            this.topLeafPivot.visible = true;
+            this.bottomLeafPivot.visible = false;
+            this.topLeafPivot.rotation.x = (Math.PI / 2) * p;
+          } else {
+            // Second phase: Bottom flap falls flat against lower frame (90 to 0 degrees)
+            const p = (t - 0.5) / 0.5;
+            this.topLeafPivot.visible = false;
+            this.bottomLeafPivot.visible = true;
+            this.bottomLeafPivot.rotation.x = -(Math.PI / 2) * (1 - p);
+          }
+
+          if (t >= 1) {
+            // Complete transition
+            this.setMap(this.bottomStatic, a.to);
+            this.topLeafPivot.visible = false;
+            this.bottomLeafPivot.visible = false;
+            this.anim = null;
+            a.res();
+          }
+        }
+
+        async go(value) {
+          const target = normalize(value);
+          this.queueTarget = target;
+          if (this.busy) return;
+          this.busy = true;
+          let idx = CHARS.indexOf(this.current);
+          while (this.current !== this.queueTarget) {
+            idx = (idx + 1) % CHARS.length;
+            const next = CHARS[idx];
+            await this.flipOnce(this.current, next);
+            this.current = next;
+          }
+          this.busy = false;
+        }
+
+        advance() {
+          const next = CHARS[(CHARS.indexOf(this.current) + 1) % CHARS.length];
+          this.go(next);
+        }
+      }
+
+      /* ---------- State parameters for controls ---------- */
+      const params = {
+        fov: 45,
+        camX: 15,
+        camY: 20,
+        camZ: 45,
+        lookX: 0,
+        lookY: 0,
+        lookZ: 0,
+        objX: 0,
+        objY: 0,
+        objZ: 0,
+        objRotX: 0,
+        objRotY: 0,
+        objRotZ: 0,
+      };
+
+      const defaultParams = { ...params };
+
+      /* ---------- Setup Scene & Perspective Camera ---------- */
+      const scene = new THREE.Scene();
+      // Keep background transparent so the CSS contain background image shows through
+      scene.background = null;
+
+      const camera = new THREE.PerspectiveCamera(params.fov, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      /* ---------- Build 16x16 Grid ---------- */
+      const N = 16;
+      const FLAP_W = 1.3;
+      const SPEED = 12; // Fast letters-per-second transition speed
+      const flaps = [];
+      const raycastTargets = [];
+
+      const cellH = FLAP_W * (100 / 70);
+      const gap = 0.14;
+      const stepX = FLAP_W + gap;
+      const stepY = cellH + gap;
+
+      const offX = ((N - 1) * stepX) / 2;
+      const offY = ((N - 1) * stepY) / 2;
+
+      // Group containing the entire split-flap board
+      const boardGroup = new THREE.Group();
+      scene.add(boardGroup);
+
+      for (let r = 0; r < N; r++) {
+        for (let c = 0; c < N; c++) {
+          const flap = new Flap(FLAP_W, SPEED);
+          flap.group.position.set(c * stepX - offX, offY - r * stepY, 0);
+          boardGroup.add(flap.group);
+          flaps.push(flap);
+          flap.group.traverse((o) => {
+            if (o.userData.flap) raycastTargets.push(o);
+          });
+        }
+      }
+
+      // Start the board, resume/init audio context, hide overlay, and trigger cascading sweep
+      function startBoard() {
+        resumeAudio();
+        const overlay = document.getElementById("overlay");
+        if (overlay) {
+          overlay.style.opacity = "0";
+          overlay.style.pointerEvents = "none";
+          setTimeout(() => {
+            overlay.style.display = "none";
+          }, 400);
+        }
+
+        // Cascading diagnostic start-up pattern: sweep all to blank " " spaces
+        setTimeout(() => {
+          flaps.forEach((f, i) => {
+            const row = Math.floor(i / N);
+            const col = i % N;
+            setTimeout(() => f.go(" "), (row + col) * 80);
+          });
+        }, 100);
+      }
+
+      document.getElementById("start-btn").addEventListener("click", startBoard);
+
+      /* ---------- Camera Fit and Window Resize Handling ---------- */
+      function resize() {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        renderer.setSize(width, height);
+
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      /* ---------- Setup Menu Sliders and Presets Control Logic ---------- */
+      function updateUIFromState() {
+        const sliderIds = ["fov", "camX", "camY", "camZ", "lookX", "lookY", "lookZ", "objX", "objY", "objZ", "objRotX", "objRotY", "objRotZ"];
+        sliderIds.forEach((id) => {
+          const slider = document.getElementById(`${id}-slider`);
+          const valSpan = document.getElementById(`${id}-val`);
+          if (slider) {
+            slider.value = params[id];
+          }
+          if (valSpan) {
+            const suffix = id === "fov" || id.startsWith("objRot") ? "°" : "";
+            valSpan.textContent = params[id] + suffix;
+          }
+        });
+      }
+
+      function updateThreeObjects() {
+        camera.fov = params.fov;
+        camera.position.set(params.camX, params.camY, params.camZ);
+        camera.updateProjectionMatrix();
+        camera.lookAt(params.lookX, params.lookY, params.lookZ);
+
+        boardGroup.position.set(params.objX, params.objY, params.objZ);
+        boardGroup.rotation.set(THREE.MathUtils.degToRad(params.objRotX), THREE.MathUtils.degToRad(params.objRotY), THREE.MathUtils.degToRad(params.objRotZ));
+      }
+
+      function initUIEventListeners() {
+        const sliderIds = ["fov", "camX", "camY", "camZ", "lookX", "lookY", "lookZ", "objX", "objY", "objZ", "objRotX", "objRotY", "objRotZ"];
+        sliderIds.forEach((id) => {
+          const slider = document.getElementById(`${id}-slider`);
+          if (slider) {
+            slider.addEventListener("input", (e) => {
+              params[id] = parseFloat(e.target.value);
+              const valSpan = document.getElementById(`${id}-val`);
+              if (valSpan) {
+                const suffix = id === "fov" || id.startsWith("objRot") ? "°" : "";
+                valSpan.textContent = params[id] + suffix;
+              }
+              updateThreeObjects();
+            });
+          }
+        });
+
+        // Presets
+        document.getElementById("btn-preset-iso").addEventListener("click", () => {
+          Object.assign(params, {
+            fov: 30,
+            camX: 35,
+            camY: 40,
+            camZ: 75,
+            lookX: 0,
+            lookY: 0,
+            lookZ: 0,
+            objX: 0,
+            objY: 0,
+            objZ: 0,
+            objRotX: 0,
+            objRotY: 0,
+            objRotZ: 0,
+          });
+          updateUIFromState();
+          updateThreeObjects();
+        });
+
+        document.getElementById("btn-preset-front").addEventListener("click", () => {
+          Object.assign(params, {
+            fov: 45,
+            camX: 0,
+            camY: 0,
+            camZ: 45,
+            lookX: 0,
+            lookY: 0,
+            lookZ: 0,
+            objX: 0,
+            objY: 0,
+            objZ: 0,
+            objRotX: 0,
+            objRotY: 0,
+            objRotZ: 0,
+          });
+          updateUIFromState();
+          updateThreeObjects();
+        });
+
+        document.getElementById("btn-preset-side").addEventListener("click", () => {
+          Object.assign(params, {
+            fov: 45,
+            camX: 30,
+            camY: 10,
+            camZ: 35,
+            lookX: 0,
+            lookY: 0,
+            lookZ: 0,
+            objX: 0,
+            objY: 0,
+            objZ: 0,
+            objRotX: 0,
+            objRotY: -30,
+            objRotZ: 0,
+          });
+          updateUIFromState();
+          updateThreeObjects();
+        });
+
+        document.getElementById("btn-preset-reset").addEventListener("click", () => {
+          Object.assign(params, defaultParams);
+          updateUIFromState();
+          updateThreeObjects();
+        });
+
+        // Collapse menu behavior
+        const menuContainer = document.getElementById("menu-container");
+        const menuHeader = document.getElementById("menu-header");
+        const collapseIcon = document.getElementById("collapse-icon");
+        menuHeader.addEventListener("click", () => {
+          menuContainer.classList.toggle("collapsed");
+          if (menuContainer.classList.contains("collapsed")) {
+            collapseIcon.textContent = "[+]";
+          } else {
+            collapseIcon.textContent = "[-]";
+          }
+        });
+      }
+
+      initUIEventListeners();
+      updateUIFromState();
+      updateThreeObjects();
+
+      /* ---------- Touch / Mouse Unified Pointer Raycasting ---------- */
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
+      let isPointerDown = false;
+      let currentHeldFlap = null;
+      let holdIntervalId = null;
+
+      function getIntersectedFlap(clientX, clientY) {
+        pointer.x = (clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObjects(raycastTargets, false);
+        if (hits.length) {
+          return hits[0].object.userData.flap;
+        }
+        return null;
+      }
+
+      function startHolding(flap) {
+        if (currentHeldFlap === flap) return;
+        stopHolding();
+
+        currentHeldFlap = flap;
+        if (flap) {
+          flap.advance();
+          // Setup continuous advance speed proportional to transition flip rates
+          const holdDelay = Math.max(120, (1000 / SPEED) * 1.15);
+          holdIntervalId = setInterval(() => {
+            if (currentHeldFlap) {
+              currentHeldFlap.advance();
+            }
+          }, holdDelay);
+        }
+      }
+
+      function stopHolding() {
+        if (holdIntervalId) {
+          clearInterval(holdIntervalId);
+          holdIntervalId = null;
+        }
+        currentHeldFlap = null;
+      }
+
+      /* Event Listeners handling Drag, Swipe, Press-Hold seamlessly across Touch + Desktop Mouse */
+      window.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("#menu-container") || e.target.closest("#start-btn")) return;
+        resumeAudio();
+        // Only respond to main trigger button actions
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+
+        isPointerDown = true;
+        const flap = getIntersectedFlap(e.clientX, e.clientY);
+        if (flap) {
+          startHolding(flap);
+        }
+      });
+
+      window.addEventListener("pointermove", (e) => {
+        if (e.target.closest("#menu-container")) {
+          document.body.style.cursor = "default";
+          return;
+        }
+        const flap = getIntersectedFlap(e.clientX, e.clientY);
+        document.body.style.cursor = flap ? "pointer" : "default";
+
+        if (isPointerDown) {
+          if (flap) {
+            // Swiping/Dragging triggers immediate holding shift onto newly intersected flap
+            startHolding(flap);
+          } else {
+            stopHolding();
+          }
+        }
+      });
+
+      window.addEventListener("pointerup", () => {
+        isPointerDown = false;
+        stopHolding();
+      });
+
+      window.addEventListener("pointercancel", () => {
+        isPointerDown = false;
+        stopHolding();
+      });
+
+      // Explicitly prevent mobile native holds from pulling up context option lists
+      window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      /* ---------- Main Render and Physics Cycle ---------- */
+      function animate() {
+        requestAnimationFrame(animate);
+        const now = performance.now();
+        for (let i = 0; i < flaps.length; i++) {
+          flaps[i].update(now);
+        }
+        updateThreeObjects();
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>

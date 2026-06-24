@@ -1,0 +1,771 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #000000 url("base.webp") no-repeat center center;
+        background-size: contain;
+        font-family: monospace;
+        user-select: none;
+        -webkit-user-select: none;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      canvas {
+        display: block;
+        outline: none;
+        touch-action: none;
+      }
+      #overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 15, 15, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+        transition: opacity 0.4s ease;
+      }
+      #start-btn {
+        background: #222;
+        color: #fff;
+        border: 2px solid #444;
+        padding: 16px 32px;
+        font-size: 32px;
+        font-family: monospace;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        cursor: pointer;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        border-radius: 6px;
+        transition: all 0.2s ease;
+      }
+      #start-btn:hover {
+        background: #333;
+        border-color: #f0f0f0;
+      }
+      #start-btn:active {
+        transform: scale(0.95);
+      }
+
+      #menu-container {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: 280px;
+        background: rgba(20, 20, 20, 0.85);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        color: #e0e0e0;
+        font-family: monospace;
+        font-size: 13px;
+        z-index: 10;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        transition: max-height 0.3s ease;
+        max-height: 95vh;
+      }
+      #menu-container.collapsed {
+        max-height: 38px;
+      }
+      #menu-header {
+        background: rgba(30, 30, 30, 0.9);
+        padding: 10px 14px;
+        font-weight: bold;
+        letter-spacing: 1.5px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: space-between;
+        cursor: pointer;
+      }
+      #menu-header:hover {
+        background: rgba(40, 40, 40, 0.9);
+      }
+      #menu-content {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .menu-section-title {
+        font-weight: bold;
+        color: #fff;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.5px;
+      }
+      .preset-btn {
+        background: #2a2a2a;
+        color: #e0e0e0;
+        border: 1px solid #444;
+        padding: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        cursor: pointer;
+        border-radius: 4px;
+        text-align: center;
+        transition: all 0.15s ease;
+      }
+      .preset-btn:hover {
+        background: #3a3a3a;
+        border-color: #fff;
+        color: #fff;
+      }
+      .preset-btn:active {
+        transform: scale(0.97);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .row .preset-btn {
+        flex: 1;
+      }
+
+      .handle {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        background: #00ff00;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        cursor: move;
+        transform: translate(-50%, -50%);
+        z-index: 150;
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: monospace;
+        font-size: 11px;
+        color: black;
+        font-weight: bold;
+        transition: transform 0.1s ease;
+      }
+      .handle:hover {
+        background: #66ff66;
+        transform: translate(-50%, -50%) scale(1.25);
+      }
+      .handle.active {
+        background: #ff3333;
+        color: white;
+      }
+      #calibration-banner {
+        position: absolute;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(15, 15, 15, 0.9);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid #00ff00;
+        border-radius: 6px;
+        padding: 10px 20px;
+        color: #fff;
+        font-family: monospace;
+        font-size: 14px;
+        font-weight: bold;
+        z-index: 100;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+        text-align: center;
+        pointer-events: none;
+        display: none;
+      }
+      #calibration-banner .highlight {
+        color: #00ff00;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="overlay"><button id="start-btn">Start</button></div>
+
+    <div id="calibration-banner">CALIBRATION MODE: <span id="calibration-msg" class="highlight">Click Top-Left Corner</span></div>
+
+    <svg id="calibration-svg" style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 140; display: none">
+      <polygon id="calibration-poly" points="" style="fill: rgba(0, 255, 0, 0.1); stroke: #00ff00; stroke-width: 2; stroke-dasharray: 4" />
+    </svg>
+
+    <div id="calibration-handles" style="position: absolute; inset: 0; pointer-events: none; z-index: 150">
+      <div class="handle" id="handle-0" style="display: none" data-idx="0">1</div>
+      <div class="handle" id="handle-1" style="display: none" data-idx="1">2</div>
+      <div class="handle" id="handle-2" style="display: none" data-idx="2">3</div>
+      <div class="handle" id="handle-3" style="display: none" data-idx="3">4</div>
+    </div>
+
+    <div id="menu-container">
+      <div id="menu-header"><span>CONTROLS</span><span id="collapse-icon">[-]</span></div>
+      <div id="menu-content">
+        <div class="menu-section-title">Projection Mapping</div>
+        <button class="preset-btn" id="btn-calibrate-start" style="background: #005500; color: #00ff00; border-color: #008800; font-weight: bold">
+          Start 4-Corner Calibration
+        </button>
+        <div class="row">
+          <button class="preset-btn" id="btn-calibrate-reset">Reset</button>
+          <button class="preset-btn" id="btn-calibrate-done" style="display: none; background: #550000; border-color: #880000; color: #ff9999">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.184.0/build/three.module.js";
+
+      const CHARS = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+
+      /* ---------- Audio ---------- */
+      let audioCtx = null,
+        cachedBuffers = [];
+      async function initAudio() {
+        if (audioCtx) return;
+        try {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          audioCtx = new AC();
+          const buf = await audioCtx.decodeAudioData(await (await fetch("flap-sound.mp3")).arrayBuffer());
+          const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+          if (!OAC) {
+            cachedBuffers = [buf];
+            return;
+          }
+          const n = 12,
+            out = [];
+          for (let i = 0; i < n; i++) {
+            const rate = 0.85 + (i / (n - 1)) * 0.3 + (Math.random() - 0.5) * 0.05;
+            const oc = new OAC(buf.numberOfChannels, Math.ceil(buf.length / rate), buf.sampleRate);
+            const s = oc.createBufferSource();
+            s.buffer = buf;
+            s.playbackRate.setValueAtTime(rate, 0);
+            s.connect(oc.destination);
+            s.start(0);
+            out.push(await oc.startRendering());
+          }
+          cachedBuffers = out;
+        } catch (e) {
+          console.error("Audio init failed:", e);
+        }
+      }
+      function resumeAudio() {
+        if (!audioCtx) initAudio();
+        else if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+      }
+
+      const MAX_SOUNDS = 32;
+      let activeSounds = [];
+      function playFlapSound(jitter = 0) {
+        if (!audioCtx || !cachedBuffers.length) return;
+        if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+        const now = audioCtx.currentTime;
+        activeSounds = activeSounds.filter((s) => s.endTime > now);
+        if (activeSounds.length >= MAX_SOUNDS) {
+          const o = activeSounds.shift();
+          try {
+            o.gainNode.gain.cancelScheduledValues(now);
+            o.gainNode.gain.setValueAtTime(o.gainNode.gain.value || 0.5, now);
+            o.gainNode.gain.linearRampToValueAtTime(0, now + 0.05);
+            o.source.stop(now + 0.05);
+          } catch (e) {}
+        }
+        const t = now + jitter + Math.random() * 0.02;
+        const buffer = cachedBuffers[Math.floor(Math.random() * cachedBuffers.length)];
+        const src = audioCtx.createBufferSource();
+        src.buffer = buffer;
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.45 + Math.random() * 0.35, t);
+        src.connect(g);
+        g.connect(audioCtx.destination);
+        src.start(t);
+        activeSounds.push({ source: src, gainNode: g, endTime: t + buffer.duration });
+      }
+      initAudio();
+
+      /* ---------- Textures ---------- */
+      const texCache = {};
+      function charTexture(ch) {
+        if (texCache[ch]) return texCache[ch];
+        const c = document.createElement("canvas");
+        c.width = 128;
+        c.height = 180;
+        const x = c.getContext("2d");
+        x.fillStyle = "#1e1e1e";
+        x.fillRect(0, 0, 128, 180);
+        x.fillStyle = "#f0f0f0";
+        x.font = "bold 130px monospace";
+        x.textAlign = "center";
+        x.textBaseline = "middle";
+        x.fillText(ch, 64, 94);
+        x.fillStyle = "#0a0a0a";
+        x.fillRect(0, 88, 128, 4);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 4;
+        return (texCache[ch] = t);
+      }
+      function normalize(v) {
+        v = (v || " ").toUpperCase().charAt(0) || " ";
+        return CHARS.indexOf(v) < 0 ? " " : v;
+      }
+      function makeHalfGeometry(W, H, vMin, vMax) {
+        const g = new THREE.PlaneGeometry(W, H),
+          uv = g.attributes.uv;
+        for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) === 1 ? vMax : vMin);
+        uv.needsUpdate = true;
+        return g;
+      }
+
+      /* ---------- Flap ---------- */
+      class Flap {
+        constructor(W, speed) {
+          this.W = W;
+          this.H = W * (100 / 70);
+          this.speed = speed;
+          this.current = CHARS[Math.floor(Math.random() * CHARS.length)];
+          this.busy = false;
+          this.queueTarget = null;
+          this.anim = null;
+          this.audioJitter = Math.random() * 0.035;
+          const hh = this.H / 2;
+          this.group = new THREE.Group();
+
+          const frame = new THREE.Mesh(new THREE.BoxGeometry(W * 1.08, this.H * 1.06, 0.12), new THREE.MeshBasicMaterial({ color: 0x0d0d0d }));
+          frame.position.z = -0.06;
+          this.group.add(frame);
+
+          const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, W * 1.04, 8), new THREE.MeshBasicMaterial({ color: 0x050505 }));
+          axle.rotation.z = Math.PI / 2;
+          axle.position.z = 0.02;
+          this.group.add(axle);
+
+          const tex = charTexture(this.current);
+          this.topStatic = new THREE.Mesh(makeHalfGeometry(W, hh, 0.5, 1.0), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+          this.topStatic.position.set(0, hh / 2, 0.005);
+          this.bottomStatic = new THREE.Mesh(makeHalfGeometry(W, hh, 0.0, 0.5), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+          this.bottomStatic.position.set(0, -hh / 2, 0.005);
+
+          this.topLeafPivot = new THREE.Group();
+          this.topLeaf = new THREE.Mesh(makeHalfGeometry(W, hh, 0.5, 1.0), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+          this.topLeaf.position.set(0, hh / 2, 0.015);
+          this.topLeafPivot.add(this.topLeaf);
+          this.topLeafPivot.visible = false;
+
+          this.bottomLeafPivot = new THREE.Group();
+          this.bottomLeaf = new THREE.Mesh(makeHalfGeometry(W, hh, 0.0, 0.5), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+          this.bottomLeaf.position.set(0, -hh / 2, 0.015);
+          this.bottomLeafPivot.add(this.bottomLeaf);
+          this.bottomLeafPivot.visible = false;
+
+          this.group.add(this.topStatic, this.bottomStatic, this.topLeafPivot, this.bottomLeafPivot);
+          [this.topStatic, this.bottomStatic, frame].forEach((m) => (m.userData.flap = this));
+        }
+        setMap(mesh, ch) {
+          mesh.material.map = charTexture(ch);
+          mesh.material.needsUpdate = true;
+        }
+        flipOnce(from, to) {
+          playFlapSound(this.audioJitter);
+          return new Promise((res) => {
+            this.setMap(this.topStatic, to);
+            this.setMap(this.topLeaf, from);
+            this.setMap(this.bottomLeaf, to);
+            this.topLeafPivot.visible = true;
+            this.bottomLeafPivot.visible = false;
+            this.topLeafPivot.rotation.x = 0;
+            this.bottomLeafPivot.rotation.x = -Math.PI / 2;
+            this.anim = { start: performance.now(), dur: 1000 / this.speed, to, res };
+          });
+        }
+        update(now) {
+          if (!this.anim) return;
+          const a = this.anim;
+          let t = Math.min((now - a.start) / a.dur, 1);
+          if (t < 0.5) {
+            this.topLeafPivot.visible = true;
+            this.bottomLeafPivot.visible = false;
+            this.topLeafPivot.rotation.x = (Math.PI / 2) * (t / 0.5);
+          } else {
+            this.topLeafPivot.visible = false;
+            this.bottomLeafPivot.visible = true;
+            this.bottomLeafPivot.rotation.x = -(Math.PI / 2) * (1 - (t - 0.5) / 0.5);
+          }
+          if (t >= 1) {
+            this.setMap(this.bottomStatic, a.to);
+            this.topLeafPivot.visible = false;
+            this.bottomLeafPivot.visible = false;
+            this.anim = null;
+            a.res();
+          }
+        }
+        async go(value) {
+          this.queueTarget = normalize(value);
+          if (this.busy) return;
+          this.busy = true;
+          let idx = CHARS.indexOf(this.current);
+          while (this.current !== this.queueTarget) {
+            idx = (idx + 1) % CHARS.length;
+            await this.flipOnce(this.current, CHARS[idx]);
+            this.current = CHARS[idx];
+          }
+          this.busy = false;
+        }
+        advance() {
+          this.go(CHARS[(CHARS.indexOf(this.current) + 1) % CHARS.length]);
+        }
+      }
+
+      /* ---------- Scene ---------- */
+      const scene = new THREE.Scene();
+      scene.background = null;
+      const camera = new THREE.OrthographicCamera(-20, 20, 20, -20, 0.1, 1000);
+      camera.position.set(0, 0, 100);
+      camera.lookAt(0, 0, 0);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      document.body.appendChild(renderer.domElement);
+      renderer.domElement.style.transformOrigin = "0 0";
+
+      const N = 16,
+        FLAP_W = 1.3,
+        SPEED = 12;
+      const cellH = FLAP_W * (100 / 70),
+        gap = 0.14,
+        stepX = FLAP_W + gap,
+        stepY = cellH + gap;
+      const offX = ((N - 1) * stepX) / 2,
+        offY = ((N - 1) * stepY) / 2;
+
+      const boardGroup = new THREE.Group();
+      boardGroup.visible = false; // hidden until calibration done
+      scene.add(boardGroup);
+
+      const flaps = [],
+        raycastTargets = [];
+      for (let r = 0; r < N; r++)
+        for (let c = 0; c < N; c++) {
+          const f = new Flap(FLAP_W, SPEED);
+          f.group.position.set(c * stepX - offX, offY - r * stepY, 0);
+          boardGroup.add(f.group);
+          flaps.push(f);
+          f.group.traverse((o) => o.userData.flap && raycastTargets.push(o));
+        }
+
+      // Board bounding corners in local/world space (board stays at identity).
+      const halfX = offX + (FLAP_W * 1.08) / 2,
+        halfY = offY + (cellH * 1.06) / 2;
+      const BOARD_CORNERS = [
+        new THREE.Vector3(-halfX, halfY, 0), // TL
+        new THREE.Vector3(halfX, halfY, 0), // TR
+        new THREE.Vector3(halfX, -halfY, 0), // BR
+        new THREE.Vector3(-halfX, -halfY, 0), // BL
+      ];
+
+      /* ---------- Exact 4-point Homography Projection Mapping ---------- */
+      // Solve 3x3 homography mapping src[]->dst[] (returns [a,b,c,d,e,f,g,h], H22=1)
+      function solveHomography(src, dst) {
+        const A = [],
+          B = [];
+        for (let i = 0; i < 4; i++) {
+          const sx = src[i].x,
+            sy = src[i].y,
+            u = dst[i].x,
+            v = dst[i].y;
+          A.push([sx, sy, 1, 0, 0, 0, -u * sx, -u * sy]);
+          B.push(u);
+          A.push([0, 0, 0, sx, sy, 1, -v * sx, -v * sy]);
+          B.push(v);
+        }
+        for (let i = 0; i < 8; i++) {
+          let p = i;
+          for (let r = i + 1; r < 8; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+          [A[i], A[p]] = [A[p], A[i]];
+          [B[i], B[p]] = [B[p], B[i]];
+          const piv = A[i][i];
+          for (let c = i; c < 8; c++) A[i][c] /= piv;
+          B[i] /= piv;
+          for (let r = 0; r < 8; r++) {
+            if (r === i) continue;
+            const fct = A[r][i];
+            if (!fct) continue;
+            for (let c = i; c < 8; c++) A[r][c] -= fct * A[i][c];
+            B[r] -= fct * B[i];
+          }
+        }
+        return B;
+      }
+      function applyHomography(h, x, y) {
+        const w = h[6] * x + h[7] * y + 1;
+        return { x: (h[0] * x + h[1] * y + h[2]) / w, y: (h[3] * x + h[4] * y + h[5]) / w };
+      }
+      function projectCorner(v) {
+        const p = v.clone().project(camera);
+        return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (1 - (p.y * 0.5 + 0.5)) * innerHeight };
+      }
+
+      let invHomography = null; // screen -> canvas-local, for raycasting
+
+      function applyCalibration() {
+        if (calibrationPoints.length !== 4) {
+          boardGroup.visible = false;
+          renderer.domElement.style.transform = "";
+          invHomography = null;
+          return;
+        }
+        boardGroup.visible = true;
+        camera.updateMatrixWorld(true);
+        const src = BOARD_CORNERS.map(projectCorner);
+        const h = solveHomography(src, calibrationPoints);
+        invHomography = solveHomography(calibrationPoints, src);
+        const [a, b, c, d, e, f, g, hh] = h;
+        renderer.domElement.style.transform = `matrix3d(${a},${d},0,${g},${b},${e},0,${hh},0,0,1,0,${c},${f},0,1)`;
+      }
+
+      /* ---------- Calibration state & UI ---------- */
+      let calibrationPoints = [];
+      let calibrationStep = -1; // -1 inactive, 0..3 clicking, 4 done
+
+      const handlesContainer = document.getElementById("calibration-handles");
+      const calibSvg = document.getElementById("calibration-svg");
+      const calibPoly = document.getElementById("calibration-poly");
+      const calibBanner = document.getElementById("calibration-banner");
+      const calibMsg = document.getElementById("calibration-msg");
+      const doneBtn = document.getElementById("btn-calibrate-done");
+      const startBtn = document.getElementById("btn-calibrate-start");
+
+      function updateHandlesUI() {
+        if (!calibrationPoints.length) {
+          handlesContainer.style.display = "none";
+          calibSvg.style.display = "none";
+          return;
+        }
+        handlesContainer.style.display = "block";
+        calibSvg.style.display = "block";
+        const poly = [];
+        for (let i = 0; i < 4; i++) {
+          const handle = document.getElementById(`handle-${i}`);
+          if (i < calibrationPoints.length) {
+            handle.style.left = calibrationPoints[i].x + "px";
+            handle.style.top = calibrationPoints[i].y + "px";
+            handle.style.display = "flex";
+            poly.push(`${calibrationPoints[i].x},${calibrationPoints[i].y}`);
+          } else handle.style.display = "none";
+        }
+        calibPoly.setAttribute("points", poly.join(" "));
+      }
+
+      // Restore saved calibration
+      try {
+        const saved = localStorage.getItem("splitFlapCalibrationPoints");
+        if (saved) {
+          calibrationPoints = JSON.parse(saved);
+          calibrationStep = 4;
+          setTimeout(() => {
+            applyCalibration();
+            updateHandlesUI();
+            doneBtn.style.display = "block";
+          }, 150);
+        }
+      } catch (e) {
+        console.warn("Calibration load failed:", e);
+      }
+
+      // Handle dragging
+      let activeDrag = null;
+      document.querySelectorAll(".handle").forEach((handle) => {
+        const idx = +handle.dataset.idx;
+        handle.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          activeDrag = idx;
+          handle.classList.add("active");
+          handle.setPointerCapture(e.pointerId);
+        });
+        handle.addEventListener("pointermove", (e) => {
+          if (activeDrag === null) return;
+          e.stopPropagation();
+          calibrationPoints[idx] = { x: e.clientX, y: e.clientY };
+          updateHandlesUI();
+          applyCalibration();
+        });
+        const stop = (e) => {
+          if (activeDrag === null) return;
+          e.stopPropagation();
+          handle.releasePointerCapture(e.pointerId);
+          handle.classList.remove("active");
+          activeDrag = null;
+          localStorage.setItem("splitFlapCalibrationPoints", JSON.stringify(calibrationPoints));
+        };
+        handle.addEventListener("pointerup", stop);
+        handle.addEventListener("pointercancel", stop);
+      });
+
+      // Menu buttons
+      startBtn.addEventListener("click", () => {
+        calibrationPoints = [];
+        calibrationStep = 0;
+        applyCalibration();
+        updateHandlesUI();
+        calibBanner.style.display = "block";
+        calibMsg.textContent = "Click Top-Left Corner";
+        doneBtn.style.display = "none";
+        startBtn.textContent = "Restart Calibration";
+      });
+      doneBtn.addEventListener("click", () => {
+        calibrationStep = -1;
+        calibBanner.style.display = "none";
+        doneBtn.style.display = "none";
+        handlesContainer.style.display = "none";
+        calibSvg.style.display = "none";
+      });
+      document.getElementById("btn-calibrate-reset").addEventListener("click", () => {
+        calibrationPoints = [];
+        calibrationStep = -1;
+        calibBanner.style.display = "none";
+        doneBtn.style.display = "none";
+        localStorage.removeItem("splitFlapCalibrationPoints");
+        applyCalibration();
+        updateHandlesUI();
+      });
+
+      // Collapse menu
+      const menuContainer = document.getElementById("menu-container");
+      const collapseIcon = document.getElementById("collapse-icon");
+      document.getElementById("menu-header").addEventListener("click", () => {
+        menuContainer.classList.toggle("collapsed");
+        collapseIcon.textContent = menuContainer.classList.contains("collapsed") ? "[+]" : "[-]";
+      });
+
+      /* ---------- Resize ---------- */
+      function resize() {
+        renderer.setSize(innerWidth, innerHeight);
+        const aspect = innerWidth / innerHeight,
+          vh = 40,
+          vw = vh * aspect;
+        camera.left = -vw / 2;
+        camera.right = vw / 2;
+        camera.top = vh / 2;
+        camera.bottom = -vh / 2;
+        camera.updateProjectionMatrix();
+        applyCalibration();
+        updateHandlesUI();
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      /* ---------- Start board ---------- */
+      function startBoard() {
+        resumeAudio();
+        const overlay = document.getElementById("overlay");
+        overlay.style.opacity = "0";
+        overlay.style.pointerEvents = "none";
+        setTimeout(() => (overlay.style.display = "none"), 400);
+        setTimeout(() => {
+          flaps.forEach((f, i) => setTimeout(() => f.go(" "), (Math.floor(i / N) + (i % N)) * 80));
+        }, 100);
+      }
+      document.getElementById("start-btn").addEventListener("click", startBoard);
+
+      /* ---------- Pointer / raycasting (inverse homography aware) ---------- */
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let isPointerDown = false,
+        currentHeldFlap = null,
+        holdInterval = null;
+
+      function getIntersectedFlap(cx, cy) {
+        let x = cx,
+          y = cy;
+        if (invHomography) {
+          const p = applyHomography(invHomography, cx, cy);
+          x = p.x;
+          y = p.y;
+        }
+        pointer.x = (x / innerWidth) * 2 - 1;
+        pointer.y = -(y / innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObjects(raycastTargets, false);
+        return hits.length ? hits[0].object.userData.flap : null;
+      }
+      function startHolding(flap) {
+        if (currentHeldFlap === flap) return;
+        stopHolding();
+        currentHeldFlap = flap;
+        if (flap) {
+          flap.advance();
+          holdInterval = setInterval(() => currentHeldFlap && currentHeldFlap.advance(), Math.max(120, (1000 / SPEED) * 1.15));
+        }
+      }
+      function stopHolding() {
+        if (holdInterval) clearInterval(holdInterval);
+        holdInterval = null;
+        currentHeldFlap = null;
+      }
+
+      window.addEventListener("pointerdown", (e) => {
+        if (e.target.closest("#menu-container") || e.target.closest("#start-btn") || e.target.closest("#calibration-handles")) return;
+        resumeAudio();
+        if (calibrationStep >= 0 && calibrationStep < 4) {
+          calibrationPoints[calibrationStep++] = { x: e.clientX, y: e.clientY };
+          updateHandlesUI();
+          const msgs = ["Click Top-Right Corner", "Click Bottom-Right Corner", "Click Bottom-Left Corner"];
+          if (calibrationStep < 4) calibMsg.textContent = msgs[calibrationStep - 1];
+          else {
+            calibMsg.textContent = "Calibration complete! Drag corners to adjust";
+            doneBtn.style.display = "block";
+            applyCalibration();
+            localStorage.setItem("splitFlapCalibrationPoints", JSON.stringify(calibrationPoints));
+          }
+          return;
+        }
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        if (!boardGroup.visible) return;
+        isPointerDown = true;
+        const flap = getIntersectedFlap(e.clientX, e.clientY);
+        if (flap) startHolding(flap);
+      });
+
+      window.addEventListener("pointermove", (e) => {
+        if (
+          e.target.closest("#menu-container") ||
+          e.target.closest("#calibration-handles") ||
+          (calibrationStep >= 0 && calibrationStep < 4) ||
+          !boardGroup.visible
+        ) {
+          document.body.style.cursor = "default";
+          return;
+        }
+        const flap = getIntersectedFlap(e.clientX, e.clientY);
+        document.body.style.cursor = flap ? "pointer" : "default";
+        if (isPointerDown) flap ? startHolding(flap) : stopHolding();
+      });
+
+      window.addEventListener("pointerup", () => {
+        isPointerDown = false;
+        stopHolding();
+      });
+      window.addEventListener("pointercancel", () => {
+        isPointerDown = false;
+        stopHolding();
+      });
+      window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      /* ---------- Render loop ---------- */
+      function animate() {
+        requestAnimationFrame(animate);
+        const now = performance.now();
+        for (const f of flaps) f.update(now);
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>
