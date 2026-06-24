@@ -22,6 +22,16 @@
         outline: none;
         touch-action: none;
       }
+      /* Lighting overlay: multiplies the rendered board with the blackboard's
+         natural lighting gradient so the off-black blends into the scene. */
+      #lightmap {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        pointer-events: none;
+        mix-blend-mode: multiply;
+        display: none;
+      }
       #overlay {
         position: absolute;
         inset: 0;
@@ -59,7 +69,7 @@
         position: absolute;
         top: 16px;
         right: 16px;
-        width: 280px;
+        width: 290px;
         background: rgba(20, 20, 20, 0.85);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
@@ -97,6 +107,7 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+        overflow-y: auto;
       }
       .menu-section-title {
         font-weight: bold;
@@ -132,6 +143,30 @@
       }
       .row .preset-btn {
         flex: 1;
+      }
+      .param-row {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .param-row label {
+        font-size: 11px;
+        color: #bbb;
+      }
+      .slider-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .slider-row input[type="range"] {
+        flex: 1;
+        min-width: 0;
+      }
+      .slider-row span {
+        width: 40px;
+        text-align: right;
+        color: #aaa;
+        font-size: 11px;
       }
 
       .handle {
@@ -189,6 +224,8 @@
     </style>
   </head>
   <body>
+    <canvas id="lightmap"></canvas>
+
     <div id="overlay"><button id="start-btn">Start</button></div>
 
     <div id="calibration-banner">CALIBRATION MODE: <span id="calibration-msg" class="highlight">Click Top-Left Corner</span></div>
@@ -211,10 +248,15 @@
         <button class="preset-btn" id="btn-calibrate-start" style="background: #005500; color: #00ff00; border-color: #008800; font-weight: bold">
           Start 4-Corner Calibration
         </button>
+        <button class="preset-btn" id="btn-adjust-corners">Adjust Corners</button>
         <div class="row">
           <button class="preset-btn" id="btn-calibrate-reset">Reset</button>
           <button class="preset-btn" id="btn-calibrate-done" style="display: none; background: #550000; border-color: #880000; color: #ff9999">Done</button>
         </div>
+
+        <div class="menu-section-title" style="margin-top: 6px">Lighting Blend</div>
+        <div id="blend-controls" style="display: flex; flex-direction: column; gap: 8px"></div>
+        <button class="preset-btn" id="btn-blend-reset">Reset Blend</button>
       </div>
     </div>
 
@@ -470,7 +512,6 @@
       ];
 
       /* ---------- Exact 4-point Homography Projection Mapping ---------- */
-      // Solve 3x3 homography mapping src[]->dst[] (returns [a,b,c,d,e,f,g,h], H22=1)
       function solveHomography(src, dst) {
         const A = [],
           B = [];
@@ -518,6 +559,7 @@
           boardGroup.visible = false;
           renderer.domElement.style.transform = "";
           invHomography = null;
+          scheduleLightmap();
           return;
         }
         boardGroup.visible = true;
@@ -527,11 +569,262 @@
         invHomography = solveHomography(calibrationPoints, src);
         const [a, b, c, d, e, f, g, hh] = h;
         renderer.domElement.style.transform = `matrix3d(${a},${d},0,${g},${b},${e},0,${hh},0,0,1,0,${c},${f},0,1)`;
+        scheduleLightmap();
       }
+
+      /* ---------- Lighting blend ----------
+         Strategy: the blackboard in base.webp carries a brightness (and subtle
+         color) gradient from the room lighting. We sample that ONLY inside the
+         calibrated quad, normalize against the brightest spot of the board
+         region (the "fully lit" reference), then run the value through a
+         configurable tone pipeline (black/white levels -> gamma -> contrast ->
+         exposure -> strength) and apply a color tint pulled from the scene.
+         The resulting RGB lightmap is laid over the render with
+         mix-blend-mode:multiply, so the off-black and white letters inherit
+         the exact lighting falloff & color cast of the surrounding blackboard.
+      */
+      const lightCanvas = document.getElementById("lightmap");
+      const lightCtx = lightCanvas.getContext("2d");
+
+      // Configurable blend parameters
+      const blendParams = {
+        lightStrength: { label: "Light Strength", min: 0, max: 1, step: 0.01, value: 0.85, def: 0.85 },
+        exposure: { label: "Exposure", min: -1, max: 1, step: 0.01, value: 0, def: 0 },
+        contrast: { label: "Contrast", min: 0.3, max: 2.5, step: 0.01, value: 1, def: 1 },
+        black: { label: "Black Level", min: 0, max: 0.6, step: 0.01, value: 0, def: 0 },
+        white: { label: "White Level", min: 0.4, max: 1.5, step: 0.01, value: 1, def: 1 },
+        gamma: { label: "Gamma", min: 0.2, max: 3, step: 0.01, value: 1, def: 1 },
+        tint: { label: "Color Tint", min: 0, max: 1, step: 0.01, value: 0.5, def: 0.5 },
+        saturation: { label: "Tint Saturation", min: 0, max: 2, step: 0.01, value: 1, def: 1 },
+        softness: { label: "Falloff Softness", min: 0, max: 1, step: 0.01, value: 0, def: 0 },
+      };
+
+      function loadBlend() {
+        try {
+          const s = JSON.parse(localStorage.getItem("splitFlapBlendParams") || "{}");
+          for (const k in s) if (blendParams[k]) blendParams[k].value = s[k];
+        } catch (e) {}
+      }
+      function saveBlend() {
+        const o = {};
+        for (const k in blendParams) o[k] = blendParams[k].value;
+        localStorage.setItem("splitFlapBlendParams", JSON.stringify(o));
+      }
+      loadBlend();
+
+      const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+      let bgData = null,
+        bgImgW = 0,
+        bgImgH = 0,
+        dx = 0,
+        dy = 0,
+        dw = 0,
+        dh = 0;
+
+      const bgImage = new Image();
+      bgImage.crossOrigin = "anonymous";
+      bgImage.src = "base.webp";
+      bgImage.onload = () => {
+        try {
+          bgImgW = bgImage.naturalWidth;
+          bgImgH = bgImage.naturalHeight;
+          const oc = document.createElement("canvas");
+          oc.width = bgImgW;
+          oc.height = bgImgH;
+          const octx = oc.getContext("2d", { willReadFrequently: true });
+          octx.drawImage(bgImage, 0, 0);
+          bgData = octx.getImageData(0, 0, bgImgW, bgImgH).data;
+        } catch (e) {
+          console.warn("Could not read background pixels (CORS?):", e);
+          bgData = null;
+        }
+        scheduleLightmap();
+      };
+
+      function pointInQuad(x, y, q) {
+        let inside = false;
+        for (let i = 0, j = 3; i < 4; j = i++) {
+          const xi = q[i].x,
+            yi = q[i].y,
+            xj = q[j].x,
+            yj = q[j].y;
+          if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+      }
+      function sampleRGB(sx, sy) {
+        const ix = ((sx - dx) / dw) * bgImgW;
+        const iy = ((sy - dy) / dh) * bgImgH;
+        const px = Math.floor(ix),
+          py = Math.floor(iy);
+        if (px < 0 || py < 0 || px >= bgImgW || py >= bgImgH) return null;
+        const i = (py * bgImgW + px) * 4;
+        return [bgData[i], bgData[i + 1], bgData[i + 2]];
+      }
+      const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;
+
+      function buildLightmap() {
+        if (!bgData || calibrationPoints.length !== 4 || (calibrationStep >= 0 && calibrationStep < 4)) {
+          lightCanvas.style.display = "none";
+          return;
+        }
+        const W = innerWidth,
+          H = innerHeight;
+        lightCanvas.width = W;
+        lightCanvas.height = H;
+
+        // background "contain" display rect
+        const imgAspect = bgImgW / bgImgH,
+          winAspect = W / H;
+        if (imgAspect > winAspect) {
+          dw = W;
+          dh = W / imgAspect;
+        } else {
+          dh = H;
+          dw = H * imgAspect;
+        }
+        dx = (W - dw) / 2;
+        dy = (H - dh) / 2;
+
+        const q = calibrationPoints;
+        const minX = Math.max(0, Math.floor(Math.min(q[0].x, q[1].x, q[2].x, q[3].x)));
+        const maxX = Math.min(W - 1, Math.ceil(Math.max(q[0].x, q[1].x, q[2].x, q[3].x)));
+        const minY = Math.max(0, Math.floor(Math.min(q[0].y, q[1].y, q[2].y, q[3].y)));
+        const maxY = Math.min(H - 1, Math.ceil(Math.max(q[0].y, q[1].y, q[2].y, q[3].y)));
+
+        // Pass 1: find brightest luminance inside the board region (reference).
+        let maxB = 1e-6;
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            if (!pointInQuad(x + 0.5, y + 0.5, q)) continue;
+            const rgb = sampleRGB(x + 0.5, y + 0.5);
+            if (!rgb) continue;
+            const b = lum(rgb[0], rgb[1], rgb[2]);
+            if (b > maxB) maxB = b;
+          }
+        }
+
+        const P = {};
+        for (const k in blendParams) P[k] = blendParams[k].value;
+        const expGain = Math.pow(2, P.exposure);
+        const wMinusB = Math.max(0.001, P.white - P.black);
+
+        const img = lightCtx.createImageData(W, H);
+        const d = img.data;
+        for (let y = minY; y <= maxY; y++) {
+          for (let x = minX; x <= maxX; x++) {
+            if (!pointInQuad(x + 0.5, y + 0.5, q)) continue;
+            const rgb = sampleRGB(x + 0.5, y + 0.5);
+            if (!rgb) continue;
+            const l = lum(rgb[0], rgb[1], rgb[2]);
+
+            // normalized brightness relative to brightest spot
+            let n = l / maxB;
+            // input levels (black/white)
+            n = (n - P.black) / wMinusB;
+            n = clamp01(n);
+            // gamma
+            if (P.gamma !== 1) n = Math.pow(n, P.gamma);
+            // softness: ease the falloff (smoothstep blend)
+            if (P.softness > 0) {
+              const ss = n * n * (3 - 2 * n);
+              n = n + (ss - n) * P.softness;
+            }
+            // contrast around mid
+            n = (n - 0.5) * P.contrast + 0.5;
+            // exposure
+            n *= expGain;
+            n = clamp01(n);
+            // strength blend toward neutral white
+            let f = 1 - P.lightStrength * (1 - n);
+
+            // color tint pulled from the scene's chroma
+            let tr = 1,
+              tg = 1,
+              tb = 1;
+            if (P.tint > 0) {
+              const ll = Math.max(1e-3, l);
+              let cr = rgb[0] / ll,
+                cg = rgb[1] / ll,
+                cb = rgb[2] / ll;
+              const cm = (cr + cg + cb) / 3;
+              cr = cm + (cr - cm) * P.saturation;
+              cg = cm + (cg - cm) * P.saturation;
+              cb = cm + (cb - cm) * P.saturation;
+              tr = 1 + (cr - 1) * P.tint;
+              tg = 1 + (cg - 1) * P.tint;
+              tb = 1 + (cb - 1) * P.tint;
+            }
+
+            const idx = (y * W + x) * 4;
+            d[idx] = Math.round(clamp01(f * tr) * 255);
+            d[idx + 1] = Math.round(clamp01(f * tg) * 255);
+            d[idx + 2] = Math.round(clamp01(f * tb) * 255);
+            d[idx + 3] = 255;
+          }
+        }
+        lightCtx.putImageData(img, 0, 0);
+        lightCanvas.style.display = "block";
+      }
+
+      let lmTimer = null;
+      function scheduleLightmap() {
+        if (lmTimer) clearTimeout(lmTimer);
+        lmTimer = setTimeout(buildLightmap, 50);
+      }
+
+      /* ---------- Blend controls UI ---------- */
+      const blendContainer = document.getElementById("blend-controls");
+      function buildBlendUI() {
+        blendContainer.innerHTML = "";
+        for (const key in blendParams) {
+          const p = blendParams[key];
+          const row = document.createElement("div");
+          row.className = "param-row";
+          const label = document.createElement("label");
+          label.textContent = p.label;
+          const sr = document.createElement("div");
+          sr.className = "slider-row";
+          const input = document.createElement("input");
+          input.type = "range";
+          input.min = p.min;
+          input.max = p.max;
+          input.step = p.step;
+          input.value = p.value;
+          const val = document.createElement("span");
+          val.textContent = (+p.value).toFixed(2);
+          input.addEventListener("input", () => {
+            p.value = +input.value;
+            val.textContent = p.value.toFixed(2);
+            saveBlend();
+            scheduleLightmap();
+          });
+          p._input = input;
+          p._val = val;
+          sr.appendChild(input);
+          sr.appendChild(val);
+          row.appendChild(label);
+          row.appendChild(sr);
+          blendContainer.appendChild(row);
+        }
+      }
+      buildBlendUI();
+      document.getElementById("btn-blend-reset").addEventListener("click", () => {
+        for (const k in blendParams) {
+          blendParams[k].value = blendParams[k].def;
+          blendParams[k]._input.value = blendParams[k].def;
+          blendParams[k]._val.textContent = blendParams[k].def.toFixed(2);
+        }
+        saveBlend();
+        scheduleLightmap();
+      });
 
       /* ---------- Calibration state & UI ---------- */
       let calibrationPoints = [];
       let calibrationStep = -1; // -1 inactive, 0..3 clicking, 4 done
+      let handlesShown = false;
+      let adjustMode = false;
 
       const handlesContainer = document.getElementById("calibration-handles");
       const calibSvg = document.getElementById("calibration-svg");
@@ -540,9 +833,11 @@
       const calibMsg = document.getElementById("calibration-msg");
       const doneBtn = document.getElementById("btn-calibrate-done");
       const startBtn = document.getElementById("btn-calibrate-start");
+      const adjustBtn = document.getElementById("btn-adjust-corners");
 
       function updateHandlesUI() {
-        if (!calibrationPoints.length) {
+        const show = handlesShown && calibrationPoints.length > 0;
+        if (!show) {
           handlesContainer.style.display = "none";
           calibSvg.style.display = "none";
           return;
@@ -562,6 +857,23 @@
         calibPoly.setAttribute("points", poly.join(" "));
       }
 
+      function setAdjustMode(on) {
+        adjustMode = on;
+        handlesShown = on;
+        if (on) {
+          adjustBtn.textContent = "Finish Adjusting";
+          adjustBtn.style.background = "#553300";
+          adjustBtn.style.borderColor = "#aa7722";
+          adjustBtn.style.color = "#ffcc88";
+        } else {
+          adjustBtn.textContent = "Adjust Corners";
+          adjustBtn.style.background = "";
+          adjustBtn.style.borderColor = "";
+          adjustBtn.style.color = "";
+        }
+        updateHandlesUI();
+      }
+
       // Restore saved calibration
       try {
         const saved = localStorage.getItem("splitFlapCalibrationPoints");
@@ -571,14 +883,13 @@
           setTimeout(() => {
             applyCalibration();
             updateHandlesUI();
-            doneBtn.style.display = "block";
           }, 150);
         }
       } catch (e) {
         console.warn("Calibration load failed:", e);
       }
 
-      // Handle dragging
+      // Handle dragging — realtime update of mapping + lightmap
       let activeDrag = null;
       document.querySelectorAll(".handle").forEach((handle) => {
         const idx = +handle.dataset.idx;
@@ -594,7 +905,7 @@
           e.stopPropagation();
           calibrationPoints[idx] = { x: e.clientX, y: e.clientY };
           updateHandlesUI();
-          applyCalibration();
+          applyCalibration(); // realtime render mapping + scheduled lightmap
         });
         const stop = (e) => {
           if (activeDrag === null) return;
@@ -603,6 +914,7 @@
           handle.classList.remove("active");
           activeDrag = null;
           localStorage.setItem("splitFlapCalibrationPoints", JSON.stringify(calibrationPoints));
+          buildLightmap();
         };
         handle.addEventListener("pointerup", stop);
         handle.addEventListener("pointercancel", stop);
@@ -610,30 +922,41 @@
 
       // Menu buttons
       startBtn.addEventListener("click", () => {
+        setAdjustMode(false);
         calibrationPoints = [];
         calibrationStep = 0;
+        handlesShown = true;
         applyCalibration();
         updateHandlesUI();
         calibBanner.style.display = "block";
         calibMsg.textContent = "Click Top-Left Corner";
         doneBtn.style.display = "none";
         startBtn.textContent = "Restart Calibration";
+        lightCanvas.style.display = "none";
+      });
+      adjustBtn.addEventListener("click", () => {
+        if (calibrationPoints.length !== 4) return;
+        setAdjustMode(!adjustMode);
       });
       doneBtn.addEventListener("click", () => {
-        calibrationStep = -1;
+        calibrationStep = 4;
+        handlesShown = false;
         calibBanner.style.display = "none";
         doneBtn.style.display = "none";
-        handlesContainer.style.display = "none";
-        calibSvg.style.display = "none";
+        updateHandlesUI();
+        buildLightmap();
       });
       document.getElementById("btn-calibrate-reset").addEventListener("click", () => {
+        setAdjustMode(false);
         calibrationPoints = [];
         calibrationStep = -1;
+        handlesShown = false;
         calibBanner.style.display = "none";
         doneBtn.style.display = "none";
         localStorage.removeItem("splitFlapCalibrationPoints");
         applyCalibration();
         updateHandlesUI();
+        lightCanvas.style.display = "none";
       });
 
       // Collapse menu
@@ -723,9 +1046,11 @@
             doneBtn.style.display = "block";
             applyCalibration();
             localStorage.setItem("splitFlapCalibrationPoints", JSON.stringify(calibrationPoints));
+            buildLightmap();
           }
           return;
         }
+        if (adjustMode) return; // don't flip while adjusting corners
         if (e.pointerType === "mouse" && e.button !== 0) return;
         if (!boardGroup.visible) return;
         isPointerDown = true;
@@ -737,6 +1062,7 @@
         if (
           e.target.closest("#menu-container") ||
           e.target.closest("#calibration-handles") ||
+          adjustMode ||
           (calibrationStep >= 0 && calibrationStep < 4) ||
           !boardGroup.visible
         ) {
