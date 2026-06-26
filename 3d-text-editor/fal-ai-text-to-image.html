@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>fal.ai Image Generator</title>
+  </head>
+  <body>
+    <h1>fal.ai Image Generator</h1>
+
+    <form id="form">
+      <div>
+        <label for="apiKey">fal.ai API Key</label>
+        <input id="apiKey" type="password" required />
+      </div>
+
+      <div>
+        <label for="prompt">Prompt</label>
+        <input id="prompt" type="text" value="a sunset over mountains" required />
+      </div>
+
+      <button type="submit">Generate Image</button>
+    </form>
+
+    <p id="status"></p>
+
+    <div id="result"></div>
+
+    <script>
+      const apiKeyInput = document.getElementById("apiKey");
+      const promptInput = document.getElementById("prompt");
+      const form = document.getElementById("form");
+      const statusEl = document.getElementById("status");
+      const resultEl = document.getElementById("result");
+
+      const savedApiKey = localStorage.getItem("fal_api_key");
+      if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const apiKey = apiKeyInput.value.trim();
+        const prompt = promptInput.value.trim();
+
+        if (!apiKey || !prompt) {
+          statusEl.textContent = "Please enter an API key and prompt.";
+          return;
+        }
+
+        localStorage.setItem("fal_api_key", apiKey);
+
+        statusEl.textContent = "Generating image...";
+        resultEl.innerHTML = "";
+
+        try {
+          const response = await fetch("https://fal.run/fal-ai/krea-2/turbo", {
+            method: "POST",
+            headers: {
+              Authorization: "Key " + apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              prompt,
+              num_images: 1,
+              image_size: "square",
+              output_format: "jpeg",
+              enable_safety_checker: false,
+              acceleration: "none",
+              enable_prompt_expansion: true,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || "Request failed");
+          }
+
+          const result = await response.json();
+
+          const imageUrl = result?.data?.images?.[0]?.url || result?.images?.[0]?.url || result?.image?.url || result?.url;
+
+          if (!imageUrl) {
+            throw new Error("No image URL found in response.");
+          }
+
+          const img = document.createElement("img");
+          img.src = imageUrl;
+          img.alt = prompt;
+
+          const link = document.createElement("a");
+          link.href = imageUrl;
+          link.target = "_blank";
+          link.textContent = "Open image";
+
+          resultEl.appendChild(img);
+          resultEl.appendChild(document.createElement("br"));
+          resultEl.appendChild(link);
+
+          statusEl.textContent = "Done.";
+        } catch (error) {
+          statusEl.textContent = "Error: " + error.message;
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Multi-Layered Monospace Text Editor</title>
+    <style>
+      :root {
+        --paper: #fff;
+        --ink: #000;
+        --grid-line: #b8b8b8;
+        --cell: 22px;
+        --stroke: 1px;
+        --pitch: 23px;
+        --grid-size: 183px;
+        --font: 16px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: monospace;
+      }
+
+      #scene {
+        width: 420px;
+        height: 330px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        perspective: 1200px;
+        overflow: visible;
+      }
+
+      #stack {
+        position: relative;
+        width: var(--grid-size);
+        height: var(--grid-size);
+        transform-style: preserve-3d;
+        transform: rotateX(-15deg) rotateY(-35deg);
+      }
+
+      .layer {
+        box-sizing: content-box;
+        position: absolute;
+        inset: 0;
+        width: var(--grid-size);
+        height: var(--grid-size);
+        border: var(--stroke) solid var(--ink);
+        background: rgba(255, 255, 255, 0.86);
+        transform-style: preserve-3d;
+        will-change: transform;
+      }
+
+      .layer.active {
+        background: rgba(255, 255, 255, 0.98);
+      }
+
+      .gridbg {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .gridline {
+        position: absolute;
+        background: var(--grid-line);
+        pointer-events: none;
+      }
+
+      .gridline.v {
+        width: var(--stroke);
+        height: 100%;
+      }
+
+      .gridline.h {
+        height: var(--stroke);
+        width: 100%;
+      }
+
+      .surface {
+        position: absolute;
+        inset: 0;
+        width: var(--grid-size);
+        height: var(--grid-size);
+        overflow: hidden;
+        white-space: pre;
+        outline: none;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        color: transparent;
+        caret-color: transparent;
+        font-family: "Courier New", monospace;
+        font-size: var(--font);
+        line-height: var(--pitch);
+        z-index: 4;
+      }
+
+      .caretcell {
+        position: absolute;
+        width: var(--cell);
+        height: var(--cell);
+        pointer-events: none;
+        background: var(--ink);
+        z-index: 1;
+      }
+
+      .caretcell.blink {
+        animation: caretBlink 1s steps(1, start) infinite;
+      }
+
+      @keyframes caretBlink {
+        0%,
+        49.999% {
+          background: var(--ink);
+        }
+        50%,
+        100% {
+          background: var(--paper);
+        }
+      }
+
+      .glyphs {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        font-family: "Courier New", monospace;
+        z-index: 2;
+      }
+
+      .glyph {
+        position: absolute;
+        width: var(--cell);
+        height: var(--cell);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: var(--font);
+        line-height: 1;
+        color: var(--ink);
+      }
+
+      .glyph.oncaret {
+        color: var(--paper);
+      }
+
+      .glyph.oncaret.blink {
+        animation: glyphBlink 1s steps(1, start) infinite;
+      }
+
+      @keyframes glyphBlink {
+        0%,
+        49.999% {
+          color: var(--paper);
+        }
+        50%,
+        100% {
+          color: var(--ink);
+        }
+      }
+
+      .info {
+        font-size: 11px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        padding: 4px 10px;
+        border: var(--stroke) solid var(--ink);
+        background: var(--paper);
+        color: var(--ink);
+        font: 12px monospace;
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        background: var(--ink);
+        color: var(--paper);
+      }
+
+      button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene">
+      <div id="stack"></div>
+    </div>
+
+    <div class="info">Layer <span id="curLayer">1</span> / <span id="numLayers">1</span> · Tab / Shift+Tab to switch</div>
+
+    <div class="controls">
+      <button id="addBtn">+ Layer</button>
+      <button id="exportBtn">Export</button>
+    </div>
+
+    <script>
+      const K = 4;
+      const N = 8;
+      const CELL = 22;
+      const STROKE = 1;
+      const PITCH = CELL + STROKE;
+      const GRID_SIZE = N * CELL + (N - 1) * STROKE;
+      const Z_SPACING = 55;
+      const SIDE_OFFSET = GRID_SIZE + 42;
+      const SIDE_STEP = 22;
+      const ANIM = {
+        duration: 280,
+        easing: "cubic-bezier(.2, 0, 0, 1)",
+        fill: "both",
+      };
+
+      document.documentElement.style.setProperty("--cell", `${CELL}px`);
+      document.documentElement.style.setProperty("--stroke", `${STROKE}px`);
+      document.documentElement.style.setProperty("--pitch", `${PITCH}px`);
+      document.documentElement.style.setProperty("--grid-size", `${GRID_SIZE}px`);
+
+      const data = Array.from({ length: K }, () => Array.from({ length: N }, () => Array(N).fill(" ")));
+
+      let layerCount = 1;
+      let activeLayer = 0;
+      let composing = false;
+      let compositionStart = null;
+      let suppressCommit = "";
+
+      const layers = [];
+      const surfaces = [];
+      const glyphLayers = [];
+      const caretCells = [];
+      const layerAnimations = new Map();
+
+      // caretPos is the single source of truth; the native selection is only ever
+      // written to (never read back), to keep the drawn caret and text in sync.
+      const caretPos = Array.from({ length: K }, () => ({ r: 0, c: 0 }));
+
+      const stack = document.getElementById("stack");
+      const addBtn = document.getElementById("addBtn");
+      const exportBtn = document.getElementById("exportBtn");
+      const curLayerEl = document.getElementById("curLayer");
+      const numLayersEl = document.getElementById("numLayers");
+
+      addBtn.addEventListener("click", addLayer);
+      exportBtn.addEventListener("click", exportData);
+
+      build();
+      focusLayer(activeLayer);
+
+      function build() {
+        stack.innerHTML = "";
+        layers.length = 0;
+        surfaces.length = 0;
+        glyphLayers.length = 0;
+        caretCells.length = 0;
+        layerAnimations.clear();
+
+        for (let i = 0; i < layerCount; i++) stack.appendChild(createLayer(i));
+
+        layoutLayers(false);
+        updateActiveLayer(false);
+        updateInfo();
+      }
+
+      function createLayer(layerIndex) {
+        const layer = make("div", "layer");
+        const grid = make("div", "gridbg");
+        const caret = make("div", "caretcell");
+        const glyphs = make("div", "glyphs");
+        const surface = make("div", "surface");
+
+        drawGridLines(grid);
+
+        surface.setAttribute("contenteditable", "plaintext-only");
+        surface.spellcheck = false;
+        surface.textContent = layerToText(layerIndex);
+
+        bindSurface(surface, layerIndex);
+
+        layer.addEventListener("mousedown", () => switchLayer(layerIndex, true, true));
+
+        layer.append(grid, caret, glyphs, surface);
+
+        layers[layerIndex] = layer;
+        surfaces[layerIndex] = surface;
+        glyphLayers[layerIndex] = glyphs;
+        caretCells[layerIndex] = caret;
+
+        renderLayer(layerIndex);
+        return layer;
+      }
+
+      function bindSurface(surface, layerIndex) {
+        surface.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          caretPos[layerIndex] = pointToCell(event.offsetX, event.offsetY);
+          switchLayer(layerIndex, true, true);
+        });
+
+        surface.addEventListener("keydown", (event) => handleKeydown(event, layerIndex));
+        surface.addEventListener("beforeinput", (event) => handleBeforeInput(event, layerIndex));
+
+        surface.addEventListener("compositionstart", () => {
+          composing = true;
+          compositionStart = { ...caretPos[layerIndex] };
+        });
+
+        surface.addEventListener("compositionend", (event) => {
+          composing = false;
+          suppressCommit = event.data || "";
+          caretPos[layerIndex] = writeText(layerIndex, compositionStart, suppressCommit);
+          resetSurface(layerIndex);
+          renderLayer(layerIndex);
+          setTimeout(() => (suppressCommit = ""), 0);
+        });
+
+        surface.addEventListener("input", () => {
+          if (!composing) {
+            resetSurface(layerIndex);
+            renderLayer(layerIndex);
+          }
+        });
+      }
+
+      function handleKeydown(event, layerIndex) {
+        if (event.key === "Tab") {
+          event.preventDefault();
+          const preserved = { ...caretPos[layerIndex] };
+          const direction = event.shiftKey ? 1 : -1;
+          const next = mod(activeLayer + direction, layerCount);
+          caretPos[next] = preserved;
+          switchLayer(next, true, true);
+          return;
+        }
+
+        const pos = caretPos[layerIndex];
+        let next = null;
+
+        switch (event.key) {
+          case "ArrowLeft":
+            next = moveLeft(pos);
+            break;
+          case "ArrowRight":
+            next = moveRight(pos);
+            break;
+          case "ArrowUp":
+            next = { r: Math.max(0, pos.r - 1), c: pos.c };
+            break;
+          case "ArrowDown":
+            next = { r: Math.min(N - 1, pos.r + 1), c: pos.c };
+            break;
+          case "Enter":
+            next = { r: Math.min(N - 1, pos.r + 1), c: 0 };
+            break;
+          case "Backspace":
+            next = moveLeft(pos);
+            data[layerIndex][next.r][next.c] = " ";
+            break;
+          case "Delete":
+            data[layerIndex][pos.r][pos.c] = " ";
+            next = pos;
+            break;
+          default:
+            return;
+        }
+
+        event.preventDefault();
+        caretPos[layerIndex] = next;
+        resetSurface(layerIndex);
+        renderLayer(layerIndex);
+      }
+
+      function handleBeforeInput(event, layerIndex) {
+        if (event.isComposing || composing || event.inputType.includes("Composition")) return;
+
+        if (suppressCommit && event.data === suppressCommit) {
+          event.preventDefault();
+          suppressCommit = "";
+          return;
+        }
+
+        event.preventDefault();
+
+        // Drive everything from the authoritative caretPos, never the DOM selection.
+        if (event.inputType === "insertText") {
+          caretPos[layerIndex] = writeText(layerIndex, caretPos[layerIndex], event.data || "");
+        } else if (event.inputType === "insertFromPaste") {
+          const text = event.dataTransfer?.getData("text/plain") || event.data || "";
+          caretPos[layerIndex] = writeText(layerIndex, caretPos[layerIndex], text);
+        } else if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
+          caretPos[layerIndex] = { r: Math.min(N - 1, caretPos[layerIndex].r + 1), c: 0 };
+        } else if (event.inputType === "deleteContentBackward") {
+          caretPos[layerIndex] = moveLeft(caretPos[layerIndex]);
+          data[layerIndex][caretPos[layerIndex].r][caretPos[layerIndex].c] = " ";
+        } else if (event.inputType === "deleteContentForward") {
+          data[layerIndex][caretPos[layerIndex].r][caretPos[layerIndex].c] = " ";
+        } else {
+          return;
+        }
+
+        resetSurface(layerIndex);
+        renderLayer(layerIndex);
+      }
+
+      function switchLayer(next, shouldFocus, animated) {
+        activeLayer = next;
+        updateActiveLayer(animated);
+        if (shouldFocus) focusLayer(next);
+      }
+
+      function updateActiveLayer(animated) {
+        layers.forEach((layer, index) => layer.classList.toggle("active", index === activeLayer));
+        layoutLayers(animated);
+        for (let i = 0; i < layerCount; i++) renderLayer(i);
+        updateInfo();
+      }
+
+      function layoutLayers(animated) {
+        layers.forEach((layer, index) => {
+          const target = targetTransform(index);
+
+          if (!animated) {
+            layerAnimations.get(layer)?.cancel();
+            layer.style.transform = target;
+            return;
+          }
+
+          animateLayerTo(layer, target);
+        });
+      }
+
+      function animateLayerTo(layer, target) {
+        const computed = getComputedStyle(layer).transform;
+        const current = computed === "none" ? layer.style.transform || target : computed;
+
+        layerAnimations.get(layer)?.cancel();
+
+        if (current === target) {
+          layer.style.transform = target;
+          return;
+        }
+
+        const animation = layer.animate([{ transform: current }, { transform: target }], ANIM);
+
+        layerAnimations.set(layer, animation);
+        layer.style.transform = target;
+
+        animation.finished
+          .then(() => {
+            if (layerAnimations.get(layer) !== animation) return;
+            animation.cancel();
+            layerAnimations.delete(layer);
+            layer.style.transform = target;
+          })
+          .catch(() => {});
+      }
+
+      function targetTransform(index) {
+        const z = (index - (layerCount - 1) / 2) * Z_SPACING;
+        const above = Math.max(0, index - activeLayer);
+        const x = above ? -(SIDE_OFFSET + (above - 1) * SIDE_STEP) : 0;
+        return `translateX(${x}px) translateZ(${z}px)`;
+      }
+
+      function addLayer() {
+        if (layerCount >= K) return;
+        layerCount++;
+        activeLayer = layerCount - 1;
+        build();
+        focusLayer(activeLayer);
+      }
+
+      function exportData() {
+        console.log(data);
+        console.log(JSON.stringify(data));
+      }
+
+      function renderLayer(layerIndex) {
+        renderCaret(layerIndex);
+        renderGlyphs(layerIndex);
+        restartBlink(layerIndex);
+      }
+
+      function drawGridLines(grid) {
+        for (let i = 1; i < N; i++) {
+          const pos = i * CELL + (i - 1) * STROKE;
+
+          const v = make("div", "gridline v");
+          v.style.left = `${pos}px`;
+
+          const h = make("div", "gridline h");
+          h.style.top = `${pos}px`;
+
+          grid.append(v, h);
+        }
+      }
+
+      function renderCaret(layerIndex) {
+        const caret = caretCells[layerIndex];
+
+        if (layerIndex !== activeLayer) {
+          caret.style.display = "none";
+          return;
+        }
+
+        const { r, c } = caretPos[layerIndex];
+        caret.style.display = "block";
+        caret.style.left = `${cellLeft(c)}px`;
+        caret.style.top = `${cellLeft(r)}px`;
+      }
+
+      function renderGlyphs(layerIndex) {
+        const glyphs = glyphLayers[layerIndex];
+        const pos = caretPos[layerIndex];
+        const caretVisible = layerIndex === activeLayer;
+
+        glyphs.innerHTML = "";
+
+        for (let r = 0; r < N; r++) {
+          for (let c = 0; c < N; c++) {
+            const ch = data[layerIndex][r][c];
+            const onCaret = caretVisible && r === pos.r && c === pos.c;
+            if (ch === " " && !onCaret) continue;
+
+            const glyph = make("div", `glyph${onCaret ? " oncaret blink" : ""}`);
+            glyph.style.left = `${cellLeft(c)}px`;
+            glyph.style.top = `${cellLeft(r)}px`;
+            glyph.textContent = ch === " " ? "" : ch;
+            glyphs.appendChild(glyph);
+          }
+        }
+      }
+
+      function restartBlink(layerIndex) {
+        const caret = caretCells[layerIndex];
+        if (!caret || caret.style.display === "none") return;
+
+        caret.classList.remove("blink");
+        void caret.offsetWidth;
+        caret.classList.add("blink");
+
+        const glyph = glyphLayers[layerIndex].querySelector(".glyph.oncaret");
+        if (glyph) {
+          glyph.classList.remove("blink");
+          void glyph.offsetWidth;
+          glyph.classList.add("blink");
+        }
+      }
+
+      function writeText(layerIndex, start, text) {
+        let pos = { ...start };
+
+        for (const ch of Array.from(text.replace(/\r/g, ""))) {
+          if (ch === "\n") {
+            pos = { r: Math.min(N - 1, pos.r + 1), c: 0 };
+            continue;
+          }
+
+          data[layerIndex][pos.r][pos.c] = ch;
+          pos = moveRight(pos);
+        }
+
+        return pos;
+      }
+
+      function moveRight(pos) {
+        if (pos.c < N - 1) return { r: pos.r, c: pos.c + 1 };
+        if (pos.r < N - 1) return { r: pos.r + 1, c: 0 };
+        return { r: N - 1, c: N - 1 };
+      }
+
+      function moveLeft(pos) {
+        if (pos.c > 0) return { r: pos.r, c: pos.c - 1 };
+        if (pos.r > 0) return { r: pos.r - 1, c: N - 1 };
+        return { r: 0, c: 0 };
+      }
+
+      function layerToText(layerIndex) {
+        return data[layerIndex].map((row) => row.join("")).join("\n");
+      }
+
+      function resetSurface(layerIndex) {
+        const surface = surfaces[layerIndex];
+        surface.textContent = layerToText(layerIndex);
+        setSelectionFromCaret(layerIndex);
+      }
+
+      function focusLayer(layerIndex) {
+        surfaces[layerIndex].focus();
+        setSelectionFromCaret(layerIndex);
+        renderLayer(layerIndex);
+      }
+
+      function setSelectionFromCaret(layerIndex) {
+        if (document.activeElement !== surfaces[layerIndex]) return;
+        setSelectionOffset(surfaces[layerIndex], cellToOffset(caretPos[layerIndex]));
+      }
+
+      function cellToOffset({ r, c }) {
+        return r * (N + 1) + c;
+      }
+
+      function setSelectionOffset(root, offset) {
+        const range = document.createRange();
+        const selection = window.getSelection();
+        const textNode = root.firstChild;
+        if (!textNode) return;
+
+        let codeUnitOffset = 0;
+        const chars = Array.from(textNode.textContent);
+
+        for (let i = 0; i < Math.min(offset, chars.length); i++) {
+          codeUnitOffset += chars[i].length;
+        }
+
+        range.setStart(textNode, codeUnitOffset);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      function pointToCell(x, y) {
+        return {
+          r: clamp(Math.floor(y / PITCH), 0, N - 1),
+          c: clamp(Math.floor(x / PITCH), 0, N - 1),
+        };
+      }
+
+      function cellLeft(index) {
+        return index * PITCH;
+      }
+
+      function updateInfo() {
+        curLayerEl.textContent = activeLayer + 1;
+        numLayersEl.textContent = layerCount;
+        addBtn.disabled = layerCount >= K;
+      }
+
+      function make(tag, className) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        return node;
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function mod(value, base) {
+        return ((value % base) + base) % base;
+      }
+    </script>
+  </body>
+</html>
