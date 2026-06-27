@@ -171,10 +171,6 @@
         }
       }
 
-      .info {
-        font-size: 11px;
-      }
-
       .controls {
         display: flex;
         gap: 8px;
@@ -246,8 +242,6 @@
     <div id="scene">
       <div id="stack"></div>
     </div>
-
-    <div class="info">Layer <span id="curLayer">1</span> / <span id="numLayers">3</span> · Tab / Shift+Tab to switch</div>
 
     <div class="controls">
       <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" />
@@ -750,11 +744,6 @@ ${farText}
 
       function cellLeft(index) {
         return index * PITCH;
-      }
-
-      function updateInfo() {
-        curLayerEl.textContent = activeLayer + 1;
-        numLayersEl.textContent = layerCount;
       }
 
       function make(tag, className) {
