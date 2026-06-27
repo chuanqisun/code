@@ -205,16 +205,15 @@
       <div id="stack"></div>
     </div>
 
-    <div class="info">Layer <span id="curLayer">1</span> / <span id="numLayers">1</span> · Tab / Shift+Tab to switch</div>
+    <div class="info">Layer <span id="curLayer">1</span> / <span id="numLayers">3</span> · Tab / Shift+Tab to switch</div>
 
     <div class="controls">
-      <button id="addBtn">+ Layer</button>
       <button id="exportBtn">Export</button>
     </div>
 
     <script>
-      const K = 4;
-      const N = 8;
+      const K = 3;
+      const N = 5;
       const CELL = 22;
       const STROKE = 1;
       const PITCH = CELL + STROKE;
@@ -235,7 +234,7 @@
 
       const data = Array.from({ length: K }, () => Array.from({ length: N }, () => Array(N).fill(" ")));
 
-      let layerCount = 1;
+      let layerCount = 3;
       let activeLayer = 0;
       let composing = false;
       let compositionStart = null;
@@ -252,12 +251,10 @@
       const caretPos = Array.from({ length: K }, () => ({ r: 0, c: 0 }));
 
       const stack = document.getElementById("stack");
-      const addBtn = document.getElementById("addBtn");
       const exportBtn = document.getElementById("exportBtn");
       const curLayerEl = document.getElementById("curLayer");
       const numLayersEl = document.getElementById("numLayers");
 
-      addBtn.addEventListener("click", addLayer);
       exportBtn.addEventListener("click", exportData);
 
       build();
@@ -478,14 +475,6 @@
         return `translateX(${x}px) translateZ(${z}px)`;
       }
 
-      function addLayer() {
-        if (layerCount >= K) return;
-        layerCount++;
-        activeLayer = layerCount - 1;
-        build();
-        focusLayer(activeLayer);
-      }
-
       function exportData() {
         console.log(data);
         console.log(JSON.stringify(data));
@@ -649,7 +638,6 @@
       function updateInfo() {
         curLayerEl.textContent = activeLayer + 1;
         numLayersEl.textContent = layerCount;
-        addBtn.disabled = layerCount >= K;
       }
 
       function make(tag, className) {
