@@ -217,6 +217,29 @@
         background: var(--paper);
         border: var(--stroke) solid var(--ink);
       }
+
+      #imageContainer {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      #resultImage {
+        width: 256px;
+        height: 256px;
+        border: var(--stroke) solid var(--ink);
+        image-rendering: pixelated;
+        display: none;
+      }
+
+      #statusMsg {
+        font-size: 12px;
+        max-width: 280px;
+        text-align: center;
+        word-wrap: break-word;
+      }
     </style>
   </head>
   <body>
@@ -231,7 +254,12 @@
       <button id="renderBtn">Render</button>
     </div>
 
-    <script>
+    <div id="imageContainer">
+      <div id="statusMsg"></div>
+      <img id="resultImage" alt="Generated Parallax Pixel Art" />
+    </div>
+
+    <script type="module">
       const K = 3;
       const N = 5;
       const CELL = 22;
@@ -512,7 +540,8 @@
         const mediumText = layerToText(1);
         const farText = layerToText(0);
 
-        const formatted = `
+        const formatted = `Parallax Effect Pixel art for the content in the near, medium, far distances. 256x256. Pico-8 palette: #000000 #1D2B53 #7E2553 #008751 #AB5236 #5F574F #C2C3C7 #FFF1E8 #FF004D #FFA300 #FFEC27 #00E436 #29ADFF #83769C #FF77A8 #FFCCAA
+
 <near>
 ${nearText}
 </near>
@@ -528,9 +557,44 @@ ${farText}
         return formatted;
       }
 
-      function renderData() {
+      import { textToImage } from "./text-to-image.js";
+
+      const imageContainer = document.getElementById("imageContainer");
+      const statusMsg = document.getElementById("statusMsg");
+      const resultImage = document.getElementById("resultImage");
+
+      async function renderData() {
         console.log(data);
-        prettyPrint();
+        const prompt = prettyPrint();
+        const apiKey = apiKeyInput.value.trim();
+
+        if (!apiKey) {
+          imageContainer.style.display = "flex";
+          statusMsg.textContent = "Please enter your fal.ai API key.";
+          statusMsg.style.color = "red";
+          resultImage.style.display = "none";
+          return;
+        }
+
+        imageContainer.style.display = "flex";
+        statusMsg.textContent = "Generating image...";
+        statusMsg.style.color = "var(--ink)";
+        resultImage.style.display = "none";
+        renderBtn.disabled = true;
+
+        try {
+          const imageUrl = await textToImage(apiKey, prompt);
+          resultImage.src = imageUrl;
+          resultImage.style.display = "block";
+          statusMsg.textContent = "";
+        } catch (error) {
+          console.error(error);
+          statusMsg.textContent = "Error: " + error.message;
+          statusMsg.style.color = "red";
+          resultImage.style.display = "none";
+        } finally {
+          renderBtn.disabled = false;
+        }
       }
 
       function renderLayer(layerIndex) {
