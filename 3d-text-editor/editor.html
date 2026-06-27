@@ -172,8 +172,22 @@
       }
 
       .controls {
-        display: flex;
+        display: grid;
         gap: 8px;
+      }
+
+      #paletteSwatch {
+        width: 256px;
+        height: 24px;
+        border: var(--stroke) solid var(--ink);
+        display: flex;
+        cursor: pointer;
+        overflow: hidden;
+      }
+
+      .swatchColor {
+        flex: 1;
+        height: 100%;
       }
 
       button {
@@ -245,6 +259,7 @@
 
     <div class="controls">
       <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" style="display: none" />
+      <div id="paletteSwatch" title="Click to cycle color palette"></div>
       <button id="renderBtn">Render</button>
     </div>
 
@@ -297,6 +312,29 @@
       const curLayerEl = document.getElementById("curLayer");
       const numLayersEl = document.getElementById("numLayers");
       const apiKeyInput = document.getElementById("apiKeyInput");
+      const paletteSwatch = document.getElementById("paletteSwatch");
+
+      // Import palettes and handle swatch cycling logic
+      import { palette } from "./palette.js";
+      let currentPaletteIndex = 0;
+
+      function updateSwatch() {
+        paletteSwatch.innerHTML = "";
+        const currentPalette = palette[currentPaletteIndex];
+        const hexColors = currentPalette.colors.split(",").map((c) => c.trim());
+        hexColors.forEach((color) => {
+          const swatchCol = document.createElement("div");
+          swatchCol.className = "swatchColor";
+          swatchCol.style.backgroundColor = color;
+          paletteSwatch.appendChild(swatchCol);
+        });
+        paletteSwatch.title = `Current palette: ${currentPalette.name} (Click to cycle)`;
+      }
+
+      paletteSwatch.addEventListener("click", () => {
+        currentPaletteIndex = (currentPaletteIndex + 1) % palette.length;
+        updateSwatch();
+      });
 
       // Show password input only when URL has debug=true
       const urlParams = new URLSearchParams(window.location.search);
@@ -319,6 +357,7 @@
 
       build();
       focusLayer(activeLayer);
+      updateSwatch();
 
       function build() {
         stack.innerHTML = "";
@@ -538,7 +577,14 @@
         const mediumText = layerToText(1);
         const farText = layerToText(0);
 
-        const formatted = `Parallax effect pixel art for the content in the near, medium, far distances. 256x256. Pico-8 palette: #000000 #1D2B53 #7E2553 #008751 #AB5236 #5F574F #C2C3C7 #FFF1E8 #FF004D #FFA300 #FFEC27 #00E436 #29ADFF #83769C #FF77A8 #FFCCAA
+        const currentPalette = palette[currentPaletteIndex];
+        const formattedColors = currentPalette.colors
+          .split(",")
+          .map((c) => c.trim())
+          .join(" ");
+
+        const formatted =
+          `Parallax effect pixel art for the content in the near, medium, far distances. 256x256. ${currentPalette.name} (${formattedColors}) Do NOT render the swatches.
 
 <near>
 ${nearText}
@@ -550,7 +596,7 @@ ${mediumText}
 
 <far>
 ${farText}
-</far>`;
+</far>`.trim();
         console.log(formatted);
         return formatted;
       }
