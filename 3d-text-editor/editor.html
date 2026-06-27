@@ -34,11 +34,11 @@
 
       #scene {
         width: 420px;
-        height: 330px;
+        height: 240px;
         display: flex;
         align-items: center;
         justify-content: center;
-        perspective: 1200px;
+        perspective: 99999px;
         overflow: visible;
       }
 
@@ -326,7 +326,6 @@
 
         layoutLayers(false);
         updateActiveLayer(false);
-        updateInfo();
       }
 
       function createLayer(layerIndex) {
@@ -479,7 +478,6 @@
         layers.forEach((layer, index) => layer.classList.toggle("active", index === activeLayer));
         layoutLayers(animated);
         for (let i = 0; i < layerCount; i++) renderLayer(i);
-        updateInfo();
       }
 
       function layoutLayers(animated) {
