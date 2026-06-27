@@ -198,6 +198,25 @@
         opacity: 0.35;
         cursor: default;
       }
+
+      input[type="password"] {
+        padding: 4px 10px;
+        border: var(--stroke) solid var(--ink);
+        background: var(--paper);
+        color: var(--ink);
+        font: 12px monospace;
+        outline: none;
+        width: 140px;
+      }
+
+      input[type="password"]::placeholder {
+        color: var(--grid-line);
+      }
+
+      input[type="password"]:focus {
+        background: var(--paper);
+        border: var(--stroke) solid var(--ink);
+      }
     </style>
   </head>
   <body>
@@ -208,7 +227,8 @@
     <div class="info">Layer <span id="curLayer">1</span> / <span id="numLayers">3</span> · Tab / Shift+Tab to switch</div>
 
     <div class="controls">
-      <button id="exportBtn">Export</button>
+      <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" />
+      <button id="renderBtn">Render</button>
     </div>
 
     <script>
@@ -251,11 +271,23 @@
       const caretPos = Array.from({ length: K }, () => ({ r: 0, c: 0 }));
 
       const stack = document.getElementById("stack");
-      const exportBtn = document.getElementById("exportBtn");
+      const renderBtn = document.getElementById("renderBtn");
       const curLayerEl = document.getElementById("curLayer");
       const numLayersEl = document.getElementById("numLayers");
+      const apiKeyInput = document.getElementById("apiKeyInput");
 
-      exportBtn.addEventListener("click", exportData);
+      // Load saved API key from local storage
+      const savedApiKey = localStorage.getItem("fal_api_key");
+      if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+      }
+
+      // Save API key to local storage when changed
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem("fal_api_key", apiKeyInput.value.trim());
+      });
+
+      renderBtn.addEventListener("click", renderData);
 
       build();
       focusLayer(activeLayer);
@@ -496,7 +528,7 @@ ${farText}
         return formatted;
       }
 
-      function exportData() {
+      function renderData() {
         console.log(data);
         prettyPrint();
       }
