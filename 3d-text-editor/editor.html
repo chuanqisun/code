@@ -244,7 +244,7 @@
     </div>
 
     <div class="controls">
-      <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" />
+      <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" style="display: none" />
       <button id="renderBtn">Render</button>
     </div>
 
@@ -297,6 +297,12 @@
       const curLayerEl = document.getElementById("curLayer");
       const numLayersEl = document.getElementById("numLayers");
       const apiKeyInput = document.getElementById("apiKeyInput");
+
+      // Show password input only when URL has debug=true
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("debug") === "true") {
+        apiKeyInput.style.display = "inline-block";
+      }
 
       // Load saved API key from local storage
       const savedApiKey = localStorage.getItem("fal_api_key");
@@ -532,7 +538,7 @@
         const mediumText = layerToText(1);
         const farText = layerToText(0);
 
-        const formatted = `Parallax Effect Pixel art for the content in the near, medium, far distances. 256x256. Pico-8 palette: #000000 #1D2B53 #7E2553 #008751 #AB5236 #5F574F #C2C3C7 #FFF1E8 #FF004D #FFA300 #FFEC27 #00E436 #29ADFF #83769C #FF77A8 #FFCCAA
+        const formatted = `Parallax effect pixel art for the content in the near, medium, far distances. 256x256. Pico-8 palette: #000000 #1D2B53 #7E2553 #008751 #AB5236 #5F574F #C2C3C7 #FFF1E8 #FF004D #FFA300 #FFEC27 #00E436 #29ADFF #83769C #FF77A8 #FFCCAA
 
 <near>
 ${nearText}
