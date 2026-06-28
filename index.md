@@ -101,6 +101,7 @@
 - [Split-flap](./split-flap/)
 - [System Card](./sys-card/)
 - [Text Rain](./text-rain/)
+- [Text to pixel art](./text-to-pixel-art/)
 - [Total Human Pixels](./total-human-pixels/)
 - [Townsquare](https://chuanqisun.github.io/townsquare/)
 - [Tree of Lives](./tree-of-lives/)
