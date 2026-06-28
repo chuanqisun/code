@@ -216,7 +216,6 @@
         color: var(--ink);
         font: 12px monospace;
         outline: none;
-        width: 140px;
       }
 
       input[type="password"]::placeholder {
@@ -258,7 +257,7 @@
     </div>
 
     <div class="controls">
-      <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" style="display: none" />
+      <input type="password" id="apiKeyInput" placeholder="fal.ai API Key" />
       <div id="paletteSwatch" title="Click to cycle color palette"></div>
       <button id="renderBtn">Render</button>
     </div>
@@ -335,12 +334,6 @@
         currentPaletteIndex = (currentPaletteIndex + 1) % palette.length;
         updateSwatch();
       });
-
-      // Show password input only when URL has debug=true
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get("debug") === "true") {
-        apiKeyInput.style.display = "inline-block";
-      }
 
       // Load saved API key from local storage
       const savedApiKey = localStorage.getItem("fal_api_key");
