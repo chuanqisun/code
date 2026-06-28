@@ -86,6 +86,7 @@
 - [Perlin noise](./perlin-noise/)
 - [Phorm](./phorm/)
 - [Photon Grammar](./photon-grammar/)
+- [QR code generator](./qr-code-generator/)
 - [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Ramiel](./ramiel/)
