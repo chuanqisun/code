@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Generator</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: monospace;
+        color: #000;
+        background: #fff;
+        margin: 0;
+        padding: 1rem;
+        line-height: 1.4;
+      }
+      h1 {
+        font-size: 1.2rem;
+        margin: 0 0 1rem;
+        border-bottom: 2px solid #000;
+        padding-bottom: 0.5rem;
+      }
+      .wrap {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        align-items: start;
+      }
+      @media (max-width: 640px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+      }
+      .group {
+        margin: 0 0 1.2rem;
+      }
+      label {
+        display: block;
+        margin: 0.4rem 0 0.1rem;
+        font-size: 0.85rem;
+      }
+      input[type="text"],
+      input[type="number"],
+      select {
+        width: 100%;
+        font-family: monospace;
+        padding: 0.3rem;
+        border: 1px solid #000;
+      }
+      input[type="color"] {
+        width: 100%;
+        height: 2rem;
+        padding: 0;
+        border: 1px solid #000;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      .row {
+        display: flex;
+        gap: 0.75rem;
+      }
+      .row > div {
+        flex: 1;
+      }
+      button {
+        font-family: monospace;
+        border: 1px solid #000;
+        background: #fff;
+        padding: 0.4rem 0.6rem;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:hover {
+        background: #000;
+        color: #fff;
+      }
+      #preview {
+        border: 1px solid #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 200px;
+        background: #fff;
+        margin-bottom: 0.75rem;
+        overflow: hidden;
+      }
+      #preview svg,
+      #preview img {
+        max-width: 100%;
+        height: auto;
+        display: block;
+      }
+      .val {
+        float: right;
+      }
+      .radios {
+        display: inline-flex;
+        gap: 1rem;
+      }
+      .radios label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin: 0;
+        cursor: pointer;
+      }
+      fieldset {
+        border: none;
+        margin: 0;
+        padding: 0;
+      }
+      fieldset.formatbar {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+      }
+      fieldset.formatbar legend {
+        font-size: 0.85rem;
+        float: left;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>QR_CODE_GENERATOR</h1>
+    <div class="wrap">
+      <div>
+        <div class="group">
+          <label for="text">text / url</label>
+          <input type="text" id="text" value="https://example.com" />
+        </div>
+        <div class="group">
+          <div class="row">
+            <div>
+              <label for="fg">foreground</label>
+              <input type="color" id="fg" value="#000000" />
+            </div>
+            <div>
+              <label for="bg">background</label>
+              <input type="color" id="bg" value="#ffffff" />
+            </div>
+          </div>
+        </div>
+        <div class="group">
+          <label for="pad">padding (modules) <span class="val" id="padVal">4</span></label>
+          <input type="range" id="pad" min="0" max="16" value="4" />
+          <label for="ecl">error correction</label>
+          <select id="ecl">
+            <option value="L">L — 7%</option>
+            <option value="M" selected>M — 15%</option>
+            <option value="Q">Q — 25%</option>
+            <option value="H">H — 30%</option>
+          </select>
+          <label for="scale">png scale multiplier</label>
+          <input type="number" id="scale" min="1" max="16" value="8" />
+        </div>
+      </div>
+      <div>
+        <div class="group">
+          <fieldset class="formatbar">
+            <legend>Format</legend>
+            <div class="radios">
+              <label><input type="radio" name="mode" id="modeSvg" value="svg" checked /> SVG</label>
+              <label><input type="radio" name="mode" id="modePng" value="png" /> PNG</label>
+            </div>
+          </fieldset>
+          <div id="preview" role="img" aria-label="QR code preview"></div>
+          <button id="download">download.svg</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import qrcode from "https://esm.sh/qrcode-generator@1.4.4";
+
+      const $ = (id) => document.getElementById(id);
+      const text = $("text"),
+        fg = $("fg"),
+        bg = $("bg"),
+        pad = $("pad"),
+        ecl = $("ecl"),
+        scale = $("scale");
+      const preview = $("preview"),
+        padVal = $("padVal"),
+        dlBtn = $("download");
+
+      let currentSvg = "";
+      let currentPng = "";
+
+      function getMode() {
+        return document.querySelector('input[name="mode"]:checked').value;
+      }
+
+      function buildSvg() {
+        const value = text.value || " ";
+        const level = ecl.value;
+        const qr = qrcode(0, level);
+        qr.addData(value);
+        qr.make();
+
+        const count = qr.getModuleCount();
+        const margin = parseInt(pad.value, 10);
+        const size = count + margin * 2;
+        const fgc = fg.value,
+          bgc = bg.value;
+
+        let rects = "";
+        for (let r = 0; r < count; r++) {
+          for (let c = 0; c < count; c++) {
+            if (qr.isDark(r, c)) {
+              rects += `<rect x="${c + margin}" y="${r + margin}" width="1" height="1"/>`;
+            }
+          }
+        }
+
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" width="320" height="320">
+<rect width="${size}" height="${size}" fill="${bgc}"/>
+<g fill="${fgc}">${rects}</g>
+</svg>`;
+      }
+
+      function renderPng() {
+        return new Promise((resolve, reject) => {
+          let mult = parseInt(scale.value, 10);
+          if (isNaN(mult) || mult < 1) mult = 1;
+          if (mult > 16) mult = 16;
+          const tmp = document.createElement("div");
+          tmp.innerHTML = currentSvg;
+          const svgEl = tmp.querySelector("svg");
+          const vb = svgEl.viewBox.baseVal;
+          const w = vb.width * mult,
+            h = vb.height * mult;
+          const img = new Image();
+          const blob = new Blob([currentSvg], { type: "image/svg+xml" });
+          const url = URL.createObjectURL(blob);
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL("image/png"));
+          };
+          img.onerror = reject;
+          img.src = url;
+        });
+      }
+
+      async function update() {
+        padVal.textContent = pad.value;
+        const mode = getMode();
+        try {
+          currentSvg = buildSvg();
+          if (mode === "svg") {
+            preview.innerHTML = currentSvg;
+            dlBtn.textContent = "download.svg";
+          } else {
+            currentPng = await renderPng();
+            preview.innerHTML = `<img src="${currentPng}" alt="qr" />`;
+            dlBtn.textContent = "download.png";
+          }
+        } catch (e) {
+          preview.textContent = "ERR: " + e.message;
+        }
+      }
+
+      [text, fg, bg, pad, ecl, scale].forEach((el) => {
+        el.addEventListener("input", update);
+        el.addEventListener("change", update);
+      });
+      document.querySelectorAll('input[name="mode"]').forEach((el) => el.addEventListener("change", update));
+
+      function download(filename, href) {
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = filename;
+        a.click();
+      }
+
+      dlBtn.addEventListener("click", () => {
+        if (getMode() === "svg") {
+          const blob = new Blob([currentSvg], { type: "image/svg+xml" });
+          const url = URL.createObjectURL(blob);
+          download("qrcode.svg", url);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } else {
+          download("qrcode.png", currentPng);
+        }
+      });
+
+      update();
+    </script>
+  </body>
+</html>
