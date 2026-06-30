@@ -256,6 +256,30 @@
         margin-bottom: 8px;
       }
 
+      .use-as-input-btn {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
+        background-color: rgba(255, 255, 255, 0.95);
+        color: #333;
+        border: 1px solid #ccc;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        transition:
+          background-color 0.2s,
+          border-color 0.2s;
+      }
+
+      .use-as-input-btn:hover {
+        background-color: #ffffff;
+        border-color: #888;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      }
+
       .output-status {
         color: var(--color-text-secondary);
         font-size: 14px;
@@ -483,7 +507,7 @@
 
           for (const option of this.options || []) {
             const input = option.type === "select" ? document.createElement("select") : document.createElement("input");
-            input.title = option.key;
+            input.title = option.label || option.key;
             input.dataset.optionKey = option.key;
 
             if (option.type === "select") {
@@ -498,6 +522,7 @@
               if (option.step != null) input.step = option.step;
               if (option.min != null) input.min = option.min;
               if (option.max != null) input.max = option.max;
+              input.placeholder = option.label || option.key;
             }
 
             input.value = state[option.key] ?? option.default ?? "";
@@ -564,6 +589,48 @@
 
       const aspectChoices = ["1:1", "3:2", "4:3", "16:9", "9:16"].map((v) => ({ value: v, label: v }));
 
+      const googleAspectChoices = ["auto", "21:9", "16:9", "3:2", "4:3", "5:4", "1:1", "4:5", "3:4", "2:3", "9:16", "4:1", "1:4", "8:1", "1:8"].map((v) => ({
+        value: v,
+        label: v,
+      }));
+
+      const googleFormatChoices = [
+        { value: "png", label: "png" },
+        { value: "jpeg", label: "jpeg" },
+        { value: "webp", label: "webp" },
+      ];
+
+      const googleSafetyChoices = [
+        { value: "1", label: "strictest (1)" },
+        { value: "2", label: "strict (2)" },
+        { value: "3", label: "moderate-strict (3)" },
+        { value: "4", label: "moderate (4)" },
+        { value: "5", label: "lenient (5)" },
+        { value: "6", label: "unfiltered (6)" },
+      ];
+
+      const googleThinkingChoices = [
+        { value: "", label: "No thinking" },
+        { value: "minimal", label: "Minimal" },
+        { value: "high", label: "High" },
+      ];
+
+      const googleLimitGenerationsChoices = [
+        { value: "true", label: "Limit (true)" },
+        { value: "false", label: "No Limit (false)" },
+      ];
+
+      const googleModelOptions = [
+        { key: "aspect_ratio", label: "Aspect Ratio", type: "select", default: "auto", choices: googleAspectChoices },
+        { key: "output_format", label: "Format", type: "select", default: "png", choices: googleFormatChoices },
+        { key: "safety_tolerance", label: "Safety Level", type: "select", default: "4", choices: googleSafetyChoices },
+        { key: "num_images", label: "Number of Images", type: "number", default: 1, min: 1, max: 4 },
+        { key: "thinking_level", label: "Thinking Level", type: "select", default: "", choices: googleThinkingChoices },
+        { key: "limit_generations", label: "Limit Generations", type: "select", default: "true", choices: googleLimitGenerationsChoices },
+        { key: "seed", label: "Seed (number)", type: "number", default: "" },
+        { key: "system_prompt", label: "System Prompt", type: "text", default: "" },
+      ];
+
       const fluxSizeChoices = [
         { value: "square", label: "Square" },
         { value: "square_hd", label: "Square HD" },
@@ -576,6 +643,66 @@
       const gptImage2SizeChoices = [{ value: "auto", label: "auto" }, ...fluxSizeChoices];
 
       const MODELS = [
+        new FalModelProvider({
+          id: "google/nano-banana-2-lite",
+          label: "google/nano-banana-2-lite",
+          endpoint: "google/nano-banana-2-lite",
+          capabilities: { imageToImage: false },
+          options: googleModelOptions,
+          buildInput({ prompt, options }) {
+            const input = { prompt };
+            if (options.aspect_ratio) input.aspect_ratio = options.aspect_ratio;
+            if (options.output_format) input.output_format = options.output_format;
+            if (options.safety_tolerance) input.safety_tolerance = options.safety_tolerance;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.thinking_level) input.thinking_level = options.thinking_level;
+            if (options.limit_generations) input.limit_generations = options.limit_generations === "true";
+            if (options.seed !== "" && options.seed != null) input.seed = Number(options.seed);
+            if (options.system_prompt) input.system_prompt = options.system_prompt;
+            return input;
+          },
+        }),
+
+        new FalModelProvider({
+          id: "google/nano-banana-lite",
+          label: "google/nano-banana-lite",
+          endpoint: "google/nano-banana-lite",
+          capabilities: { imageToImage: false },
+          options: googleModelOptions,
+          buildInput({ prompt, options }) {
+            const input = { prompt };
+            if (options.aspect_ratio) input.aspect_ratio = options.aspect_ratio;
+            if (options.output_format) input.output_format = options.output_format;
+            if (options.safety_tolerance) input.safety_tolerance = options.safety_tolerance;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.thinking_level) input.thinking_level = options.thinking_level;
+            if (options.limit_generations) input.limit_generations = options.limit_generations === "true";
+            if (options.seed !== "" && options.seed != null) input.seed = Number(options.seed);
+            if (options.system_prompt) input.system_prompt = options.system_prompt;
+            return input;
+          },
+        }),
+
+        new FalModelProvider({
+          id: "google/nano-banana-lite/edit",
+          label: "google/nano-banana-lite/edit",
+          endpoint: "google/nano-banana-lite/edit",
+          capabilities: { imageToImage: true },
+          options: googleModelOptions,
+          buildInput({ prompt, imageDataUrls, options }) {
+            const input = { prompt, image_urls: imageDataUrls };
+            if (options.aspect_ratio) input.aspect_ratio = options.aspect_ratio;
+            if (options.output_format) input.output_format = options.output_format;
+            if (options.safety_tolerance) input.safety_tolerance = options.safety_tolerance;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.thinking_level) input.thinking_level = options.thinking_level;
+            if (options.limit_generations) input.limit_generations = options.limit_generations === "true";
+            if (options.seed !== "" && options.seed != null) input.seed = Number(options.seed);
+            if (options.system_prompt) input.system_prompt = options.system_prompt;
+            return input;
+          },
+        }),
+
         new FalModelProvider({
           id: "fal-ai/gpt-image-2",
           label: "gpt-image-2",
@@ -634,7 +761,7 @@
 
         new FalModelProvider({
           id: "fal-ai/nano-banana",
-          label: "nano-banana",
+          label: "fal-ai/nano-banana",
           endpoint: "fal-ai/nano-banana",
           capabilities: { imageToImage: false },
           options: [],
@@ -645,7 +772,7 @@
 
         new FalModelProvider({
           id: "fal-ai/nano-banana-2",
-          label: "nano-banana-2",
+          label: "fal-ai/nano-banana-2",
           endpoint: "fal-ai/nano-banana-2",
           capabilities: { imageToImage: false },
           options: [{ key: "aspect_ratio", label: "Aspect ratio", type: "select", default: "16:9", choices: aspectChoices }],
@@ -656,7 +783,7 @@
 
         new FalModelProvider({
           id: "fal-ai/nano-banana-2/edit",
-          label: "nano-banana-2/edit",
+          label: "fal-ai/nano-banana-2/edit",
           endpoint: "fal-ai/nano-banana-2/edit",
           capabilities: { imageToImage: true },
           options: [],
@@ -667,7 +794,7 @@
 
         new FalModelProvider({
           id: "fal-ai/flux-2/turbo",
-          label: "flux-2/turbo",
+          label: "fal-ai/flux-2/turbo",
           endpoint: "fal-ai/flux-2/turbo",
           capabilities: { imageToImage: false },
           options: [
@@ -696,7 +823,7 @@
 
         new FalModelProvider({
           id: "fal-ai/flux-2/turbo/edit",
-          label: "flux-2/turbo/edit",
+          label: "fal-ai/flux-2/turbo/edit",
           endpoint: "fal-ai/flux-2/turbo/edit",
           capabilities: { imageToImage: true },
           options: [
@@ -1115,6 +1242,42 @@
           }
         }
 
+        useImageAsInput(imageUrl) {
+          this.messages.push({
+            id: String(this.nextId++),
+            text: "",
+            image: {
+              name: "generated-image.png",
+              mimeType: "image/png",
+              size: 0,
+              dataUrl: imageUrl,
+            },
+          });
+          this.renderMessages();
+          this.saveMessages();
+
+          // Switch to corresponding edit model if applicable
+          if (this.selectedModelId === "google/nano-banana-lite" || this.selectedModelId === "google/nano-banana-2-lite") {
+            this.selectedModelId = "google/nano-banana-lite/edit";
+            this.elements.modelSelect.value = this.selectedModelId;
+            set("selectedModelId", this.selectedModelId, this.store);
+            this.renderModelControls();
+          } else if (this.selectedModelId === "fal-ai/gpt-image-2") {
+            this.selectedModelId = "openai/gpt-image-2/edit";
+            this.elements.modelSelect.value = this.selectedModelId;
+            set("selectedModelId", this.selectedModelId, this.store);
+            this.renderModelControls();
+          } else if (this.selectedModelId === "fal-ai/nano-banana" || this.selectedModelId === "fal-ai/nano-banana-2") {
+            this.selectedModelId = "fal-ai/nano-banana-2/edit";
+            this.elements.modelSelect.value = this.selectedModelId;
+            set("selectedModelId", this.selectedModelId, this.store);
+            this.renderModelControls();
+          }
+
+          // Scroll to the messages container
+          this.elements.messagesContainer.scrollIntoView({ behavior: "smooth", block: "end" });
+        }
+
         createOutputElement(output) {
           const item = document.createElement("div");
           item.className = "output-item";
@@ -1136,12 +1299,29 @@
           content.appendChild(prompt);
 
           for (const imageUrl of output.images || []) {
+            const imageContainer = document.createElement("div");
+            imageContainer.style.position = "relative";
+            imageContainer.style.display = "inline-block";
+            imageContainer.style.maxWidth = "100%";
+
             const image = document.createElement("img");
             image.className = "output-item-image";
             image.title = "generated-image";
             image.src = imageUrl;
             image.alt = "Generated Image";
-            content.appendChild(image);
+            image.style.display = "block";
+            imageContainer.appendChild(image);
+
+            const useAsInputButton = document.createElement("button");
+            useAsInputButton.className = "use-as-input-btn";
+            useAsInputButton.title = "use-as-input";
+            useAsInputButton.innerHTML = "💬 Edit image (Use as input)";
+            useAsInputButton.addEventListener("click", () => {
+              this.useImageAsInput(imageUrl);
+            });
+
+            imageContainer.appendChild(useAsInputButton);
+            content.appendChild(imageContainer);
           }
 
           if (output.resultText) {
