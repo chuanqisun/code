@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -387,8 +387,8 @@
         <button id="generate-button">Generate image</button>
         <button id="generate-text-button">Generate text</button>
         <button id="delete-all-outputs-button">Delete all</button>
-        <label style="display: none" id="google-search-label"><input type="checkbox" id="google-search-toggle"> Google Search</label>
-        <label style="display: none" id="image-search-label"><input type="checkbox" id="image-search-toggle"> Image Search</label>
+        <label style="display: none" id="google-search-label"><input type="checkbox" id="google-search-toggle" /> Google Search</label>
+        <label style="display: none" id="image-search-label"><input type="checkbox" id="image-search-toggle" /> Image Search</label>
       </div>
       <div id="output-container">
         <!-- Output items will be inserted here -->
@@ -430,7 +430,7 @@
                 item.draggable = !!handle;
               }
             },
-            true
+            true,
           );
 
           // Reset draggable state globally on mouseup
@@ -439,7 +439,7 @@
             () => {
               document.querySelectorAll(this.itemSelector).forEach((i) => (i.draggable = false));
             },
-            true
+            true,
           );
         }
 
@@ -647,7 +647,7 @@
                     };
                   }
                   return msg;
-                })
+                }),
               );
               // Update nextId to avoid collisions
               const maxId = Math.max(...this.messages.map((m) => parseInt(m.id)), 0);
@@ -721,7 +721,7 @@
           const supportsImageSearch = model === GeminiImageManipulator.MODEL_FLASH_31;
 
           this.elements.googleSearchLabel.style.display = supportsSearch ? "inline-block" : "none";
-          this.elements.imageSearchLabel.style.display = (supportsSearch && supportsImageSearch && this.googleSearchEnabled) ? "inline-block" : "none";
+          this.elements.imageSearchLabel.style.display = supportsSearch && supportsImageSearch && this.googleSearchEnabled ? "inline-block" : "none";
 
           if (!supportsSearch) {
             this.googleSearchEnabled = false;
@@ -1187,12 +1187,14 @@
             },
           };
 
-          if (this.selectedModel === GeminiImageManipulator.MODEL_PRO ||
-              this.selectedModel === GeminiImageManipulator.MODEL_FLASH_31) {
+          if (this.selectedModel === GeminiImageManipulator.MODEL_PRO || this.selectedModel === GeminiImageManipulator.MODEL_FLASH_31) {
             config.responseFormat.image.imageSize = this.selectedResolution;
           }
 
-          if (this.googleSearchEnabled && (this.selectedModel === GeminiImageManipulator.MODEL_FLASH_31 || this.selectedModel === GeminiImageManipulator.MODEL_PRO)) {
+          if (
+            this.googleSearchEnabled &&
+            (this.selectedModel === GeminiImageManipulator.MODEL_FLASH_31 || this.selectedModel === GeminiImageManipulator.MODEL_PRO)
+          ) {
             const googleSearch = {};
             if (this.imageSearchEnabled && this.selectedModel === GeminiImageManipulator.MODEL_FLASH_31) {
               googleSearch.searchTypes = { webSearch: {}, imageSearch: {} };
