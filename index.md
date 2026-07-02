@@ -84,6 +84,7 @@
 - [Metaball Surface Geometry](./metaball-surface-geometry/)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
 - [Paper CAD](https://chuanqisun.github.io/paper-cad/)
+- [Parametric Poetry](./parametric-poetry/)
 - [Perlin noise](./perlin-noise/)
 - [Phorm](./phorm/)
 - [Photon Grammar](./photon-grammar/)
