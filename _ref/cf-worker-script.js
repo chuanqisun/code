@@ -1,9 +1,6 @@
 export default {
   async fetch(request, env, ctx) {
-    // 1. Fetch the original page from your origin server (e.g., GitHub Pages)
     const response = await fetch(request);
-
-    // 2. Only rewrite if the response is actually an HTML page
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("text/html")) {
       // Define your custom script tag
@@ -25,7 +22,7 @@ export default {
       : \`https://github.com/\${ownerRepo}/\`;
     location.href = githubUrl;
   });
-${"</script>"}`;
+</script>`;
 
       return new HTMLRewriter()
         .on("head", {
