@@ -2,3 +2,27 @@
   rel="icon"
   href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%2210 0 100 100%22><text y=%22.90em%22 font-size=%2290%22>💾</text></svg>"
 />
+<script type="module">
+  // navigate to github when user pressed period (.) key
+  // https://example.com or https://example.com/ => https://github.com/<ownerRepo>/
+  // https://example.com/<subdir> or https://example.com/<subdir>/ or https://example.com<subdir>/index.html => https://github.com/<ownerRepo>/blob/master/<subdir>/index.html
+  // However, if any input/textarea/contenteditable  that might need to process keyboard input is on focus, do not navigate
+
+  const ownerRepo = "{{ site.github.repository_nwo }}";
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== ".") return;
+    const active = document.activeElement;
+    if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) return;
+
+    const url = new URL(location.href);
+    const path = url.pathname.replace(/\/$/, "").replace(/\/index\.html$/, "");
+    let githubUrl;
+    if (!path || path === "") {
+      githubUrl = `https://github.com/${ownerRepo}/`;
+    } else {
+      githubUrl = `https://github.com/${ownerRepo}/blob/master${path}/index.html`;
+    }
+    location.href = githubUrl;
+  });
+</script>
