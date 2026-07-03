@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Parametric Poem Demo</title>
+    <style>
+      :root {
+        --ink: #000;
+        --paper: #fff;
+        --line: #000;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans SC", monospace;
+        display: flex;
+        justify-content: center;
+      }
+      main {
+        width: min(980px, 100%);
+        padding: 18px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0 0 12px;
+        text-align: center;
+        font-weight: 700;
+      }
+      .wrap {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        align-items: start;
+      }
+      #poem {
+        border: 2px solid var(--line);
+        padding: 24px;
+        min-height: 420px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        white-space: pre-line;
+        font-size: 24px;
+        line-height: 2.05;
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      fieldset {
+        border: 2px solid var(--line);
+        padding: 10px;
+        margin: 0;
+      }
+      legend {
+        padding: 0 6px;
+        font-weight: 700;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+        margin: 7px 0;
+      }
+      select,
+      input {
+        width: 100%;
+        accent-color: #000;
+      }
+      input[type="color"] {
+        height: 28px;
+        padding: 0;
+        border: 1px solid #000;
+        background: #fff;
+      }
+      .check {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .check input {
+        width: auto;
+      }
+      button {
+        width: 100%;
+        margin-top: 10px;
+        padding: 10px;
+        background: #fff;
+        color: #000;
+        border: 2px solid #000;
+        font: inherit;
+        cursor: pointer;
+      }
+      @media (max-width: 800px) {
+        .wrap {
+          grid-template-columns: 1fr;
+        }
+        .controls {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>无言独上西楼 / Parametric Poetic Experience</h1>
+      <div class="wrap">
+        <section id="poem"></section>
+
+        <section>
+          <div class="controls" id="controls"></div>
+          <button id="reset">reset default</button>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      class PoeticEntity {
+        constructor(id, title, params) {
+          this.id = id;
+          this.title = title;
+          this.params = params;
+        }
+        panel() {
+          const fs = document.createElement("fieldset");
+          fs.innerHTML = `<legend>${this.title}</legend>`;
+          for (const [key, p] of Object.entries(this.params)) {
+            const label = document.createElement("label");
+            if (p.type === "checkbox") {
+              label.className = "check";
+              label.innerHTML = `<input id="${this.id}_${key}" type="checkbox" ${p.value ? "checked" : ""}> ${p.label}`;
+            } else {
+              label.innerHTML = `${p.label}`;
+              const input = document.createElement(p.type === "select" ? "select" : "input");
+              input.id = `${this.id}_${key}`;
+              if (p.type === "select") {
+                p.options.forEach((o) => {
+                  const opt = document.createElement("option");
+                  opt.value = o;
+                  opt.textContent = o;
+                  if (o === p.value) opt.selected = true;
+                  input.appendChild(opt);
+                });
+              } else {
+                input.type = p.type;
+                input.value = p.value;
+                if (p.min !== undefined) input.min = p.min;
+                if (p.max !== undefined) input.max = p.max;
+                if (p.step !== undefined) input.step = p.step;
+              }
+              label.appendChild(input);
+            }
+            fs.appendChild(label);
+          }
+          return fs;
+        }
+        read() {
+          for (const [key, p] of Object.entries(this.params)) {
+            const el = document.getElementById(`${this.id}_${key}`);
+            p.current = p.type === "checkbox" ? el.checked : p.type === "range" ? Number(el.value) : el.value;
+          }
+        }
+        v(key) {
+          return this.params[key].current ?? this.params[key].value;
+        }
+      }
+
+      class Speaker extends PoeticEntity {
+        constructor() {
+          super("speaker", "人 / Speaker", {
+            silence: { label: "言语", type: "select", value: "无言", options: ["无言", "低吟", "长叹", "含泪"] },
+            solitude: { label: "独意", type: "checkbox", value: true },
+            motion: { label: "动作", type: "select", value: "上", options: ["上", "登", "倚", "望向"] },
+          });
+        }
+        line(tower) {
+          return `${this.v("silence")}${this.v("solitude") ? "独" : ""}${this.v("motion")}${tower.direction()}楼`;
+        }
+      }
+      class WestTower extends PoeticEntity {
+        constructor() {
+          super("tower", "楼 / Tower", {
+            bearing: { label: "方位", type: "select", value: "西", options: ["西", "南", "北", "东"] },
+            height: { label: "楼高", type: "range", value: 1, min: 1, max: 3, step: 1 },
+          });
+        }
+        direction() {
+          return this.v("bearing");
+        }
+      }
+      class Moon extends PoeticEntity {
+        constructor() {
+          super("moon", "月 / Moon", {
+            shape: { label: "月形", type: "select", value: "钩", options: ["钩", "弓", "镜", "霜"] },
+            brightness: { label: "清辉", type: "range", value: 1, min: 1, max: 3, step: 1 },
+          });
+        }
+        line() {
+          return `月如${this.v("shape")}`;
+        }
+      }
+      class Courtyard extends PoeticEntity {
+        constructor() {
+          super("court", "院 / Courtyard", {
+            tree: { label: "庭树", type: "select", value: "梧桐", options: ["梧桐", "芭蕉", "寒松", "疏竹"] },
+            depth: { label: "深浅", type: "select", value: "深", options: ["深", "空", "旧", "冷"] },
+            mood: { label: "气息", type: "select", value: "寂寞", options: ["寂寞", "萧瑟", "清冷", "幽静"] },
+          });
+        }
+        line() {
+          return `${this.v("mood")}${this.v("tree")}${this.v("depth")}院`;
+        }
+      }
+      class AutumnLock extends PoeticEntity {
+        constructor() {
+          super("autumn", "秋 / Autumn Lock", {
+            verb: { label: "束缚", type: "select", value: "锁", options: ["锁", "藏", "困", "留"] },
+            clarity: { label: "秋色", type: "select", value: "清秋", options: ["清秋", "寒秋", "残秋", "素秋"] },
+            locked: { label: "闭锁", type: "checkbox", value: true },
+          });
+        }
+        line() {
+          return `${this.v("locked") ? this.v("verb") : "映"}${this.v("clarity")}`;
+        }
+      }
+      class Sorrow extends PoeticEntity {
+        constructor() {
+          super("sorrow", "愁 / Sorrow", {
+            kind: { label: "愁之名", type: "select", value: "离愁", options: ["离愁", "乡愁", "春愁", "旧愁"] },
+            tangle: { label: "纷乱程度", type: "range", value: 3, min: 1, max: 5, step: 1 },
+            taste: { label: "滋味", type: "select", value: "别是一般滋味", options: ["别是一般滋味", "又添几分苦味", "偏有无穷滋味", "竟成一段冷味"] },
+            location: { label: "所在", type: "select", value: "心头", options: ["心头", "眉间", "梦里", "灯下"] },
+          });
+        }
+        cutLine() {
+          return this.v("tangle") >= 3 ? "剪不断" : "剪得断";
+        }
+        combLine() {
+          return this.v("tangle") >= 3 ? "理还乱" : "理渐清";
+        }
+        nameLine() {
+          return `是${this.v("kind")}`;
+        }
+        tasteLine() {
+          return this.v("taste");
+        }
+        placeLine() {
+          return `在${this.v("location")}`;
+        }
+      }
+      class PageStyle extends PoeticEntity {
+        constructor() {
+          super("style", "页面 / Style", {
+            ink: { label: "文字颜色", type: "color", value: "#000000" },
+            paper: { label: "背景颜色", type: "color", value: "#ffffff" },
+            size: { label: "字号", type: "range", value: 24, min: 16, max: 36, step: 1 },
+          });
+        }
+        apply() {
+          document.documentElement.style.setProperty("--ink", this.v("ink"));
+          document.documentElement.style.setProperty("--paper", this.v("paper"));
+          document.getElementById("poem").style.fontSize = this.v("size") + "px";
+        }
+      }
+
+      const entities = [new Speaker(), new WestTower(), new Moon(), new Courtyard(), new AutumnLock(), new Sorrow(), new PageStyle()];
+
+      function run() {
+        entities.forEach((e) => e.read());
+        const [speaker, tower, moon, court, autumn, sorrow, style] = entities;
+        style.apply();
+        document.getElementById("poem").textContent = [
+          speaker.line(tower),
+          "",
+          moon.line(),
+          "",
+          court.line(),
+          "",
+          autumn.line(),
+          "",
+          sorrow.cutLine(),
+          "",
+          sorrow.combLine(),
+          "",
+          sorrow.nameLine(),
+          "",
+          sorrow.tasteLine(),
+          "",
+          sorrow.placeLine(),
+        ].join("\n");
+      }
+
+      const controls = document.getElementById("controls");
+      entities.forEach((e) => controls.appendChild(e.panel()));
+      controls.addEventListener("input", run);
+      controls.addEventListener("change", run);
+
+      document.getElementById("reset").onclick = () => location.reload();
+
+      run();
+    </script>
+  </body>
+</html>
