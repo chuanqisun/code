@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Layered Draw</title>
+    <style>
+      :root {
+        --bg: #000;
+        --fg: #fff;
+        --dim: #555;
+      }
+      * {
+        box-sizing: border-box;
+        border-radius: 0 !important;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        margin: 0;
+        padding: 1rem;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+      }
+      .app {
+        max-width: 60rem;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1rem;
+        letter-spacing: 0.15em;
+        margin: 0 0 0.6rem;
+        text-transform: uppercase;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+        border: 1px solid var(--fg);
+        padding: 0.5rem;
+      }
+      .toolbar .sep {
+        width: 1px;
+        align-self: stretch;
+        background: var(--dim);
+        margin: 0 0.3rem;
+      }
+      button,
+      .btnlike {
+        background: #000;
+        color: #fff;
+        border: 1px solid #fff;
+        padding: 0.35rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        cursor: pointer;
+        letter-spacing: 0.03em;
+      }
+      button:hover,
+      .btnlike:hover {
+        background: #222;
+      }
+      button.active {
+        background: #fff;
+        color: #000;
+      }
+      button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      input[type="text"],
+      input[type="number"],
+      select {
+        background: #000;
+        color: #fff;
+        border: 1px solid #fff;
+        font-family: inherit;
+        padding: 0.25rem;
+        font-size: 0.75rem;
+        width: 100%;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      input[type="checkbox"] {
+        accent-color: #fff;
+      }
+      .main {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+        align-items: flex-start;
+      }
+      .panel {
+        flex: 0 0 11.5rem;
+        width: 11.5rem;
+        border: 1px solid #fff;
+        padding: 0.5rem;
+        font-size: 0.7rem;
+      }
+      .panel h2 {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 0.2rem 0 0.5rem;
+        border-bottom: 1px solid var(--dim);
+        padding-bottom: 0.3rem;
+      }
+      .canvas-wrap {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+      }
+      canvas {
+        background: #000;
+        border: 1px solid #fff;
+        width: 100%;
+        height: auto;
+        max-width: 100%;
+        display: block;
+        touch-action: none;
+      }
+      .layer-row {
+        border: 1px solid #444;
+        padding: 0.3rem;
+        margin-bottom: 0.35rem;
+        cursor: pointer;
+      }
+      .layer-row.active {
+        border-color: #fff;
+      }
+      .layer-row .row1 {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-bottom: 0.25rem;
+      }
+      .layer-row input[type="text"] {
+        flex: 1;
+      }
+      .layer-row .row2 {
+        display: flex;
+        gap: 0.2rem;
+      }
+      .layer-row .row2 button {
+        flex: 1;
+        padding: 0.15rem;
+      }
+      label {
+        display: block;
+        margin: 0.4rem 0 0.15rem;
+        opacity: 0.75;
+        text-transform: uppercase;
+        font-size: 0.62rem;
+        letter-spacing: 0.06em;
+      }
+      .field-row {
+        display: flex;
+        gap: 0.3rem;
+      }
+      .field-row > div {
+        flex: 1;
+      }
+      .propname {
+        font-size: 0.72rem;
+        border-bottom: 1px solid var(--dim);
+        padding-bottom: 0.3rem;
+        margin-bottom: 0.3rem;
+        word-break: break-all;
+      }
+      .flexbtns {
+        display: flex;
+        gap: 0.3rem;
+        margin-top: 0.3rem;
+      }
+      .flexbtns button {
+        flex: 1;
+      }
+      .hint {
+        opacity: 0.5;
+        font-size: 0.62rem;
+        margin-top: 0.5rem;
+        line-height: 1.4;
+      }
+      #fileInput {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <h1>Layered Draw // OOP Canvas</h1>
+      <div class="toolbar">
+        <button data-tool="select" class="tool active">Select (V)</button>
+        <button data-tool="text" class="tool">Text (T)</button>
+        <button data-tool="rect" class="tool">Rect (R)</button>
+        <button data-tool="arrow" class="tool">Arrow (A)</button>
+        <button id="importBtn">Import Image</button>
+        <input type="file" id="fileInput" accept="image/*" />
+        <div class="sep"></div>
+        <button id="undoBtn">Undo</button>
+        <button id="redoBtn">Redo</button>
+        <div class="sep"></div>
+        <button id="runTransform">Run: B/W Merge</button>
+      </div>
+
+      <div class="main">
+        <div class="panel" id="layersPanel">
+          <h2>Layers</h2>
+          <div id="layerList"></div>
+          <button id="addLayerBtn" style="width: 100%; margin-top: 0.3rem">+ Add Layer</button>
+          <div class="hint">Click a layer to make it active. Objects are added to the active layer.</div>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="stage" width="900" height="600"></canvas>
+        </div>
+
+        <div class="panel" id="propPanel">
+          <h2>Properties</h2>
+          <div id="propBody"><div class="hint">No selection.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+
+      /* ===================== Utilities ===================== */
+      const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Math.random().toString(36).slice(2));
+
+      /* ===================== Image Cache ===================== */
+      class ImageCache {
+        constructor() {
+          this.map = new Map();
+        }
+        get(src, onload) {
+          if (this.map.has(src)) return this.map.get(src);
+          const img = new Image();
+          img.onload = () => onload && onload();
+          img.src = src;
+          this.map.set(src, img);
+          return img;
+        }
+        set(src, img) {
+          this.map.set(src, img);
+        }
+      }
+      const imageCache = new ImageCache();
+
+      /* ===================== Scene Objects (Composite leaves) ===================== */
+      class SceneObject {
+        constructor(props = {}) {
+          this.id = props.id || uid();
+          this.type = props.type || "object";
+          this.x = props.x ?? 100;
+          this.y = props.y ?? 100;
+          this.width = props.width ?? 100;
+          this.height = props.height ?? 100;
+          this.rotation = props.rotation ?? 0;
+          this.scaleX = props.scaleX ?? 1;
+          this.scaleY = props.scaleY ?? 1;
+          this.flipH = !!props.flipH;
+          this.flipV = !!props.flipV;
+          this.opacity = props.opacity ?? 1;
+        }
+        get effScaleX() {
+          return this.scaleX * (this.flipH ? -1 : 1);
+        }
+        get effScaleY() {
+          return this.scaleY * (this.flipV ? -1 : 1);
+        }
+        localToWorld(lx, ly) {
+          const sx = this.effScaleX,
+            sy = this.effScaleY;
+          const x = lx * sx,
+            y = ly * sy;
+          const c = Math.cos(this.rotation),
+            s = Math.sin(this.rotation);
+          return { x: x * c - y * s + this.x, y: x * s + y * c + this.y };
+        }
+        worldToLocal(wx, wy) {
+          const dx = wx - this.x,
+            dy = wy - this.y;
+          const c = Math.cos(-this.rotation),
+            s = Math.sin(-this.rotation);
+          const rx = dx * c - dy * s,
+            ry = dx * s + dy * c;
+          return { x: rx / this.effScaleX, y: ry / this.effScaleY };
+        }
+        containsPoint(wx, wy) {
+          const p = this.worldToLocal(wx, wy);
+          return p.x >= -this.width / 2 && p.x <= this.width / 2 && p.y >= -this.height / 2 && p.y <= this.height / 2;
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.rotation);
+          ctx.scale(this.effScaleX, this.effScaleY);
+          ctx.globalAlpha *= this.opacity;
+          this.renderShape(ctx);
+          ctx.restore();
+        }
+        renderShape(ctx) {
+          /* override */
+        }
+        extraJSON() {
+          return {};
+        }
+        toJSON() {
+          return {
+            id: this.id,
+            type: this.type,
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height,
+            rotation: this.rotation,
+            scaleX: this.scaleX,
+            scaleY: this.scaleY,
+            flipH: this.flipH,
+            flipV: this.flipV,
+            opacity: this.opacity,
+            ...this.extraJSON(),
+          };
+        }
+        fields() {
+          return [];
+        } // for property panel extension
+      }
+
+      class ImageObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "image";
+          this.src = props.src;
+        }
+        renderShape(ctx) {
+          const img = imageCache.get(this.src, () => App.instance && App.instance.render());
+          if (img.complete && img.naturalWidth) {
+            ctx.drawImage(img, -this.width / 2, -this.height / 2, this.width, this.height);
+          } else {
+            ctx.strokeStyle = "#fff";
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+            ctx.setLineDash([]);
+          }
+        }
+        extraJSON() {
+          return { src: this.src };
+        }
+      }
+
+      class TextObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "text";
+          this.text = props.text ?? "Text";
+          this.fontSize = props.fontSize ?? 24;
+          this.color = props.color ?? "#ffffff";
+        }
+        renderShape(ctx) {
+          ctx.fillStyle = this.color;
+          ctx.font = this.fontSize + 'px "Courier New", monospace';
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(this.text, 0, 0, this.width);
+        }
+        extraJSON() {
+          return { text: this.text, fontSize: this.fontSize, color: this.color };
+        }
+        fields() {
+          return [
+            { key: "text", label: "Text", type: "text" },
+            { key: "fontSize", label: "Font Size", type: "number" },
+            { key: "color", label: "Color", type: "color" },
+          ];
+        }
+      }
+
+      class RectObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "rect";
+          this.color = props.color ?? "#ffffff";
+          this.filled = !!props.filled;
+        }
+        renderShape(ctx) {
+          ctx.strokeStyle = this.color;
+          ctx.fillStyle = this.color;
+          ctx.lineWidth = 2;
+          if (this.filled) ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+          else ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+        }
+        extraJSON() {
+          return { color: this.color, filled: this.filled };
+        }
+        fields() {
+          return [
+            { key: "color", label: "Color", type: "color" },
+            { key: "filled", label: "Filled", type: "checkbox" },
+          ];
+        }
+      }
+
+      class ArrowObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "arrow";
+          this.color = props.color ?? "#ffffff";
+        }
+        renderShape(ctx) {
+          ctx.strokeStyle = this.color;
+          ctx.fillStyle = this.color;
+          ctx.lineWidth = 3;
+          const x1 = -this.width / 2,
+            y1 = this.height / 2,
+            x2 = this.width / 2,
+            y2 = -this.height / 2;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          const angle = Math.atan2(y2 - y1, x2 - x1);
+          ctx.save();
+          ctx.translate(x2, y2);
+          ctx.rotate(angle);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-14, 6);
+          ctx.lineTo(-14, -6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        extraJSON() {
+          return { color: this.color };
+        }
+        fields() {
+          return [{ key: "color", label: "Color", type: "color" }];
+        }
+      }
+
+      /* Factory Method pattern for reconstructing objects (used by undo/redo + import) */
+      class ObjectFactory {
+        static fromJSON(json) {
+          switch (json.type) {
+            case "image":
+              return new ImageObject(json);
+            case "text":
+              return new TextObject(json);
+            case "rect":
+              return new RectObject(json);
+            case "arrow":
+              return new ArrowObject(json);
+            default:
+              return new SceneObject(json);
+          }
+        }
+      }
+
+      /* ===================== Layer (Composite node) ===================== */
+      class Layer {
+        constructor(props = {}) {
+          this.id = props.id || uid();
+          this.name = props.name || "Layer";
+          this.visible = props.visible ?? true;
+          this.opacity = props.opacity ?? 1;
+          this.objects = (props.objects || []).map((o) => (o instanceof SceneObject ? o : ObjectFactory.fromJSON(o)));
+        }
+        addObject(o) {
+          this.objects.push(o);
+        }
+        removeObject(id) {
+          this.objects = this.objects.filter((o) => o.id !== id);
+        }
+        getObject(id) {
+          return this.objects.find((o) => o.id === id);
+        }
+        draw(ctx) {
+          this.objects.forEach((o) => {
+            ctx.save();
+            o.draw(ctx);
+            ctx.restore();
+          });
+        }
+        toJSON() {
+          return { id: this.id, name: this.name, visible: this.visible, opacity: this.opacity, objects: this.objects.map((o) => o.toJSON()) };
+        }
+      }
+
+      /* ===================== Document Model ===================== */
+      class DocumentModel {
+        constructor(props = {}) {
+          this.width = props.width || 900;
+          this.height = props.height || 600;
+          this.layers = (props.layers || []).map((l) => (l instanceof Layer ? l : new Layer(l)));
+          if (this.layers.length === 0) this.layers.push(new Layer({ name: "Layer 1" }));
+          this.activeLayerId = props.activeLayerId || this.layers[0].id;
+          this.selectedObjectId = props.selectedObjectId || null;
+        }
+        getActiveLayer() {
+          return this.layers.find((l) => l.id === this.activeLayerId) || this.layers[0];
+        }
+        getLayer(id) {
+          return this.layers.find((l) => l.id === id);
+        }
+        findObject(id) {
+          for (const l of this.layers) {
+            const o = l.getObject(id);
+            if (o) return { layer: l, object: o };
+          }
+          return null;
+        }
+        toJSON() {
+          return {
+            width: this.width,
+            height: this.height,
+            layers: this.layers.map((l) => l.toJSON()),
+            activeLayerId: this.activeLayerId,
+            selectedObjectId: this.selectedObjectId,
+          };
+        }
+        static fromJSON(json) {
+          return new DocumentModel(json);
+        }
+
+        /* Composite all visible layers into a fresh canvas (used for render + transforms) */
+        compositeCanvas() {
+          const cv = document.createElement("canvas");
+          cv.width = this.width;
+          cv.height = this.height;
+          const ctx = cv.getContext("2d");
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, cv.width, cv.height);
+          this.layers.forEach((layer) => {
+            if (!layer.visible) return;
+            const off = document.createElement("canvas");
+            off.width = this.width;
+            off.height = this.height;
+            layer.draw(off.getContext("2d"));
+            ctx.globalAlpha = layer.opacity;
+            ctx.drawImage(off, 0, 0);
+            ctx.globalAlpha = 1;
+          });
+          return cv;
+        }
+      }
+
+      /* ===================== Transforms (Strategy pattern) =====================
+   Pure function form: (DocumentModel) -> Layer  */
+      const Transforms = {
+        "bw-merge": {
+          name: "B/W Merge",
+          run(doc) {
+            const cv = doc.compositeCanvas();
+            const ctx = cv.getContext("2d");
+            const imgData = ctx.getImageData(0, 0, cv.width, cv.height);
+            const d = imgData.data;
+            for (let i = 0; i < d.length; i += 4) {
+              const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+              const v = lum > 128 ? 255 : 0;
+              d[i] = d[i + 1] = d[i + 2] = v;
+              d[i + 3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            const src = cv.toDataURL();
+            const img = new Image();
+            img.src = src;
+            imageCache.set(src, img);
+            const obj = new ImageObject({ x: doc.width / 2, y: doc.height / 2, width: doc.width, height: doc.height, src });
+            return new Layer({ name: "BW Merge", objects: [obj] });
+          },
+        },
+      };
+
+      /* ===================== History (Memento pattern) ===================== */
+      class HistoryManager {
+        constructor(app) {
+          this.app = app;
+          this.undoStack = [];
+          this.redoStack = [];
+        }
+        record() {
+          this.undoStack.push(JSON.stringify(this.app.doc.toJSON()));
+          if (this.undoStack.length > 150) this.undoStack.shift();
+          this.redoStack = [];
+          this.app.updateHistoryButtons();
+        }
+        undo() {
+          if (!this.undoStack.length) return;
+          this.redoStack.push(JSON.stringify(this.app.doc.toJSON()));
+          const prev = this.undoStack.pop();
+          this.app.loadDocFromJSON(prev);
+          this.app.updateHistoryButtons();
+        }
+        redo() {
+          if (!this.redoStack.length) return;
+          this.undoStack.push(JSON.stringify(this.app.doc.toJSON()));
+          const next = this.redoStack.pop();
+          this.app.loadDocFromJSON(next);
+          this.app.updateHistoryButtons();
+        }
+      }
+
+      /* ===================== App Controller ===================== */
+      class App {
+        constructor() {
+          App.instance = this;
+          this.canvas = document.getElementById("stage");
+          this.ctx = this.canvas.getContext("2d");
+          this.doc = new DocumentModel();
+          this.history = new HistoryManager(this);
+          this.tool = "select";
+          this.drag = null;
+
+          this.bindToolbar();
+          this.bindCanvas();
+          this.bindKeys();
+          document.getElementById("addLayerBtn").addEventListener("click", () => this.addLayer());
+
+          this.render();
+          this.refreshLayersPanel();
+          this.updatePropertyPanel();
+          this.updateHistoryButtons();
+        }
+
+        /* ---------- coordinate helpers ---------- */
+        getWorldPoint(evt) {
+          const rect = this.canvas.getBoundingClientRect();
+          const sx = this.canvas.width / rect.width,
+            sy = this.canvas.height / rect.height;
+          return { x: (evt.clientX - rect.left) * sx, y: (evt.clientY - rect.top) * sy };
+        }
+
+        getSelected() {
+          if (!this.doc.selectedObjectId) return null;
+          return this.doc.findObject(this.doc.selectedObjectId);
+        }
+
+        /* ---------- rendering ---------- */
+        render() {
+          const ctx = this.ctx,
+            doc = this.doc;
+          ctx.clearRect(0, 0, doc.width, doc.height);
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, doc.width, doc.height);
+          doc.layers.forEach((layer) => {
+            if (!layer.visible) return;
+            const off = document.createElement("canvas");
+            off.width = doc.width;
+            off.height = doc.height;
+            layer.draw(off.getContext("2d"));
+            ctx.globalAlpha = layer.opacity;
+            ctx.drawImage(off, 0, 0);
+            ctx.globalAlpha = 1;
+          });
+          this.drawSelectionOverlay();
+        }
+
+        drawSelectionOverlay() {
+          const sel = this.getSelected();
+          if (!sel) return;
+          const obj = sel.object,
+            ctx = this.ctx;
+          ctx.save();
+          ctx.strokeStyle = "#0f0";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 3]);
+          const corners = [
+            [-obj.width / 2, -obj.height / 2],
+            [obj.width / 2, -obj.height / 2],
+            [obj.width / 2, obj.height / 2],
+            [-obj.width / 2, obj.height / 2],
+          ].map(([lx, ly]) => obj.localToWorld(lx, ly));
+          ctx.beginPath();
+          corners.forEach((c, i) => (i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y)));
+          ctx.closePath();
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          const top = obj.localToWorld(0, -obj.height / 2);
+          const rot = obj.localToWorld(0, -obj.height / 2 - 30);
+          ctx.beginPath();
+          ctx.moveTo(top.x, top.y);
+          ctx.lineTo(rot.x, rot.y);
+          ctx.stroke();
+          ctx.fillStyle = "#0f0";
+          ctx.beginPath();
+          ctx.arc(rot.x, rot.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+
+          const rs = obj.localToWorld(obj.width / 2, obj.height / 2);
+          ctx.fillRect(rs.x - 6, rs.y - 6, 12, 12);
+          ctx.restore();
+        }
+
+        /* ---------- toolbar ---------- */
+        bindToolbar() {
+          document.querySelectorAll(".tool").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              this.tool = btn.dataset.tool;
+              document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b === btn));
+            });
+          });
+          document.getElementById("undoBtn").addEventListener("click", () => this.history.undo());
+          document.getElementById("redoBtn").addEventListener("click", () => this.history.redo());
+          document.getElementById("runTransform").addEventListener("click", () => this.runTransform("bw-merge"));
+
+          const fileInput = document.getElementById("fileInput");
+          document.getElementById("importBtn").addEventListener("click", () => fileInput.click());
+          fileInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataURL = reader.result;
+              const img = new Image();
+              img.onload = () => {
+                const maxDim = 320;
+                const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+                const w = img.width * scale,
+                  h = img.height * scale;
+                imageCache.set(dataURL, img);
+                this.history.record();
+                const obj = new ImageObject({ x: this.doc.width / 2, y: this.doc.height / 2, width: w, height: h, src: dataURL });
+                this.doc.getActiveLayer().addObject(obj);
+                this.doc.selectedObjectId = obj.id;
+                this.render();
+                this.updatePropertyPanel();
+              };
+              img.src = dataURL;
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = "";
+          });
+        }
+
+        runTransform(id) {
+          const t = Transforms[id];
+          if (!t) return;
+          this.history.record();
+          const layer = t.run(this.doc);
+          this.doc.layers.push(layer);
+          this.doc.activeLayerId = layer.id;
+          this.render();
+          this.refreshLayersPanel();
+          this.updatePropertyPanel();
+        }
+
+        updateHistoryButtons() {
+          document.getElementById("undoBtn").disabled = this.history.undoStack.length === 0;
+          document.getElementById("redoBtn").disabled = this.history.redoStack.length === 0;
+        }
+
+        loadDocFromJSON(jsonStr) {
+          this.doc = DocumentModel.fromJSON(JSON.parse(jsonStr));
+          this.render();
+          this.refreshLayersPanel();
+          this.updatePropertyPanel();
+        }
+
+        /* ---------- canvas interaction ---------- */
+        bindCanvas() {
+          const cv = this.canvas;
+          cv.addEventListener("pointerdown", (e) => this.onPointerDown(e));
+          cv.addEventListener("pointermove", (e) => this.onPointerMove(e));
+          window.addEventListener("pointerup", () => this.onPointerUp());
+        }
+
+        hitHandle(obj, pt) {
+          const rot = obj.localToWorld(0, -obj.height / 2 - 30);
+          if (Math.hypot(pt.x - rot.x, pt.y - rot.y) < 10) return "rotate";
+          const rs = obj.localToWorld(obj.width / 2, obj.height / 2);
+          if (Math.hypot(pt.x - rs.x, pt.y - rs.y) < 10) return "resize";
+          return null;
+        }
+
+        onPointerDown(e) {
+          const pt = this.getWorldPoint(e);
+
+          if (this.tool !== "select") {
+            this.history.record();
+            let obj;
+            const base = { x: pt.x, y: pt.y };
+            if (this.tool === "text") obj = new TextObject({ ...base, width: 160, height: 40 });
+            else if (this.tool === "rect") obj = new RectObject({ ...base, width: 120, height: 80 });
+            else if (this.tool === "arrow") obj = new ArrowObject({ ...base, width: 120, height: 60 });
+            if (obj) {
+              this.doc.getActiveLayer().addObject(obj);
+              this.doc.selectedObjectId = obj.id;
+            }
+            this.tool = "select";
+            document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === "select"));
+            this.render();
+            this.updatePropertyPanel();
+            return;
+          }
+
+          const sel = this.getSelected();
+          if (sel) {
+            const handle = this.hitHandle(sel.object, pt);
+            if (handle) {
+              this.history.record();
+              const obj = sel.object;
+              this.drag = {
+                mode: handle,
+                obj,
+                startAngle: Math.atan2(pt.y - obj.y, pt.x - obj.x) - obj.rotation,
+                startDist: Math.hypot(pt.x - obj.x, pt.y - obj.y) || 1,
+                startScaleX: obj.scaleX,
+                startScaleY: obj.scaleY,
+              };
+              return;
+            }
+          }
+
+          // hit test objects in active layer, topmost first
+          const layer = this.doc.getActiveLayer();
+          let found = null;
+          for (let i = layer.objects.length - 1; i >= 0; i--) {
+            if (layer.objects[i].containsPoint(pt.x, pt.y)) {
+              found = layer.objects[i];
+              break;
+            }
+          }
+          if (found) {
+            this.history.record();
+            this.doc.selectedObjectId = found.id;
+            this.drag = { mode: "move", obj: found, dx: pt.x - found.x, dy: pt.y - found.y };
+            this.render();
+            this.updatePropertyPanel();
+          } else {
+            this.doc.selectedObjectId = null;
+            this.render();
+            this.updatePropertyPanel();
+          }
+        }
+
+        onPointerMove(e) {
+          if (!this.drag) return;
+          const pt = this.getWorldPoint(e);
+          const { mode, obj } = this.drag;
+          if (mode === "move") {
+            obj.x = pt.x - this.drag.dx;
+            obj.y = pt.y - this.drag.dy;
+          } else if (mode === "rotate") {
+            const ang = Math.atan2(pt.y - obj.y, pt.x - obj.x);
+            obj.rotation = ang - this.drag.startAngle;
+          } else if (mode === "resize") {
+            const dist = Math.hypot(pt.x - obj.x, pt.y - obj.y);
+            const factor = dist / this.drag.startDist;
+            obj.scaleX = Math.max(0.05, this.drag.startScaleX * factor);
+            obj.scaleY = Math.max(0.05, this.drag.startScaleY * factor);
+          }
+          this.render();
+          this.updatePropertyPanel(true);
+        }
+
+        onPointerUp() {
+          this.drag = null;
+        }
+
+        bindKeys() {
+          window.addEventListener("keydown", (e) => {
+            const tag = (document.activeElement && document.activeElement.tagName) || "";
+            const typing = tag === "INPUT" || tag === "TEXTAREA";
+            if (!typing) {
+              if (e.key === "v" || e.key === "V") this.setTool("select");
+              if (e.key === "t" || e.key === "T") this.setTool("text");
+              if (e.key === "r" || e.key === "R") this.setTool("rect");
+              if (e.key === "a" || e.key === "A") this.setTool("arrow");
+              if (e.key === "Delete" || e.key === "Backspace") this.deleteSelected();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+              e.preventDefault();
+              if (e.shiftKey) this.history.redo();
+              else this.history.undo();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+              e.preventDefault();
+              this.history.redo();
+            }
+          });
+        }
+
+        setTool(t) {
+          this.tool = t;
+          document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === t));
+        }
+
+        deleteSelected() {
+          const sel = this.getSelected();
+          if (!sel) return;
+          this.history.record();
+          sel.layer.removeObject(sel.object.id);
+          this.doc.selectedObjectId = null;
+          this.render();
+          this.updatePropertyPanel();
+        }
+
+        /* ---------- layers panel ---------- */
+        addLayer() {
+          this.history.record();
+          const layer = new Layer({ name: "Layer " + (this.doc.layers.length + 1) });
+          this.doc.layers.push(layer);
+          this.doc.activeLayerId = layer.id;
+          this.render();
+          this.refreshLayersPanel();
+        }
+
+        refreshLayersPanel() {
+          const list = document.getElementById("layerList");
+          list.innerHTML = "";
+          // display topmost layer first
+          for (let i = this.doc.layers.length - 1; i >= 0; i--) {
+            const layer = this.doc.layers[i];
+            const row = document.createElement("div");
+            row.className = "layer-row" + (layer.id === this.doc.activeLayerId ? " active" : "");
+            row.innerHTML = `
+        <div class="row1">
+          <input type="checkbox" ${layer.visible ? "checked" : ""} data-act="vis">
+          <input type="text" value="${layer.name}" data-act="name">
+        </div>
+        <input type="range" min="0" max="1" step="0.01" value="${layer.opacity}" data-act="op">
+        <div class="row2">
+          <button data-act="up">↑</button>
+          <button data-act="down">↓</button>
+          <button data-act="del" ${this.doc.layers.length <= 1 ? "disabled" : ""}>×</button>
+        </div>
+      `;
+            row.addEventListener("click", (e) => {
+              if (e.target.dataset.act) return;
+              this.doc.activeLayerId = layer.id;
+              this.refreshLayersPanel();
+            });
+            row.querySelector("[data-act=vis]").addEventListener("change", (e) => {
+              this.history.record();
+              layer.visible = e.target.checked;
+              this.render();
+            });
+            row.querySelector("[data-act=name]").addEventListener("focus", () => this.history.record());
+            row.querySelector("[data-act=name]").addEventListener("input", (e) => {
+              layer.name = e.target.value;
+            });
+            row.querySelector("[data-act=op]").addEventListener("pointerdown", () => this.history.record());
+            row.querySelector("[data-act=op]").addEventListener("input", (e) => {
+              layer.opacity = parseFloat(e.target.value);
+              this.render();
+            });
+            row.querySelector("[data-act=up]").addEventListener("click", () => {
+              const idx = this.doc.layers.indexOf(layer);
+              if (idx < this.doc.layers.length - 1) {
+                this.history.record();
+                [this.doc.layers[idx], this.doc.layers[idx + 1]] = [this.doc.layers[idx + 1], this.doc.layers[idx]];
+                this.render();
+                this.refreshLayersPanel();
+              }
+            });
+            row.querySelector("[data-act=down]").addEventListener("click", () => {
+              const idx = this.doc.layers.indexOf(layer);
+              if (idx > 0) {
+                this.history.record();
+                [this.doc.layers[idx], this.doc.layers[idx - 1]] = [this.doc.layers[idx - 1], this.doc.layers[idx]];
+                this.render();
+                this.refreshLayersPanel();
+              }
+            });
+            row.querySelector("[data-act=del]").addEventListener("click", () => {
+              if (this.doc.layers.length <= 1) return;
+              this.history.record();
+              this.doc.layers = this.doc.layers.filter((l) => l.id !== layer.id);
+              if (this.doc.activeLayerId === layer.id) this.doc.activeLayerId = this.doc.layers[0].id;
+              this.render();
+              this.refreshLayersPanel();
+            });
+            list.appendChild(row);
+          }
+        }
+
+        /* ---------- property panel ---------- */
+        updatePropertyPanel(liveOnly) {
+          const body = document.getElementById("propBody");
+          const sel = this.getSelected();
+          if (!sel) {
+            body.innerHTML = '<div class="hint">No selection. Click an object on the active layer, or pick a tool to add one.</div>';
+            return;
+          }
+          const obj = sel.object;
+
+          if (!liveOnly) {
+            const extra = obj
+              .fields()
+              .map((f) => {
+                if (f.type === "checkbox") {
+                  return `<label>${f.label}</label><input type="checkbox" data-field="${f.key}" ${obj[f.key] ? "checked" : ""}>`;
+                }
+                if (f.type === "color") {
+                  return `<label>${f.label}</label><input type="color" data-field="${f.key}" value="${obj[f.key]}" style="width:100%;height:1.6rem;">`;
+                }
+                return `<label>${f.label}</label><input type="${f.type}" data-field="${f.key}" value="${obj[f.key]}">`;
+              })
+              .join("");
+
+            body.innerHTML = `
+        <div class="propname">${obj.type.toUpperCase()} — ${obj.id.slice(0, 8)}</div>
+        <div class="field-row">
+          <div><label>X</label><input type="number" data-field="x" value="${Math.round(obj.x)}"></div>
+          <div><label>Y</label><input type="number" data-field="y" value="${Math.round(obj.y)}"></div>
+        </div>
+        <div class="field-row">
+          <div><label>Width</label><input type="number" data-field="width" value="${Math.round(obj.width)}"></div>
+          <div><label>Height</label><input type="number" data-field="height" value="${Math.round(obj.height)}"></div>
+        </div>
+        <label>Rotation (deg)</label>
+        <input type="number" data-field="rotationDeg" value="${Math.round((obj.rotation * 180) / Math.PI)}">
+        <label>Opacity</label>
+        <input type="range" min="0" max="1" step="0.01" data-field="opacity" value="${obj.opacity}">
+        ${extra}
+        <div class="flexbtns">
+          <button data-act="flipH">Flip H</button>
+          <button data-act="flipV">Flip V</button>
+        </div>
+        <div class="flexbtns">
+          <button data-act="delete">Delete Object</button>
+        </div>
+      `;
+
+            body.querySelectorAll("input[data-field]").forEach((inp) => {
+              let recorded = false;
+              const recOnce = () => {
+                if (!recorded) {
+                  this.history.record();
+                  recorded = true;
+                }
+              };
+              inp.addEventListener("focus", recOnce);
+              inp.addEventListener("pointerdown", recOnce);
+              inp.addEventListener("input", () => {
+                const field = inp.dataset.field;
+                if (field === "rotationDeg") obj.rotation = (parseFloat(inp.value || 0) * Math.PI) / 180;
+                else if (inp.type === "checkbox") obj[field] = inp.checked;
+                else if (inp.type === "number") obj[field] = parseFloat(inp.value || 0);
+                else if (inp.type === "range") obj[field] = parseFloat(inp.value);
+                else obj[field] = inp.value;
+                this.render();
+              });
+              inp.addEventListener("change", () => {
+                recorded = false;
+              });
+            });
+            body.querySelector("[data-act=flipH]").addEventListener("click", () => {
+              this.history.record();
+              obj.flipH = !obj.flipH;
+              this.render();
+            });
+            body.querySelector("[data-act=flipV]").addEventListener("click", () => {
+              this.history.record();
+              obj.flipV = !obj.flipV;
+              this.render();
+            });
+            body.querySelector("[data-act=delete]").addEventListener("click", () => this.deleteSelected());
+          } else {
+            // live drag update: refresh only numeric readouts without rebuilding DOM/focus
+            const map = {
+              x: Math.round(obj.x),
+              y: Math.round(obj.y),
+              width: Math.round(obj.width),
+              height: Math.round(obj.height),
+              rotationDeg: Math.round((obj.rotation * 180) / Math.PI),
+            };
+            Object.entries(map).forEach(([k, v]) => {
+              const inp = body.querySelector(`[data-field="${k}"]`);
+              if (inp && document.activeElement !== inp) inp.value = v;
+            });
+          }
+        }
+      }
+
+      new App();
+    </script>
+  </body>
+</html>
