@@ -1,5 +1,7 @@
 [Add](https://github.dev/chuanqisun/code) · [Repo](https://github.com/chuanqisun/code/)
 
+> Press <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>.</kbd> to view source on any page.
+
 ## Tools
 
 - [Audio trim](./audio-trim/)
