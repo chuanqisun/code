@@ -101,6 +101,7 @@
 - [Shanshui](./shanshui/)
 - [Shape display](./shape-display/)
 - [Shared Space](./shared-space/)
+- [Sketchpad](./sketchpad/)
 - [Spaceship](./spaceship/)
 - [Split-flap](./split-flap/)
 - [System Card](./sys-card/)
