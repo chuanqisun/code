@@ -39,6 +39,7 @@
 - [Spectrogram Recorder](./spectrogram-recorder/)
 - [Subtitle Editor](./subtitle-editor/)
 - [Tax estimator](https://chuanqisun.github.io/tax/)
+- [Type bundler](./type-bundler/)
 
 ## Experiments
 
