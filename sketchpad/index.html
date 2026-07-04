@@ -2,47 +2,48 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Layered Draw</title>
+    <title>Sketchpad</title>
     <style>
       :root {
         --bg: #000;
         --fg: #fff;
-        --dim: #555;
+        --panel-divider: #555;
+        --row-border: #444;
       }
       * {
         box-sizing: border-box;
         border-radius: 0 !important;
       }
+      html,
+      body {
+        height: 100%;
+      }
       body {
         background: var(--bg);
         color: var(--fg);
         margin: 0;
-        padding: 1rem;
         font-family: "Courier New", monospace;
         font-size: 14px;
+        overflow: hidden;
       }
       .app {
-        max-width: 60rem;
-        margin: 0 auto;
-      }
-      h1 {
-        font-size: 1rem;
-        letter-spacing: 0.15em;
-        margin: 0 0 0.6rem;
-        text-transform: uppercase;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
       }
       .toolbar {
+        flex: 0 0 auto;
         display: flex;
         flex-wrap: wrap;
         gap: 0.4rem;
         align-items: center;
-        border: 1px solid var(--fg);
-        padding: 0.5rem;
+        border-bottom: 1px solid var(--panel-divider);
+        padding: 0.4rem 0.5rem;
       }
       .toolbar .sep {
         width: 1px;
         align-self: stretch;
-        background: var(--dim);
+        background: var(--panel-divider);
         margin: 0 0.3rem;
       }
       button,
@@ -86,64 +87,86 @@
         accent-color: #fff;
       }
       .main {
+        flex: 1;
+        min-height: 0;
         display: flex;
-        gap: 0.75rem;
-        margin-top: 0.75rem;
-        align-items: flex-start;
       }
       .panel {
         flex: 0 0 11.5rem;
         width: 11.5rem;
-        border: 1px solid #fff;
+        height: 100%;
+        overflow-y: auto;
         padding: 0.5rem;
         font-size: 0.7rem;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      #objectsPanel {
+        border-right: 1px solid var(--panel-divider);
+      }
+      #propPanel {
+        border-left: 1px solid var(--panel-divider);
+        overflow-y: auto;
+        display: block;
       }
       .panel h2 {
+        flex: 0 0 auto;
         font-size: 0.7rem;
         text-transform: uppercase;
         letter-spacing: 0.1em;
-        margin: 0.2rem 0 0.5rem;
-        border-bottom: 1px solid var(--dim);
+        margin: 0 0 0.5rem;
+        border-bottom: 1px solid var(--panel-divider);
         padding-bottom: 0.3rem;
+      }
+      #objectList {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
       }
       .canvas-wrap {
         flex: 1;
         min-width: 0;
-        display: flex;
-        justify-content: center;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
       }
       canvas {
         background: #000;
-        border: 1px solid #fff;
         width: 100%;
-        height: auto;
-        max-width: 100%;
+        height: 100%;
         display: block;
         touch-action: none;
+        cursor: default;
       }
-      .layer-row {
-        border: 1px solid #444;
+      .object-row {
+        border: 1px solid var(--row-border);
         padding: 0.3rem;
         margin-bottom: 0.35rem;
         cursor: pointer;
       }
-      .layer-row.active {
+      .object-row.active {
         border-color: #fff;
       }
-      .layer-row .row1 {
+      .object-row .row1 {
         display: flex;
         align-items: center;
         gap: 0.3rem;
         margin-bottom: 0.25rem;
       }
-      .layer-row input[type="text"] {
+      .object-row .object-label {
         flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-transform: uppercase;
       }
-      .layer-row .row2 {
+      .object-row .row2 {
         display: flex;
         gap: 0.2rem;
       }
-      .layer-row .row2 button {
+      .object-row .row2 button {
         flex: 1;
         padding: 0.15rem;
       }
@@ -164,7 +187,7 @@
       }
       .propname {
         font-size: 0.72rem;
-        border-bottom: 1px solid var(--dim);
+        border-bottom: 1px solid var(--panel-divider);
         padding-bottom: 0.3rem;
         margin-bottom: 0.3rem;
         word-break: break-all;
@@ -177,17 +200,6 @@
       .flexbtns button {
         flex: 1;
       }
-      .hint {
-        opacity: 0.5;
-        font-size: 0.62rem;
-        margin-top: 0.5rem;
-        line-height: 1.4;
-      }
-      .tool-hint {
-        opacity: 0.6;
-        font-size: 0.62rem;
-        margin-top: 0.4rem;
-      }
       #fileInput {
         display: none;
       }
@@ -195,7 +207,6 @@
   </head>
   <body>
     <div class="app">
-      <h1>Layered Draw // OOP Canvas</h1>
       <div class="toolbar">
         <button data-tool="select" class="tool active">Select (V)</button>
         <button data-tool="text" class="tool">Text (T)</button>
@@ -210,20 +221,18 @@
       </div>
 
       <div class="main">
-        <div class="panel" id="layersPanel">
-          <h2>Layers</h2>
-          <div id="layerList"></div>
-          <button id="addLayerBtn" style="width: 100%; margin-top: 0.3rem">+ Add Layer</button>
-          <div class="hint">Click a layer to make it active. Objects are added to the active layer.</div>
+        <div class="panel" id="objectsPanel">
+          <h2>Objects</h2>
+          <div id="objectList"></div>
         </div>
 
         <div class="canvas-wrap">
-          <canvas id="stage" width="900" height="600"></canvas>
+          <canvas id="stage"></canvas>
         </div>
 
         <div class="panel" id="propPanel">
           <h2>Properties</h2>
-          <div id="propBody"><div class="hint">No selection.</div></div>
+          <div id="propBody"></div>
         </div>
       </div>
     </div>
@@ -505,14 +514,18 @@
         }
       }
 
-      /* ===================== Layer (Composite node) ===================== */
-      class Layer {
+      /* ===================== Document Model ===================== */
+      class DocumentModel {
         constructor(props = {}) {
-          this.id = props.id || uid();
-          this.name = props.name || "Layer";
-          this.visible = props.visible ?? true;
-          this.opacity = props.opacity ?? 1;
-          this.objects = (props.objects || []).map((o) => (o instanceof SceneObject ? o : ObjectFactory.fromJSON(o)));
+          this.width = props.width || 900;
+          this.height = props.height || 600;
+          const sourceObjects =
+            props.objects ||
+            (props.layers || []).flatMap((layer) => (layer.objects || []).map((object) => ({ ...object, opacity: (object.opacity ?? 1) * (layer.opacity ?? 1) })));
+          this.objects = sourceObjects.map((o) => (o instanceof SceneObject ? o : ObjectFactory.fromJSON(o)));
+          // Multi-select: array of selected object ids (kept in sync with
+          // legacy single-id shape for anything that still reads it).
+          this.selectedObjectIds = props.selectedObjectIds || (props.selectedObjectId ? [props.selectedObjectId] : []);
         }
         addObject(o) {
           this.objects.push(o);
@@ -520,52 +533,15 @@
         removeObject(id) {
           this.objects = this.objects.filter((o) => o.id !== id);
         }
-        getObject(id) {
-          return this.objects.find((o) => o.id === id);
-        }
-        draw(ctx) {
-          this.objects.forEach((o) => {
-            ctx.save();
-            o.draw(ctx);
-            ctx.restore();
-          });
-        }
-        toJSON() {
-          return { id: this.id, name: this.name, visible: this.visible, opacity: this.opacity, objects: this.objects.map((o) => o.toJSON()) };
-        }
-      }
-
-      /* ===================== Document Model ===================== */
-      class DocumentModel {
-        constructor(props = {}) {
-          this.width = props.width || 900;
-          this.height = props.height || 600;
-          this.layers = (props.layers || []).map((l) => (l instanceof Layer ? l : new Layer(l)));
-          if (this.layers.length === 0) this.layers.push(new Layer({ name: "Layer 1" }));
-          this.activeLayerId = props.activeLayerId || this.layers[0].id;
-          // Multi-select: array of selected object ids (kept in sync with
-          // legacy single-id shape for anything that still reads it).
-          this.selectedObjectIds = props.selectedObjectIds || (props.selectedObjectId ? [props.selectedObjectId] : []);
-        }
-        getActiveLayer() {
-          return this.layers.find((l) => l.id === this.activeLayerId) || this.layers[0];
-        }
-        getLayer(id) {
-          return this.layers.find((l) => l.id === id);
-        }
         findObject(id) {
-          for (const l of this.layers) {
-            const o = l.getObject(id);
-            if (o) return { layer: l, object: o };
-          }
-          return null;
+          const object = this.objects.find((o) => o.id === id);
+          return object ? { object } : null;
         }
         toJSON() {
           return {
             width: this.width,
             height: this.height,
-            layers: this.layers.map((l) => l.toJSON()),
-            activeLayerId: this.activeLayerId,
+            objects: this.objects.map((o) => o.toJSON()),
             selectedObjectIds: this.selectedObjectIds,
           };
         }
@@ -661,11 +637,10 @@
             }
           }
 
-          const layer = app.doc.getActiveLayer();
           let found = null;
-          for (let i = layer.objects.length - 1; i >= 0; i--) {
-            if (layer.objects[i].containsPoint(pt.x, pt.y)) {
-              found = layer.objects[i];
+          for (let i = app.doc.objects.length - 1; i >= 0; i--) {
+            if (app.doc.objects[i].containsPoint(pt.x, pt.y)) {
+              found = app.doc.objects[i];
               break;
             }
           }
@@ -689,6 +664,7 @@
               .map((f) => ({ obj: f.object, dx: pt.x - f.object.x, dy: pt.y - f.object.y }));
             this.drag = { mode: "move", offsets };
             app.render();
+            app.refreshObjectsPanel();
             app.updatePropertyPanel();
           } else {
             // Start a marquee (rubber-band) selection drag on empty space.
@@ -734,14 +710,13 @@
             const dragged = Math.hypot(end.x - start.x, end.y - start.y) > 3;
             const app = this.app;
             if (dragged) {
-              // Multi-select: gather every object under the active layer
+              // Multi-select: gather every object in the scene
               // that intersects the marquee box, not just the topmost one.
-              const layer = app.doc.getActiveLayer();
               const hits = [];
-              for (let i = layer.objects.length - 1; i >= 0; i--) {
-                const b = layer.objects[i].getWorldBounds();
+              for (let i = app.doc.objects.length - 1; i >= 0; i--) {
+                const b = app.doc.objects[i].getWorldBounds();
                 const intersects = b.minX <= maxX && b.maxX >= minX && b.minY <= maxY && b.maxY >= minY;
-                if (intersects) hits.push(layer.objects[i].id);
+                if (intersects) hits.push(app.doc.objects[i].id);
               }
               if (additive) {
                 const set = new Set(base);
@@ -754,6 +729,7 @@
               app.doc.selectedObjectIds = [];
             }
             this.app.render();
+            this.app.refreshObjectsPanel();
             this.app.updatePropertyPanel();
             return;
           }
@@ -795,9 +771,10 @@
           app.history.record();
           this.startPt = pt;
           this.obj = this.createObject(pt);
-          app.doc.getActiveLayer().addObject(this.obj);
+          app.doc.addObject(this.obj);
           app.doc.selectedObjectIds = [this.obj.id];
           app.render();
+          app.refreshObjectsPanel();
         }
         onPointerMove(pt) {
           if (!this.obj) return;
@@ -880,10 +857,11 @@
           const app = this.app;
           app.history.record();
           const obj = new TextObject({ x: pt.x, y: pt.y, width: 160, height: 40 });
-          app.doc.getActiveLayer().addObject(obj);
+          app.doc.addObject(obj);
           app.doc.selectedObjectIds = [obj.id];
           this.state = "editing";
           app.render();
+          app.refreshObjectsPanel();
           app.updatePropertyPanel();
           app.focusPropertyField("text", { select: true });
         }
@@ -967,9 +945,10 @@
             cy = (minY + maxY) / 2;
           const localStrokes = strokes.map((s) => s.map((p) => ({ x: p.x - cx, y: p.y - cy })));
           const obj = new DrawObject({ x: cx, y: cy, width, height, strokes: localStrokes });
-          app.doc.getActiveLayer().addObject(obj);
+          app.doc.addObject(obj);
           app.doc.selectedObjectIds = [obj.id];
           app.render();
+          app.refreshObjectsPanel();
           app.updatePropertyPanel();
         }
       }
@@ -980,15 +959,6 @@
         rect: RectTool,
         arrow: ArrowTool,
         draw: DrawTool,
-      };
-
-      const TOOL_HINTS = {
-        select:
-          "Click an object to select it. Shift/Ctrl+Click to add or toggle objects in the selection. Drag on empty space to marquee-select every object under the box. Use knobs to rotate/resize (single selection only).",
-        text: "Click on the canvas to place a text box, then edit it in the panel.",
-        rect: "Drag on the canvas to draw a rectangle.",
-        arrow: "Drag from tail to head to draw an arrow.",
-        draw: "Freehand draw; switch tools to finish the stroke.",
       };
 
       /* ===================== App Controller ===================== */
@@ -1002,13 +972,19 @@
           this.activeTool = null;
           this.toolName = null;
 
+          // Infinite canvas: viewX/viewY is the world-space coordinate shown
+          // at the top-left corner of the canvas viewport.
+          this.viewX = 0;
+          this.viewY = 0;
+          this.spacePressed = false;
+          this.panning = null;
+
           this.bindToolbar();
           this.bindCanvas();
           this.bindKeys();
-          document.getElementById("addLayerBtn").addEventListener("click", () => this.addLayer());
-
+          this.bindResize();
           this.setTool("select");
-          this.refreshLayersPanel();
+          this.refreshObjectsPanel();
           this.updatePropertyPanel();
           this.updateHistoryButtons();
         }
@@ -1018,10 +994,37 @@
           const rect = this.canvas.getBoundingClientRect();
           const sx = this.canvas.width / rect.width,
             sy = this.canvas.height / rect.height;
-          return { x: (evt.clientX - rect.left) * sx, y: (evt.clientY - rect.top) * sy };
+          return { x: (evt.clientX - rect.left) * sx + this.viewX, y: (evt.clientY - rect.top) * sy + this.viewY };
         }
 
-        /* Returns an array of {layer, object} for every currently selected id. */
+        /* ---------- viewport / resize (keeps the viewport center stable) ---------- */
+        bindResize() {
+          const wrap = document.querySelector(".canvas-wrap");
+          let first = true;
+          const ro = new ResizeObserver((entries) => {
+            const { width, height } = entries[0].contentRect;
+            const w = Math.max(1, Math.round(width)),
+              h = Math.max(1, Math.round(height));
+            if (first) {
+              first = false;
+              this.canvas.width = w;
+              this.canvas.height = h;
+              this.viewX = (this.doc.width - w) / 2;
+              this.viewY = (this.doc.height - h) / 2;
+            } else {
+              const centerX = this.viewX + this.canvas.width / 2;
+              const centerY = this.viewY + this.canvas.height / 2;
+              this.canvas.width = w;
+              this.canvas.height = h;
+              this.viewX = centerX - w / 2;
+              this.viewY = centerY - h / 2;
+            }
+            this.render();
+          });
+          ro.observe(wrap);
+        }
+
+        /* Returns an array of {object} for every currently selected id. */
         getSelectedList() {
           return this.doc.selectedObjectIds.map((id) => this.doc.findObject(id)).filter(Boolean);
         }
@@ -1042,8 +1045,6 @@
           this.activeTool = new ToolRegistry[name](this);
           this.activeTool.activate();
           document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
-          const hintEl = document.getElementById("toolHint");
-          if (hintEl) hintEl.textContent = TOOL_HINTS[name] || "";
           this.render();
         }
 
@@ -1051,21 +1052,24 @@
         render() {
           const ctx = this.ctx,
             doc = this.doc;
-          ctx.clearRect(0, 0, doc.width, doc.height);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
           ctx.fillStyle = "#000";
-          ctx.fillRect(0, 0, doc.width, doc.height);
-          doc.layers.forEach((layer) => {
-            if (!layer.visible) return;
-            const off = document.createElement("canvas");
-            off.width = doc.width;
-            off.height = doc.height;
-            layer.draw(off.getContext("2d"));
-            ctx.globalAlpha = layer.opacity;
-            ctx.drawImage(off, 0, 0);
-            ctx.globalAlpha = 1;
+          ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+          ctx.save();
+          ctx.translate(-this.viewX, -this.viewY);
+          ctx.strokeStyle = "#333";
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(0, 0, doc.width, doc.height);
+          ctx.setLineDash([]);
+          doc.objects.forEach((object) => {
+            ctx.save();
+            object.draw(ctx);
+            ctx.restore();
           });
           this.drawSelectionOverlay();
           if (this.activeTool && this.activeTool.drawPreview) this.activeTool.drawPreview(ctx);
+          ctx.restore();
         }
 
         drawSelectionOverlay() {
@@ -1141,10 +1145,11 @@
                 imageCache.set(dataURL, img);
                 this.history.record();
                 const obj = new ImageObject({ x: this.doc.width / 2, y: this.doc.height / 2, width: w, height: h, src: dataURL });
-                this.doc.getActiveLayer().addObject(obj);
+                this.doc.addObject(obj);
                 this.doc.selectedObjectIds = [obj.id];
                 this.setTool("select");
                 this.render();
+                this.refreshObjectsPanel();
                 this.updatePropertyPanel();
               };
               img.src = dataURL;
@@ -1163,16 +1168,41 @@
           this.doc = DocumentModel.fromJSON(JSON.parse(jsonStr));
           this.setTool("select");
           this.render();
-          this.refreshLayersPanel();
+          this.refreshObjectsPanel();
           this.updatePropertyPanel();
         }
 
-        /* ---------- canvas interaction (delegates to active tool) ---------- */
+        /* ---------- canvas interaction (delegates to active tool, unless panning) ---------- */
         bindCanvas() {
           const cv = this.canvas;
-          cv.addEventListener("pointerdown", (e) => this.activeTool.onPointerDown(this.getWorldPoint(e), e));
-          cv.addEventListener("pointermove", (e) => this.activeTool.onPointerMove(this.getWorldPoint(e), e));
-          window.addEventListener("pointerup", (e) => this.activeTool.onPointerUp(this.getWorldPoint(e), e));
+          cv.addEventListener("pointerdown", (e) => {
+            if (this.spacePressed) {
+              this.panning = { startX: e.clientX, startY: e.clientY, startViewX: this.viewX, startViewY: this.viewY };
+              this.canvas.style.cursor = "grabbing";
+              return;
+            }
+            this.activeTool.onPointerDown(this.getWorldPoint(e), e);
+          });
+          cv.addEventListener("pointermove", (e) => {
+            if (this.panning) {
+              const rect = this.canvas.getBoundingClientRect();
+              const sx = this.canvas.width / rect.width,
+                sy = this.canvas.height / rect.height;
+              this.viewX = this.panning.startViewX - (e.clientX - this.panning.startX) * sx;
+              this.viewY = this.panning.startViewY - (e.clientY - this.panning.startY) * sy;
+              this.render();
+              return;
+            }
+            this.activeTool.onPointerMove(this.getWorldPoint(e), e);
+          });
+          window.addEventListener("pointerup", (e) => {
+            if (this.panning) {
+              this.panning = null;
+              this.canvas.style.cursor = this.spacePressed ? "grab" : "default";
+              return;
+            }
+            this.activeTool.onPointerUp(this.getWorldPoint(e), e);
+          });
         }
 
         bindKeys() {
@@ -1180,6 +1210,14 @@
             const tag = (document.activeElement && document.activeElement.tagName) || "";
             const typing = tag === "INPUT" || tag === "TEXTAREA";
             if (!typing) {
+              if (e.code === "Space") {
+                e.preventDefault();
+                if (!this.spacePressed) {
+                  this.spacePressed = true;
+                  this.canvas.style.cursor = "grab";
+                }
+                return;
+              }
               if (e.key === "v" || e.key === "V") this.setTool("select");
               if (e.key === "t" || e.key === "T") this.setTool("text");
               if (e.key === "r" || e.key === "R") this.setTool("rect");
@@ -1198,91 +1236,85 @@
               this.history.redo();
             }
           });
+          window.addEventListener("keyup", (e) => {
+            if (e.code === "Space") {
+              this.spacePressed = false;
+              this.panning = null;
+              this.canvas.style.cursor = "default";
+            }
+          });
         }
 
         deleteSelected() {
           const list = this.getSelectedList();
           if (!list.length) return;
           this.history.record();
-          list.forEach((sel) => sel.layer.removeObject(sel.object.id));
+          list.forEach((sel) => this.doc.removeObject(sel.object.id));
           this.doc.selectedObjectIds = [];
           this.render();
+          this.refreshObjectsPanel();
           this.updatePropertyPanel();
         }
 
-        /* ---------- layers panel ---------- */
-        addLayer() {
-          this.history.record();
-          const layer = new Layer({ name: "Layer " + (this.doc.layers.length + 1) });
-          this.doc.layers.push(layer);
-          this.doc.activeLayerId = layer.id;
-          this.render();
-          this.refreshLayersPanel();
-        }
-
-        refreshLayersPanel() {
-          const list = document.getElementById("layerList");
+        /* ---------- objects panel ---------- */
+        refreshObjectsPanel() {
+          const list = document.getElementById("objectList");
           list.innerHTML = "";
-          for (let i = this.doc.layers.length - 1; i >= 0; i--) {
-            const layer = this.doc.layers[i];
+          if (!this.doc.objects.length) {
+            const empty = document.createElement("div");
+            empty.className = "propname";
+            empty.textContent = "NO OBJECTS";
+            list.appendChild(empty);
+            return;
+          }
+          for (let i = this.doc.objects.length - 1; i >= 0; i--) {
+            const object = this.doc.objects[i];
             const row = document.createElement("div");
-            row.className = "layer-row" + (layer.id === this.doc.activeLayerId ? " active" : "");
+            row.className = "object-row" + (this.doc.selectedObjectIds.includes(object.id) ? " active" : "");
+            const label = `${object.type} ${object.id.slice(0, 8)}`;
             row.innerHTML = `
         <div class="row1">
-          <input type="checkbox" ${layer.visible ? "checked" : ""} data-act="vis">
-          <input type="text" value="${layer.name}" data-act="name">
+          <div class="object-label"></div>
         </div>
-        <input type="range" min="0" max="1" step="0.01" value="${layer.opacity}" data-act="op">
         <div class="row2">
-          <button data-act="up">↑</button>
-          <button data-act="down">↓</button>
-          <button data-act="del" ${this.doc.layers.length <= 1 ? "disabled" : ""}>×</button>
+          <button data-act="up" ${i === this.doc.objects.length - 1 ? "disabled" : ""}>↑</button>
+          <button data-act="down" ${i === 0 ? "disabled" : ""}>↓</button>
+          <button data-act="del">×</button>
         </div>
       `;
+            row.querySelector(".object-label").textContent = label;
             row.addEventListener("click", (e) => {
               if (e.target.dataset.act) return;
-              this.doc.activeLayerId = layer.id;
-              this.refreshLayersPanel();
-            });
-            row.querySelector("[data-act=vis]").addEventListener("change", (e) => {
-              this.history.record();
-              layer.visible = e.target.checked;
+              this.doc.selectedObjectIds = [object.id];
               this.render();
-            });
-            row.querySelector("[data-act=name]").addEventListener("focus", () => this.history.record());
-            row.querySelector("[data-act=name]").addEventListener("input", (e) => {
-              layer.name = e.target.value;
-            });
-            row.querySelector("[data-act=op]").addEventListener("pointerdown", () => this.history.record());
-            row.querySelector("[data-act=op]").addEventListener("input", (e) => {
-              layer.opacity = parseFloat(e.target.value);
-              this.render();
+              this.refreshObjectsPanel();
+              this.updatePropertyPanel();
             });
             row.querySelector("[data-act=up]").addEventListener("click", () => {
-              const idx = this.doc.layers.indexOf(layer);
-              if (idx < this.doc.layers.length - 1) {
+              const idx = this.doc.objects.indexOf(object);
+              if (idx < this.doc.objects.length - 1) {
                 this.history.record();
-                [this.doc.layers[idx], this.doc.layers[idx + 1]] = [this.doc.layers[idx + 1], this.doc.layers[idx]];
+                [this.doc.objects[idx], this.doc.objects[idx + 1]] = [this.doc.objects[idx + 1], this.doc.objects[idx]];
                 this.render();
-                this.refreshLayersPanel();
+                this.refreshObjectsPanel();
               }
             });
             row.querySelector("[data-act=down]").addEventListener("click", () => {
-              const idx = this.doc.layers.indexOf(layer);
+              const idx = this.doc.objects.indexOf(object);
               if (idx > 0) {
                 this.history.record();
-                [this.doc.layers[idx], this.doc.layers[idx - 1]] = [this.doc.layers[idx - 1], this.doc.layers[idx]];
+                [this.doc.objects[idx], this.doc.objects[idx - 1]] = [this.doc.objects[idx - 1], this.doc.objects[idx]];
                 this.render();
-                this.refreshLayersPanel();
+                this.refreshObjectsPanel();
               }
             });
             row.querySelector("[data-act=del]").addEventListener("click", () => {
-              if (this.doc.layers.length <= 1) return;
               this.history.record();
-              this.doc.layers = this.doc.layers.filter((l) => l.id !== layer.id);
-              if (this.doc.activeLayerId === layer.id) this.doc.activeLayerId = this.doc.layers[0].id;
+              this.doc.removeObject(object.id);
+              this.doc.selectedObjectIds = this.doc.selectedObjectIds.filter((id) => id !== object.id);
               this.render();
-              this.refreshLayersPanel();
+              this.refreshObjectsPanel();
+              this.updatePropertyPanel();
             });
             list.appendChild(row);
           }
@@ -1304,8 +1336,7 @@
           const list = this.getSelectedList();
 
           if (!list.length) {
-            body.innerHTML = `<div class="hint">No selection. Click an object on the active layer, or pick a tool to add one.</div>
-        <div class="tool-hint" id="toolHint">${TOOL_HINTS[this.toolName] || ""}</div>`;
+            body.innerHTML = "";
             return;
           }
 
@@ -1319,10 +1350,6 @@
             <button data-act="flipH">Flip H</button>
             <button data-act="flipV">Flip V</button>
           </div>
-          <div class="flexbtns">
-            <button data-act="delete">Delete Selected</button>
-          </div>
-          <div class="tool-hint" id="toolHint">${TOOL_HINTS[this.toolName] || ""}</div>
         `;
               const opInp = body.querySelector('[data-field="opacity"]');
               opInp.addEventListener("pointerdown", () => this.history.record());
@@ -1341,7 +1368,6 @@
                 list.forEach((sel) => (sel.object.flipV = !sel.object.flipV));
                 this.render();
               });
-              body.querySelector("[data-act=delete]").addEventListener("click", () => this.deleteSelected());
             }
             return;
           }
@@ -1382,10 +1408,6 @@
           <button data-act="flipH">Flip H</button>
           <button data-act="flipV">Flip V</button>
         </div>
-        <div class="flexbtns">
-          <button data-act="delete">Delete Object</button>
-        </div>
-        <div class="tool-hint" id="toolHint">${TOOL_HINTS[this.toolName] || ""}</div>
       `;
 
             body.querySelectorAll("input[data-field]").forEach((inp) => {
@@ -1433,7 +1455,6 @@
               obj.flipV = !obj.flipV;
               this.render();
             });
-            body.querySelector("[data-act=delete]").addEventListener("click", () => this.deleteSelected());
           } else {
             const map = {
               x: Math.round(obj.x),
