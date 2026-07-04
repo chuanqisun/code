@@ -431,8 +431,6 @@
           ctx.strokeStyle = this.color;
           ctx.fillStyle = this.color;
           ctx.lineWidth = 3;
-          // Straight horizontal segment in local space; direction/length are
-          // expressed via the object's rotation/width, set by ArrowTool.
           const x1 = -this.width / 2,
             y1 = 0,
             x2 = this.width / 2,
@@ -545,7 +543,9 @@
           this.layers = (props.layers || []).map((l) => (l instanceof Layer ? l : new Layer(l)));
           if (this.layers.length === 0) this.layers.push(new Layer({ name: "Layer 1" }));
           this.activeLayerId = props.activeLayerId || this.layers[0].id;
-          this.selectedObjectId = props.selectedObjectId || null;
+          // Multi-select: array of selected object ids (kept in sync with
+          // legacy single-id shape for anything that still reads it).
+          this.selectedObjectIds = props.selectedObjectIds || (props.selectedObjectId ? [props.selectedObjectId] : []);
         }
         getActiveLayer() {
           return this.layers.find((l) => l.id === this.activeLayerId) || this.layers[0];
@@ -566,7 +566,7 @@
             height: this.height,
             layers: this.layers.map((l) => l.toJSON()),
             activeLayerId: this.activeLayerId,
-            selectedObjectId: this.selectedObjectId,
+            selectedObjectIds: this.selectedObjectIds,
           };
         }
         static fromJSON(json) {
@@ -638,14 +638,17 @@
           if (Math.hypot(pt.x - rs.x, pt.y - rs.y) < 10) return "resize";
           return null;
         }
-        onPointerDown(pt) {
+        onPointerDown(pt, e) {
           const app = this.app;
-          const sel = app.getSelected();
-          if (sel) {
-            const handle = this.hitHandle(sel.object, pt);
+          const additive = !!(e && (e.shiftKey || e.ctrlKey || e.metaKey));
+          const selList = app.getSelectedList();
+
+          // Rotate/resize handles only make sense with a single selected object.
+          if (selList.length === 1) {
+            const handle = this.hitHandle(selList[0].object, pt);
             if (handle) {
               app.history.record();
-              const obj = sel.object;
+              const obj = selList[0].object;
               this.drag = {
                 mode: handle,
                 obj,
@@ -657,6 +660,7 @@
               return;
             }
           }
+
           const layer = app.doc.getActiveLayer();
           let found = null;
           for (let i = layer.objects.length - 1; i >= 0; i--) {
@@ -667,13 +671,28 @@
           }
           if (found) {
             app.history.record();
-            app.doc.selectedObjectId = found.id;
-            this.drag = { mode: "move", obj: found, dx: pt.x - found.x, dy: pt.y - found.y };
+            const already = app.doc.selectedObjectIds.includes(found.id);
+            if (additive) {
+              // Shift/Ctrl+Click toggles membership in the selection.
+              app.doc.selectedObjectIds = already ? app.doc.selectedObjectIds.filter((id) => id !== found.id) : [...app.doc.selectedObjectIds, found.id];
+            } else if (!already) {
+              // Plain click on a non-selected object replaces the selection.
+              app.doc.selectedObjectIds = [found.id];
+            }
+            // else: plain click on an already-selected object within a
+            // multi-selection keeps the whole group selected so it can be
+            // dragged together.
+            const dragIds = app.doc.selectedObjectIds.includes(found.id) ? app.doc.selectedObjectIds : [found.id];
+            const offsets = dragIds
+              .map((id) => app.doc.findObject(id))
+              .filter(Boolean)
+              .map((f) => ({ obj: f.object, dx: pt.x - f.object.x, dy: pt.y - f.object.y }));
+            this.drag = { mode: "move", offsets };
             app.render();
             app.updatePropertyPanel();
           } else {
             // Start a marquee (rubber-band) selection drag on empty space.
-            this.marquee = { start: pt, end: pt };
+            this.marquee = { start: pt, end: pt, additive, base: additive ? [...app.doc.selectedObjectIds] : [] };
             app.render();
           }
         }
@@ -684,14 +703,18 @@
             return;
           }
           if (!this.drag) return;
-          const { mode, obj } = this.drag;
+          const { mode } = this.drag;
           if (mode === "move") {
-            obj.x = pt.x - this.drag.dx;
-            obj.y = pt.y - this.drag.dy;
+            this.drag.offsets.forEach(({ obj, dx, dy }) => {
+              obj.x = pt.x - dx;
+              obj.y = pt.y - dy;
+            });
           } else if (mode === "rotate") {
+            const obj = this.drag.obj;
             const ang = Math.atan2(pt.y - obj.y, pt.x - obj.x);
             obj.rotation = ang - this.drag.startAngle;
           } else if (mode === "resize") {
+            const obj = this.drag.obj;
             const dist = Math.hypot(pt.x - obj.x, pt.y - obj.y);
             const factor = dist / this.drag.startDist;
             obj.scaleX = Math.max(0.05, this.drag.startScaleX * factor);
@@ -702,28 +725,33 @@
         }
         onPointerUp() {
           if (this.marquee) {
-            const { start, end } = this.marquee;
+            const { start, end, additive, base } = this.marquee;
             const minX = Math.min(start.x, end.x),
               maxX = Math.max(start.x, end.x),
               minY = Math.min(start.y, end.y),
               maxY = Math.max(start.y, end.y);
             this.marquee = null;
             const dragged = Math.hypot(end.x - start.x, end.y - start.y) > 3;
+            const app = this.app;
             if (dragged) {
-              const app = this.app;
+              // Multi-select: gather every object under the active layer
+              // that intersects the marquee box, not just the topmost one.
               const layer = app.doc.getActiveLayer();
-              let found = null;
+              const hits = [];
               for (let i = layer.objects.length - 1; i >= 0; i--) {
                 const b = layer.objects[i].getWorldBounds();
                 const intersects = b.minX <= maxX && b.maxX >= minX && b.minY <= maxY && b.maxY >= minY;
-                if (intersects) {
-                  found = layer.objects[i];
-                  break;
-                }
+                if (intersects) hits.push(layer.objects[i].id);
               }
-              app.doc.selectedObjectId = found ? found.id : null;
-            } else {
-              this.app.doc.selectedObjectId = null;
+              if (additive) {
+                const set = new Set(base);
+                hits.forEach((id) => set.add(id));
+                app.doc.selectedObjectIds = [...set];
+              } else {
+                app.doc.selectedObjectIds = hits;
+              }
+            } else if (!additive) {
+              app.doc.selectedObjectIds = [];
             }
             this.app.render();
             this.app.updatePropertyPanel();
@@ -768,7 +796,7 @@
           this.startPt = pt;
           this.obj = this.createObject(pt);
           app.doc.getActiveLayer().addObject(this.obj);
-          app.doc.selectedObjectId = this.obj.id;
+          app.doc.selectedObjectIds = [this.obj.id];
           app.render();
         }
         onPointerMove(pt) {
@@ -785,7 +813,7 @@
           this.startPt = null;
           this.app.updatePropertyPanel();
           this.app.setTool("select");
-          this.app.doc.selectedObjectId = obj.id;
+          this.app.doc.selectedObjectIds = [obj.id];
           this.app.render();
           this.app.updatePropertyPanel();
         }
@@ -853,7 +881,7 @@
           app.history.record();
           const obj = new TextObject({ x: pt.x, y: pt.y, width: 160, height: 40 });
           app.doc.getActiveLayer().addObject(obj);
-          app.doc.selectedObjectId = obj.id;
+          app.doc.selectedObjectIds = [obj.id];
           this.state = "editing";
           app.render();
           app.updatePropertyPanel();
@@ -940,7 +968,7 @@
           const localStrokes = strokes.map((s) => s.map((p) => ({ x: p.x - cx, y: p.y - cy })));
           const obj = new DrawObject({ x: cx, y: cy, width, height, strokes: localStrokes });
           app.doc.getActiveLayer().addObject(obj);
-          app.doc.selectedObjectId = obj.id;
+          app.doc.selectedObjectIds = [obj.id];
           app.render();
           app.updatePropertyPanel();
         }
@@ -955,7 +983,8 @@
       };
 
       const TOOL_HINTS = {
-        select: "Click an object to select it. Drag on empty space to marquee-select the topmost object under the box. Use knobs to rotate/resize.",
+        select:
+          "Click an object to select it. Shift/Ctrl+Click to add or toggle objects in the selection. Drag on empty space to marquee-select every object under the box. Use knobs to rotate/resize (single selection only).",
         text: "Click on the canvas to place a text box, then edit it in the panel.",
         rect: "Drag on the canvas to draw a rectangle.",
         arrow: "Drag from tail to head to draw an arrow.",
@@ -992,9 +1021,17 @@
           return { x: (evt.clientX - rect.left) * sx, y: (evt.clientY - rect.top) * sy };
         }
 
+        /* Returns an array of {layer, object} for every currently selected id. */
+        getSelectedList() {
+          return this.doc.selectedObjectIds.map((id) => this.doc.findObject(id)).filter(Boolean);
+        }
+
+        /* Convenience accessor used where single-object behavior matters
+     (property panel details, rotate/resize handles). Returns null unless
+     exactly one object is selected. */
         getSelected() {
-          if (!this.doc.selectedObjectId) return null;
-          return this.doc.findObject(this.doc.selectedObjectId);
+          const list = this.getSelectedList();
+          return list.length === 1 ? list[0] : null;
         }
 
         /* ---------- tool management ---------- */
@@ -1032,40 +1069,49 @@
         }
 
         drawSelectionOverlay() {
-          const sel = this.getSelected();
-          if (!sel) return;
-          const obj = sel.object,
-            ctx = this.ctx;
-          ctx.save();
-          ctx.strokeStyle = "#0f0";
-          ctx.lineWidth = 1;
-          ctx.setLineDash([4, 3]);
-          const corners = [
-            [-obj.width / 2, -obj.height / 2],
-            [obj.width / 2, -obj.height / 2],
-            [obj.width / 2, obj.height / 2],
-            [-obj.width / 2, obj.height / 2],
-          ].map(([lx, ly]) => obj.localToWorld(lx, ly));
-          ctx.beginPath();
-          corners.forEach((c, i) => (i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y)));
-          ctx.closePath();
-          ctx.stroke();
-          ctx.setLineDash([]);
+          const list = this.getSelectedList();
+          if (!list.length) return;
+          const ctx = this.ctx;
 
-          const top = obj.localToWorld(0, -obj.height / 2);
-          const rot = obj.localToWorld(0, -obj.height / 2 - 30);
-          ctx.beginPath();
-          ctx.moveTo(top.x, top.y);
-          ctx.lineTo(rot.x, rot.y);
-          ctx.stroke();
-          ctx.fillStyle = "#0f0";
-          ctx.beginPath();
-          ctx.arc(rot.x, rot.y, 6, 0, Math.PI * 2);
-          ctx.fill();
+          list.forEach((sel) => {
+            const obj = sel.object;
+            ctx.save();
+            ctx.strokeStyle = "#0f0";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            const corners = [
+              [-obj.width / 2, -obj.height / 2],
+              [obj.width / 2, -obj.height / 2],
+              [obj.width / 2, obj.height / 2],
+              [-obj.width / 2, obj.height / 2],
+            ].map(([lx, ly]) => obj.localToWorld(lx, ly));
+            ctx.beginPath();
+            corners.forEach((c, i) => (i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y)));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+          });
 
-          const rs = obj.localToWorld(obj.width / 2, obj.height / 2);
-          ctx.fillRect(rs.x - 6, rs.y - 6, 12, 12);
-          ctx.restore();
+          // Rotate/resize handles only shown for a single selected object.
+          if (list.length === 1) {
+            const obj = list[0].object;
+            ctx.save();
+            ctx.strokeStyle = "#0f0";
+            ctx.fillStyle = "#0f0";
+            const top = obj.localToWorld(0, -obj.height / 2);
+            const rot = obj.localToWorld(0, -obj.height / 2 - 30);
+            ctx.beginPath();
+            ctx.moveTo(top.x, top.y);
+            ctx.lineTo(rot.x, rot.y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(rot.x, rot.y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            const rs = obj.localToWorld(obj.width / 2, obj.height / 2);
+            ctx.fillRect(rs.x - 6, rs.y - 6, 12, 12);
+            ctx.restore();
+          }
         }
 
         /* ---------- toolbar ---------- */
@@ -1096,7 +1142,7 @@
                 this.history.record();
                 const obj = new ImageObject({ x: this.doc.width / 2, y: this.doc.height / 2, width: w, height: h, src: dataURL });
                 this.doc.getActiveLayer().addObject(obj);
-                this.doc.selectedObjectId = obj.id;
+                this.doc.selectedObjectIds = [obj.id];
                 this.setTool("select");
                 this.render();
                 this.updatePropertyPanel();
@@ -1155,11 +1201,11 @@
         }
 
         deleteSelected() {
-          const sel = this.getSelected();
-          if (!sel) return;
+          const list = this.getSelectedList();
+          if (!list.length) return;
           this.history.record();
-          sel.layer.removeObject(sel.object.id);
-          this.doc.selectedObjectId = null;
+          list.forEach((sel) => sel.layer.removeObject(sel.object.id));
+          this.doc.selectedObjectIds = [];
           this.render();
           this.updatePropertyPanel();
         }
@@ -1255,12 +1301,52 @@
 
         updatePropertyPanel(liveOnly) {
           const body = document.getElementById("propBody");
-          const sel = this.getSelected();
-          if (!sel) {
+          const list = this.getSelectedList();
+
+          if (!list.length) {
             body.innerHTML = `<div class="hint">No selection. Click an object on the active layer, or pick a tool to add one.</div>
         <div class="tool-hint" id="toolHint">${TOOL_HINTS[this.toolName] || ""}</div>`;
             return;
           }
+
+          if (list.length > 1) {
+            if (!liveOnly) {
+              body.innerHTML = `
+          <div class="propname">${list.length} OBJECTS SELECTED</div>
+          <label>Opacity</label>
+          <input type="range" min="0" max="1" step="0.01" data-field="opacity" value="1">
+          <div class="flexbtns">
+            <button data-act="flipH">Flip H</button>
+            <button data-act="flipV">Flip V</button>
+          </div>
+          <div class="flexbtns">
+            <button data-act="delete">Delete Selected</button>
+          </div>
+          <div class="tool-hint" id="toolHint">${TOOL_HINTS[this.toolName] || ""}</div>
+        `;
+              const opInp = body.querySelector('[data-field="opacity"]');
+              opInp.addEventListener("pointerdown", () => this.history.record());
+              opInp.addEventListener("input", () => {
+                const v = parseFloat(opInp.value);
+                list.forEach((sel) => (sel.object.opacity = v));
+                this.render();
+              });
+              body.querySelector("[data-act=flipH]").addEventListener("click", () => {
+                this.history.record();
+                list.forEach((sel) => (sel.object.flipH = !sel.object.flipH));
+                this.render();
+              });
+              body.querySelector("[data-act=flipV]").addEventListener("click", () => {
+                this.history.record();
+                list.forEach((sel) => (sel.object.flipV = !sel.object.flipV));
+                this.render();
+              });
+              body.querySelector("[data-act=delete]").addEventListener("click", () => this.deleteSelected());
+            }
+            return;
+          }
+
+          const sel = list[0];
           const obj = sel.object;
 
           if (!liveOnly) {
