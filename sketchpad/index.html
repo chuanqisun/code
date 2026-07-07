@@ -1,0 +1,1477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sketchpad</title>
+    <style>
+      :root {
+        --bg: #000;
+        --fg: #fff;
+        --panel-divider: #555;
+        --row-border: #444;
+      }
+      * {
+        box-sizing: border-box;
+        border-radius: 0 !important;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        margin: 0;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        overflow: hidden;
+      }
+      .app {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      .toolbar {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        align-items: center;
+        border-bottom: 1px solid var(--panel-divider);
+        padding: 0.4rem 0.5rem;
+      }
+      .toolbar .sep {
+        width: 1px;
+        align-self: stretch;
+        background: var(--panel-divider);
+        margin: 0 0.3rem;
+      }
+      button,
+      .btnlike {
+        background: #000;
+        color: #fff;
+        border: 1px solid #fff;
+        padding: 0.35rem 0.6rem;
+        font-family: inherit;
+        font-size: 0.75rem;
+        cursor: pointer;
+        letter-spacing: 0.03em;
+      }
+      button:hover,
+      .btnlike:hover {
+        background: #222;
+      }
+      button.active {
+        background: #fff;
+        color: #000;
+      }
+      button:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      input[type="text"],
+      input[type="number"],
+      select {
+        background: #000;
+        color: #fff;
+        border: 1px solid #fff;
+        font-family: inherit;
+        padding: 0.25rem;
+        font-size: 0.75rem;
+        width: 100%;
+      }
+      input[type="range"] {
+        width: 100%;
+      }
+      input[type="checkbox"] {
+        accent-color: #fff;
+      }
+      .main {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+      .panel {
+        flex: 0 0 11.5rem;
+        width: 11.5rem;
+        height: 100%;
+        overflow-y: auto;
+        padding: 0.5rem;
+        font-size: 0.7rem;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      #objectsPanel {
+        border-right: 1px solid var(--panel-divider);
+      }
+      #propPanel {
+        border-left: 1px solid var(--panel-divider);
+        overflow-y: auto;
+        display: block;
+      }
+      .panel h2 {
+        flex: 0 0 auto;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin: 0 0 0.5rem;
+        border-bottom: 1px solid var(--panel-divider);
+        padding-bottom: 0.3rem;
+      }
+      #objectList {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+      }
+      .canvas-wrap {
+        flex: 1;
+        min-width: 0;
+        height: 100%;
+        position: relative;
+        overflow: hidden;
+      }
+      canvas {
+        background: #000;
+        width: 100%;
+        height: 100%;
+        display: block;
+        touch-action: none;
+        cursor: default;
+      }
+      .object-row {
+        border: 1px solid var(--row-border);
+        padding: 0.3rem;
+        margin-bottom: 0.35rem;
+        cursor: pointer;
+      }
+      .object-row.active {
+        border-color: #fff;
+      }
+      .object-row .row1 {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-bottom: 0.25rem;
+      }
+      .object-row .object-label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-transform: uppercase;
+      }
+      .object-row .row2 {
+        display: flex;
+        gap: 0.2rem;
+      }
+      .object-row .row2 button {
+        flex: 1;
+        padding: 0.15rem;
+      }
+      label {
+        display: block;
+        margin: 0.4rem 0 0.15rem;
+        opacity: 0.75;
+        text-transform: uppercase;
+        font-size: 0.62rem;
+        letter-spacing: 0.06em;
+      }
+      .field-row {
+        display: flex;
+        gap: 0.3rem;
+      }
+      .field-row > div {
+        flex: 1;
+      }
+      .propname {
+        font-size: 0.72rem;
+        border-bottom: 1px solid var(--panel-divider);
+        padding-bottom: 0.3rem;
+        margin-bottom: 0.3rem;
+        word-break: break-all;
+      }
+      .flexbtns {
+        display: flex;
+        gap: 0.3rem;
+        margin-top: 0.3rem;
+      }
+      .flexbtns button {
+        flex: 1;
+      }
+      #fileInput {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="toolbar">
+        <button data-tool="select" class="tool active">Select (V)</button>
+        <button data-tool="text" class="tool">Text (T)</button>
+        <button data-tool="rect" class="tool">Rect (R)</button>
+        <button data-tool="arrow" class="tool">Arrow (A)</button>
+        <button data-tool="draw" class="tool">Draw (D)</button>
+        <button id="importBtn">Import Image</button>
+        <input type="file" id="fileInput" accept="image/*" />
+        <div class="sep"></div>
+        <button id="undoBtn">Undo</button>
+        <button id="redoBtn">Redo</button>
+      </div>
+
+      <div class="main">
+        <div class="panel" id="objectsPanel">
+          <h2>Objects</h2>
+          <div id="objectList"></div>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="stage"></canvas>
+        </div>
+
+        <div class="panel" id="propPanel">
+          <h2>Properties</h2>
+          <div id="propBody"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+
+      /* ===================== Utilities ===================== */
+      const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "id-" + Math.random().toString(36).slice(2));
+
+      /* ===================== Image Cache ===================== */
+      class ImageCache {
+        constructor() {
+          this.map = new Map();
+        }
+        get(src, onload) {
+          if (this.map.has(src)) return this.map.get(src);
+          const img = new Image();
+          img.onload = () => onload && onload();
+          img.src = src;
+          this.map.set(src, img);
+          return img;
+        }
+        set(src, img) {
+          this.map.set(src, img);
+        }
+      }
+      const imageCache = new ImageCache();
+
+      /* ===================== Scene Objects (Composite leaves) ===================== */
+      class SceneObject {
+        constructor(props = {}) {
+          this.id = props.id || uid();
+          this.type = props.type || "object";
+          this.x = props.x ?? 100;
+          this.y = props.y ?? 100;
+          this.width = props.width ?? 100;
+          this.height = props.height ?? 100;
+          this.rotation = props.rotation ?? 0;
+          this.scaleX = props.scaleX ?? 1;
+          this.scaleY = props.scaleY ?? 1;
+          this.flipH = !!props.flipH;
+          this.flipV = !!props.flipV;
+          this.opacity = props.opacity ?? 1;
+        }
+        get effScaleX() {
+          return this.scaleX * (this.flipH ? -1 : 1);
+        }
+        get effScaleY() {
+          return this.scaleY * (this.flipV ? -1 : 1);
+        }
+        localToWorld(lx, ly) {
+          const sx = this.effScaleX,
+            sy = this.effScaleY;
+          const x = lx * sx,
+            y = ly * sy;
+          const c = Math.cos(this.rotation),
+            s = Math.sin(this.rotation);
+          return { x: x * c - y * s + this.x, y: x * s + y * c + this.y };
+        }
+        worldToLocal(wx, wy) {
+          const dx = wx - this.x,
+            dy = wy - this.y;
+          const c = Math.cos(-this.rotation),
+            s = Math.sin(-this.rotation);
+          const rx = dx * c - dy * s,
+            ry = dx * s + dy * c;
+          return { x: rx / this.effScaleX, y: ry / this.effScaleY };
+        }
+        containsPoint(wx, wy) {
+          const p = this.worldToLocal(wx, wy);
+          return p.x >= -this.width / 2 && p.x <= this.width / 2 && p.y >= -this.height / 2 && p.y <= this.height / 2;
+        }
+        /* Axis-aligned world-space bounding box (accounts for rotation/scale),
+     used for marquee-selection intersection tests. */
+        getWorldBounds() {
+          const corners = [
+            [-this.width / 2, -this.height / 2],
+            [this.width / 2, -this.height / 2],
+            [this.width / 2, this.height / 2],
+            [-this.width / 2, this.height / 2],
+          ].map(([lx, ly]) => this.localToWorld(lx, ly));
+          const xs = corners.map((c) => c.x),
+            ys = corners.map((c) => c.y);
+          return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+        }
+        draw(ctx) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.rotation);
+          ctx.scale(this.effScaleX, this.effScaleY);
+          ctx.globalAlpha *= this.opacity;
+          this.renderShape(ctx);
+          ctx.restore();
+        }
+        renderShape(ctx) {
+          /* override */
+        }
+        extraJSON() {
+          return {};
+        }
+        toJSON() {
+          return {
+            id: this.id,
+            type: this.type,
+            x: this.x,
+            y: this.y,
+            width: this.width,
+            height: this.height,
+            rotation: this.rotation,
+            scaleX: this.scaleX,
+            scaleY: this.scaleY,
+            flipH: this.flipH,
+            flipV: this.flipV,
+            opacity: this.opacity,
+            ...this.extraJSON(),
+          };
+        }
+        fields() {
+          return [];
+        } // for property panel extension
+      }
+
+      class ImageObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "image";
+          this.src = props.src;
+        }
+        renderShape(ctx) {
+          const img = imageCache.get(this.src, () => App.instance && App.instance.render());
+          if (img.complete && img.naturalWidth) {
+            ctx.drawImage(img, -this.width / 2, -this.height / 2, this.width, this.height);
+          } else {
+            ctx.strokeStyle = "#fff";
+            ctx.setLineDash([4, 3]);
+            ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+            ctx.setLineDash([]);
+          }
+        }
+        extraJSON() {
+          return { src: this.src };
+        }
+      }
+
+      class TextObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "text";
+          this.text = props.text ?? "Text";
+          this.fontSize = props.fontSize ?? 24;
+          this.color = props.color ?? "#ffffff";
+        }
+        renderShape(ctx) {
+          ctx.fillStyle = this.color;
+          ctx.font = this.fontSize + 'px "Courier New", monospace';
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(this.text, 0, 0, this.width);
+        }
+        extraJSON() {
+          return { text: this.text, fontSize: this.fontSize, color: this.color };
+        }
+        fields() {
+          return [
+            { key: "text", label: "Text", type: "text" },
+            { key: "fontSize", label: "Font Size", type: "number" },
+            { key: "color", label: "Color", type: "color" },
+          ];
+        }
+      }
+
+      class RectObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "rect";
+          this.color = props.color ?? "#ffffff";
+          this.filled = !!props.filled;
+        }
+        renderShape(ctx) {
+          ctx.strokeStyle = this.color;
+          ctx.fillStyle = this.color;
+          ctx.lineWidth = 2;
+          if (this.filled) ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
+          else ctx.strokeRect(-this.width / 2, -this.height / 2, this.width, this.height);
+        }
+        extraJSON() {
+          return { color: this.color, filled: this.filled };
+        }
+        fields() {
+          return [
+            { key: "color", label: "Color", type: "color" },
+            { key: "filled", label: "Filled", type: "checkbox" },
+          ];
+        }
+      }
+
+      class ArrowObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "arrow";
+          this.color = props.color ?? "#ffffff";
+        }
+        renderShape(ctx) {
+          ctx.strokeStyle = this.color;
+          ctx.fillStyle = this.color;
+          ctx.lineWidth = 3;
+          const x1 = -this.width / 2,
+            y1 = 0,
+            x2 = this.width / 2,
+            y2 = 0;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+          ctx.save();
+          ctx.translate(x2, y2);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-14, 6);
+          ctx.lineTo(-14, -6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        extraJSON() {
+          return { color: this.color };
+        }
+        fields() {
+          return [{ key: "color", label: "Color", type: "color" }];
+        }
+      }
+
+      class DrawObject extends SceneObject {
+        constructor(props = {}) {
+          super(props);
+          this.type = "draw";
+          this.color = props.color ?? "#ffffff";
+          this.strokes = props.strokes || [];
+        }
+        renderShape(ctx) {
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = 3;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          this.strokes.forEach((stroke) => {
+            if (stroke.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(stroke[0].x, stroke[0].y);
+            for (let i = 1; i < stroke.length; i++) ctx.lineTo(stroke[i].x, stroke[i].y);
+            ctx.stroke();
+          });
+        }
+        extraJSON() {
+          return { color: this.color, strokes: this.strokes };
+        }
+        fields() {
+          return [{ key: "color", label: "Color", type: "color" }];
+        }
+      }
+
+      /* Factory Method pattern for reconstructing objects (used by undo/redo + import) */
+      class ObjectFactory {
+        static fromJSON(json) {
+          switch (json.type) {
+            case "image":
+              return new ImageObject(json);
+            case "text":
+              return new TextObject(json);
+            case "rect":
+              return new RectObject(json);
+            case "arrow":
+              return new ArrowObject(json);
+            case "draw":
+              return new DrawObject(json);
+            default:
+              return new SceneObject(json);
+          }
+        }
+      }
+
+      /* ===================== Document Model ===================== */
+      class DocumentModel {
+        constructor(props = {}) {
+          this.width = props.width || 900;
+          this.height = props.height || 600;
+          const sourceObjects =
+            props.objects ||
+            (props.layers || []).flatMap((layer) => (layer.objects || []).map((object) => ({ ...object, opacity: (object.opacity ?? 1) * (layer.opacity ?? 1) })));
+          this.objects = sourceObjects.map((o) => (o instanceof SceneObject ? o : ObjectFactory.fromJSON(o)));
+          // Multi-select: array of selected object ids (kept in sync with
+          // legacy single-id shape for anything that still reads it).
+          this.selectedObjectIds = props.selectedObjectIds || (props.selectedObjectId ? [props.selectedObjectId] : []);
+        }
+        addObject(o) {
+          this.objects.push(o);
+        }
+        removeObject(id) {
+          this.objects = this.objects.filter((o) => o.id !== id);
+        }
+        findObject(id) {
+          const object = this.objects.find((o) => o.id === id);
+          return object ? { object } : null;
+        }
+        toJSON() {
+          return {
+            width: this.width,
+            height: this.height,
+            objects: this.objects.map((o) => o.toJSON()),
+            selectedObjectIds: this.selectedObjectIds,
+          };
+        }
+        static fromJSON(json) {
+          return new DocumentModel(json);
+        }
+      }
+
+      /* ===================== History (Memento pattern) ===================== */
+      class HistoryManager {
+        constructor(app) {
+          this.app = app;
+          this.undoStack = [];
+          this.redoStack = [];
+        }
+        record() {
+          this.undoStack.push(JSON.stringify(this.app.doc.toJSON()));
+          if (this.undoStack.length > 150) this.undoStack.shift();
+          this.redoStack = [];
+          this.app.updateHistoryButtons();
+        }
+        undo() {
+          if (!this.undoStack.length) return;
+          this.redoStack.push(JSON.stringify(this.app.doc.toJSON()));
+          const prev = this.undoStack.pop();
+          this.app.loadDocFromJSON(prev);
+          this.app.updateHistoryButtons();
+        }
+        redo() {
+          if (!this.redoStack.length) return;
+          this.undoStack.push(JSON.stringify(this.app.doc.toJSON()));
+          const next = this.redoStack.pop();
+          this.app.loadDocFromJSON(next);
+          this.app.updateHistoryButtons();
+        }
+      }
+
+      /* ===================== Tools (State/Strategy pattern) =====================
+   Each tool encapsulates its own interaction lifecycle. App instantiates a
+   fresh tool object every time a tool is selected, and forwards pointer
+   events + activation/deactivation hooks to it. This lets each tool define
+   arbitrarily complex multi-step behavior (place -> edit, drag -> adjust,
+   etc.) without App needing to know the details. */
+
+      class Tool {
+        constructor(app) {
+          this.app = app;
+        }
+        activate() {}
+        deactivate() {}
+        onPointerDown(pt, e) {}
+        onPointerMove(pt, e) {}
+        onPointerUp(pt, e) {}
+        drawPreview(ctx) {}
+      }
+
+      class SelectTool extends Tool {
+        activate() {
+          this.drag = null;
+          this.marquee = null;
+        }
+        deactivate() {
+          this.drag = null;
+          this.marquee = null;
+        }
+        hitHandle(obj, pt) {
+          const rot = obj.localToWorld(0, -obj.height / 2 - 30);
+          if (Math.hypot(pt.x - rot.x, pt.y - rot.y) < 10) return "rotate";
+          const rs = obj.localToWorld(obj.width / 2, obj.height / 2);
+          if (Math.hypot(pt.x - rs.x, pt.y - rs.y) < 10) return "resize";
+          return null;
+        }
+        onPointerDown(pt, e) {
+          const app = this.app;
+          const additive = !!(e && (e.shiftKey || e.ctrlKey || e.metaKey));
+          const selList = app.getSelectedList();
+
+          // Rotate/resize handles only make sense with a single selected object.
+          if (selList.length === 1) {
+            const handle = this.hitHandle(selList[0].object, pt);
+            if (handle) {
+              app.history.record();
+              const obj = selList[0].object;
+              this.drag = {
+                mode: handle,
+                obj,
+                startAngle: Math.atan2(pt.y - obj.y, pt.x - obj.x) - obj.rotation,
+                startDist: Math.hypot(pt.x - obj.x, pt.y - obj.y) || 1,
+                startScaleX: obj.scaleX,
+                startScaleY: obj.scaleY,
+              };
+              return;
+            }
+          }
+
+          let found = null;
+          for (let i = app.doc.objects.length - 1; i >= 0; i--) {
+            if (app.doc.objects[i].containsPoint(pt.x, pt.y)) {
+              found = app.doc.objects[i];
+              break;
+            }
+          }
+          if (found) {
+            app.history.record();
+            const already = app.doc.selectedObjectIds.includes(found.id);
+            if (additive) {
+              // Shift/Ctrl+Click toggles membership in the selection.
+              app.doc.selectedObjectIds = already ? app.doc.selectedObjectIds.filter((id) => id !== found.id) : [...app.doc.selectedObjectIds, found.id];
+            } else if (!already) {
+              // Plain click on a non-selected object replaces the selection.
+              app.doc.selectedObjectIds = [found.id];
+            }
+            // else: plain click on an already-selected object within a
+            // multi-selection keeps the whole group selected so it can be
+            // dragged together.
+            const dragIds = app.doc.selectedObjectIds.includes(found.id) ? app.doc.selectedObjectIds : [found.id];
+            const offsets = dragIds
+              .map((id) => app.doc.findObject(id))
+              .filter(Boolean)
+              .map((f) => ({ obj: f.object, dx: pt.x - f.object.x, dy: pt.y - f.object.y }));
+            this.drag = { mode: "move", offsets };
+            app.render();
+            app.refreshObjectsPanel();
+            app.updatePropertyPanel();
+          } else {
+            // Start a marquee (rubber-band) selection drag on empty space.
+            this.marquee = { start: pt, end: pt, additive, base: additive ? [...app.doc.selectedObjectIds] : [] };
+            app.render();
+          }
+        }
+        onPointerMove(pt) {
+          if (this.marquee) {
+            this.marquee.end = pt;
+            this.app.render();
+            return;
+          }
+          if (!this.drag) return;
+          const { mode } = this.drag;
+          if (mode === "move") {
+            this.drag.offsets.forEach(({ obj, dx, dy }) => {
+              obj.x = pt.x - dx;
+              obj.y = pt.y - dy;
+            });
+          } else if (mode === "rotate") {
+            const obj = this.drag.obj;
+            const ang = Math.atan2(pt.y - obj.y, pt.x - obj.x);
+            obj.rotation = ang - this.drag.startAngle;
+          } else if (mode === "resize") {
+            const obj = this.drag.obj;
+            const dist = Math.hypot(pt.x - obj.x, pt.y - obj.y);
+            const factor = dist / this.drag.startDist;
+            obj.scaleX = Math.max(0.05, this.drag.startScaleX * factor);
+            obj.scaleY = Math.max(0.05, this.drag.startScaleY * factor);
+          }
+          this.app.render();
+          this.app.updatePropertyPanel(true);
+        }
+        onPointerUp() {
+          if (this.marquee) {
+            const { start, end, additive, base } = this.marquee;
+            const minX = Math.min(start.x, end.x),
+              maxX = Math.max(start.x, end.x),
+              minY = Math.min(start.y, end.y),
+              maxY = Math.max(start.y, end.y);
+            this.marquee = null;
+            const dragged = Math.hypot(end.x - start.x, end.y - start.y) > 3;
+            const app = this.app;
+            if (dragged) {
+              // Multi-select: gather every object in the scene
+              // that intersects the marquee box, not just the topmost one.
+              const hits = [];
+              for (let i = app.doc.objects.length - 1; i >= 0; i--) {
+                const b = app.doc.objects[i].getWorldBounds();
+                const intersects = b.minX <= maxX && b.maxX >= minX && b.minY <= maxY && b.maxY >= minY;
+                if (intersects) hits.push(app.doc.objects[i].id);
+              }
+              if (additive) {
+                const set = new Set(base);
+                hits.forEach((id) => set.add(id));
+                app.doc.selectedObjectIds = [...set];
+              } else {
+                app.doc.selectedObjectIds = hits;
+              }
+            } else if (!additive) {
+              app.doc.selectedObjectIds = [];
+            }
+            this.app.render();
+            this.app.refreshObjectsPanel();
+            this.app.updatePropertyPanel();
+            return;
+          }
+          this.drag = null;
+        }
+        drawPreview(ctx) {
+          if (!this.marquee) return;
+          const { start, end } = this.marquee;
+          const x = Math.min(start.x, end.x),
+            y = Math.min(start.y, end.y),
+            w = Math.abs(end.x - start.x),
+            h = Math.abs(end.y - start.y);
+          ctx.save();
+          ctx.strokeStyle = "#0af";
+          ctx.fillStyle = "rgba(0,170,255,0.12)";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 3]);
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeRect(x, y, w, h);
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      }
+
+      /* Base for tools that create an object by dragging out its geometry,
+   then automatically hand off control to the Select tool so the user can
+   use the move/rotate/resize knobs. */
+      class CreateDragTool extends Tool {
+        activate() {
+          this.startPt = null;
+          this.obj = null;
+        }
+        deactivate() {
+          this.startPt = null;
+          this.obj = null;
+        }
+        onPointerDown(pt) {
+          const app = this.app;
+          app.history.record();
+          this.startPt = pt;
+          this.obj = this.createObject(pt);
+          app.doc.addObject(this.obj);
+          app.doc.selectedObjectIds = [this.obj.id];
+          app.render();
+          app.refreshObjectsPanel();
+        }
+        onPointerMove(pt) {
+          if (!this.obj) return;
+          this.updateObject(this.obj, this.startPt, pt);
+          this.app.render();
+          this.app.updatePropertyPanel(true);
+        }
+        onPointerUp() {
+          if (!this.obj) return;
+          this.finalizeObject(this.obj);
+          const obj = this.obj;
+          this.obj = null;
+          this.startPt = null;
+          this.app.updatePropertyPanel();
+          this.app.setTool("select");
+          this.app.doc.selectedObjectIds = [obj.id];
+          this.app.render();
+          this.app.updatePropertyPanel();
+        }
+        createObject(pt) {
+          throw new Error("override createObject");
+        }
+        updateObject(obj, startPt, pt) {
+          throw new Error("override updateObject");
+        }
+        finalizeObject(obj) {}
+      }
+
+      class RectTool extends CreateDragTool {
+        createObject(pt) {
+          return new RectObject({ x: pt.x, y: pt.y, width: 1, height: 1 });
+        }
+        updateObject(obj, startPt, pt) {
+          obj.width = Math.max(1, Math.abs(pt.x - startPt.x));
+          obj.height = Math.max(1, Math.abs(pt.y - startPt.y));
+          obj.x = (startPt.x + pt.x) / 2;
+          obj.y = (startPt.y + pt.y) / 2;
+        }
+        finalizeObject(obj) {
+          if (obj.width < 4 && obj.height < 4) {
+            obj.width = 120;
+            obj.height = 80;
+          }
+        }
+      }
+
+      class ArrowTool extends CreateDragTool {
+        createObject(pt) {
+          return new ArrowObject({ x: pt.x, y: pt.y, width: 1, height: 20, rotation: 0 });
+        }
+        updateObject(obj, startPt, pt) {
+          const dx = pt.x - startPt.x,
+            dy = pt.y - startPt.y;
+          const dist = Math.hypot(dx, dy);
+          obj.x = (startPt.x + pt.x) / 2;
+          obj.y = (startPt.y + pt.y) / 2;
+          obj.width = Math.max(1, dist);
+          obj.rotation = Math.atan2(dy, dx);
+        }
+        finalizeObject(obj) {
+          if (obj.width < 4) {
+            obj.width = 100;
+            obj.rotation = 0;
+          }
+        }
+      }
+
+      /* Text tool: click to place (creation mode), then immediately hands
+   focus to the property panel for editing (editing mode). Any further
+   canvas clicks are ignored until the tool is reselected. */
+      class TextTool extends Tool {
+        activate() {
+          this.state = "placing";
+        }
+        deactivate() {
+          this.state = "idle";
+        }
+        onPointerDown(pt) {
+          if (this.state !== "placing") return;
+          const app = this.app;
+          app.history.record();
+          const obj = new TextObject({ x: pt.x, y: pt.y, width: 160, height: 40 });
+          app.doc.addObject(obj);
+          app.doc.selectedObjectIds = [obj.id];
+          this.state = "editing";
+          app.render();
+          app.refreshObjectsPanel();
+          app.updatePropertyPanel();
+          app.focusPropertyField("text", { select: true });
+        }
+      }
+
+      /* Freehand drawing: accumulates strokes into a session, previews them
+   live, and bakes them into one DrawObject when the tool is deactivated
+   (i.e. when the user switches to another tool). */
+      class DrawTool extends Tool {
+        activate() {
+          this.session = null;
+          this.currentStroke = null;
+          this.drawing = false;
+        }
+        deactivate() {
+          this.finalize();
+        }
+        onPointerDown(pt) {
+          if (!this.session) {
+            this.app.history.record();
+            this.session = { strokes: [] };
+          }
+          this.currentStroke = [pt];
+          this.session.strokes.push(this.currentStroke);
+          this.drawing = true;
+        }
+        onPointerMove(pt) {
+          if (!this.drawing) return;
+          this.currentStroke.push(pt);
+          this.app.render();
+        }
+        onPointerUp() {
+          this.drawing = false;
+          this.currentStroke = null;
+        }
+        drawPreview(ctx) {
+          if (!this.session) return;
+          ctx.save();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 3;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          this.session.strokes.forEach((stroke) => {
+            if (stroke.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(stroke[0].x, stroke[0].y);
+            for (let i = 1; i < stroke.length; i++) ctx.lineTo(stroke[i].x, stroke[i].y);
+            ctx.stroke();
+          });
+          ctx.restore();
+        }
+        finalize() {
+          if (!this.session) return;
+          const strokes = this.session.strokes.filter((s) => s.length > 1);
+          this.session = null;
+          const app = this.app;
+          if (strokes.length === 0) {
+            app.render();
+            return;
+          }
+          let minX = Infinity,
+            minY = Infinity,
+            maxX = -Infinity,
+            maxY = -Infinity;
+          strokes.forEach((s) =>
+            s.forEach((p) => {
+              minX = Math.min(minX, p.x);
+              minY = Math.min(minY, p.y);
+              maxX = Math.max(maxX, p.x);
+              maxY = Math.max(maxY, p.y);
+            }),
+          );
+          const pad = 5;
+          minX -= pad;
+          minY -= pad;
+          maxX += pad;
+          maxY += pad;
+          const width = maxX - minX,
+            height = maxY - minY;
+          const cx = (minX + maxX) / 2,
+            cy = (minY + maxY) / 2;
+          const localStrokes = strokes.map((s) => s.map((p) => ({ x: p.x - cx, y: p.y - cy })));
+          const obj = new DrawObject({ x: cx, y: cy, width, height, strokes: localStrokes });
+          app.doc.addObject(obj);
+          app.doc.selectedObjectIds = [obj.id];
+          app.render();
+          app.refreshObjectsPanel();
+          app.updatePropertyPanel();
+        }
+      }
+
+      const ToolRegistry = {
+        select: SelectTool,
+        text: TextTool,
+        rect: RectTool,
+        arrow: ArrowTool,
+        draw: DrawTool,
+      };
+
+      /* ===================== App Controller ===================== */
+      class App {
+        constructor() {
+          App.instance = this;
+          this.canvas = document.getElementById("stage");
+          this.ctx = this.canvas.getContext("2d");
+          this.doc = new DocumentModel();
+          this.history = new HistoryManager(this);
+          this.activeTool = null;
+          this.toolName = null;
+
+          // Infinite canvas: viewX/viewY is the world-space coordinate shown
+          // at the top-left corner of the canvas viewport.
+          this.viewX = 0;
+          this.viewY = 0;
+          this.spacePressed = false;
+          this.panning = null;
+
+          this.bindToolbar();
+          this.bindCanvas();
+          this.bindKeys();
+          this.bindResize();
+          this.setTool("select");
+          this.refreshObjectsPanel();
+          this.updatePropertyPanel();
+          this.updateHistoryButtons();
+        }
+
+        /* ---------- coordinate helpers ---------- */
+        getWorldPoint(evt) {
+          const rect = this.canvas.getBoundingClientRect();
+          const sx = this.canvas.width / rect.width,
+            sy = this.canvas.height / rect.height;
+          return { x: (evt.clientX - rect.left) * sx + this.viewX, y: (evt.clientY - rect.top) * sy + this.viewY };
+        }
+
+        /* ---------- viewport / resize (keeps the viewport center stable) ---------- */
+        bindResize() {
+          const wrap = document.querySelector(".canvas-wrap");
+          let first = true;
+          const ro = new ResizeObserver((entries) => {
+            const { width, height } = entries[0].contentRect;
+            const w = Math.max(1, Math.round(width)),
+              h = Math.max(1, Math.round(height));
+            if (first) {
+              first = false;
+              this.canvas.width = w;
+              this.canvas.height = h;
+              this.viewX = (this.doc.width - w) / 2;
+              this.viewY = (this.doc.height - h) / 2;
+            } else {
+              const centerX = this.viewX + this.canvas.width / 2;
+              const centerY = this.viewY + this.canvas.height / 2;
+              this.canvas.width = w;
+              this.canvas.height = h;
+              this.viewX = centerX - w / 2;
+              this.viewY = centerY - h / 2;
+            }
+            this.render();
+          });
+          ro.observe(wrap);
+        }
+
+        /* Returns an array of {object} for every currently selected id. */
+        getSelectedList() {
+          return this.doc.selectedObjectIds.map((id) => this.doc.findObject(id)).filter(Boolean);
+        }
+
+        /* Convenience accessor used where single-object behavior matters
+     (property panel details, rotate/resize handles). Returns null unless
+     exactly one object is selected. */
+        getSelected() {
+          const list = this.getSelectedList();
+          return list.length === 1 ? list[0] : null;
+        }
+
+        /* ---------- tool management ---------- */
+        setTool(name) {
+          if (!ToolRegistry[name]) return;
+          if (this.activeTool) this.activeTool.deactivate();
+          this.toolName = name;
+          this.activeTool = new ToolRegistry[name](this);
+          this.activeTool.activate();
+          document.querySelectorAll(".tool").forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
+          this.render();
+        }
+
+        /* ---------- rendering ---------- */
+        render() {
+          const ctx = this.ctx,
+            doc = this.doc;
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+          ctx.save();
+          ctx.translate(-this.viewX, -this.viewY);
+          ctx.strokeStyle = "#333";
+          ctx.setLineDash([6, 4]);
+          ctx.strokeRect(0, 0, doc.width, doc.height);
+          ctx.setLineDash([]);
+          doc.objects.forEach((object) => {
+            ctx.save();
+            object.draw(ctx);
+            ctx.restore();
+          });
+          this.drawSelectionOverlay();
+          if (this.activeTool && this.activeTool.drawPreview) this.activeTool.drawPreview(ctx);
+          ctx.restore();
+        }
+
+        drawSelectionOverlay() {
+          const list = this.getSelectedList();
+          if (!list.length) return;
+          const ctx = this.ctx;
+
+          list.forEach((sel) => {
+            const obj = sel.object;
+            ctx.save();
+            ctx.strokeStyle = "#0f0";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 3]);
+            const corners = [
+              [-obj.width / 2, -obj.height / 2],
+              [obj.width / 2, -obj.height / 2],
+              [obj.width / 2, obj.height / 2],
+              [-obj.width / 2, obj.height / 2],
+            ].map(([lx, ly]) => obj.localToWorld(lx, ly));
+            ctx.beginPath();
+            corners.forEach((c, i) => (i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y)));
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+          });
+
+          // Rotate/resize handles only shown for a single selected object.
+          if (list.length === 1) {
+            const obj = list[0].object;
+            ctx.save();
+            ctx.strokeStyle = "#0f0";
+            ctx.fillStyle = "#0f0";
+            const top = obj.localToWorld(0, -obj.height / 2);
+            const rot = obj.localToWorld(0, -obj.height / 2 - 30);
+            ctx.beginPath();
+            ctx.moveTo(top.x, top.y);
+            ctx.lineTo(rot.x, rot.y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(rot.x, rot.y, 6, 0, Math.PI * 2);
+            ctx.fill();
+            const rs = obj.localToWorld(obj.width / 2, obj.height / 2);
+            ctx.fillRect(rs.x - 6, rs.y - 6, 12, 12);
+            ctx.restore();
+          }
+        }
+
+        /* ---------- toolbar ---------- */
+        bindToolbar() {
+          document.querySelectorAll(".tool").forEach((btn) => {
+            btn.addEventListener("click", () => {
+              this.setTool(btn.dataset.tool);
+            });
+          });
+          document.getElementById("undoBtn").addEventListener("click", () => this.history.undo());
+          document.getElementById("redoBtn").addEventListener("click", () => this.history.redo());
+
+          const fileInput = document.getElementById("fileInput");
+          document.getElementById("importBtn").addEventListener("click", () => fileInput.click());
+          fileInput.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              const dataURL = reader.result;
+              const img = new Image();
+              img.onload = () => {
+                const maxDim = 320;
+                const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+                const w = img.width * scale,
+                  h = img.height * scale;
+                imageCache.set(dataURL, img);
+                this.history.record();
+                const obj = new ImageObject({ x: this.doc.width / 2, y: this.doc.height / 2, width: w, height: h, src: dataURL });
+                this.doc.addObject(obj);
+                this.doc.selectedObjectIds = [obj.id];
+                this.setTool("select");
+                this.render();
+                this.refreshObjectsPanel();
+                this.updatePropertyPanel();
+              };
+              img.src = dataURL;
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = "";
+          });
+        }
+
+        updateHistoryButtons() {
+          document.getElementById("undoBtn").disabled = this.history.undoStack.length === 0;
+          document.getElementById("redoBtn").disabled = this.history.redoStack.length === 0;
+        }
+
+        loadDocFromJSON(jsonStr) {
+          this.doc = DocumentModel.fromJSON(JSON.parse(jsonStr));
+          this.setTool("select");
+          this.render();
+          this.refreshObjectsPanel();
+          this.updatePropertyPanel();
+        }
+
+        /* ---------- canvas interaction (delegates to active tool, unless panning) ---------- */
+        bindCanvas() {
+          const cv = this.canvas;
+          cv.addEventListener("pointerdown", (e) => {
+            if (this.spacePressed) {
+              this.panning = { startX: e.clientX, startY: e.clientY, startViewX: this.viewX, startViewY: this.viewY };
+              this.canvas.style.cursor = "grabbing";
+              return;
+            }
+            this.activeTool.onPointerDown(this.getWorldPoint(e), e);
+          });
+          cv.addEventListener("pointermove", (e) => {
+            if (this.panning) {
+              const rect = this.canvas.getBoundingClientRect();
+              const sx = this.canvas.width / rect.width,
+                sy = this.canvas.height / rect.height;
+              this.viewX = this.panning.startViewX - (e.clientX - this.panning.startX) * sx;
+              this.viewY = this.panning.startViewY - (e.clientY - this.panning.startY) * sy;
+              this.render();
+              return;
+            }
+            this.activeTool.onPointerMove(this.getWorldPoint(e), e);
+          });
+          window.addEventListener("pointerup", (e) => {
+            if (this.panning) {
+              this.panning = null;
+              this.canvas.style.cursor = this.spacePressed ? "grab" : "default";
+              return;
+            }
+            this.activeTool.onPointerUp(this.getWorldPoint(e), e);
+          });
+        }
+
+        bindKeys() {
+          window.addEventListener("keydown", (e) => {
+            const tag = (document.activeElement && document.activeElement.tagName) || "";
+            const typing = tag === "INPUT" || tag === "TEXTAREA";
+            if (!typing) {
+              if (e.code === "Space") {
+                e.preventDefault();
+                if (!this.spacePressed) {
+                  this.spacePressed = true;
+                  this.canvas.style.cursor = "grab";
+                }
+                return;
+              }
+              if (e.key === "v" || e.key === "V") this.setTool("select");
+              if (e.key === "t" || e.key === "T") this.setTool("text");
+              if (e.key === "r" || e.key === "R") this.setTool("rect");
+              if (e.key === "a" || e.key === "A") this.setTool("arrow");
+              if (e.key === "d" || e.key === "D") this.setTool("draw");
+              if (e.key === "Delete" || e.key === "Backspace") this.deleteSelected();
+              if (e.key === "Escape") this.setTool("select");
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+              e.preventDefault();
+              if (e.shiftKey) this.history.redo();
+              else this.history.undo();
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+              e.preventDefault();
+              this.history.redo();
+            }
+          });
+          window.addEventListener("keyup", (e) => {
+            if (e.code === "Space") {
+              this.spacePressed = false;
+              this.panning = null;
+              this.canvas.style.cursor = "default";
+            }
+          });
+        }
+
+        deleteSelected() {
+          const list = this.getSelectedList();
+          if (!list.length) return;
+          this.history.record();
+          list.forEach((sel) => this.doc.removeObject(sel.object.id));
+          this.doc.selectedObjectIds = [];
+          this.render();
+          this.refreshObjectsPanel();
+          this.updatePropertyPanel();
+        }
+
+        /* ---------- objects panel ---------- */
+        refreshObjectsPanel() {
+          const list = document.getElementById("objectList");
+          list.innerHTML = "";
+          if (!this.doc.objects.length) {
+            const empty = document.createElement("div");
+            empty.className = "propname";
+            empty.textContent = "NO OBJECTS";
+            list.appendChild(empty);
+            return;
+          }
+          for (let i = this.doc.objects.length - 1; i >= 0; i--) {
+            const object = this.doc.objects[i];
+            const row = document.createElement("div");
+            row.className = "object-row" + (this.doc.selectedObjectIds.includes(object.id) ? " active" : "");
+            const label = `${object.type} ${object.id.slice(0, 8)}`;
+            row.innerHTML = `
+        <div class="row1">
+          <div class="object-label"></div>
+        </div>
+        <div class="row2">
+          <button data-act="up" ${i === this.doc.objects.length - 1 ? "disabled" : ""}>↑</button>
+          <button data-act="down" ${i === 0 ? "disabled" : ""}>↓</button>
+          <button data-act="del">×</button>
+        </div>
+      `;
+            row.querySelector(".object-label").textContent = label;
+            row.addEventListener("click", (e) => {
+              if (e.target.dataset.act) return;
+              this.doc.selectedObjectIds = [object.id];
+              this.render();
+              this.refreshObjectsPanel();
+              this.updatePropertyPanel();
+            });
+            row.querySelector("[data-act=up]").addEventListener("click", () => {
+              const idx = this.doc.objects.indexOf(object);
+              if (idx < this.doc.objects.length - 1) {
+                this.history.record();
+                [this.doc.objects[idx], this.doc.objects[idx + 1]] = [this.doc.objects[idx + 1], this.doc.objects[idx]];
+                this.render();
+                this.refreshObjectsPanel();
+              }
+            });
+            row.querySelector("[data-act=down]").addEventListener("click", () => {
+              const idx = this.doc.objects.indexOf(object);
+              if (idx > 0) {
+                this.history.record();
+                [this.doc.objects[idx], this.doc.objects[idx - 1]] = [this.doc.objects[idx - 1], this.doc.objects[idx]];
+                this.render();
+                this.refreshObjectsPanel();
+              }
+            });
+            row.querySelector("[data-act=del]").addEventListener("click", () => {
+              this.history.record();
+              this.doc.removeObject(object.id);
+              this.doc.selectedObjectIds = this.doc.selectedObjectIds.filter((id) => id !== object.id);
+              this.render();
+              this.refreshObjectsPanel();
+              this.updatePropertyPanel();
+            });
+            list.appendChild(row);
+          }
+        }
+
+        /* ---------- property panel ---------- */
+        focusPropertyField(key, opts = {}) {
+          requestAnimationFrame(() => {
+            const el = document.querySelector(`#propBody [data-field="${key}"]`);
+            if (el) {
+              el.focus();
+              if (opts.select && el.select) el.select();
+            }
+          });
+        }
+
+        updatePropertyPanel(liveOnly) {
+          const body = document.getElementById("propBody");
+          const list = this.getSelectedList();
+
+          if (!list.length) {
+            body.innerHTML = "";
+            return;
+          }
+
+          if (list.length > 1) {
+            if (!liveOnly) {
+              body.innerHTML = `
+          <div class="propname">${list.length} OBJECTS SELECTED</div>
+          <label>Opacity</label>
+          <input type="range" min="0" max="1" step="0.01" data-field="opacity" value="1">
+          <div class="flexbtns">
+            <button data-act="flipH">Flip H</button>
+            <button data-act="flipV">Flip V</button>
+          </div>
+        `;
+              const opInp = body.querySelector('[data-field="opacity"]');
+              opInp.addEventListener("pointerdown", () => this.history.record());
+              opInp.addEventListener("input", () => {
+                const v = parseFloat(opInp.value);
+                list.forEach((sel) => (sel.object.opacity = v));
+                this.render();
+              });
+              body.querySelector("[data-act=flipH]").addEventListener("click", () => {
+                this.history.record();
+                list.forEach((sel) => (sel.object.flipH = !sel.object.flipH));
+                this.render();
+              });
+              body.querySelector("[data-act=flipV]").addEventListener("click", () => {
+                this.history.record();
+                list.forEach((sel) => (sel.object.flipV = !sel.object.flipV));
+                this.render();
+              });
+            }
+            return;
+          }
+
+          const sel = list[0];
+          const obj = sel.object;
+
+          if (!liveOnly) {
+            const extra = obj
+              .fields()
+              .map((f) => {
+                if (f.type === "checkbox") {
+                  return `<label>${f.label}</label><input type="checkbox" data-field="${f.key}" ${obj[f.key] ? "checked" : ""}>`;
+                }
+                if (f.type === "color") {
+                  return `<label>${f.label}</label><input type="color" data-field="${f.key}" value="${obj[f.key]}" style="width:100%;height:1.6rem;">`;
+                }
+                return `<label>${f.label}</label><input type="${f.type}" data-field="${f.key}" value="${obj[f.key]}">`;
+              })
+              .join("");
+
+            body.innerHTML = `
+        <div class="propname">${obj.type.toUpperCase()} — ${obj.id.slice(0, 8)}</div>
+        <div class="field-row">
+          <div><label>X</label><input type="number" data-field="x" value="${Math.round(obj.x)}"></div>
+          <div><label>Y</label><input type="number" data-field="y" value="${Math.round(obj.y)}"></div>
+        </div>
+        <div class="field-row">
+          <div><label>Width</label><input type="number" data-field="width" value="${Math.round(obj.width)}"></div>
+          <div><label>Height</label><input type="number" data-field="height" value="${Math.round(obj.height)}"></div>
+        </div>
+        <label>Rotation (deg)</label>
+        <input type="number" data-field="rotationDeg" value="${Math.round((obj.rotation * 180) / Math.PI)}">
+        <label>Opacity</label>
+        <input type="range" min="0" max="1" step="0.01" data-field="opacity" value="${obj.opacity}">
+        ${extra}
+        <div class="flexbtns">
+          <button data-act="flipH">Flip H</button>
+          <button data-act="flipV">Flip V</button>
+        </div>
+      `;
+
+            body.querySelectorAll("input[data-field]").forEach((inp) => {
+              let recorded = false;
+              const recOnce = () => {
+                if (!recorded) {
+                  this.history.record();
+                  recorded = true;
+                }
+              };
+              inp.addEventListener("focus", recOnce);
+              inp.addEventListener("pointerdown", recOnce);
+              inp.addEventListener("input", () => {
+                const field = inp.dataset.field;
+                if (field === "rotationDeg") obj.rotation = (parseFloat(inp.value || 0) * Math.PI) / 180;
+                else if (inp.type === "checkbox") obj[field] = inp.checked;
+                else if (inp.type === "number") obj[field] = parseFloat(inp.value || 0);
+                else if (inp.type === "range") obj[field] = parseFloat(inp.value);
+                else obj[field] = inp.value;
+                this.render();
+              });
+              inp.addEventListener("change", () => {
+                recorded = false;
+              });
+              // Text tool editing hand-off: finishing edits returns to Select.
+              if (inp.dataset.field === "text") {
+                inp.addEventListener("keydown", (ev) => {
+                  if (ev.key === "Enter") {
+                    ev.preventDefault();
+                    inp.blur();
+                  }
+                });
+                inp.addEventListener("blur", () => {
+                  if (this.toolName === "text") this.setTool("select");
+                });
+              }
+            });
+            body.querySelector("[data-act=flipH]").addEventListener("click", () => {
+              this.history.record();
+              obj.flipH = !obj.flipH;
+              this.render();
+            });
+            body.querySelector("[data-act=flipV]").addEventListener("click", () => {
+              this.history.record();
+              obj.flipV = !obj.flipV;
+              this.render();
+            });
+          } else {
+            const map = {
+              x: Math.round(obj.x),
+              y: Math.round(obj.y),
+              width: Math.round(obj.width),
+              height: Math.round(obj.height),
+              rotationDeg: Math.round((obj.rotation * 180) / Math.PI),
+            };
+            Object.entries(map).forEach(([k, v]) => {
+              const inp = body.querySelector(`[data-field="${k}"]`);
+              if (inp && document.activeElement !== inp) inp.value = v;
+            });
+          }
+        }
+      }
+
+      new App();
+    </script>
+  </body>
+</html>
