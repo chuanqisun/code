@@ -1180,15 +1180,13 @@
 
           const config = {
             responseModalities: ["IMAGE"],
-            responseFormat: {
-              image: {
-                aspectRatio: this.aspectRatio,
-              },
+            imageConfig: {
+              aspectRatio: this.aspectRatio,
             },
           };
 
           if (this.selectedModel === GeminiImageManipulator.MODEL_PRO || this.selectedModel === GeminiImageManipulator.MODEL_FLASH_31) {
-            config.responseFormat.image.imageSize = this.selectedResolution;
+            config.imageConfig.imageSize = this.selectedResolution;
           }
 
           if (
