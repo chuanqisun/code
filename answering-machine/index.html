@@ -335,6 +335,20 @@
       .stage {
         position: relative;
       }
+
+      .credit {
+        position: fixed;
+        bottom: 5vh;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 1rem;
+        color: #444;
+      }
+      .credit a {
+        color: inherit;
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
@@ -399,6 +413,12 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <div class="credit">
+      Voice simulation based on the latest human commits to the
+      <a href="https://github.com/FreeCodeCamp/freecodecamp" target="_blank" rel="noopener noreferrer">freeCodeCamp</a>
+      repo on GitHub.
     </div>
 
     <audio id="playSfx" src="sfx/play.wav" preload="auto"></audio>
