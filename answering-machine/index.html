@@ -1,0 +1,494 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Panasonic Easa-Phone Answering Machine</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: #d8d6d2;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: Arial, Helvetica, sans-serif;
+        overflow: hidden;
+      }
+
+      .stage {
+        transform: scale(min(1, calc((100vw - 32px) / 800px)));
+        transform-origin: center center;
+      }
+
+      .machine {
+        position: relative;
+        width: 760px;
+        height: 480px;
+        border-radius: 24px 24px 30px 30px;
+        background: linear-gradient(160deg, #f2f0ec 0%, #e4e1db 40%, #cfccc5 100%);
+        box-shadow:
+          0 40px 60px -10px rgba(0, 0, 0, 0.35),
+          0 15px 25px rgba(0, 0, 0, 0.2),
+          inset 0 2px 3px rgba(255, 255, 255, 0.8),
+          inset 0 -8px 15px rgba(0, 0, 0, 0.15);
+        transform: perspective(1400px) rotateX(18deg);
+        overflow: hidden;
+      }
+
+      /* speaker grille left side */
+      .grille {
+        position: absolute;
+        top: 30px;
+        left: 25px;
+        width: 190px;
+        height: 210px;
+      }
+      .grille .slat {
+        height: 8px;
+        margin-bottom: 6px;
+        border-radius: 4px;
+        background: linear-gradient(180deg, #b8b5ae, #dedbd4 40%, #a8a59e);
+        box-shadow:
+          inset 0 2px 2px rgba(0, 0, 0, 0.25),
+          0 1px 1px rgba(255, 255, 255, 0.7);
+        transform: skewX(-8deg);
+      }
+
+      /* cassette lid */
+      .lid {
+        position: absolute;
+        top: 20px;
+        right: 30px;
+        width: 480px;
+        height: 250px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #6a6c6e 0%, #4a4c4f 30%, #3b3d40 55%, #55575a 80%, #6d6f72 100%);
+        box-shadow:
+          inset 0 2px 4px rgba(255, 255, 255, 0.35),
+          inset 0 -4px 8px rgba(0, 0, 0, 0.5),
+          0 6px 12px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+      .lid::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.18) 45%, rgba(255, 255, 255, 0.05) 55%, transparent 70%);
+      }
+      .brand {
+        position: absolute;
+        top: 18px;
+        right: 28px;
+        color: #f5f5f5;
+        font-weight: bold;
+        font-size: 26px;
+        letter-spacing: 0.5px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      }
+      .autologic {
+        position: absolute;
+        bottom: 44px;
+        right: 28px;
+        color: #eee;
+        font-style: italic;
+        font-weight: bold;
+        font-size: 20px;
+        letter-spacing: 2px;
+        border-bottom: 2px solid #ddd;
+        padding-bottom: 2px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+      }
+      .subtitle {
+        position: absolute;
+        bottom: 20px;
+        right: 28px;
+        color: #d7d7d7;
+        font-size: 10px;
+        letter-spacing: 1.5px;
+      }
+
+      /* front control panel */
+      .panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 190px;
+        background: linear-gradient(180deg, #eae7e1 0%, #dcd9d2 55%, #c2bfb8 100%);
+        border-top: 1px solid rgba(255, 255, 255, 0.7);
+        box-shadow: inset 0 6px 10px rgba(0, 0, 0, 0.12);
+      }
+      .panel-seam {
+        position: absolute;
+        left: 230px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.3));
+      }
+
+      .easa {
+        position: absolute;
+        left: 45px;
+        top: 55px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .mic-slots {
+        display: flex;
+        gap: 5px;
+      }
+      .mic-slots div {
+        width: 5px;
+        height: 26px;
+        background: #333;
+        border-radius: 2px;
+        box-shadow:
+          inset 0 2px 3px #000,
+          0 1px 1px rgba(255, 255, 255, 0.6);
+      }
+      .easa-label {
+        font-size: 15px;
+        font-weight: bold;
+        letter-spacing: 3px;
+        color: #444;
+      }
+      .mic-label {
+        position: absolute;
+        left: 45px;
+        top: 92px;
+        font-size: 9px;
+        color: #666;
+        letter-spacing: 1px;
+      }
+
+      /* calls display */
+      .calls {
+        position: absolute;
+        left: 270px;
+        top: 32px;
+        width: 96px;
+        height: 100px;
+        background: linear-gradient(160deg, #2c2c2e, #151517);
+        border-radius: 10px;
+        box-shadow:
+          inset 0 3px 6px rgba(0, 0, 0, 0.8),
+          inset 0 -1px 2px rgba(255, 255, 255, 0.15),
+          0 2px 4px rgba(0, 0, 0, 0.3);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .digit {
+        width: 46px;
+        height: 56px;
+        background: #050505;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: "Courier New", monospace;
+        font-size: 34px;
+        font-weight: bold;
+        color: #4bd14b;
+        text-shadow:
+          0 0 8px rgba(75, 209, 75, 0.9),
+          0 0 16px rgba(75, 209, 75, 0.5);
+        box-shadow: inset 0 2px 5px #000;
+      }
+      .calls-label {
+        position: absolute;
+        left: 270px;
+        top: 138px;
+        width: 96px;
+        text-align: center;
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: #555;
+        font-weight: bold;
+      }
+      .answer-inuse {
+        position: absolute;
+        left: 382px;
+        top: 46px;
+        font-size: 9px;
+        color: #555;
+        letter-spacing: 1px;
+        line-height: 2.6;
+      }
+      .led {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 5px;
+        vertical-align: middle;
+      }
+      .led.on {
+        background: radial-gradient(circle at 35% 35%, #ff9a8a, #e02010);
+        box-shadow: 0 0 6px rgba(255, 60, 40, 0.9);
+      }
+      .led.off {
+        background: radial-gradient(circle at 35% 35%, #886, #443);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+      }
+
+      /* small button rows: button + label side by side, no overlap */
+      .sm-row {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .btn-sm {
+        width: 54px;
+        height: 22px;
+        border-radius: 5px;
+        background: linear-gradient(180deg, #fbfaf7, #dbd8d1);
+        box-shadow:
+          0 3px 5px rgba(0, 0, 0, 0.35),
+          inset 0 1px 1px rgba(255, 255, 255, 0.9),
+          inset 0 -2px 3px rgba(0, 0, 0, 0.2);
+        cursor: pointer;
+        flex-shrink: 0;
+        border: none;
+      }
+      .btn-sm:active {
+        transform: translateY(1px);
+        box-shadow:
+          0 1px 2px rgba(0, 0, 0, 0.3),
+          inset 0 1px 2px rgba(0, 0, 0, 0.2);
+      }
+      .sm-row .lbl {
+        font-size: 9px;
+        color: #555;
+        letter-spacing: 1px;
+        font-weight: bold;
+        white-space: nowrap;
+      }
+
+      /* big playback button */
+      .btn-big {
+        position: absolute;
+        right: 40px;
+        top: 40px;
+        width: 130px;
+        height: 100px;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #fdfcf9 0%, #e8e5de 60%, #cfccc4 100%);
+        box-shadow:
+          0 5px 8px rgba(0, 0, 0, 0.4),
+          inset 0 2px 2px rgba(255, 255, 255, 0.95),
+          inset 0 -4px 6px rgba(0, 0, 0, 0.22);
+        cursor: pointer;
+        border: none;
+      }
+      .btn-big:active {
+        transform: translateY(2px);
+        box-shadow:
+          0 2px 3px rgba(0, 0, 0, 0.35),
+          inset 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      .btn-big .top-lbl {
+        position: absolute;
+        top: 10px;
+        right: 14px;
+        font-size: 12px;
+        font-weight: bold;
+        color: #555;
+      }
+      .btn-big .bottom-lbl {
+        position: absolute;
+        bottom: 10px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 10px;
+        letter-spacing: 1px;
+        font-weight: bold;
+        color: #555;
+      }
+
+      /* floor shadow */
+      .floor-shadow {
+        position: absolute;
+        width: 740px;
+        height: 60px;
+        background: radial-gradient(ellipse, rgba(0, 0, 0, 0.35), transparent 70%);
+        filter: blur(10px);
+        transform: translateY(255px);
+        z-index: -1;
+      }
+      .stage {
+        position: relative;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="floor-shadow"></div>
+      <div class="machine">
+        <div class="grille">
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+          <div class="slat"></div>
+        </div>
+
+        <div class="lid">
+          <div class="brand">Panasonic</div>
+          <div class="autologic">AUTO-LOGIC</div>
+          <div class="subtitle">MICRO CASSETTE ANSWERING SYSTEM / TONE REMOTE CONTROL</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-seam"></div>
+
+          <div class="easa">
+            <div class="mic-slots">
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+            <div class="easa-label">EASA-PHONE</div>
+          </div>
+          <div class="mic-label">MIC</div>
+
+          <div class="calls">
+            <div class="digit" id="callsDigit">0</div>
+          </div>
+          <div class="calls-label">CALLS</div>
+
+          <div class="answer-inuse">
+            <div><span class="led on" id="answerLed"></span>ANSWER</div>
+            <div><span class="led off" id="inUseLed"></span>IN USE</div>
+          </div>
+
+          <div class="sm-row" style="left: 460px; top: 80px">
+            <button class="btn-sm" id="skipBtn"></button>
+            <div class="lbl">SKIP</div>
+          </div>
+
+          <button class="btn-big" id="playBtn">
+            <div class="top-lbl" id="playIcon">&#9654;/&#10073;&#10073;</div>
+            <div class="bottom-lbl">PLAYBACK/PAUSE</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <audio id="playSfx" src="sfx/play.wav" preload="auto"></audio>
+    <audio id="skipSfx" src="sfx/skip.wav" preload="auto"></audio>
+    <audio id="messageAudio" preload="auto"></audio>
+
+    <script>
+      const tracks = [
+        "0d7ebf84991a60c52068ba6e80426f824d726c03.mp3",
+        "13b039bb8502991a71328c8daa41376b3fa8f5ee.mp3",
+        "20f88fac01a0802f76f070c690cf4ba2f597817e.mp3",
+        "60b5cf014e2e254225c0ae425b5161ea4620adfb.mp3",
+        "62a6ee57e5090e794d0655e2b454ca7e85d08500.mp3",
+        "751f9a69e4a1af6e9aa1a599ec3021a4a35b2309.mp3",
+        "aa0bc07758add3abb2938f7e797531894b1b2067.mp3",
+        "c1ab46e3273cd8d468d69fc693716cf77f633e57.mp3",
+        "e60980b232eefd2a779a3b675b980809ab7556cd.mp3",
+        "ea003f85d4b55d0c4300fe6955cdb88624a0d4b8.mp3",
+      ];
+
+      const playSfx = document.getElementById("playSfx");
+      const skipSfx = document.getElementById("skipSfx");
+      const messageAudio = document.getElementById("messageAudio");
+      const callsDigit = document.getElementById("callsDigit");
+      const inUseLed = document.getElementById("inUseLed");
+      const playBtn = document.getElementById("playBtn");
+      const skipBtn = document.getElementById("skipBtn");
+
+      let currentIndex = 0;
+      let callsRemaining = tracks.length;
+      let isPlaying = false;
+
+      function updateCallsDisplay() {
+        callsDigit.textContent = String(Math.max(callsRemaining, 0));
+      }
+
+      function loadTrack(index) {
+        messageAudio.pause();
+        messageAudio.src = `data/${tracks[index]}`;
+        messageAudio.currentTime = 0;
+        isPlaying = false;
+        inUseLed.classList.remove("on");
+        inUseLed.classList.add("off");
+      }
+
+      function playCurrentTrack() {
+        messageAudio.play();
+        isPlaying = true;
+        inUseLed.classList.remove("off");
+        inUseLed.classList.add("on");
+      }
+
+      function pauseCurrentTrack() {
+        messageAudio.pause();
+        isPlaying = false;
+        inUseLed.classList.remove("on");
+        inUseLed.classList.add("off");
+      }
+
+      messageAudio.addEventListener("ended", () => {
+        isPlaying = false;
+        inUseLed.classList.remove("on");
+        inUseLed.classList.add("off");
+        if (callsRemaining > 0) {
+          callsRemaining--;
+          updateCallsDisplay();
+        }
+      });
+
+      playBtn.addEventListener("click", () => {
+        playSfx.currentTime = 0;
+        playSfx.play();
+
+        if (isPlaying) {
+          pauseCurrentTrack();
+        } else {
+          playCurrentTrack();
+        }
+      });
+
+      skipBtn.addEventListener("click", () => {
+        skipSfx.currentTime = 0;
+        skipSfx.play();
+
+        currentIndex = (currentIndex + 1) % tracks.length;
+        loadTrack(currentIndex);
+
+        if (callsRemaining > 0) {
+          callsRemaining--;
+          updateCallsDisplay();
+        }
+
+        playCurrentTrack();
+      });
+
+      loadTrack(currentIndex);
+      updateCallsDisplay();
+    </script>
+  </body>
+</html>

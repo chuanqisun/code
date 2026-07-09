@@ -47,6 +47,7 @@
 
 - [3D Text Editor](./3d-text-editor/)
 - [Ancient Robots](./ancient-robots/)
+- [Answering Machine](./answering-machine/)
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
 - [Babel](./babel/)
