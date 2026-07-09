@@ -13,6 +13,8 @@
         box-sizing: border-box;
         margin: 0;
         padding: 0;
+        user-select: none;
+        -webkit-user-select: none;
       }
       body {
         background: #d8d6d2;
@@ -402,6 +404,7 @@
     <audio id="playSfx" src="sfx/play.wav" preload="auto"></audio>
     <audio id="skipSfx" src="sfx/skip.wav" preload="auto"></audio>
     <audio id="beepSfx" src="sfx/long-beep.mp3" preload="auto"></audio>
+    <audio id="endSfx" src="sfx/end.mp3" preload="auto"></audio>
     <audio id="messageAudio" preload="auto"></audio>
 
     <script>
@@ -421,6 +424,7 @@
       const playSfx = document.getElementById("playSfx");
       const skipSfx = document.getElementById("skipSfx");
       const beepSfx = document.getElementById("beepSfx");
+      const endSfx = document.getElementById("endSfx");
       const messageAudio = document.getElementById("messageAudio");
       const callsDigit = document.getElementById("callsDigit");
       const inUseLed = document.getElementById("inUseLed");
@@ -430,6 +434,7 @@
       let currentIndex = 0;
       let callsRemaining = tracks.length;
       let isPlaying = false;
+      let allTracksDone = false;
 
       function updateCallsDisplay() {
         callsDigit.textContent = String(Math.max(callsRemaining, 0));
@@ -449,6 +454,12 @@
         inUseLed.classList.remove("off");
         inUseLed.classList.add("on");
 
+        if (allTracksDone) {
+          endSfx.currentTime = 0;
+          endSfx.play();
+          return;
+        }
+
         if (messageAudio.currentTime > 0) {
           messageAudio.play();
         } else {
@@ -464,6 +475,7 @@
 
       function pauseCurrentTrack() {
         beepSfx.pause();
+        endSfx.pause();
         messageAudio.pause();
         isPlaying = false;
         inUseLed.classList.remove("on");
@@ -481,10 +493,16 @@
           loadTrack(currentIndex);
           playCurrentTrack();
         } else {
-          isPlaying = false;
-          inUseLed.classList.remove("on");
-          inUseLed.classList.add("off");
+          allTracksDone = true;
+          endSfx.currentTime = 0;
+          endSfx.play();
         }
+      });
+
+      endSfx.addEventListener("ended", () => {
+        isPlaying = false;
+        inUseLed.classList.remove("on");
+        inUseLed.classList.add("off");
       });
 
       playBtn.addEventListener("click", () => {
@@ -501,6 +519,11 @@
       skipBtn.addEventListener("click", () => {
         skipSfx.currentTime = 0;
         skipSfx.play();
+
+        if (allTracksDone) {
+          playCurrentTrack();
+          return;
+        }
 
         currentIndex = (currentIndex + 1) % tracks.length;
         loadTrack(currentIndex);
