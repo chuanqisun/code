@@ -396,6 +396,7 @@
 
     <audio id="playSfx" src="sfx/play.wav" preload="auto"></audio>
     <audio id="skipSfx" src="sfx/skip.wav" preload="auto"></audio>
+    <audio id="beepSfx" src="sfx/long-beep.mp3" preload="auto"></audio>
     <audio id="messageAudio" preload="auto"></audio>
 
     <script>
@@ -414,6 +415,7 @@
 
       const playSfx = document.getElementById("playSfx");
       const skipSfx = document.getElementById("skipSfx");
+      const beepSfx = document.getElementById("beepSfx");
       const messageAudio = document.getElementById("messageAudio");
       const callsDigit = document.getElementById("callsDigit");
       const inUseLed = document.getElementById("inUseLed");
@@ -438,13 +440,25 @@
       }
 
       function playCurrentTrack() {
-        messageAudio.play();
         isPlaying = true;
         inUseLed.classList.remove("off");
         inUseLed.classList.add("on");
+
+        if (messageAudio.currentTime > 0) {
+          messageAudio.play();
+        } else {
+          beepSfx.currentTime = 0;
+          beepSfx.play();
+          beepSfx.onended = () => {
+            if (isPlaying) {
+              messageAudio.play();
+            }
+          };
+        }
       }
 
       function pauseCurrentTrack() {
+        beepSfx.pause();
         messageAudio.pause();
         isPlaying = false;
         inUseLed.classList.remove("on");
@@ -452,12 +466,19 @@
       }
 
       messageAudio.addEventListener("ended", () => {
-        isPlaying = false;
-        inUseLed.classList.remove("on");
-        inUseLed.classList.add("off");
         if (callsRemaining > 0) {
           callsRemaining--;
           updateCallsDisplay();
+        }
+
+        if (callsRemaining > 0) {
+          currentIndex = (currentIndex + 1) % tracks.length;
+          loadTrack(currentIndex);
+          playCurrentTrack();
+        } else {
+          isPlaying = false;
+          inUseLed.classList.remove("on");
+          inUseLed.classList.add("off");
         }
       });
 
