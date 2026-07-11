@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ghost GPT</title>
+    <style>
+      body {
+        font-family: monospace;
+        max-width: 60rem;
+        min-height: 100vh;
+        margin: auto;
+        padding: 8px;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 8px;
+        box-sizing: border-box;
+        color: #000;
+        background: #fff;
+      }
+      header,
+      section {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      header {
+        justify-content: space-between;
+      }
+      input[type="password"] {
+        width: min(300px, 100%);
+      }
+      button {
+        cursor: pointer;
+        min-height: 36px;
+        touch-action: none;
+      }
+      button:disabled {
+        opacity: 0.5;
+      }
+      #recording-indicator {
+        color: red;
+        font-weight: bold;
+        display: none;
+      }
+      #results {
+        margin: 0;
+        padding-left: 24px;
+        overflow: auto;
+      }
+      #results li {
+        margin-bottom: 8px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .label {
+        font-weight: bold;
+      }
+      .latency {
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <label>
+        API Key:
+        <input type="password" id="apikey" placeholder="gsk_..." />
+      </label>
+      <strong>Groq Voice Chat</strong>
+    </header>
+
+    <section>
+      <button id="talkBtn">Hold to Talk</button>
+      <span id="recording-indicator">● REC</span>
+      <span id="status">Ready</span>
+    </section>
+
+    <ol id="results" aria-live="polite"></ol>
+
+    <script>
+      const apiKeyInput = document.getElementById("apikey");
+      const talkBtn = document.getElementById("talkBtn");
+      const status = document.getElementById("status");
+      const recIndicator = document.getElementById("recording-indicator");
+      const results = document.getElementById("results");
+
+      let recorder = null;
+      let micStream = null;
+      let chunks = [];
+      let recording = false;
+      let releasedAt = 0;
+
+      apiKeyInput.value = localStorage.getItem("groq_api_key") || "";
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem("groq_api_key", apiKeyInput.value);
+      });
+
+      talkBtn.addEventListener("pointerdown", startRecording);
+      talkBtn.addEventListener("pointerup", stopRecording);
+      talkBtn.addEventListener("pointercancel", stopRecording);
+      talkBtn.addEventListener("contextmenu", (event) => event.preventDefault());
+
+      async function startRecording(event) {
+        event.preventDefault();
+        if (recording) return;
+
+        if (!apiKeyInput.value.trim()) {
+          status.textContent = "Enter API key first";
+          return;
+        }
+
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+
+          recorder = new MediaRecorder(micStream, { mimeType });
+          chunks = [];
+
+          recorder.ondataavailable = (event) => {
+            if (event.data.size) chunks.push(event.data);
+          };
+
+          recorder.onstop = finishTurn;
+          recorder.start();
+
+          recording = true;
+          talkBtn.textContent = "Release to Send";
+          recIndicator.style.display = "inline";
+          status.textContent = "Recording...";
+        } catch (error) {
+          status.textContent = "Mic error: " + error.message;
+          cleanup();
+        }
+      }
+
+      function stopRecording(event) {
+        event.preventDefault();
+        if (!recording) return;
+
+        releasedAt = performance.now();
+        recording = false;
+        talkBtn.disabled = true;
+        talkBtn.textContent = "Processing...";
+        recIndicator.style.display = "none";
+        status.textContent = "Transcribing...";
+
+        if (recorder?.state === "recording") recorder.stop();
+      }
+
+      async function finishTurn() {
+        const audio = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        micStream?.getTracks().forEach((track) => track.stop());
+
+        try {
+          const text = await transcribe(audio);
+          const sttLatency = performance.now() - releasedAt;
+          appendResult("STT", text || "(empty transcription)", sttLatency);
+
+          if (!text.trim()) throw new Error("No speech detected");
+
+          status.textContent = "Generating...";
+          const llmSentAt = performance.now();
+          const completion = await complete(text);
+          const llmLatency = performance.now() - llmSentAt;
+          appendResult("LLM", completion || "(empty response)", llmLatency);
+
+          status.textContent = "Ready";
+        } catch (error) {
+          appendResult("ERROR", error.message);
+          status.textContent = "Failed";
+        } finally {
+          cleanup();
+        }
+      }
+
+      function appendResult(label, text, latencyMs) {
+        const item = document.createElement("li");
+
+        const name = document.createElement("span");
+        name.className = "label";
+        name.textContent = label + ": ";
+
+        item.append(name, document.createTextNode(text));
+
+        if (typeof latencyMs === "number") {
+          const latency = document.createElement("span");
+          latency.className = "latency";
+          latency.textContent = ` [${(latencyMs / 1000).toFixed(2)}s]`;
+          item.append(latency);
+        }
+
+        results.append(item);
+        item.scrollIntoView({ block: "end" });
+      }
+
+      async function transcribe(audio) {
+        const form = new FormData();
+        form.append("file", audio, "speech.webm");
+        form.append("model", "whisper-large-v3-turbo");
+
+        const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKeyInput.value.trim()}` },
+          body: form,
+        });
+
+        if (!response.ok) {
+          throw new Error(`STT ${response.status}: ${await response.text()}`);
+        }
+
+        return (await response.json()).text || "";
+      }
+
+      async function complete(text) {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKeyInput.value.trim()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-oss-120b",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "Complete user's sentence in the most sensible way. Respond only with a few words to fill the __ as if uttered by the user themselves. Respond with the __ portion and don't say anything else.",
+              },
+              {
+                role: "user",
+                content: `${text} __`,
+              },
+            ],
+            temperature: 0,
+            max_completion_tokens: 120,
+            reasoning_effort: "low",
+            stream: false,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`LLM ${response.status}: ${await response.text()}`);
+        }
+
+        return (await response.json()).choices?.[0]?.message?.content || "";
+      }
+
+      function cleanup() {
+        micStream?.getTracks().forEach((track) => track.stop());
+        micStream = null;
+        recorder = null;
+        chunks = [];
+        recording = false;
+        talkBtn.disabled = false;
+        talkBtn.textContent = "Hold to Talk";
+        recIndicator.style.display = "none";
+      }
+    </script>
+  </body>
+</html>
