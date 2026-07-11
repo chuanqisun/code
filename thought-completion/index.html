@@ -18,18 +18,27 @@
         color: #000;
         background: #fff;
       }
-      header,
+      header {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+        gap: 8px;
+      }
       section {
         display: flex;
         align-items: center;
         gap: 8px;
         flex-wrap: wrap;
       }
-      header {
-        justify-content: space-between;
+      label {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
       }
-      input {
-        width: min(260px, 100%);
+      input,
+      select {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
       }
       button {
         cursor: pointer;
@@ -67,6 +76,14 @@
       <label>Groq key: <input id="groqKey" name="groqKey" type="password" placeholder="gsk_..." /></label>
       <label>ElevenLabs key: <input id="elevenKey" name="elevenKey" type="password" placeholder="xi-api-key" /></label>
       <label>Voice ID: <input id="voiceId" name="elevenVoice" value="JBFqnCBsd6RMkjVDRZzb" /></label>
+      <label
+        >Input:
+        <select id="audioInput" aria-label="Audio input device"></select
+      ></label>
+      <label
+        >Output:
+        <select id="audioOutput" aria-label="Audio output device"></select
+      ></label>
     </header>
 
     <section>
@@ -83,6 +100,8 @@
       const groqKey = $("groqKey");
       const elevenKey = $("elevenKey");
       const voiceId = $("voiceId");
+      const audioInput = $("audioInput");
+      const audioOutput = $("audioOutput");
       const talk = $("talk");
       const cancelButton = $("cancel");
       const rec = $("rec");
@@ -115,6 +134,67 @@
 
       talk.addEventListener("click", toggleRecording);
       cancelButton.addEventListener("click", () => cancelAll("Cancelled"));
+      audioOutput.addEventListener("change", selectAudioOutput);
+      navigator.mediaDevices?.addEventListener("devicechange", populateAudioDevices);
+      populateAudioDevices();
+
+      async function populateAudioDevices() {
+        if (!navigator.mediaDevices?.enumerateDevices) {
+          audioInput.innerHTML = '<option value="">Unavailable</option>';
+          audioOutput.innerHTML = '<option value="">Unavailable</option>';
+          audioInput.disabled = true;
+          audioOutput.disabled = true;
+          return;
+        }
+
+        const selectedInput = audioInput.value;
+        const selectedOutput = audioOutput.value;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+
+        fillDeviceSelect(
+          audioInput,
+          devices.filter((device) => device.kind === "audioinput"),
+          selectedInput,
+          "Microphone",
+        );
+        fillDeviceSelect(
+          audioOutput,
+          devices.filter((device) => device.kind === "audiooutput"),
+          selectedOutput,
+          "Speaker",
+        );
+        audioOutput.disabled = typeof AudioContext.prototype.setSinkId !== "function";
+      }
+
+      function fillDeviceSelect(select, devices, selectedId, fallbackLabel) {
+        select.replaceChildren();
+
+        devices.forEach((device, index) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.textContent = device.label || `${fallbackLabel} ${index + 1}`;
+          select.append(option);
+        });
+
+        if (!devices.length) {
+          select.append(new Option(`No ${fallbackLabel.toLowerCase()}s found`, ""));
+          select.disabled = true;
+          return;
+        }
+
+        select.disabled = false;
+        if (devices.some((device) => device.deviceId === selectedId)) select.value = selectedId;
+      }
+
+      async function selectAudioOutput() {
+        if (!audioContext || typeof audioContext.setSinkId !== "function") return;
+
+        try {
+          await audioContext.setSinkId(audioOutput.value);
+        } catch (error) {
+          append("ERROR", "Output device: " + error.message);
+        }
+      }
 
       function toggleRecording(event) {
         if (recording) {
@@ -149,11 +229,13 @@
             throw error;
           });
 
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const audioConstraints = audioInput.value ? { deviceId: { exact: audioInput.value } } : true;
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
           if (currentTurn !== turnId) {
             micStream.getTracks().forEach((track) => track.stop());
             return;
           }
+          await populateAudioDevices();
 
           const preferred = "audio/webm;codecs=opus";
           const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
@@ -280,6 +362,7 @@
       async function connectTTS(currentTurn) {
         audioContext ??= new AudioContext({ sampleRate: 24000 });
         await audioContext.resume();
+        await selectAudioOutput();
 
         const connectionId = ++socketConnectionId;
         const url =
