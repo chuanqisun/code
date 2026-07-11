@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Voice Sentence Completion</title>
     <style>
       body {
@@ -64,13 +64,13 @@
   </head>
   <body>
     <header>
-      <label>Groq key: <input id="groqKey" type="password" placeholder="gsk_..." /></label>
-      <label>ElevenLabs key: <input id="elevenKey" type="password" placeholder="xi-api-key" /></label>
-      <label>Voice ID: <input id="voiceId" value="JBFqnCBsd6RMkjVDRZzb" /></label>
+      <label>Groq key: <input id="groqKey" name="groqKey" type="password" placeholder="gsk_..." /></label>
+      <label>ElevenLabs key: <input id="elevenKey" name="elevenKey" type="password" placeholder="xi-api-key" /></label>
+      <label>Voice ID: <input id="voiceId" name="elevenVoice" value="JBFqnCBsd6RMkjVDRZzb" /></label>
     </header>
 
     <section>
-      <button id="talk">Hold to Talk</button>
+      <button id="talk">Press to talk</button>
       <button id="cancel">Cancel</button>
       <span id="rec">● REC</span>
       <span id="status">Ready</span>
@@ -113,11 +113,16 @@
       let firstAudioReceived = false;
       const audioSources = new Set();
 
-      talk.addEventListener("pointerdown", startTurn);
-      talk.addEventListener("pointerup", stopRecording);
-      talk.addEventListener("pointercancel", stopRecording);
-      talk.addEventListener("contextmenu", (event) => event.preventDefault());
+      talk.addEventListener("click", toggleRecording);
       cancelButton.addEventListener("click", () => cancelAll("Cancelled"));
+
+      function toggleRecording(event) {
+        if (recording) {
+          stopRecording(event);
+        } else {
+          startTurn(event);
+        }
+      }
 
       async function startTurn(event) {
         event.preventDefault();
@@ -163,7 +168,7 @@
           recorder.start();
 
           recording = true;
-          talk.textContent = "Release to Send";
+          talk.textContent = "Stop Recording";
           rec.style.display = "inline";
           status.textContent = "Recording...";
         } catch (error) {
@@ -466,7 +471,7 @@
 
       function resetTalkButton() {
         talk.disabled = false;
-        talk.textContent = "Hold to Talk";
+        talk.textContent = "Press to talk";
       }
 
       function append(label, text, latencyMs) {
