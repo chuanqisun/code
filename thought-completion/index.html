@@ -218,24 +218,22 @@
         requestController = new AbortController();
 
         try {
-          /*
-           * Start TTS connection immediately, in parallel with microphone setup.
-           * The promise is retained so the LLM result can await this exact socket.
-           */
-          socketReady = connectTTS(currentTurn).catch((error) => {
+          const audioConstraints = audioInput.value ? { deviceId: { exact: audioInput.value } } : true;
+          const microphoneReady = navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+
+          socketReady = connectTTS(currentTurn);
+          socketReady.catch((error) => {
             if (currentTurn === turnId) {
               status.textContent = "TTS connection error: " + error.message;
             }
-            throw error;
           });
 
-          const audioConstraints = audioInput.value ? { deviceId: { exact: audioInput.value } } : true;
-          micStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+          const stream = await microphoneReady;
           if (currentTurn !== turnId) {
-            micStream.getTracks().forEach((track) => track.stop());
+            stream.getTracks().forEach((track) => track.stop());
             return;
           }
-          await populateAudioDevices();
+          micStream = stream;
 
           const preferred = "audio/webm;codecs=opus";
           const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
@@ -248,6 +246,7 @@
           };
           recorder.onstop = () => finishTurn(currentTurn);
           recorder.start();
+          populateAudioDevices();
 
           recording = true;
           talk.textContent = "Stop Recording";
