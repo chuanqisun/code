@@ -55,10 +55,9 @@
       }
       #results {
         margin: 0;
-        padding-left: 24px;
         overflow: auto;
       }
-      #results li {
+      #results > div {
         margin-bottom: 8px;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -93,7 +92,7 @@
       <span id="status">Ready</span>
     </section>
 
-    <ol id="results" aria-live="polite"></ol>
+    <div id="results" aria-live="polite"></div>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -557,7 +556,7 @@
       }
 
       function append(label, text, latencyMs) {
-        const item = document.createElement("li");
+        const item = document.createElement("div");
         const name = document.createElement("span");
         name.className = "label";
         name.textContent = label + ": ";
