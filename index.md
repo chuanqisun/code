@@ -27,6 +27,7 @@
 - [Markdown unique links](./markdown-unique-links/)
 - [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
+- [Media Device Debugger](./media-device-debugger/)
 - [OpenAI Code Interpreter](./openai-code-interpreter/)
 - [Paper](https://chuanqisun.github.io/paper/)
 - [PDF → Markdown](./pdf-to-md/)

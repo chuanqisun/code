@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Media I/O Debugger</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: #000;
+        background: #fff;
+        font:
+          14px/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          monospace;
+      }
+
+      main {
+        width: min(60rem, calc(100% - 2rem));
+        margin: auto;
+        padding: 2rem 0 4rem;
+      }
+
+      header,
+      section,
+      article {
+        padding: 1rem 0;
+        border-bottom: 1px solid #000;
+      }
+
+      header,
+      .list-head,
+      .record-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      header {
+        border-top: 1px solid #000;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 1rem;
+        text-transform: uppercase;
+      }
+      h2 {
+        font-size: 0.9rem;
+      }
+
+      .muted {
+        color: #555;
+        font-size: 0.82rem;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+        gap: 0.75rem;
+        align-items: end;
+      }
+
+      label {
+        display: grid;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+
+      select,
+      button,
+      .download {
+        min-height: 2.4rem;
+        border: 1px solid #000;
+        border-radius: 0;
+        color: #000;
+        background: #fff;
+        font: inherit;
+      }
+
+      select {
+        width: 100%;
+        padding: 0.4rem 0.55rem;
+      }
+
+      button,
+      .download {
+        padding: 0.45rem 0.7rem;
+        cursor: pointer;
+      }
+
+      .download {
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+      }
+
+      button:hover,
+      button:focus-visible,
+      .download:hover,
+      .download:focus-visible {
+        color: #fff;
+        background: #000;
+        outline: 0;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.4;
+      }
+
+      .recorder,
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      #recordButton[data-recording="true"] {
+        color: #fff;
+        background: #000;
+      }
+
+      #status {
+        margin-left: auto;
+      }
+
+      .monitor {
+        display: grid;
+        grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr);
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .level-wrap {
+        display: grid;
+        align-content: start;
+        gap: 0.4rem;
+      }
+
+      meter {
+        width: 100%;
+        height: 1.2rem;
+        border: 1px solid #000;
+        border-radius: 0;
+        background: #fff;
+      }
+
+      meter::-webkit-meter-bar {
+        border: 0;
+        border-radius: 0;
+        background: #fff;
+      }
+
+      meter::-webkit-meter-optimum-value {
+        background: #000;
+      }
+
+      meter::-moz-meter-bar {
+        background: #000;
+      }
+
+      #preview {
+        display: block;
+        width: 100%;
+        max-height: 24rem;
+        border: 1px solid #000;
+        background: #000;
+        object-fit: contain;
+      }
+
+      .message {
+        min-height: 1.3rem;
+        padding-top: 0.75rem;
+        color: #444;
+      }
+
+      #empty {
+        padding: 2rem 0;
+        color: #555;
+      }
+
+      article {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .metadata {
+        display: grid;
+        gap: 0.2rem;
+        min-width: 0;
+      }
+
+      .metadata strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      audio,
+      article video {
+        display: block;
+        width: 100%;
+        max-height: 32rem;
+        background: #000;
+      }
+
+      audio {
+        height: 2.5rem;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (max-width: 48rem) {
+        .controls {
+          grid-template-columns: 1fr 1fr;
+        }
+        .controls button {
+          width: 100%;
+        }
+      }
+
+      @media (max-width: 36rem) {
+        main {
+          width: min(100% - 1rem, 60rem);
+          padding-top: 0.5rem;
+        }
+
+        .controls,
+        .monitor {
+          grid-template-columns: 1fr;
+        }
+        #status {
+          width: 100%;
+          margin-left: 0;
+        }
+        .record-head {
+          display: grid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Media I/O Debugger</h1>
+        <span id="deviceCount" class="muted">0 devices</span>
+      </header>
+
+      <section class="controls" aria-label="Device selection">
+        <label>
+          Audio input
+          <select id="audioInput">
+            <option value="">System default</option>
+          </select>
+        </label>
+
+        <label>
+          Video input
+          <select id="videoInput">
+            <option value="">No video — audio only</option>
+          </select>
+        </label>
+
+        <label>
+          Audio output
+          <select id="audioOutput">
+            <option value="">System default</option>
+          </select>
+        </label>
+
+        <button id="refresh" type="button">Refresh devices</button>
+      </section>
+
+      <section>
+        <div class="recorder">
+          <button id="record" type="button">Start recording</button>
+          <span id="timer">00:00.0</span>
+          <span id="status" class="muted">Ready</span>
+        </div>
+
+        <div id="monitor" class="monitor" hidden>
+          <div class="level-wrap">
+            <label for="level">Input volume</label>
+            <meter id="level" min="0" max="1" value="0">0%</meter>
+            <span id="levelText" class="muted">0%</span>
+          </div>
+
+          <video id="preview" autoplay muted playsinline hidden></video>
+        </div>
+
+        <p id="message" class="message" role="status"></p>
+      </section>
+
+      <section class="list-head">
+        <h2>Recordings</h2>
+        <span id="recordingCount" class="muted">0 samples</span>
+      </section>
+
+      <div id="recordings">
+        <p id="empty">No recordings yet.</p>
+      </div>
+    </main>
+
+    <script>
+      const $ = (selector) => document.querySelector(selector);
+      const audioInput = $("#audioInput");
+      const videoInput = $("#videoInput");
+      const audioOutput = $("#audioOutput");
+      const refreshButton = $("#refresh");
+      const recordButton = $("#record");
+      const recordings = $("#recordings");
+      const monitor = $("#monitor");
+      const preview = $("#preview");
+      const level = $("#level");
+      const levelText = $("#levelText");
+      const timer = $("#timer");
+      const status = $("#status");
+      const message = $("#message");
+      const deviceCount = $("#deviceCount");
+      const recordingCount = $("#recordingCount");
+
+      let recorder, stream, audioContext, analyser, levelInterval, timerInterval;
+      let chunks = [];
+      let startedAt = 0;
+      let sampleCount = 0;
+      let audioName = "";
+      let videoName = "";
+      let hasVideo = false;
+
+      function formatTime(ms) {
+        const seconds = ms / 1000;
+        return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:` + `${(seconds % 60).toFixed(1).padStart(4, "0")}`;
+      }
+
+      function populate(select, devices, firstLabel, fallback) {
+        const selected = select.value;
+        select.replaceChildren(new Option(firstLabel, ""));
+
+        devices.forEach((device, index) => {
+          select.add(new Option(device.label || `${fallback} ${index + 1}`, device.deviceId));
+        });
+
+        if ([...select.options].some((option) => option.value === selected)) {
+          select.value = selected;
+        }
+      }
+
+      async function refreshDevices() {
+        refreshButton.disabled = true;
+        message.textContent = "";
+
+        try {
+          if (!navigator.mediaDevices?.enumerateDevices) {
+            throw new Error("Media devices are unavailable.");
+          }
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioIns = devices.filter((d) => d.kind === "audioinput");
+          const videoIns = devices.filter((d) => d.kind === "videoinput");
+          const audioOuts = devices.filter((d) => d.kind === "audiooutput");
+
+          populate(audioInput, audioIns, "System default", "Audio input");
+          populate(videoInput, videoIns, "No video — audio only", "Camera");
+          populate(audioOutput, audioOuts, "System default", "Audio output");
+
+          deviceCount.textContent = `${audioIns.length} audio in / ${videoIns.length} video in / ` + `${audioOuts.length} out`;
+
+          await routeAllMedia();
+        } catch (error) {
+          message.textContent = error.message;
+        } finally {
+          refreshButton.disabled = recorder?.state === "recording";
+        }
+      }
+
+      async function routeMedia(media) {
+        if (!audioOutput.value) {
+          if (typeof media.setSinkId === "function") {
+            try {
+              await media.setSinkId("");
+            } catch {}
+          }
+          return;
+        }
+
+        if (typeof media.setSinkId !== "function") {
+          message.textContent = "Output routing is unsupported by this browser.";
+          return;
+        }
+
+        try {
+          await media.setSinkId(audioOutput.value);
+        } catch (error) {
+          message.textContent = `Output device error: ${error.message}`;
+        }
+      }
+
+      function routeAllMedia() {
+        return Promise.all([...document.querySelectorAll("#recordings audio, #recordings video")].map(routeMedia));
+      }
+
+      function supportedMime(video) {
+        const types = video
+          ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+          : ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+
+        return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+      }
+
+      function startLevelMonitor(mediaStream) {
+        const Context = window.AudioContext || window.webkitAudioContext;
+        if (!Context) return;
+
+        audioContext = new Context();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.65;
+
+        audioContext.createMediaStreamSource(mediaStream).connect(analyser);
+        const samples = new Uint8Array(analyser.fftSize);
+
+        // Ten updates per second are sufficient for an indicator and use little CPU.
+        levelInterval = setInterval(() => {
+          analyser.getByteTimeDomainData(samples);
+
+          let sum = 0;
+          for (const sample of samples) {
+            const normalized = (sample - 128) / 128;
+            sum += normalized * normalized;
+          }
+
+          const rms = Math.sqrt(sum / samples.length);
+          const displayValue = Math.min(1, rms * 3.5);
+          level.value = displayValue;
+          levelText.textContent = `${Math.round(displayValue * 100)}%`;
+        }, 100);
+      }
+
+      async function stopMonitors() {
+        clearInterval(levelInterval);
+        level.value = 0;
+        levelText.textContent = "0%";
+
+        preview.pause();
+        preview.srcObject = null;
+        preview.hidden = true;
+        monitor.hidden = true;
+
+        if (audioContext) {
+          await audioContext.close().catch(() => {});
+          audioContext = null;
+        }
+      }
+
+      async function startRecording() {
+        message.textContent = "";
+
+        try {
+          if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+            throw new Error("Recording is unsupported by this browser.");
+          }
+
+          hasVideo = Boolean(videoInput.value);
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: audioInput.value ? { deviceId: { exact: audioInput.value } } : true,
+            video: hasVideo ? { deviceId: { exact: videoInput.value } } : false,
+          });
+
+          const audioTrack = stream.getAudioTracks()[0];
+          const videoTrack = stream.getVideoTracks()[0];
+
+          audioName = audioTrack?.label || audioInput.selectedOptions[0]?.textContent || "Unknown audio input";
+          videoName = videoTrack?.label || videoInput.selectedOptions[0]?.textContent || "";
+
+          monitor.hidden = false;
+          startLevelMonitor(stream);
+
+          if (hasVideo) {
+            preview.hidden = false;
+            preview.srcObject = stream;
+            await preview.play();
+          }
+
+          chunks = [];
+          const mimeType = supportedMime(hasVideo);
+          recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+          recorder.ondataavailable = (event) => {
+            if (event.data.size) chunks.push(event.data);
+          };
+          recorder.addEventListener("stop", createRecording, { once: true });
+          recorder.start();
+
+          startedAt = performance.now();
+          timerInterval = setInterval(() => {
+            timer.textContent = formatTime(performance.now() - startedAt);
+          }, 100);
+
+          recordButton.textContent = "Stop recording";
+          recordButton.dataset.recording = "true";
+          status.textContent = hasVideo ? `${audioName} + ${videoName}` : audioName;
+
+          audioInput.disabled = true;
+          videoInput.disabled = true;
+          refreshButton.disabled = true;
+        } catch (error) {
+          stream?.getTracks().forEach((track) => track.stop());
+          await stopMonitors();
+          message.textContent = `Media unavailable: ${error.message}`;
+          status.textContent = "Ready";
+        }
+      }
+
+      async function stopRecording() {
+        if (recorder?.state === "recording") recorder.stop();
+        stream?.getTracks().forEach((track) => track.stop());
+
+        clearInterval(timerInterval);
+        await stopMonitors();
+
+        recordButton.textContent = "Start recording";
+        recordButton.dataset.recording = "false";
+        audioInput.disabled = false;
+        videoInput.disabled = false;
+        refreshButton.disabled = false;
+        status.textContent = "Ready";
+      }
+
+      async function createRecording() {
+        const duration = performance.now() - startedAt;
+        const mimeType = recorder.mimeType || chunks[0]?.type || (hasVideo ? "video/webm" : "audio/webm");
+        const blob = new Blob(chunks, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const date = new Date();
+        const extension = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "webm";
+        const filename = `${hasVideo ? "video" : "audio"}-${date.toISOString().replace(/[:.]/g, "-")}.${extension}`;
+
+        $("#empty")?.remove();
+
+        const article = document.createElement("article");
+        const head = document.createElement("div");
+        head.className = "record-head";
+
+        const metadata = document.createElement("div");
+        metadata.className = "metadata";
+
+        const title = document.createElement("strong");
+        title.textContent = hasVideo ? `Video · ${videoName}` : `Audio · ${audioName}`;
+
+        const sources = document.createElement("span");
+        sources.className = "muted";
+        sources.textContent = hasVideo ? `audio: ${audioName} · video: ${videoName}` : `audio: ${audioName}`;
+
+        const details = document.createElement("span");
+        details.className = "muted";
+        details.textContent = `${date.toLocaleString()} · ${formatTime(duration)} · ` + `${(blob.size / 1024).toFixed(1)} KB · ${mimeType}`;
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+
+        const download = document.createElement("a");
+        download.className = "download";
+        download.href = url;
+        download.download = filename;
+        download.textContent = "Download";
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Delete";
+
+        const media = document.createElement(hasVideo ? "video" : "audio");
+        media.controls = true;
+        media.preload = "metadata";
+        media.playsInline = true;
+        media.src = url;
+
+        remove.onclick = () => {
+          media.pause();
+          URL.revokeObjectURL(url);
+          article.remove();
+          sampleCount--;
+          updateCount();
+
+          if (!sampleCount) {
+            recordings.innerHTML = '<p id="empty">No recordings yet.</p>';
+          }
+        };
+
+        metadata.append(title, sources, details);
+        actions.append(download, remove);
+        head.append(metadata, actions);
+        article.append(head, media);
+        recordings.prepend(article);
+
+        sampleCount++;
+        updateCount();
+        await routeMedia(media);
+      }
+
+      function updateCount() {
+        recordingCount.textContent = `${sampleCount} ${sampleCount === 1 ? "sample" : "samples"}`;
+      }
+
+      recordButton.onclick = () => {
+        recorder?.state === "recording" ? stopRecording() : startRecording();
+      };
+
+      refreshButton.onclick = refreshDevices;
+      audioOutput.onchange = routeAllMedia;
+
+      navigator.mediaDevices?.addEventListener("devicechange", () => {
+        message.textContent = "Device list changed. Press Refresh devices.";
+      });
+
+      refreshDevices();
+    </script>
+  </body>
+</html>
