@@ -74,7 +74,7 @@
     <header>
       <label>Groq key: <input id="groqKey" name="groqKey" type="password" placeholder="gsk_..." /></label>
       <label>ElevenLabs key: <input id="elevenKey" name="elevenKey" type="password" placeholder="xi-api-key" /></label>
-      <label>Voice ID: <input id="voiceId" name="elevenVoice" value="JBFqnCBsd6RMkjVDRZzb" /></label>
+      <label>Voice ID: <input id="voiceId" name="elevenVoice" value="LRBMsOzRzI614MxPFGIY" /></label>
       <label
         >Input:
         <select id="audioInput" aria-label="Audio input device"></select
@@ -109,9 +109,11 @@
 
       groqKey.value = localStorage.getItem("groq_api_key") || "";
       elevenKey.value = localStorage.getItem("elevenlabs_api_key") || "";
+      voiceId.value = localStorage.getItem("elevenlabs_voice_id") || voiceId.value;
 
       groqKey.oninput = () => localStorage.setItem("groq_api_key", groqKey.value);
       elevenKey.oninput = () => localStorage.setItem("elevenlabs_api_key", elevenKey.value);
+      voiceId.oninput = () => localStorage.setItem("elevenlabs_voice_id", voiceId.value);
 
       let recorder = null;
       let micStream = null;
