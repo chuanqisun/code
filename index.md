@@ -48,6 +48,7 @@
 ## Experiments
 
 - [3D Text Editor](./3d-text-editor/)
+- [Acousitc Beacon](./acoustic-beacon/)
 - [Ancient Robots](./ancient-robots/)
 - [Answering Machine](./answering-machine/)
 - [ASCII Box](./ascii-box/)

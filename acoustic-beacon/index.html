@@ -1,0 +1,1702 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>48 kHz Acoustic Byte Beacon</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        max-width: 1150px;
+        margin: auto;
+        padding: 14px;
+        color: #000;
+        background: #fff;
+        font: 14px/1.4 monospace;
+      }
+
+      h1,
+      h2 {
+        margin: 0 0 10px;
+      }
+      h1 {
+        font-size: 21px;
+      }
+      h2 {
+        font-size: 16px;
+      }
+
+      section {
+        margin-bottom: 12px;
+        padding: 12px;
+        border: 2px solid #000;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(140px, 1fr));
+        gap: 10px;
+      }
+
+      .grid-6 {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(110px, 1fr));
+        gap: 10px;
+      }
+
+      label {
+        display: grid;
+        gap: 4px;
+      }
+
+      input,
+      select,
+      button {
+        width: 100%;
+        min-height: 34px;
+        padding: 5px 7px;
+        color: #000;
+        background: #fff;
+        border: 1px solid #000;
+        border-radius: 0;
+        font: inherit;
+      }
+
+      input[type="range"] {
+        padding: 0;
+      }
+
+      button {
+        width: auto;
+        cursor: pointer;
+        font-weight: bold;
+      }
+
+      button:hover:not(:disabled) {
+        color: #fff;
+        background: #000;
+      }
+
+      button:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+
+      output,
+      code {
+        font-weight: bold;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .status {
+        min-height: 1.4em;
+        margin-top: 8px;
+      }
+
+      .note {
+        margin: 0 0 10px;
+      }
+
+      .bits {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(55px, 1fr));
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .bit {
+        display: grid;
+        place-items: center;
+        min-height: 58px;
+        padding: 5px;
+        text-align: center;
+        border: 1px solid #000;
+      }
+
+      .bit input {
+        width: 22px;
+        min-height: 22px;
+        margin: 3px;
+      }
+
+      .bit-value {
+        font-size: 22px;
+        font-weight: bold;
+      }
+
+      .result {
+        display: grid;
+        grid-template-columns: 190px 1fr;
+        gap: 12px;
+        align-items: center;
+        margin-top: 10px;
+        padding: 12px;
+        border: 2px solid #000;
+      }
+
+      #decodedValue {
+        font-size: 44px;
+        font-weight: bold;
+        text-align: center;
+      }
+
+      code {
+        overflow-wrap: anywhere;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 470px;
+        margin-top: 10px;
+        border: 1px solid #000;
+      }
+
+      .good {
+        font-weight: bold;
+      }
+      .warning {
+        font-weight: bold;
+      }
+
+      @media (max-width: 900px) {
+        .grid,
+        .grid-6 {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .grid,
+        .grid-6 {
+          grid-template-columns: 1fr;
+        }
+
+        .bits {
+          grid-template-columns: repeat(4, 1fr);
+        }
+
+        .result {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>48 kHz ACOUSTIC BYTE BEACON</h1>
+
+    <section>
+      <h2>PROTOCOL AND FAULT TOLERANCE</h2>
+
+      <p class="note">
+        A 21 kHz pilot is followed by complementary frequency pairs spaced 50 Hz apart. Each protected bit activates either its 0-frequency or its 1-frequency.
+        The receiver tracks clock drift using the pilot.
+      </p>
+
+      <div class="grid">
+        <label>
+          Base/pilot frequency (Hz)
+          <input id="baseFrequency" type="number" value="21000" min="1000" max="23000" step="1" />
+        </label>
+
+        <label>
+          Carrier spacing (Hz)
+          <input id="spacing" type="number" value="50" min="10" max="500" step="1" />
+        </label>
+
+        <label>
+          Error-correcting code
+          <select id="codingMode">
+            <option value="raw">Raw byte — 8 carriers</option>
+            <option value="hamming">SECDED Hamming — 13 carriers</option>
+            <option value="golay" selected>Extended Golay — 24 carriers</option>
+          </select>
+        </label>
+
+        <label>
+          Maximum corrected carrier errors
+          <input id="correctionRadius" type="number" value="3" min="0" max="3" step="1" />
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 10px">
+        <label>
+          Pilot relative strength
+          <input id="pilotWeight" type="number" value="1.75" min="0.25" max="5" step="0.05" />
+        </label>
+
+        <label>
+          Protected bits
+          <output id="protectedBitCount">24</output>
+        </label>
+
+        <label>
+          Occupied range
+          <output id="occupiedRange">21000–23400 Hz</output>
+        </label>
+
+        <label>
+          Code capability
+          <output id="codeCapability">Correct 3 errors</output>
+        </label>
+      </div>
+
+      <div id="protocolStatus" class="status"></div>
+    </section>
+
+    <section>
+      <h2>SENDER — CONTINUOUS SEND-ONLY BEACON</h2>
+
+      <div class="grid">
+        <label>
+          Byte value (0–255)
+          <input id="byteValue" type="number" value="85" min="0" max="255" step="1" />
+        </label>
+
+        <label>
+          Output level: <output id="volumeValue">80%</output>
+          <input id="volume" type="range" value="0.80" min="0" max="1" step="0.01" />
+        </label>
+
+        <label>
+          Speaker
+          <select id="speaker">
+            <option value="">System default</option>
+          </select>
+        </label>
+
+        <label>
+          Download duration (seconds)
+          <input id="wavDuration" type="number" value="5" min="0.1" max="20" step="0.1" />
+        </label>
+      </div>
+
+      <div id="sendBits" class="bits"></div>
+
+      <div class="status">
+        Encoded carriers:
+        <code id="sendCodeword">—</code>
+      </div>
+
+      <div class="actions">
+        <button id="startBeacon">Start beacon</button>
+        <button id="stopBeacon" disabled>Stop beacon</button>
+        <button id="downloadWav">Download 48 kHz WAV</button>
+      </div>
+
+      <div id="senderStatus" class="status">Beacon stopped.</div>
+    </section>
+
+    <section>
+      <h2>RECEIVER SENSITIVITY</h2>
+
+      <div class="grid">
+        <label>
+          Sensitivity preset
+          <select id="sensitivityPreset">
+            <option value="conservative">Conservative</option>
+            <option value="balanced" selected>Balanced</option>
+            <option value="sensitive">High sensitivity</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+
+        <label>
+          Minimum pilot SNR (dB)
+          <input id="minimumPilotSnr" type="number" value="7" min="0" max="50" step="0.5" />
+        </label>
+
+        <label>
+          Minimum carrier SNR (dB)
+          <input id="minimumCarrierSnr" type="number" value="7" min="0" max="50" step="0.5" />
+        </label>
+
+        <label>
+          Minimum pair margin (dB)
+          <input id="minimumPairMargin" type="number" value="3" min="0" max="30" step="0.5" />
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 10px">
+        <label>
+          Maximum weak carrier pairs
+          <input id="maximumWeakPairs" type="number" value="4" min="0" max="24" step="1" />
+        </label>
+
+        <label>
+          Pilot tracking range (±Hz)
+          <input id="trackingRange" type="number" value="20" min="0" max="24" step="1" />
+        </label>
+
+        <label>
+          Analysis bandwidth (Hz)
+          <input id="analysisBandwidth" type="number" value="10" min="2" max="40" step="1" />
+        </label>
+
+        <label>
+          FFT size
+          <select id="fftSize">
+            <option value="8192">8192</option>
+            <option value="16384">16384</option>
+            <option value="32768" selected>32768</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 10px">
+        <label>
+          Spectrum smoothing
+          <input id="smoothing" type="number" value="0.35" min="0" max="0.95" step="0.05" />
+        </label>
+
+        <label>
+          Vote window
+          <input id="voteWindow" type="number" value="8" min="1" max="50" step="1" />
+        </label>
+
+        <label>
+          Votes required
+          <input id="votesRequired" type="number" value="5" min="1" max="50" step="1" />
+        </label>
+
+        <label>
+          Decode interval (ms)
+          <input id="decodeInterval" type="number" value="120" min="40" max="1000" step="10" />
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2>MICROPHONE DECODER</h2>
+
+      <div class="grid">
+        <label>
+          Microphone
+          <select id="microphone">
+            <option value="">System default</option>
+          </select>
+        </label>
+
+        <label>
+          Requested sample rate
+          <output>48000 Hz</output>
+        </label>
+
+        <label>
+          Actual input sample rate
+          <output id="actualInputRate">—</output>
+        </label>
+
+        <label>
+          Tracked frequency offset
+          <output id="trackedOffset">—</output>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="startMicrophone">Start microphone</button>
+        <button id="stopMicrophone" disabled>Stop microphone</button>
+        <button id="refreshDevices">Refresh devices</button>
+      </div>
+
+      <div id="microphoneStatus" class="status">Microphone inactive. HTTPS or localhost is normally required.</div>
+
+      <div class="result">
+        <div>
+          <div style="text-align: center">DECODED BYTE</div>
+          <div id="decodedValue">—</div>
+        </div>
+
+        <div>
+          <div id="receiveBits" class="bits"></div>
+          <div id="decodeStatus" class="status">Waiting for microphone.</div>
+          <div class="status">
+            Received protected bits:
+            <code id="receivedCodeword">—</code>
+          </div>
+        </div>
+      </div>
+
+      <canvas id="carrierGraph"></canvas>
+    </section>
+
+    <audio id="audioOutput" autoplay hidden></audio>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const $ = (id) => document.getElementById(id);
+
+        const baseFrequency = $("baseFrequency");
+        const spacing = $("spacing");
+        const codingMode = $("codingMode");
+        const correctionRadius = $("correctionRadius");
+        const pilotWeight = $("pilotWeight");
+        const byteValue = $("byteValue");
+        const volume = $("volume");
+        const speaker = $("speaker");
+        const microphone = $("microphone");
+        const audioOutput = $("audioOutput");
+
+        const analysisBandwidth = $("analysisBandwidth");
+        const minimumPilotSnr = $("minimumPilotSnr");
+        const minimumCarrierSnr = $("minimumCarrierSnr");
+        const minimumPairMargin = $("minimumPairMargin");
+        const maximumWeakPairs = $("maximumWeakPairs");
+        const trackingRange = $("trackingRange");
+        const fftSize = $("fftSize");
+        const smoothing = $("smoothing");
+        const voteWindow = $("voteWindow");
+        const votesRequired = $("votesRequired");
+        const decodeInterval = $("decodeInterval");
+
+        const canvas = $("carrierGraph");
+        const graph = canvas.getContext("2d");
+
+        const modes = {
+          raw: {
+            name: "Raw",
+            bits: 8,
+            distance: 1,
+            maximumCorrection: 0,
+          },
+          hamming: {
+            name: "SECDED Hamming",
+            bits: 13,
+            distance: 4,
+            maximumCorrection: 1,
+          },
+          golay: {
+            name: "Extended Golay",
+            bits: 24,
+            distance: 8,
+            maximumCorrection: 3,
+          },
+        };
+
+        let outputContext;
+        let outputDestination;
+        let masterGain;
+        let beaconNodes = [];
+        let beaconRunning = false;
+        let beaconWanted = false;
+        let beaconToken = 0;
+        let restartTimer;
+
+        let inputContext;
+        let analyser;
+        let spectrum;
+        let microphoneStream;
+        let microphoneSource;
+        let microphoneActive = false;
+        let microphoneToken = 0;
+
+        let latestAnalysis = null;
+        let voteHistory = [];
+        let lastDecodeTime = 0;
+
+        const codebookCache = new Map();
+        const senderBitInputs = [];
+        const receiverBitDisplays = [];
+
+        function numeric(input, fallback, min, max) {
+          const n = Number(input.value);
+          return Math.max(min, Math.min(max, Number.isFinite(n) ? n : fallback));
+        }
+
+        function integer(input, fallback, min, max) {
+          return Math.round(numeric(input, fallback, min, max));
+        }
+
+        function selectedText(select) {
+          return select.selectedOptions[0]?.textContent || "System default";
+        }
+
+        function getMode() {
+          return modes[codingMode.value] || modes.golay;
+        }
+
+        function getByte() {
+          return integer(byteValue, 0, 0, 255);
+        }
+
+        function getProtocol() {
+          const mode = getMode();
+          const base = numeric(baseFrequency, 21000, 1000, 23000);
+          const step = numeric(spacing, 50, 10, 500);
+
+          return {
+            mode,
+            base,
+            step,
+            pilotWeight: numeric(pilotWeight, 1.75, 0.25, 5),
+            highest: base + mode.bits * 2 * step,
+          };
+        }
+
+        function popcount(value) {
+          value >>>= 0;
+          let count = 0;
+
+          while (value) {
+            value &= value - 1;
+            count++;
+          }
+
+          return count;
+        }
+
+        /* ---------- Error-correcting codes ---------- */
+
+        function encodeRaw(value) {
+          return Array.from({ length: 8 }, (_, bit) => (value >> bit) & 1);
+        }
+
+        function encodeHamming(value) {
+          const code = new Array(14).fill(0);
+          const dataPositions = [3, 5, 6, 7, 9, 10, 11, 12];
+
+          for (let bit = 0; bit < 8; bit++) {
+            code[dataPositions[bit]] = (value >> bit) & 1;
+          }
+
+          for (const parityPosition of [1, 2, 4, 8]) {
+            let parity = 0;
+
+            for (let position = 1; position <= 12; position++) {
+              if (position & parityPosition) parity ^= code[position];
+            }
+
+            code[parityPosition] = parity;
+          }
+
+          let overallParity = 0;
+          for (let position = 1; position <= 12; position++) {
+            overallParity ^= code[position];
+          }
+
+          code[13] = overallParity;
+          return code.slice(1);
+        }
+
+        function encodeGolay(value) {
+          /*
+      Systematic binary Golay (23,12,7), extended with an even parity
+      bit to produce (24,12,8). Only 8 of the 12 message bits are used.
+    */
+          const generator = (1 << 11) | (1 << 10) | (1 << 6) | (1 << 5) | (1 << 4) | (1 << 2) | 1;
+
+          const message = value & 0xff;
+          const dividend = message << 11;
+          let remainder = dividend;
+
+          for (let bit = 22; bit >= 11; bit--) {
+            if (remainder & (1 << bit)) {
+              remainder ^= generator << (bit - 11);
+            }
+          }
+
+          const code23 = dividend | (remainder & 0x7ff);
+          const parity = popcount(code23) & 1;
+          const code24 = code23 | (parity << 23);
+
+          return Array.from({ length: 24 }, (_, bit) => (code24 >>> bit) & 1);
+        }
+
+        function encodeValue(modeName, value) {
+          if (modeName === "raw") return encodeRaw(value);
+          if (modeName === "hamming") return encodeHamming(value);
+          return encodeGolay(value);
+        }
+
+        function getCodebook(modeName) {
+          if (codebookCache.has(modeName)) {
+            return codebookCache.get(modeName);
+          }
+
+          const codebook = [];
+
+          for (let value = 0; value <= 255; value++) {
+            codebook.push({
+              value,
+              bits: encodeValue(modeName, value),
+            });
+          }
+
+          codebookCache.set(modeName, codebook);
+          return codebook;
+        }
+
+        function decodeNearest(receivedBits, confidences) {
+          const codebook = getCodebook(codingMode.value);
+          let best = null;
+          let bestDistance = Infinity;
+          let bestWeightedCost = Infinity;
+          let secondDistance = Infinity;
+
+          for (const candidate of codebook) {
+            let distance = 0;
+            let weightedCost = 0;
+
+            for (let bit = 0; bit < receivedBits.length; bit++) {
+              if (candidate.bits[bit] !== receivedBits[bit]) {
+                distance++;
+                weightedCost += Math.min(30, confidences[bit] || 0.01);
+              }
+            }
+
+            if (distance < bestDistance || (distance === bestDistance && weightedCost < bestWeightedCost)) {
+              if (best !== null) secondDistance = bestDistance;
+
+              best = candidate;
+              bestDistance = distance;
+              bestWeightedCost = weightedCost;
+            } else if (distance < secondDistance) {
+              secondDistance = distance;
+            }
+          }
+
+          const radius = integer(correctionRadius, getMode().maximumCorrection, 0, getMode().maximumCorrection);
+
+          return {
+            value: best.value,
+            bits: best.bits,
+            distance: bestDistance,
+            secondDistance,
+            accepted: bestDistance <= radius,
+          };
+        }
+
+        /* ---------- UI ---------- */
+
+        function createBitUI() {
+          for (let bit = 7; bit >= 0; bit--) {
+            const senderBox = document.createElement("label");
+            senderBox.className = "bit";
+            senderBox.textContent = `D${bit}`;
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.dataset.bit = bit;
+
+            senderBox.append(checkbox);
+            $("sendBits").append(senderBox);
+            senderBitInputs.push(checkbox);
+
+            checkbox.addEventListener("change", () => {
+              let value = 0;
+
+              for (const input of senderBitInputs) {
+                if (input.checked) {
+                  value |= 1 << Number(input.dataset.bit);
+                }
+              }
+
+              byteValue.value = value;
+              updateSenderValue();
+            });
+
+            const receiverBox = document.createElement("div");
+            receiverBox.className = "bit";
+            receiverBox.innerHTML = `<div>D${bit}</div><div class="bit-value">—</div>`;
+
+            $("receiveBits").append(receiverBox);
+
+            receiverBitDisplays.push({
+              bit,
+              element: receiverBox.querySelector(".bit-value"),
+            });
+          }
+        }
+
+        function codewordText(bits) {
+          return bits.map((bit, index) => `C${index + 1}:${bit}`).join(" ");
+        }
+
+        function showDecodedValue(value) {
+          $("decodedValue").textContent = value === null ? "—" : value;
+
+          for (const display of receiverBitDisplays) {
+            display.element.textContent = value === null ? "—" : (value >> display.bit) & 1;
+          }
+        }
+
+        function updateSenderValue() {
+          const value = getByte();
+          byteValue.value = value;
+
+          for (const input of senderBitInputs) {
+            input.checked = Boolean(value & (1 << Number(input.dataset.bit)));
+          }
+
+          const code = encodeValue(codingMode.value, value);
+          $("sendCodeword").textContent = codewordText(code);
+
+          if (beaconRunning) applyBeaconState();
+        }
+
+        function resetDecoder() {
+          voteHistory = [];
+          latestAnalysis = null;
+          $("receivedCodeword").textContent = "—";
+          $("trackedOffset").value = "—";
+          showDecodedValue(null);
+        }
+
+        function updateProtocolUI() {
+          const protocol = getProtocol();
+          const mode = protocol.mode;
+
+          correctionRadius.max = mode.maximumCorrection;
+          correctionRadius.value = Math.min(integer(correctionRadius, mode.maximumCorrection, 0, mode.maximumCorrection), mode.maximumCorrection);
+
+          maximumWeakPairs.max = mode.bits;
+
+          $("protectedBitCount").value = mode.bits;
+          $("occupiedRange").value = `${Math.round(protocol.base)}–${Math.round(protocol.highest)} Hz`;
+
+          $("codeCapability").value = mode.maximumCorrection ? `Up to ${mode.maximumCorrection} errors; distance ${mode.distance}` : "No error correction";
+
+          const rates = [outputContext?.sampleRate, inputContext?.sampleRate].filter(Boolean);
+
+          const sampleRate = rates.length ? Math.min(...rates) : 48000;
+
+          if (protocol.highest >= sampleRate / 2 - 20) {
+            $("protocolStatus").textContent =
+              `INVALID: ${Math.round(protocol.highest)} Hz is too close to or ` + `above the ${Math.round(sampleRate / 2)} Hz Nyquist limit.`;
+          } else if (numeric(analysisBandwidth, 10, 2, 40) >= protocol.step * 0.8) {
+            $("protocolStatus").textContent = "Warning: analysis bandwidth is too wide for the carrier spacing.";
+          } else {
+            $("protocolStatus").textContent =
+              `${mode.name}: pilot plus ${mode.bits} active data tones. ` + `Nyquist headroom: ${Math.round(sampleRate / 2 - protocol.highest)} Hz.`;
+          }
+
+          updateSenderValue();
+        }
+
+        /* ---------- Sender ---------- */
+
+        function createAudioContext48k() {
+          try {
+            return new (window.AudioContext || window.webkitAudioContext)({
+              sampleRate: 48000,
+            });
+          } catch (_) {
+            return new (window.AudioContext || window.webkitAudioContext)();
+          }
+        }
+
+        async function prepareOutput() {
+          if (!outputContext) {
+            outputContext = createAudioContext48k();
+            outputDestination = outputContext.createMediaStreamDestination();
+            audioOutput.srcObject = outputDestination.stream;
+          }
+
+          await outputContext.resume();
+
+          if (audioOutput.setSinkId) {
+            await audioOutput.setSinkId(speaker.value);
+          } else if (speaker.value) {
+            throw new Error("Speaker selection is unsupported.");
+          }
+
+          await audioOutput.play();
+        }
+
+        function makePhaseWave(context, phase) {
+          const real = new Float32Array(2);
+          const imaginary = new Float32Array(2);
+
+          real[1] = Math.sin(phase);
+          imaginary[1] = Math.cos(phase);
+
+          return context.createPeriodicWave(real, imaginary, {
+            disableNormalization: true,
+          });
+        }
+
+        function destroyBeaconNodes() {
+          const oldNodes = beaconNodes;
+          const oldMaster = masterGain;
+
+          beaconNodes = [];
+          masterGain = null;
+          beaconRunning = false;
+
+          if (!outputContext || !oldMaster) return;
+
+          const now = outputContext.currentTime;
+
+          oldMaster.gain.cancelScheduledValues(now);
+          oldMaster.gain.setValueAtTime(oldMaster.gain.value, now);
+          oldMaster.gain.linearRampToValueAtTime(0, now + 0.035);
+
+          setTimeout(() => {
+            for (const node of oldNodes) {
+              try {
+                node.oscillator.stop();
+              } catch (_) {}
+              try {
+                node.oscillator.disconnect();
+              } catch (_) {}
+              try {
+                node.gain.disconnect();
+              } catch (_) {}
+            }
+
+            try {
+              oldMaster.disconnect();
+            } catch (_) {}
+          }, 80);
+        }
+
+        function applyBeaconState() {
+          if (!beaconRunning || !outputContext) return;
+
+          const protocol = getProtocol();
+          const code = encodeValue(codingMode.value, getByte());
+          const outputLevel = numeric(volume, 0.8, 0, 1);
+
+          /*
+      Dividing by the sum of all active tone weights guarantees that
+      even a worst-case aligned peak does not exceed the selected level.
+    */
+          const perTone = outputLevel / (protocol.mode.bits + protocol.pilotWeight);
+
+          const now = outputContext.currentTime;
+
+          for (const node of beaconNodes) {
+            let target = 0;
+
+            if (node.type === "pilot") {
+              target = perTone * protocol.pilotWeight;
+            } else if (code[node.position - 1] === node.bitValue) {
+              target = perTone;
+            }
+
+            node.gain.gain.cancelScheduledValues(now);
+            node.gain.gain.setTargetAtTime(target, now, 0.012);
+          }
+
+          $("senderStatus").textContent = `Broadcasting byte ${getByte()} using ${protocol.mode.name}; ` + `${outputContext.sampleRate} Hz output context.`;
+        }
+
+        async function startBeacon() {
+          const token = ++beaconToken;
+          beaconWanted = true;
+          destroyBeaconNodes();
+
+          try {
+            await prepareOutput();
+
+            if (token !== beaconToken || !beaconWanted) return;
+
+            const protocol = getProtocol();
+
+            if (protocol.highest >= outputContext.sampleRate / 2 - 20) {
+              throw new Error(
+                `Protocol requires ${Math.round(protocol.highest)} Hz, but ` + `output Nyquist is ${Math.round(outputContext.sampleRate / 2)} Hz.`,
+              );
+            }
+
+            masterGain = outputContext.createGain();
+            masterGain.gain.value = 1;
+            masterGain.connect(outputDestination);
+
+            let toneIndex = 0;
+
+            function addTone(frequency, metadata) {
+              const oscillator = outputContext.createOscillator();
+              const gain = outputContext.createGain();
+
+              const phase = ((toneIndex++ * 0.61803398875) % 1) * Math.PI * 2;
+
+              oscillator.setPeriodicWave(makePhaseWave(outputContext, phase));
+
+              oscillator.frequency.value = frequency;
+              gain.gain.value = 0;
+
+              oscillator.connect(gain);
+              gain.connect(masterGain);
+              oscillator.start();
+
+              beaconNodes.push({
+                oscillator,
+                gain,
+                frequency,
+                phase,
+                ...metadata,
+              });
+            }
+
+            addTone(protocol.base, { type: "pilot" });
+
+            for (let position = 1; position <= protocol.mode.bits; position++) {
+              addTone(protocol.base + (2 * position - 1) * protocol.step, {
+                type: "data",
+                position,
+                bitValue: 0,
+              });
+
+              addTone(protocol.base + 2 * position * protocol.step, {
+                type: "data",
+                position,
+                bitValue: 1,
+              });
+            }
+
+            beaconRunning = true;
+            $("startBeacon").disabled = true;
+            $("stopBeacon").disabled = false;
+            applyBeaconState();
+            updateProtocolUI();
+          } catch (error) {
+            if (token !== beaconToken) return;
+
+            beaconWanted = false;
+            destroyBeaconNodes();
+            $("startBeacon").disabled = false;
+            $("stopBeacon").disabled = true;
+            $("senderStatus").textContent = `Beacon error: ${error.message}`;
+          }
+        }
+
+        function stopBeacon() {
+          ++beaconToken;
+          beaconWanted = false;
+          clearTimeout(restartTimer);
+          destroyBeaconNodes();
+
+          $("startBeacon").disabled = false;
+          $("stopBeacon").disabled = true;
+          $("senderStatus").textContent = "Beacon stopped.";
+        }
+
+        function scheduleBeaconRestart() {
+          if (!beaconWanted) return;
+
+          clearTimeout(restartTimer);
+          restartTimer = setTimeout(startBeacon, 180);
+        }
+
+        /* ---------- WAV download ---------- */
+
+        function createBeaconWav(seconds) {
+          const sampleRate = 48000;
+          const protocol = getProtocol();
+
+          if (protocol.highest >= sampleRate / 2 - 20) {
+            throw new Error("Protocol exceeds the 48 kHz WAV frequency limit.");
+          }
+
+          const code = encodeValue(codingMode.value, getByte());
+          const outputLevel = numeric(volume, 0.8, 0, 1);
+          const perTone = outputLevel / (protocol.mode.bits + protocol.pilotWeight);
+
+          const tones = [
+            {
+              frequency: protocol.base,
+              amplitude: perTone * protocol.pilotWeight,
+              phase: 0,
+            },
+          ];
+
+          for (let position = 1; position <= protocol.mode.bits; position++) {
+            const bit = code[position - 1];
+            const toneNumber = 2 * position - 1 + bit;
+
+            tones.push({
+              frequency: protocol.base + toneNumber * protocol.step,
+              amplitude: perTone,
+              phase: ((position * 0.61803398875) % 1) * Math.PI * 2,
+            });
+          }
+
+          const sampleCount = Math.floor(seconds * sampleRate);
+          const buffer = new ArrayBuffer(44 + sampleCount * 2);
+          const view = new DataView(buffer);
+
+          function text(offset, value) {
+            for (let i = 0; i < value.length; i++) {
+              view.setUint8(offset + i, value.charCodeAt(i));
+            }
+          }
+
+          text(0, "RIFF");
+          view.setUint32(4, 36 + sampleCount * 2, true);
+          text(8, "WAVE");
+          text(12, "fmt ");
+          view.setUint32(16, 16, true);
+          view.setUint16(20, 1, true);
+          view.setUint16(22, 1, true);
+          view.setUint32(24, sampleRate, true);
+          view.setUint32(28, sampleRate * 2, true);
+          view.setUint16(32, 2, true);
+          view.setUint16(34, 16, true);
+          text(36, "data");
+          view.setUint32(40, sampleCount * 2, true);
+
+          const phases = tones.map((tone) => tone.phase);
+          const increments = tones.map((tone) => (2 * Math.PI * tone.frequency) / sampleRate);
+
+          for (let sample = 0; sample < sampleCount; sample++) {
+            let value = 0;
+
+            for (let tone = 0; tone < tones.length; tone++) {
+              value += Math.sin(phases[tone]) * tones[tone].amplitude;
+
+              phases[tone] += increments[tone];
+
+              if (phases[tone] >= Math.PI * 2) {
+                phases[tone] -= Math.PI * 2;
+              }
+            }
+
+            value = Math.max(-1, Math.min(1, value));
+            view.setInt16(44 + sample * 2, value * 32767, true);
+          }
+
+          return new Blob([buffer], { type: "audio/wav" });
+        }
+
+        function downloadWav() {
+          $("senderStatus").textContent = "Generating WAV...";
+
+          setTimeout(() => {
+            try {
+              const seconds = numeric($("wavDuration"), 5, 0.1, 20);
+
+              const blob = createBeaconWav(seconds);
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+
+              link.href = url;
+              link.download = `byte-${getByte()}-${codingMode.value}-48khz.wav`;
+
+              link.click();
+
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+              $("senderStatus").textContent = "WAV downloaded.";
+            } catch (error) {
+              $("senderStatus").textContent = `WAV error: ${error.message}`;
+            }
+          }, 20);
+        }
+
+        /* ---------- Devices ---------- */
+
+        async function refreshDevices() {
+          if (!navigator.mediaDevices?.enumerateDevices) return;
+
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const oldMicrophone = microphone.value;
+            const oldSpeaker = speaker.value;
+
+            microphone.innerHTML = '<option value="">System default</option>';
+            speaker.innerHTML = '<option value="">System default</option>';
+
+            let microphoneNumber = 1;
+            let speakerNumber = 1;
+
+            for (const device of devices) {
+              const option = document.createElement("option");
+              option.value = device.deviceId;
+
+              if (device.kind === "audioinput") {
+                option.textContent = device.label || `Microphone ${microphoneNumber++}`;
+                microphone.append(option);
+              }
+
+              if (device.kind === "audiooutput") {
+                option.textContent = device.label || `Speaker ${speakerNumber++}`;
+                speaker.append(option);
+              }
+            }
+
+            if ([...microphone.options].some((option) => option.value === oldMicrophone)) {
+              microphone.value = oldMicrophone;
+            }
+
+            if ([...speaker.options].some((option) => option.value === oldSpeaker)) {
+              speaker.value = oldSpeaker;
+            }
+
+            if (!audioOutput.setSinkId) speaker.disabled = true;
+          } catch (error) {
+            $("microphoneStatus").textContent = `Device error: ${error.message}`;
+          }
+        }
+
+        /* ---------- Microphone ---------- */
+
+        function configureAnalyser() {
+          if (!analyser) return;
+
+          analyser.fftSize = Number(fftSize.value);
+          analyser.minDecibels = -120;
+          analyser.maxDecibels = -5;
+          analyser.smoothingTimeConstant = numeric(smoothing, 0.35, 0, 0.95);
+
+          spectrum = new Float32Array(analyser.frequencyBinCount);
+        }
+
+        function releaseMicrophone() {
+          if (microphoneSource) {
+            try {
+              microphoneSource.disconnect();
+            } catch (_) {}
+            microphoneSource = null;
+          }
+
+          if (microphoneStream) {
+            microphoneStream.getTracks().forEach((track) => track.stop());
+            microphoneStream = null;
+          }
+        }
+
+        async function startMicrophone() {
+          if (!navigator.mediaDevices?.getUserMedia) {
+            $("microphoneStatus").textContent = "Microphone input is unsupported.";
+            return;
+          }
+
+          const token = ++microphoneToken;
+          releaseMicrophone();
+
+          $("microphoneStatus").textContent = "Opening microphone...";
+
+          try {
+            const audio = {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              sampleRate: { ideal: 48000 },
+            };
+
+            if (microphone.value) {
+              audio.deviceId = { exact: microphone.value };
+            }
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio });
+
+            if (token !== microphoneToken) {
+              stream.getTracks().forEach((track) => track.stop());
+              return;
+            }
+
+            if (!inputContext) {
+              inputContext = createAudioContext48k();
+              analyser = inputContext.createAnalyser();
+            }
+
+            await inputContext.resume();
+            configureAnalyser();
+
+            microphoneStream = stream;
+            microphoneSource = inputContext.createMediaStreamSource(stream);
+
+            microphoneSource.connect(analyser);
+            microphoneActive = true;
+            voteHistory = [];
+            latestAnalysis = null;
+
+            $("actualInputRate").value = `${inputContext.sampleRate} Hz`;
+            $("startMicrophone").disabled = true;
+            $("stopMicrophone").disabled = false;
+
+            $("microphoneStatus").textContent = `Listening through ${selectedText(microphone)}.`;
+
+            updateProtocolUI();
+            await refreshDevices();
+          } catch (error) {
+            if (token !== microphoneToken) return;
+
+            microphoneActive = false;
+            $("startMicrophone").disabled = false;
+            $("stopMicrophone").disabled = true;
+
+            $("microphoneStatus").textContent = `Microphone error: ${error.message}`;
+          }
+        }
+
+        function stopMicrophone() {
+          ++microphoneToken;
+          microphoneActive = false;
+          releaseMicrophone();
+          resetDecoder();
+
+          $("startMicrophone").disabled = false;
+          $("stopMicrophone").disabled = true;
+          $("actualInputRate").value = "—";
+          $("microphoneStatus").textContent = "Microphone inactive.";
+          $("decodeStatus").textContent = "Waiting for microphone.";
+        }
+
+        /* ---------- Signal processing ---------- */
+
+        function powerAt(frequency, bandwidth = null) {
+          const width = bandwidth ?? numeric(analysisBandwidth, 10, 2, 40);
+
+          const hzPerBin = inputContext.sampleRate / analyser.fftSize;
+          const first = Math.max(0, Math.floor((frequency - width / 2) / hzPerBin));
+
+          const last = Math.min(spectrum.length - 1, Math.ceil((frequency + width / 2) / hzPerBin));
+
+          let power = 0;
+          let count = 0;
+
+          for (let bin = first; bin <= last; bin++) {
+            const db = Number.isFinite(spectrum[bin]) ? spectrum[bin] : -120;
+
+            power += 10 ** (db / 10);
+            count++;
+          }
+
+          return count ? power / count : 1e-12;
+        }
+
+        function powerToDb(power) {
+          return 10 * Math.log10(Math.max(power, 1e-12));
+        }
+
+        function median(values) {
+          const sorted = [...values].sort((a, b) => a - b);
+          const middle = Math.floor(sorted.length / 2);
+
+          return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+        }
+
+        function locatePilot(nominalFrequency) {
+          const range = numeric(trackingRange, 20, 0, 24);
+          const hzPerBin = inputContext.sampleRate / analyser.fftSize;
+
+          const first = Math.max(0, Math.floor((nominalFrequency - range) / hzPerBin));
+
+          const last = Math.min(spectrum.length - 1, Math.ceil((nominalFrequency + range) / hzPerBin));
+
+          let peakBin = first;
+          let peakDb = -Infinity;
+
+          for (let bin = first; bin <= last; bin++) {
+            if (spectrum[bin] > peakDb) {
+              peakDb = spectrum[bin];
+              peakBin = bin;
+            }
+          }
+
+          let weightedFrequency = 0;
+          let totalWeight = 0;
+
+          for (let bin = Math.max(first, peakBin - 2); bin <= Math.min(last, peakBin + 2); bin++) {
+            const weight = 10 ** (spectrum[bin] / 10);
+            weightedFrequency += bin * hzPerBin * weight;
+            totalWeight += weight;
+          }
+
+          return totalWeight ? weightedFrequency / totalWeight : peakBin * hzPerBin;
+        }
+
+        function analyzeSignal() {
+          const protocol = getProtocol();
+
+          if (protocol.highest >= inputContext.sampleRate / 2 - 20) {
+            return {
+              valid: false,
+              reason: "Protocol exceeds the microphone Nyquist limit.",
+              pairs: [],
+            };
+          }
+
+          analyser.getFloatFrequencyData(spectrum);
+
+          const measuredPilot = locatePilot(protocol.base);
+          const frequencyScale = measuredPilot / protocol.base;
+          const frequencyOffset = measuredPilot - protocol.base;
+
+          const noiseSamples = [];
+
+          for (let index = 0; index < protocol.mode.bits * 2; index++) {
+            const nominal = protocol.base + (index + 0.5) * protocol.step;
+
+            noiseSamples.push(powerAt(nominal * frequencyScale, 4));
+          }
+
+          const noiseFloor = Math.max(1e-12, median(noiseSamples));
+          const pilotPower = powerAt(protocol.base * frequencyScale);
+
+          const pilotSnr = powerToDb(pilotPower / noiseFloor);
+
+          const rawBits = [];
+          const confidences = [];
+          const pairs = [];
+          let weakPairs = 0;
+
+          const requiredMargin = numeric(minimumPairMargin, 3, 0, 30);
+
+          const requiredCarrierSnr = numeric(minimumCarrierSnr, 7, 0, 50);
+
+          for (let position = 1; position <= protocol.mode.bits; position++) {
+            const nominal0 = protocol.base + (2 * position - 1) * protocol.step;
+
+            const nominal1 = protocol.base + 2 * position * protocol.step;
+
+            const frequency0 = nominal0 * frequencyScale;
+            const frequency1 = nominal1 * frequencyScale;
+
+            const power0 = powerAt(frequency0);
+            const power1 = powerAt(frequency1);
+
+            const db0 = powerToDb(power0);
+            const db1 = powerToDb(power1);
+            const margin = db1 - db0;
+            const confidence = Math.abs(margin);
+            const bit = margin > 0 ? 1 : 0;
+            const selectedPower = Math.max(power0, power1);
+            const carrierSnr = powerToDb(selectedPower / noiseFloor);
+
+            const weak = confidence < requiredMargin || carrierSnr < requiredCarrierSnr;
+
+            if (weak) weakPairs++;
+
+            rawBits.push(bit);
+            confidences.push(confidence);
+
+            pairs.push({
+              position,
+              frequency0,
+              frequency1,
+              db0,
+              db1,
+              bit,
+              confidence,
+              carrierSnr,
+              weak,
+            });
+          }
+
+          const decoded = decodeNearest(rawBits, confidences);
+          const pilotValid = pilotSnr >= numeric(minimumPilotSnr, 7, 0, 50);
+
+          const weakValid = weakPairs <= integer(maximumWeakPairs, 4, 0, protocol.mode.bits);
+
+          let reason;
+
+          if (!pilotValid) {
+            reason = `Pilot below threshold: ${pilotSnr.toFixed(1)} dB SNR`;
+          } else if (!weakValid) {
+            reason = `${weakPairs} weak pairs exceed the configured limit`;
+          } else if (!decoded.accepted) {
+            reason = `Nearest codeword is ${decoded.distance} errors away; ` + `correction limit is ${correctionRadius.value}`;
+          } else if (decoded.distance) {
+            reason = `Corrected ${decoded.distance} carrier ` + `${decoded.distance === 1 ? "error" : "errors"}`;
+          } else {
+            reason = "Exact protected codeword";
+          }
+
+          return {
+            valid: pilotValid && weakValid && decoded.accepted,
+            reason,
+            measuredPilot,
+            frequencyOffset,
+            pilotSnr,
+            noiseFloor,
+            weakPairs,
+            rawBits,
+            confidences,
+            pairs,
+            decoded,
+          };
+        }
+
+        function updateVoting(analysis) {
+          const windowSize = integer(voteWindow, 8, 1, 50);
+
+          const required = Math.min(windowSize, integer(votesRequired, 5, 1, 50));
+
+          voteHistory.push(analysis.valid ? analysis.decoded.value : null);
+
+          while (voteHistory.length > windowSize) {
+            voteHistory.shift();
+          }
+
+          const counts = new Map();
+
+          for (const value of voteHistory) {
+            if (value !== null) {
+              counts.set(value, (counts.get(value) || 0) + 1);
+            }
+          }
+
+          let winner = null;
+          let winnerCount = 0;
+
+          for (const [value, count] of counts) {
+            if (count > winnerCount) {
+              winner = value;
+              winnerCount = count;
+            }
+          }
+
+          if (winner !== null && winnerCount >= required) {
+            showDecodedValue(winner);
+
+            $("decodeStatus").textContent =
+              `Accepted ${winner}: ${winnerCount}/${voteHistory.length} votes. ` + `${analysis.reason}. Pilot ${analysis.pilotSnr.toFixed(1)} dB SNR.`;
+          } else {
+            showDecodedValue(null);
+
+            $("decodeStatus").textContent = `${analysis.reason}. Votes ${winnerCount}/${required}.`;
+          }
+
+          $("receivedCodeword").textContent = analysis.rawBits ? codewordText(analysis.rawBits) : "—";
+
+          $("trackedOffset").value = Number.isFinite(analysis.frequencyOffset)
+            ? `${analysis.frequencyOffset >= 0 ? "+" : ""}` + `${analysis.frequencyOffset.toFixed(2)} Hz`
+            : "—";
+        }
+
+        /* ---------- Graph ---------- */
+
+        function resizeCanvas() {
+          const rect = canvas.getBoundingClientRect();
+          const scale = window.devicePixelRatio || 1;
+
+          canvas.width = Math.round(rect.width * scale);
+          canvas.height = Math.round(rect.height * scale);
+          graph.setTransform(scale, 0, 0, scale, 0, 0);
+        }
+
+        function drawGraph() {
+          const width = canvas.clientWidth;
+          const height = canvas.clientHeight;
+
+          graph.clearRect(0, 0, width, height);
+          graph.fillStyle = "#fff";
+          graph.fillRect(0, 0, width, height);
+          graph.font = "11px monospace";
+
+          if (!latestAnalysis?.pairs?.length) {
+            graph.fillStyle = "#000";
+            graph.textAlign = "center";
+            graph.textBaseline = "middle";
+            graph.fillText("Start the microphone to view carrier pairs.", width / 2, height / 2);
+            return;
+          }
+
+          const pairs = latestAnalysis.pairs;
+          const left = 48;
+          const center = width / 2;
+          const right = width - 8;
+          const top = 25;
+          const rowHeight = (height - top - 8) / pairs.length;
+          const barWidth = Math.max(20, center - left - 78);
+
+          function level(db) {
+            return Math.max(0, Math.min(1, (db + 115) / 105));
+          }
+
+          graph.fillStyle = "#000";
+          graph.textAlign = "left";
+          graph.textBaseline = "middle";
+
+          graph.fillText(`0-frequency                 1-frequency   ` + `pilot ${latestAnalysis.pilotSnr.toFixed(1)} dB SNR`, left, 11);
+
+          for (let index = 0; index < pairs.length; index++) {
+            const pair = pairs[index];
+            const y = top + index * rowHeight;
+            const barHeight = Math.max(4, rowHeight - 5);
+
+            graph.fillStyle = "#000";
+            graph.textAlign = "left";
+            graph.fillText(`C${pair.position}`, 4, y + barHeight / 2);
+
+            graph.strokeStyle = pair.weak ? "#777" : "#000";
+            graph.strokeRect(left, y, barWidth, barHeight);
+            graph.strokeRect(center + 52, y, barWidth, barHeight);
+
+            graph.fillStyle = pair.weak ? "#777" : "#000";
+
+            graph.fillRect(left, y, barWidth * level(pair.db0), barHeight);
+
+            graph.fillRect(center + 52, y, barWidth * level(pair.db1), barHeight);
+
+            graph.fillStyle = "#000";
+            graph.textAlign = "right";
+
+            graph.fillText(`${Math.round(pair.frequency0)}Hz`, center - 7, y + barHeight / 2);
+
+            graph.fillText(`${Math.round(pair.frequency1)}Hz`, right, y + barHeight / 2);
+
+            graph.textAlign = "center";
+            graph.fillText(`${pair.bit} ${pair.confidence.toFixed(1)}dB` + `${pair.weak ? "*" : ""}`, center + 24, y + barHeight / 2);
+          }
+        }
+
+        function animationLoop(time) {
+          requestAnimationFrame(animationLoop);
+
+          if (microphoneActive && time - lastDecodeTime >= numeric(decodeInterval, 120, 40, 1000)) {
+            lastDecodeTime = time;
+
+            try {
+              latestAnalysis = analyzeSignal();
+              updateVoting(latestAnalysis);
+            } catch (error) {
+              $("decodeStatus").textContent = `Decoder error: ${error.message}`;
+            }
+          }
+
+          drawGraph();
+        }
+
+        /* ---------- Sensitivity presets ---------- */
+
+        const presets = {
+          conservative: {
+            pilot: 12,
+            carrier: 12,
+            margin: 6,
+            weak: 1,
+            window: 9,
+            votes: 7,
+          },
+          balanced: {
+            pilot: 7,
+            carrier: 7,
+            margin: 3,
+            weak: 4,
+            window: 8,
+            votes: 5,
+          },
+          sensitive: {
+            pilot: 3,
+            carrier: 3,
+            margin: 1,
+            weak: 10,
+            window: 6,
+            votes: 3,
+          },
+        };
+
+        function applyPreset() {
+          const preset = presets[$("sensitivityPreset").value];
+          if (!preset) return;
+
+          minimumPilotSnr.value = preset.pilot;
+          minimumCarrierSnr.value = preset.carrier;
+          minimumPairMargin.value = preset.margin;
+          maximumWeakPairs.value = preset.weak;
+          voteWindow.value = preset.window;
+          votesRequired.value = preset.votes;
+
+          resetDecoder();
+        }
+
+        /* ---------- Events ---------- */
+
+        byteValue.addEventListener("input", updateSenderValue);
+
+        volume.addEventListener("input", () => {
+          $("volumeValue").value = `${Math.round(numeric(volume, 0.8, 0, 1) * 100)}%`;
+
+          applyBeaconState();
+        });
+
+        pilotWeight.addEventListener("input", () => {
+          applyBeaconState();
+          updateProtocolUI();
+          resetDecoder();
+        });
+
+        for (const input of [baseFrequency, spacing, codingMode]) {
+          input.addEventListener("change", () => {
+            updateProtocolUI();
+            resetDecoder();
+            scheduleBeaconRestart();
+          });
+
+          input.addEventListener("input", () => {
+            updateProtocolUI();
+            resetDecoder();
+          });
+        }
+
+        correctionRadius.addEventListener("input", resetDecoder);
+
+        $("sensitivityPreset").addEventListener("change", applyPreset);
+
+        for (const input of [
+          minimumPilotSnr,
+          minimumCarrierSnr,
+          minimumPairMargin,
+          maximumWeakPairs,
+          trackingRange,
+          analysisBandwidth,
+          voteWindow,
+          votesRequired,
+        ]) {
+          input.addEventListener("input", () => {
+            $("sensitivityPreset").value = "custom";
+            resetDecoder();
+            updateProtocolUI();
+          });
+        }
+
+        fftSize.addEventListener("change", () => {
+          configureAnalyser();
+          resetDecoder();
+        });
+
+        smoothing.addEventListener("input", configureAnalyser);
+
+        speaker.addEventListener("change", async () => {
+          if (!audioOutput.setSinkId || !outputContext) return;
+
+          try {
+            await audioOutput.setSinkId(speaker.value);
+          } catch (error) {
+            $("senderStatus").textContent = `Speaker error: ${error.message}`;
+          }
+        });
+
+        microphone.addEventListener("change", () => {
+          if (microphoneActive) startMicrophone();
+        });
+
+        $("startBeacon").addEventListener("click", startBeacon);
+        $("stopBeacon").addEventListener("click", stopBeacon);
+        $("downloadWav").addEventListener("click", downloadWav);
+        $("startMicrophone").addEventListener("click", startMicrophone);
+        $("stopMicrophone").addEventListener("click", stopMicrophone);
+        $("refreshDevices").addEventListener("click", refreshDevices);
+
+        navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
+
+        window.addEventListener("resize", resizeCanvas);
+
+        /* ---------- Initialize ---------- */
+
+        createBitUI();
+        updateProtocolUI();
+
+        $("volumeValue").value = `${Math.round(numeric(volume, 0.8, 0, 1) * 100)}%`;
+
+        resizeCanvas();
+        refreshDevices();
+        requestAnimationFrame(animationLoop);
+      })();
+    </script>
+  </body>
+</html>
