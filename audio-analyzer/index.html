@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Audio Analyzer</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 1100px;
+        margin: auto;
+        padding: 14px;
+        background: white;
+        color: black;
+        font: 14px/1.4 monospace;
+      }
+      h1,
+      h2 {
+        margin: 0 0 10px;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      h2 {
+        font-size: 15px;
+      }
+      section {
+        margin-bottom: 12px;
+        padding: 12px;
+        border: 2px solid black;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(130px, 1fr));
+        gap: 10px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+      }
+      input,
+      select,
+      button {
+        width: 100%;
+        min-height: 34px;
+        padding: 5px 7px;
+        border: 1px solid black;
+        border-radius: 0;
+        background: white;
+        color: black;
+        font: inherit;
+      }
+      input[type="range"] {
+        padding: 0;
+      }
+      button {
+        width: auto;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      button:hover:not(:disabled) {
+        background: black;
+        color: white;
+      }
+      button:disabled {
+        cursor: default;
+        opacity: 0.45;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .status {
+        min-height: 1.4em;
+        margin-top: 8px;
+      }
+      output {
+        font-weight: bold;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        height: 350px;
+        margin-top: 10px;
+        border: 1px solid black;
+      }
+      @media (max-width: 750px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        canvas {
+          height: 290px;
+        }
+      }
+      @media (max-width: 450px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>TONE GENERATOR / FREQUENCY ENERGY VISUALIZER</h1>
+
+    <section>
+      <h2>OUTPUT</h2>
+
+      <div class="grid">
+        <label>
+          Frequency (Hz)
+          <input id="frequency" type="number" value="16000" min="1" max="24000" step="1" />
+        </label>
+
+        <label>
+          Download duration (seconds)
+          <input id="duration" type="number" value="5" min="0.1" max="3600" step="0.1" />
+        </label>
+
+        <label>
+          Volume: <output id="volumeValue">25%</output>
+          <input id="volume" type="range" value="0.25" min="0" max="1" step="0.01" />
+        </label>
+
+        <label>
+          Speaker
+          <select id="speaker">
+            <option value="">System default</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="play">Play tone</button>
+        <button id="stop" disabled>Stop tone</button>
+        <button id="download">Download WAV</button>
+      </div>
+
+      <div id="toneStatus" class="status">Stopped.</div>
+    </section>
+
+    <section>
+      <h2>MICROPHONE INPUT</h2>
+
+      <div class="grid">
+        <label>
+          Microphone
+          <select id="microphone">
+            <option value="">System default</option>
+          </select>
+        </label>
+
+        <label>
+          Lower bound (Hz)
+          <input id="lower" type="number" value="20" min="1" max="23999" step="1" />
+        </label>
+
+        <label>
+          Upper bound (Hz)
+          <input id="upper" type="number" value="20000" min="2" max="24000" step="1" />
+        </label>
+
+        <label>
+          Bin width (Hz)
+          <input id="binWidth" type="number" value="100" min="10" max="1000" step="10" />
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="startMic">Start microphone</button>
+        <button id="stopMic" disabled>Stop microphone</button>
+        <button id="refresh">Refresh devices</button>
+      </div>
+
+      <div id="micStatus" class="status">Microphone inactive.</div>
+      <canvas id="graph"></canvas>
+    </section>
+
+    <audio id="output" autoplay hidden></audio>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const $ = (id) => document.getElementById(id);
+
+        const frequency = $("frequency");
+        const duration = $("duration");
+        const volume = $("volume");
+        const volumeValue = $("volumeValue");
+        const speaker = $("speaker");
+        const microphone = $("microphone");
+        const lower = $("lower");
+        const upper = $("upper");
+        const binWidth = $("binWidth");
+        const output = $("output");
+        const toneStatus = $("toneStatus");
+        const micStatus = $("micStatus");
+        const canvas = $("graph");
+        const ctx = canvas.getContext("2d");
+
+        let outputContext;
+        let outputDestination;
+        let oscillator;
+        let gain;
+        let tonePlaying = false;
+        let toneRequest = 0;
+
+        let inputContext;
+        let analyser;
+        let micStream;
+        let micSource;
+        let micActive = false;
+        let micRequest = 0;
+        let spectrum;
+
+        function value(input, fallback, min, max) {
+          const number = Number(input.value);
+          return Math.max(min, Math.min(max, Number.isFinite(number) ? number : fallback));
+        }
+
+        function selectedText(select) {
+          return select.selectedOptions[0]?.textContent || "System default";
+        }
+
+        /* ---------- Tone playback ---------- */
+
+        async function prepareOutput() {
+          if (!outputContext) {
+            outputContext = new (window.AudioContext || window.webkitAudioContext)();
+            outputDestination = outputContext.createMediaStreamDestination();
+            output.srcObject = outputDestination.stream;
+          }
+
+          await outputContext.resume();
+
+          if (output.setSinkId) await output.setSinkId(speaker.value);
+          else if (speaker.value) throw new Error("Speaker selection is unsupported.");
+
+          await output.play();
+        }
+
+        function stopTone(message = "Stopped.") {
+          ++toneRequest;
+          tonePlaying = false;
+
+          if (oscillator) {
+            try {
+              oscillator.stop();
+            } catch (_) {}
+            try {
+              oscillator.disconnect();
+            } catch (_) {}
+            oscillator = null;
+          }
+
+          if (gain) {
+            try {
+              gain.disconnect();
+            } catch (_) {}
+            gain = null;
+          }
+
+          $("play").disabled = false;
+          $("stop").disabled = true;
+          toneStatus.textContent = message;
+        }
+
+        async function playTone() {
+          const request = ++toneRequest;
+          tonePlaying = true;
+
+          if (oscillator) {
+            try {
+              oscillator.stop();
+            } catch (_) {}
+            try {
+              oscillator.disconnect();
+            } catch (_) {}
+            oscillator = null;
+          }
+
+          if (gain) {
+            try {
+              gain.disconnect();
+            } catch (_) {}
+            gain = null;
+          }
+
+          try {
+            await prepareOutput();
+            if (request !== toneRequest || !tonePlaying) return;
+
+            const maxFrequency = Math.min(24000, outputContext.sampleRate / 2 - 1);
+            const hz = value(frequency, 440, 1, maxFrequency);
+            const level = value(volume, 0.25, 0, 1);
+
+            oscillator = outputContext.createOscillator();
+            gain = outputContext.createGain();
+
+            oscillator.type = "sine";
+            oscillator.frequency.value = hz;
+            gain.gain.value = level;
+
+            oscillator.connect(gain);
+            gain.connect(outputDestination);
+            oscillator.start();
+
+            $("play").disabled = true;
+            $("stop").disabled = false;
+
+            toneStatus.textContent = `Playing ${Math.round(hz)} Hz at ` + `${Math.round(level * 100)}% through ${selectedText(speaker)}.`;
+          } catch (error) {
+            if (request === toneRequest) stopTone(`Playback error: ${error.message}`);
+          }
+        }
+
+        function restartTone() {
+          if (tonePlaying) playTone();
+        }
+
+        $("play").addEventListener("click", playTone);
+        $("stop").addEventListener("click", () => stopTone());
+
+        frequency.addEventListener("input", restartTone);
+
+        volume.addEventListener("input", () => {
+          volumeValue.value = `${Math.round(value(volume, 0.25, 0, 1) * 100)}%`;
+          restartTone();
+        });
+
+        speaker.addEventListener("change", restartTone);
+
+        /* ---------- WAV download ---------- */
+
+        function createWav(hz, seconds, level, sampleRate = 48000) {
+          hz = Math.min(hz, sampleRate / 2 - 1);
+
+          const samples = Math.floor(seconds * sampleRate);
+          const buffer = new ArrayBuffer(44 + samples * 2);
+          const view = new DataView(buffer);
+
+          function write(offset, text) {
+            for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+          }
+
+          write(0, "RIFF");
+          view.setUint32(4, 36 + samples * 2, true);
+          write(8, "WAVE");
+          write(12, "fmt ");
+          view.setUint32(16, 16, true);
+          view.setUint16(20, 1, true);
+          view.setUint16(22, 1, true);
+          view.setUint32(24, sampleRate, true);
+          view.setUint32(28, sampleRate * 2, true);
+          view.setUint16(32, 2, true);
+          view.setUint16(34, 16, true);
+          write(36, "data");
+          view.setUint32(40, samples * 2, true);
+
+          const amplitude = level * 32767;
+
+          for (let i = 0; i < samples; i++) {
+            const sample = Math.sin((2 * Math.PI * hz * i) / sampleRate);
+            view.setInt16(44 + i * 2, sample * amplitude, true);
+          }
+
+          return new Blob([buffer], { type: "audio/wav" });
+        }
+
+        $("download").addEventListener("click", () => {
+          const hz = value(frequency, 440, 1, 24000);
+          const seconds = value(duration, 5, 0.1, 3600);
+          const level = value(volume, 0.25, 0, 1);
+          const blob = createWav(hz, seconds, level);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+
+          link.href = url;
+          link.download = `${hz}hz-tone-${seconds}s.wav`;
+          link.click();
+
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        });
+
+        /* ---------- Devices ---------- */
+
+        async function refreshDevices() {
+          if (!navigator.mediaDevices?.enumerateDevices) return;
+
+          try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const oldMic = microphone.value;
+            const oldSpeaker = speaker.value;
+
+            microphone.innerHTML = '<option value="">System default</option>';
+            speaker.innerHTML = '<option value="">System default</option>';
+
+            let micNumber = 1;
+            let speakerNumber = 1;
+
+            for (const device of devices) {
+              const option = document.createElement("option");
+              option.value = device.deviceId;
+
+              if (device.kind === "audioinput") {
+                option.textContent = device.label || `Microphone ${micNumber++}`;
+                microphone.append(option);
+              }
+
+              if (device.kind === "audiooutput") {
+                option.textContent = device.label || `Speaker ${speakerNumber++}`;
+                speaker.append(option);
+              }
+            }
+
+            if ([...microphone.options].some((o) => o.value === oldMic)) microphone.value = oldMic;
+
+            if ([...speaker.options].some((o) => o.value === oldSpeaker)) speaker.value = oldSpeaker;
+
+            if (!output.setSinkId) speaker.disabled = true;
+          } catch (error) {
+            micStatus.textContent = `Device error: ${error.message}`;
+          }
+        }
+
+        /* ---------- Microphone ---------- */
+
+        function releaseMicrophone() {
+          if (micSource) {
+            try {
+              micSource.disconnect();
+            } catch (_) {}
+            micSource = null;
+          }
+
+          if (micStream) {
+            micStream.getTracks().forEach((track) => track.stop());
+            micStream = null;
+          }
+        }
+
+        function stopMicrophone() {
+          ++micRequest;
+          micActive = false;
+          releaseMicrophone();
+
+          $("startMic").disabled = false;
+          $("stopMic").disabled = true;
+          micStatus.textContent = "Microphone inactive.";
+        }
+
+        async function startMicrophone() {
+          if (!navigator.mediaDevices?.getUserMedia) {
+            micStatus.textContent = "Microphone access is unsupported.";
+            return;
+          }
+
+          const request = ++micRequest;
+          micStatus.textContent = "Opening microphone...";
+
+          releaseMicrophone();
+
+          try {
+            const audio = {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            };
+
+            if (microphone.value) audio.deviceId = { exact: microphone.value };
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio });
+
+            if (request !== micRequest) {
+              stream.getTracks().forEach((track) => track.stop());
+              return;
+            }
+
+            if (!inputContext) {
+              inputContext = new (window.AudioContext || window.webkitAudioContext)();
+              analyser = inputContext.createAnalyser();
+              analyser.fftSize = 32768;
+              analyser.minDecibels = -100;
+              analyser.maxDecibels = 0;
+              analyser.smoothingTimeConstant = 0.7;
+              spectrum = new Float32Array(analyser.frequencyBinCount);
+            }
+
+            await inputContext.resume();
+
+            micStream = stream;
+            micSource = inputContext.createMediaStreamSource(stream);
+            micSource.connect(analyser);
+            micActive = true;
+
+            $("startMic").disabled = true;
+            $("stopMic").disabled = false;
+            micStatus.textContent = `Live: ${selectedText(microphone)}.`;
+
+            await refreshDevices();
+          } catch (error) {
+            if (request === micRequest) {
+              micActive = false;
+              $("startMic").disabled = false;
+              $("stopMic").disabled = true;
+              micStatus.textContent = `Microphone error: ${error.message}`;
+            }
+          }
+        }
+
+        $("startMic").addEventListener("click", startMicrophone);
+        $("stopMic").addEventListener("click", stopMicrophone);
+        $("refresh").addEventListener("click", refreshDevices);
+
+        microphone.addEventListener("change", () => {
+          if (micActive) startMicrophone();
+        });
+
+        /* ---------- Visualizer ---------- */
+
+        function settings() {
+          const nyquist = inputContext ? Math.min(24000, inputContext.sampleRate / 2) : 24000;
+
+          let low = value(lower, 20, 1, nyquist - 1);
+          let high = value(upper, 20000, 2, nyquist);
+          const size = value(binWidth, 100, 10, 1000);
+
+          if (high <= low) high = Math.min(nyquist, low + 1);
+
+          return { low, high, size };
+        }
+
+        function updateVisualizerStatus() {
+          const { low, high, size } = settings();
+          const count = Math.max(1, Math.ceil((high - low) / size));
+
+          micStatus.textContent = micActive
+            ? `Live: ${selectedText(microphone)} / ${count} bins / ${size} Hz per bin.`
+            : `Microphone inactive / ${count} bins / ${size} Hz per bin.`;
+        }
+
+        [lower, upper, binWidth].forEach((input) => input.addEventListener("input", updateVisualizerStatus));
+
+        function resizeCanvas() {
+          const rect = canvas.getBoundingClientRect();
+          const scale = devicePixelRatio || 1;
+
+          canvas.width = Math.round(rect.width * scale);
+          canvas.height = Math.round(rect.height * scale);
+          ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        }
+
+        function draw() {
+          requestAnimationFrame(draw);
+
+          const width = canvas.clientWidth;
+          const height = canvas.clientHeight;
+          const left = 54;
+          const right = 12;
+          const top = 12;
+          const bottom = 34;
+          const graphWidth = Math.max(1, width - left - right);
+          const graphHeight = Math.max(1, height - top - bottom);
+          const { low, high, size } = settings();
+          const count = Math.max(1, Math.ceil((high - low) / size));
+          const energies = new Float32Array(count);
+
+          energies.fill(-100);
+
+          ctx.clearRect(0, 0, width, height);
+          ctx.fillStyle = "white";
+          ctx.fillRect(0, 0, width, height);
+          ctx.font = "11px monospace";
+          ctx.lineWidth = 1;
+
+          for (let db = -100; db <= 0; db += 20) {
+            const y = top + (-db / 100) * graphHeight;
+
+            ctx.strokeStyle = db === 0 ? "black" : "#ccc";
+            ctx.beginPath();
+            ctx.moveTo(left, y);
+            ctx.lineTo(width - right, y);
+            ctx.stroke();
+
+            ctx.fillStyle = "black";
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`${db} dB`, left - 6, y);
+          }
+
+          if (micActive && analyser) {
+            analyser.getFloatFrequencyData(spectrum);
+
+            const hzPerFFTBin = inputContext.sampleRate / analyser.fftSize;
+
+            for (let bin = 0; bin < count; bin++) {
+              const start = low + bin * size;
+              const end = Math.min(high, start + size);
+              const first = Math.max(0, Math.floor(start / hzPerFFTBin));
+              const last = Math.min(spectrum.length - 1, Math.ceil(end / hzPerFFTBin));
+
+              let power = 0;
+              let samples = 0;
+
+              for (let i = first; i <= last; i++) {
+                const db = Number.isFinite(spectrum[i]) ? spectrum[i] : -100;
+
+                power += 10 ** (db / 10);
+                samples++;
+              }
+
+              if (samples) energies[bin] = 10 * Math.log10(power / samples);
+            }
+          }
+
+          const slot = graphWidth / count;
+          ctx.fillStyle = "black";
+
+          for (let i = 0; i < count; i++) {
+            const level = Math.max(0, Math.min(1, (energies[i] + 100) / 100));
+            const barHeight = level * graphHeight;
+            const gap = slot > 3 ? 1 : 0;
+
+            ctx.fillRect(left + i * slot, top + graphHeight - barHeight, Math.max(0.5, slot - gap), barHeight);
+          }
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+
+          for (let i = 0; i <= 5; i++) {
+            const ratio = i / 5;
+            const hz = low + (high - low) * ratio;
+            const label = hz >= 1000 ? `${(hz / 1000).toFixed(1)}k` : `${Math.round(hz)}`;
+
+            ctx.fillText(label, left + graphWidth * ratio, top + graphHeight + 8);
+          }
+
+          ctx.textAlign = "right";
+          ctx.fillText(`${count} bins / ${size} Hz`, width - right, height - 13);
+        }
+
+        addEventListener("resize", resizeCanvas);
+        navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
+
+        volumeValue.value = `${Math.round(value(volume, 0.25, 0, 1) * 100)}%`;
+
+        resizeCanvas();
+        refreshDevices();
+        updateVisualizerStatus();
+        draw();
+      })();
+    </script>
+  </body>
+</html>

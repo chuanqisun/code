@@ -5,6 +5,7 @@
 ## Tools
 
 - [Audio trim](./audio-trim/)
+- [Audio Analyzer](./audio-signal-analyzer/)
 - [Audio visualizer](./audio-visualizer/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [Color Analyzer](./color-analyzer/)
