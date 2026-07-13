@@ -1,0 +1,1844 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Media I/O Debugger</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        accent-color: #000;
+      }
+
+      body {
+        margin: 0;
+        color: #000;
+        background: #fff;
+        font:
+          14px/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          monospace;
+      }
+
+      main {
+        width: min(60rem, calc(100% - 2rem));
+        margin: auto;
+        padding: 2rem 0 4rem;
+      }
+
+      header,
+      section,
+      article,
+      .device-grid {
+        border-bottom: 1px solid;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 0;
+        border-top: 1px solid;
+      }
+
+      section,
+      article,
+      .device-grid {
+        padding: 1rem 0;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1rem;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        font-size: 0.9rem;
+      }
+
+      button,
+      select,
+      input {
+        min-height: 2.4rem;
+        padding: 0.4rem 0.55rem;
+        color: inherit;
+        background: #fff;
+        border: 1px solid;
+        border-radius: 0;
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        white-space: nowrap;
+      }
+
+      button:disabled,
+      select:disabled,
+      input:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      button:focus-visible,
+      select:focus-visible,
+      input:focus-visible {
+        outline: 2px solid;
+        outline-offset: 2px;
+      }
+
+      label {
+        display: grid;
+        gap: 0.35rem;
+        min-width: 0;
+      }
+
+      select,
+      input {
+        width: 100%;
+      }
+
+      fieldset {
+        min-width: 0;
+        margin: 0;
+        padding: 0.85rem;
+        border: 1px solid;
+      }
+
+      legend {
+        padding: 0 0.4rem;
+        font-weight: 700;
+      }
+
+      .muted,
+      .note,
+      .capability-summary {
+        opacity: 0.65;
+        font-size: 0.82rem;
+      }
+
+      .device-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+      }
+
+      .output-panel {
+        grid-column: 1 / -1;
+      }
+
+      .device-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.65rem;
+        align-items: end;
+      }
+
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-top: 0.85rem;
+      }
+
+      .capability-summary {
+        min-height: 2.4em;
+        margin-top: 0.7rem;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        align-items: end;
+      }
+
+      .section-head,
+      .list-head,
+      .record-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 1rem;
+      }
+
+      .section-head {
+        margin-bottom: 0.75rem;
+      }
+
+      .wide {
+        grid-column: 1 / -1;
+      }
+
+      .recorder,
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      #record[data-recording="true"] {
+        outline: 2px solid;
+        outline-offset: 2px;
+      }
+
+      #status {
+        margin-left: auto;
+      }
+
+      .monitor {
+        display: grid;
+        grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr);
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .level-wrap {
+        display: grid;
+        align-content: start;
+        gap: 0.4rem;
+      }
+
+      meter {
+        width: 100%;
+        height: 1.2rem;
+      }
+
+      #preview {
+        display: block;
+        width: 100%;
+        max-height: 24rem;
+        border: 1px solid;
+        object-fit: contain;
+      }
+
+      .message {
+        min-height: 1.3rem;
+        margin-top: 0.75rem;
+      }
+
+      #empty {
+        padding: 2rem 0;
+        opacity: 0.65;
+      }
+
+      article {
+        display: grid;
+        gap: 0.75rem;
+      }
+
+      .metadata {
+        display: grid;
+        gap: 0.2rem;
+        min-width: 0;
+      }
+
+      .metadata strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      audio,
+      article video {
+        display: block;
+        width: 100%;
+        max-height: 32rem;
+      }
+
+      audio {
+        height: 2.5rem;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      @media (max-width: 48rem) {
+        .controls {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      @media (max-width: 40rem) {
+        .device-grid,
+        .monitor {
+          grid-template-columns: 1fr;
+        }
+
+        .output-panel {
+          grid-column: auto;
+        }
+      }
+
+      @media (max-width: 36rem) {
+        main {
+          width: min(100% - 1rem, 60rem);
+          padding-top: 0.5rem;
+        }
+
+        .controls,
+        .settings-grid,
+        .device-row {
+          grid-template-columns: 1fr;
+        }
+
+        .controls button,
+        .device-row button {
+          width: 100%;
+        }
+
+        #status {
+          width: 100%;
+          margin-left: 0;
+        }
+
+        .record-head {
+          display: grid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Media I/O Debugger</h1>
+        <span id="deviceCount" class="muted">0 devices</span>
+      </header>
+
+      <div class="device-grid">
+        <fieldset>
+          <legend>Audio input</legend>
+
+          <div class="device-row">
+            <label>
+              Device
+              <select id="audioInput">
+                <option value="">System default</option>
+              </select>
+            </label>
+
+            <button id="queryAudio" type="button">Query capabilities</button>
+          </div>
+
+          <p id="audioCapabilitySummary" class="capability-summary">Query the device to inspect available audio settings.</p>
+
+          <div class="settings-grid">
+            <label>
+              Sample rate (Hz)
+              <input id="sampleRate" type="number" inputmode="numeric" disabled />
+            </label>
+
+            <label>
+              Sample size (bits)
+              <input id="sampleSize" type="number" inputmode="numeric" disabled />
+            </label>
+
+            <label>
+              Channels
+              <input id="channelCount" type="number" inputmode="numeric" disabled />
+            </label>
+
+            <label>
+              Target latency (ms)
+              <input id="latency" type="number" inputmode="decimal" disabled />
+            </label>
+
+            <label>
+              Echo cancellation
+              <select id="echoCancellation" disabled>
+                <option value="">Query capabilities</option>
+              </select>
+            </label>
+
+            <label>
+              Noise suppression
+              <select id="noiseSuppression" disabled>
+                <option value="">Query capabilities</option>
+              </select>
+            </label>
+
+            <label>
+              Automatic gain
+              <select id="autoGainControl" disabled>
+                <option value="">Query capabilities</option>
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Video input</legend>
+
+          <div class="device-row">
+            <label>
+              Device
+              <select id="videoInput">
+                <option value="">No video — audio only</option>
+              </select>
+            </label>
+
+            <button id="queryVideo" type="button" disabled>Query capabilities</button>
+          </div>
+
+          <p id="videoCapabilitySummary" class="capability-summary">Select a camera to inspect its dimension and frame-rate ranges.</p>
+
+          <div class="settings-grid">
+            <label>
+              Width (px)
+              <input id="videoWidth" type="number" inputmode="numeric" disabled />
+            </label>
+
+            <label>
+              Height (px)
+              <input id="videoHeight" type="number" inputmode="numeric" disabled />
+            </label>
+
+            <label>
+              Frame rate (fps)
+              <input id="frameRate" type="number" inputmode="decimal" disabled />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="output-panel">
+          <legend>Audio output</legend>
+
+          <div class="device-row">
+            <label>
+              Playback device
+              <select id="audioOutput">
+                <option value="">System default</option>
+              </select>
+            </label>
+
+            <button id="refresh" type="button">Refresh devices</button>
+          </div>
+
+          <p class="capability-summary">All saved recordings are routed through this output when supported by the browser.</p>
+        </fieldset>
+      </div>
+
+      <section>
+        <div class="section-head">
+          <h2>Recording format</h2>
+        </div>
+
+        <div class="controls">
+          <label>
+            Container
+            <select id="container"></select>
+          </label>
+
+          <label>
+            Audio codec
+            <select id="audioCodec"></select>
+          </label>
+
+          <label>
+            Video codec
+            <select id="videoCodec"></select>
+          </label>
+
+          <p id="formatSummary" class="note wide"></p>
+
+          <p class="note wide">
+            Capability ranges do not describe every valid resolution and frame-rate combination. Requested settings are treated as preferred values; recording
+            metadata shows the actual settings selected. WAV records uncompressed 16-bit PCM.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="recorder">
+          <button id="record" type="button">Start recording</button>
+          <span id="timer">00:00.0</span>
+          <span id="status" class="muted">Ready</span>
+        </div>
+
+        <div id="monitor" class="monitor" hidden>
+          <div class="level-wrap">
+            <label for="level">Input volume</label>
+            <meter id="level" min="0" max="1" value="0">0%</meter>
+            <span id="levelText" class="muted">0%</span>
+          </div>
+
+          <video id="preview" autoplay muted playsinline hidden></video>
+        </div>
+
+        <p id="message" class="message" role="status"></p>
+      </section>
+
+      <section class="list-head">
+        <h2>Recordings</h2>
+        <span id="recordingCount" class="muted">0 samples</span>
+      </section>
+
+      <div id="recordings">
+        <p id="empty">No recordings yet.</p>
+      </div>
+    </main>
+
+    <script>
+      const $ = (selector) => document.querySelector(selector);
+
+      const audioInput = $("#audioInput");
+      const videoInput = $("#videoInput");
+      const audioOutput = $("#audioOutput");
+      const queryAudio = $("#queryAudio");
+      const queryVideo = $("#queryVideo");
+      const refreshButton = $("#refresh");
+
+      const sampleRate = $("#sampleRate");
+      const sampleSize = $("#sampleSize");
+      const channelCount = $("#channelCount");
+      const latency = $("#latency");
+      const echoCancellation = $("#echoCancellation");
+      const noiseSuppression = $("#noiseSuppression");
+      const autoGainControl = $("#autoGainControl");
+      const audioCapabilitySummary = $("#audioCapabilitySummary");
+
+      const videoWidth = $("#videoWidth");
+      const videoHeight = $("#videoHeight");
+      const frameRate = $("#frameRate");
+      const videoCapabilitySummary = $("#videoCapabilitySummary");
+
+      const containerSelect = $("#container");
+      const audioCodecSelect = $("#audioCodec");
+      const videoCodecSelect = $("#videoCodec");
+      const formatSummary = $("#formatSummary");
+
+      const recordButton = $("#record");
+      const recordings = $("#recordings");
+      const recordingCount = $("#recordingCount");
+      const deviceCount = $("#deviceCount");
+      const monitor = $("#monitor");
+      const preview = $("#preview");
+      const level = $("#level");
+      const levelText = $("#levelText");
+      const timer = $("#timer");
+      const status = $("#status");
+      const message = $("#message");
+
+      const LABELS = {
+        webm: "WebM",
+        ogg: "Ogg",
+        mp4: "MP4",
+        mpeg: "MP3",
+        wav: "WAV",
+        opus: "Opus",
+        vorbis: "Vorbis",
+        aac: "AAC",
+        mp3: "MP3",
+        pcm: "PCM 16-bit",
+        vp8: "VP8",
+        vp9: "VP9",
+        av1: "AV1",
+        h264: "H.264",
+        hevc: "HEVC",
+      };
+
+      const PROFILES = [
+        {
+          kind: "audio",
+          container: "webm",
+          audio: "opus",
+          mime: "audio/webm;codecs=opus",
+          extension: "webm",
+        },
+        {
+          kind: "audio",
+          container: "ogg",
+          audio: "opus",
+          mime: "audio/ogg;codecs=opus",
+          extension: "ogg",
+        },
+        {
+          kind: "audio",
+          container: "webm",
+          audio: "vorbis",
+          mime: "audio/webm;codecs=vorbis",
+          extension: "webm",
+        },
+        {
+          kind: "audio",
+          container: "ogg",
+          audio: "vorbis",
+          mime: "audio/ogg;codecs=vorbis",
+          extension: "ogg",
+        },
+        {
+          kind: "audio",
+          container: "mp4",
+          audio: "aac",
+          mime: "audio/mp4;codecs=mp4a.40.2",
+          extension: "m4a",
+        },
+        {
+          kind: "audio",
+          container: "mp4",
+          audio: "opus",
+          mime: "audio/mp4;codecs=opus",
+          extension: "m4a",
+        },
+        {
+          kind: "audio",
+          container: "mpeg",
+          audio: "mp3",
+          mime: "audio/mpeg",
+          extension: "mp3",
+        },
+        {
+          kind: "audio",
+          container: "wav",
+          audio: "pcm",
+          mime: "audio/wav",
+          extension: "wav",
+          raw: true,
+        },
+        {
+          kind: "video",
+          container: "webm",
+          video: "vp9",
+          audio: "opus",
+          mime: "video/webm;codecs=vp9,opus",
+          extension: "webm",
+        },
+        {
+          kind: "video",
+          container: "webm",
+          video: "vp8",
+          audio: "opus",
+          mime: "video/webm;codecs=vp8,opus",
+          extension: "webm",
+        },
+        {
+          kind: "video",
+          container: "webm",
+          video: "av1",
+          audio: "opus",
+          mime: "video/webm;codecs=av01,opus",
+          extension: "webm",
+        },
+        {
+          kind: "video",
+          container: "webm",
+          video: "vp9",
+          audio: "vorbis",
+          mime: "video/webm;codecs=vp9,vorbis",
+          extension: "webm",
+        },
+        {
+          kind: "video",
+          container: "webm",
+          video: "vp8",
+          audio: "vorbis",
+          mime: "video/webm;codecs=vp8,vorbis",
+          extension: "webm",
+        },
+        {
+          kind: "video",
+          container: "mp4",
+          video: "h264",
+          audio: "aac",
+          mime: "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+          extension: "mp4",
+        },
+        {
+          kind: "video",
+          container: "mp4",
+          video: "hevc",
+          audio: "aac",
+          mime: "video/mp4;codecs=hvc1,mp4a.40.2",
+          extension: "mp4",
+        },
+      ];
+
+      const capabilityState = {
+        audio: null,
+        video: null,
+      };
+
+      let deviceInventory = [];
+      let activeSession = null;
+      let monitorState = null;
+      let timerInterval = null;
+      let sampleCount = 0;
+      let uiLocked = false;
+
+      function supportsRawWav() {
+        const Context = window.AudioContext || window.webkitAudioContext;
+        return Boolean(Context && window.AudioWorkletNode);
+      }
+
+      function profileSupported(profile) {
+        if (profile.raw) return supportsRawWav();
+
+        return Boolean(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(profile.mime));
+      }
+
+      function availableProfiles() {
+        const kind = videoInput.value ? "video" : "audio";
+
+        return PROFILES.filter((profile) => profile.kind === kind && profileSupported(profile));
+      }
+
+      function matches(profile, choices) {
+        return (
+          (!choices.container || profile.container === choices.container) &&
+          (!choices.audio || profile.audio === choices.audio) &&
+          (!choices.video || profile.video === choices.video)
+        );
+      }
+
+      function optionList(select, firstLabel, values, selected) {
+        select.replaceChildren(new Option(firstLabel, ""));
+
+        for (const value of [...new Set(values)]) {
+          select.add(new Option(LABELS[value] || value, value));
+        }
+
+        if ([...select.options].some((option) => option.value === selected)) {
+          select.value = selected;
+        }
+      }
+
+      function updateFormats(changed = "") {
+        const profiles = availableProfiles();
+        const hasVideo = Boolean(videoInput.value);
+
+        let choices = {
+          container: containerSelect.value,
+          audio: audioCodecSelect.value,
+          video: hasVideo ? videoCodecSelect.value : "",
+        };
+
+        if (!profiles.some((profile) => matches(profile, choices))) {
+          if (changed !== "container") choices.container = "";
+          if (changed !== "audio") choices.audio = "";
+          if (changed !== "video") choices.video = "";
+
+          if (!profiles.some((profile) => matches(profile, choices))) {
+            choices = { container: "", audio: "", video: "" };
+          }
+        }
+
+        const containers = profiles
+          .filter((profile) => (!choices.audio || profile.audio === choices.audio) && (!choices.video || profile.video === choices.video))
+          .map((profile) => profile.container);
+
+        const audioCodecs = profiles
+          .filter((profile) => (!choices.container || profile.container === choices.container) && (!choices.video || profile.video === choices.video))
+          .map((profile) => profile.audio);
+
+        const videoCodecs = profiles
+          .filter((profile) => (!choices.container || profile.container === choices.container) && (!choices.audio || profile.audio === choices.audio))
+          .map((profile) => profile.video)
+          .filter(Boolean);
+
+        optionList(containerSelect, "Automatic", containers, choices.container);
+
+        optionList(audioCodecSelect, "Automatic", audioCodecs, choices.audio);
+
+        optionList(videoCodecSelect, "Automatic", videoCodecs, choices.video);
+
+        videoCodecSelect.disabled = uiLocked || !hasVideo;
+
+        const selected = resolveProfile();
+
+        formatSummary.textContent = selected
+          ? `Will record: ${profileDescription(selected)} · ` + `${selected.mime} · .${selected.extension}`
+          : "No compatible recording format was detected.";
+
+        recordButton.disabled = !selected || activeSession !== null;
+      }
+
+      function resolveProfile() {
+        const choices = {
+          container: containerSelect.value,
+          audio: audioCodecSelect.value,
+          video: videoInput.value ? videoCodecSelect.value : "",
+        };
+
+        return availableProfiles().find((profile) => matches(profile, choices));
+      }
+
+      function profileDescription(profile) {
+        return [LABELS[profile.container], profile.video && LABELS[profile.video], LABELS[profile.audio]].filter(Boolean).join(" · ");
+      }
+
+      function formatTime(ms) {
+        const seconds = ms / 1000;
+
+        return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:` + `${(seconds % 60).toFixed(1).padStart(4, "0")}`;
+      }
+
+      function populateDevices(select, devices, firstLabel, fallback) {
+        const selected = select.value;
+        select.replaceChildren(new Option(firstLabel, ""));
+
+        devices.forEach((device, index) => {
+          select.add(new Option(device.label || `${fallback} ${index + 1}`, device.deviceId));
+        });
+
+        if ([...select.options].some((option) => option.value === selected)) {
+          select.value = selected;
+        }
+      }
+
+      function selectedDevice(kind) {
+        const select = kind === "audio" ? audioInput : videoInput;
+        const deviceKind = kind === "audio" ? "audioinput" : "videoinput";
+
+        return deviceInventory.find((device) => device.kind === deviceKind && device.deviceId === select.value);
+      }
+
+      function hasUsefulCapabilities(kind, capabilities) {
+        const keys =
+          kind === "audio"
+            ? ["sampleRate", "sampleSize", "channelCount", "latency", "echoCancellation", "noiseSuppression", "autoGainControl"]
+            : ["width", "height", "frameRate"];
+
+        return keys.some((key) => capabilities?.[key] !== undefined);
+      }
+
+      function setCapabilityState(kind, state) {
+        capabilityState[kind] = state;
+        renderCapabilities(kind);
+      }
+
+      function resetCapabilities(kind) {
+        capabilityState[kind] = null;
+
+        const numbers = kind === "audio" ? [sampleRate, sampleSize, channelCount, latency] : [videoWidth, videoHeight, frameRate];
+
+        numbers.forEach((input) => {
+          input.value = "";
+          input.placeholder = "";
+          input.disabled = true;
+          input.removeAttribute("min");
+          input.removeAttribute("max");
+          input.removeAttribute("step");
+        });
+
+        if (kind === "audio") {
+          [echoCancellation, noiseSuppression, autoGainControl].forEach((select) => {
+            select.replaceChildren(new Option("Query capabilities", ""));
+            select.disabled = true;
+          });
+
+          audioCapabilitySummary.textContent = "Query the device to inspect available audio settings.";
+        } else {
+          videoCapabilitySummary.textContent = videoInput.value
+            ? "Query the camera to inspect its dimension and frame-rate ranges."
+            : "Select a camera to inspect its dimension and frame-rate ranges.";
+        }
+
+        queryAudio.disabled = uiLocked;
+        queryVideo.disabled = uiLocked || !videoInput.value;
+      }
+
+      function capabilityRange(capability) {
+        if (Number.isFinite(capability)) {
+          return { min: capability, max: capability };
+        }
+
+        if (capability && Number.isFinite(capability.min) && Number.isFinite(capability.max)) {
+          return {
+            min: capability.min,
+            max: capability.max,
+          };
+        }
+
+        return null;
+      }
+
+      function cleanNumber(value, decimals = 2) {
+        if (!Number.isFinite(value)) return "";
+        return Number(value.toFixed(decimals)).toString();
+      }
+
+      function configureNumberInput(input, capability, actual, { scale = 1, step = 1, decimals = 2 } = {}) {
+        const range = capabilityRange(capability);
+
+        if (!range) {
+          input.value = "";
+          input.placeholder = "Unsupported";
+          input.disabled = true;
+          return;
+        }
+
+        const minimum = range.min * scale;
+        const maximum = range.max * scale;
+        const existing = Number(input.value);
+
+        input.min = cleanNumber(minimum, decimals);
+        input.max = cleanNumber(maximum, decimals);
+        input.step = String(step);
+        input.placeholder = Number.isFinite(actual)
+          ? cleanNumber(actual * scale, decimals)
+          : `${cleanNumber(minimum, decimals)}–` + `${cleanNumber(maximum, decimals)}`;
+
+        if (input.value && (!Number.isFinite(existing) || existing < minimum || existing > maximum)) {
+          input.value = "";
+        }
+
+        input.disabled = uiLocked;
+      }
+
+      function encodeCapabilityValue(value) {
+        if (value === true) return "boolean:true";
+        if (value === false) return "boolean:false";
+        return `string:${value}`;
+      }
+
+      function decodeCapabilityValue(value) {
+        if (!value) return undefined;
+        if (value === "boolean:true") return true;
+        if (value === "boolean:false") return false;
+        return value.slice("string:".length);
+      }
+
+      function capabilityValueLabel(value) {
+        if (value === true) return "On";
+        if (value === false) return "Off";
+        if (value === "all") return "All system audio";
+        if (value === "remote-only") return "Remote audio only";
+        return String(value);
+      }
+
+      function configureCapabilitySelect(select, capability) {
+        const previous = select.value;
+        const values = Array.isArray(capability) ? capability : capability === undefined ? [] : [capability];
+
+        select.replaceChildren(new Option("Automatic", ""));
+
+        const seen = new Set();
+
+        values.forEach((value) => {
+          const encoded = encodeCapabilityValue(value);
+
+          if (!seen.has(encoded)) {
+            select.add(new Option(capabilityValueLabel(value), encoded));
+            seen.add(encoded);
+          }
+        });
+
+        if ([...select.options].some((option) => option.value === previous)) {
+          select.value = previous;
+        }
+
+        select.disabled = uiLocked || values.length === 0;
+
+        if (!values.length) {
+          select.options[0].textContent = "Unsupported";
+        }
+      }
+
+      function rangeDescription(capability, unit, scale = 1) {
+        const range = capabilityRange(capability);
+        if (!range) return "";
+
+        const minimum = cleanNumber(range.min * scale);
+        const maximum = cleanNumber(range.max * scale);
+
+        return minimum === maximum ? `${minimum} ${unit}` : `${minimum}–${maximum} ${unit}`;
+      }
+
+      function renderAudioCapabilities() {
+        const state = capabilityState.audio;
+
+        queryAudio.disabled = uiLocked;
+
+        if (!state) {
+          resetCapabilities("audio");
+          return;
+        }
+
+        const capabilities = state.capabilities || {};
+        const settings = state.settings || {};
+
+        configureNumberInput(sampleRate, capabilities.sampleRate, settings.sampleRate);
+
+        configureNumberInput(sampleSize, capabilities.sampleSize, settings.sampleSize);
+
+        configureNumberInput(channelCount, capabilities.channelCount, settings.channelCount);
+
+        configureNumberInput(latency, capabilities.latency, settings.latency, { scale: 1000, step: 0.1, decimals: 3 });
+
+        configureCapabilitySelect(echoCancellation, capabilities.echoCancellation);
+
+        configureCapabilitySelect(noiseSuppression, capabilities.noiseSuppression);
+
+        configureCapabilitySelect(autoGainControl, capabilities.autoGainControl);
+
+        const details = [
+          rangeDescription(capabilities.sampleRate, "Hz"),
+          rangeDescription(capabilities.sampleSize, "bit"),
+          rangeDescription(capabilities.channelCount, "channels"),
+          rangeDescription(capabilities.latency, "ms", 1000),
+        ].filter(Boolean);
+
+        audioCapabilitySummary.textContent = details.length
+          ? `${state.label || "Audio device"} · ${details.join(" · ")}`
+          : `${state.label || "Audio device"} did not expose customizable ` + "audio capabilities.";
+      }
+
+      function renderVideoCapabilities() {
+        const state = capabilityState.video;
+
+        queryVideo.disabled = uiLocked || !videoInput.value;
+
+        if (!state) {
+          resetCapabilities("video");
+          return;
+        }
+
+        const capabilities = state.capabilities || {};
+        const settings = state.settings || {};
+
+        configureNumberInput(videoWidth, capabilities.width, settings.width);
+
+        configureNumberInput(videoHeight, capabilities.height, settings.height);
+
+        configureNumberInput(frameRate, capabilities.frameRate, settings.frameRate, { step: 0.01, decimals: 2 });
+
+        const details = [
+          rangeDescription(capabilities.width, "px wide"),
+          rangeDescription(capabilities.height, "px high"),
+          rangeDescription(capabilities.frameRate, "fps"),
+        ].filter(Boolean);
+
+        videoCapabilitySummary.textContent = details.length
+          ? `${state.label || "Video device"} · ${details.join(" · ")}`
+          : `${state.label || "Video device"} did not expose dimension or ` + "frame-rate capabilities.";
+      }
+
+      function renderCapabilities(kind) {
+        if (kind === "audio") {
+          renderAudioCapabilities();
+        } else {
+          renderVideoCapabilities();
+        }
+      }
+
+      function inspectDeviceInfoCapabilities(kind) {
+        resetCapabilities(kind);
+
+        if (kind === "video" && !videoInput.value) return;
+
+        const device = selectedDevice(kind);
+
+        if (!device || typeof device.getCapabilities !== "function") return;
+
+        try {
+          const capabilities = device.getCapabilities();
+
+          if (hasUsefulCapabilities(kind, capabilities)) {
+            const select = kind === "audio" ? audioInput : videoInput;
+
+            setCapabilityState(kind, {
+              deviceId: select.value,
+              capabilities,
+              settings: {},
+              label: device.label || select.selectedOptions[0]?.textContent || `${kind} device`,
+            });
+          }
+        } catch {
+          // The explicit query button can fall back to a temporary track.
+        }
+      }
+
+      async function refreshDevices() {
+        refreshButton.disabled = true;
+        message.textContent = "";
+
+        const previousAudio = capabilityState.audio;
+        const previousVideo = capabilityState.video;
+
+        try {
+          if (!navigator.mediaDevices?.enumerateDevices) {
+            throw new Error("Media devices are unavailable.");
+          }
+
+          deviceInventory = await navigator.mediaDevices.enumerateDevices();
+
+          const audioInputs = deviceInventory.filter((device) => device.kind === "audioinput");
+          const videoInputs = deviceInventory.filter((device) => device.kind === "videoinput");
+          const audioOutputs = deviceInventory.filter((device) => device.kind === "audiooutput");
+
+          populateDevices(audioInput, audioInputs, "System default", "Audio input");
+
+          populateDevices(videoInput, videoInputs, "No video — audio only", "Camera");
+
+          populateDevices(audioOutput, audioOutputs, "System default", "Audio output");
+
+          deviceCount.textContent = `${audioInputs.length} audio in / ` + `${videoInputs.length} video in / ` + `${audioOutputs.length} out`;
+
+          if (previousAudio && previousAudio.deviceId === audioInput.value) {
+            setCapabilityState("audio", previousAudio);
+          } else {
+            inspectDeviceInfoCapabilities("audio");
+          }
+
+          if (previousVideo && previousVideo.deviceId === videoInput.value) {
+            setCapabilityState("video", previousVideo);
+          } else {
+            inspectDeviceInfoCapabilities("video");
+          }
+
+          updateFormats();
+          await routeAllMedia();
+        } catch (error) {
+          message.textContent = error.message;
+        } finally {
+          refreshButton.disabled = uiLocked;
+        }
+      }
+
+      async function queryCapabilities(kind) {
+        const button = kind === "audio" ? queryAudio : queryVideo;
+        button.disabled = true;
+        message.textContent = "";
+
+        let stream;
+
+        try {
+          if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error("Media capture is unavailable.");
+          }
+
+          const select = kind === "audio" ? audioInput : videoInput;
+          const deviceId = select.value;
+
+          if (kind === "video" && !deviceId) {
+            throw new Error("Select a camera first.");
+          }
+
+          const deviceConstraint = deviceId ? { deviceId: { exact: deviceId } } : true;
+
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: kind === "audio" ? deviceConstraint : false,
+            video: kind === "video" ? deviceConstraint : false,
+          });
+
+          const track = kind === "audio" ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+
+          if (!track) {
+            throw new Error(`No ${kind} track was returned.`);
+          }
+
+          if (typeof track.getCapabilities !== "function") {
+            throw new Error("This browser does not expose media track capabilities.");
+          }
+
+          const capabilities = track.getCapabilities();
+          const settings = track.getSettings?.() || {};
+
+          if (!hasUsefulCapabilities(kind, capabilities)) {
+            throw new Error(`This ${kind} device did not expose configurable capabilities.`);
+          }
+
+          stream.getTracks().forEach((item) => item.stop());
+          stream = null;
+
+          await refreshDevices();
+
+          setCapabilityState(kind, {
+            deviceId: select.value,
+            capabilities,
+            settings,
+            label: track.label || select.selectedOptions[0]?.textContent || `${kind} device`,
+          });
+        } catch (error) {
+          message.textContent = `Could not query ${kind} capabilities: ${error.message}`;
+        } finally {
+          stream?.getTracks().forEach((track) => track.stop());
+          button.disabled = uiLocked || (kind === "video" && !videoInput.value);
+        }
+      }
+
+      async function routeMedia(media) {
+        if (typeof media.setSinkId !== "function") {
+          if (audioOutput.value) {
+            message.textContent = "Output device selection is unsupported by this browser.";
+          }
+          return;
+        }
+
+        try {
+          await media.setSinkId(audioOutput.value);
+        } catch (error) {
+          message.textContent = `Output device error: ${error.message}`;
+        }
+      }
+
+      function routeAllMedia() {
+        return Promise.all([...document.querySelectorAll("#recordings audio, #recordings video")].map(routeMedia));
+      }
+
+      async function startMonitor(stream, showVideo) {
+        monitor.hidden = false;
+
+        if (showVideo) {
+          preview.hidden = false;
+          preview.srcObject = stream;
+          await preview.play();
+        }
+
+        const Context = window.AudioContext || window.webkitAudioContext;
+        if (!Context || !stream.getAudioTracks().length) return;
+
+        const context = new Context();
+        await context.resume();
+
+        const source = context.createMediaStreamSource(stream);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.65;
+        source.connect(analyser);
+
+        const samples = new Uint8Array(analyser.fftSize);
+
+        const interval = setInterval(() => {
+          analyser.getByteTimeDomainData(samples);
+
+          let sum = 0;
+
+          for (const sample of samples) {
+            const value = (sample - 128) / 128;
+            sum += value * value;
+          }
+
+          const value = Math.min(1, Math.sqrt(sum / samples.length) * 3.5);
+
+          level.value = value;
+          levelText.textContent = `${Math.round(value * 100)}%`;
+        }, 100);
+
+        monitorState = { context, source, interval };
+      }
+
+      async function stopMonitor() {
+        if (monitorState) {
+          clearInterval(monitorState.interval);
+          await monitorState.context.close().catch(() => {});
+          monitorState = null;
+        }
+
+        level.value = 0;
+        levelText.textContent = "0%";
+        preview.pause();
+        preview.srcObject = null;
+        preview.hidden = true;
+        monitor.hidden = true;
+      }
+
+      async function startPcmCapture() {
+        if (!monitorState) {
+          throw new Error("Web Audio could not start PCM capture.");
+        }
+
+        const processorCode = `
+      class PCMRecorderProcessor extends AudioWorkletProcessor {
+        constructor() {
+          super();
+          this.size = 8192;
+          this.buffers = [];
+          this.length = 0;
+
+          this.port.onmessage = event => {
+            if (event.data === "stop") {
+              this.flush();
+              this.port.postMessage({ type: "stopped" });
+            }
+          };
+        }
+
+        allocate(channels) {
+          this.buffers = Array.from(
+            { length: channels },
+            () => new Float32Array(this.size)
+          );
+          this.length = 0;
+        }
+
+        flush() {
+          if (!this.length) return;
+
+          const channels = this.buffers.map(buffer =>
+            buffer.slice(0, this.length).buffer
+          );
+
+          this.port.postMessage(
+            { type: "data", channels },
+            channels
+          );
+
+          this.length = 0;
+        }
+
+        process(inputs) {
+          const input = inputs[0];
+          if (!input || !input.length) return true;
+
+          if (this.buffers.length !== input.length) {
+            this.flush();
+            this.allocate(input.length);
+          }
+
+          let sourceOffset = 0;
+          const frameCount = input[0].length;
+
+          while (sourceOffset < frameCount) {
+            const amount = Math.min(
+              this.size - this.length,
+              frameCount - sourceOffset
+            );
+
+            for (let channel = 0; channel < input.length; channel++) {
+              this.buffers[channel].set(
+                input[channel].subarray(
+                  sourceOffset,
+                  sourceOffset + amount
+                ),
+                this.length
+              );
+            }
+
+            this.length += amount;
+            sourceOffset += amount;
+
+            if (this.length === this.size) this.flush();
+          }
+
+          return true;
+        }
+      }
+
+      registerProcessor("pcm-recorder", PCMRecorderProcessor);
+    `;
+
+        const moduleUrl = URL.createObjectURL(new Blob([processorCode], { type: "text/javascript" }));
+
+        try {
+          await monitorState.context.audioWorklet.addModule(moduleUrl);
+        } finally {
+          URL.revokeObjectURL(moduleUrl);
+        }
+
+        const node = new AudioWorkletNode(monitorState.context, "pcm-recorder");
+
+        const silent = monitorState.context.createGain();
+        silent.gain.value = 0;
+
+        monitorState.source.connect(node);
+        node.connect(silent);
+        silent.connect(monitorState.context.destination);
+
+        const blocks = [];
+        let stoppedResolver;
+
+        node.port.onmessage = (event) => {
+          if (event.data.type === "data") {
+            blocks.push(event.data.channels.map((buffer) => new Float32Array(buffer)));
+          } else if (event.data.type === "stopped") {
+            stoppedResolver?.();
+          }
+        };
+
+        return {
+          node,
+          silent,
+          blocks,
+          sampleRate: monitorState.context.sampleRate,
+
+          async stop() {
+            await new Promise((resolve) => {
+              stoppedResolver = resolve;
+              node.port.postMessage("stop");
+              setTimeout(resolve, 1000);
+            });
+
+            node.disconnect();
+            silent.disconnect();
+
+            return blocks;
+          },
+        };
+      }
+
+      function encodeWav(blocks, rate) {
+        const channels = blocks[0]?.length || 1;
+        const frames = blocks.reduce((total, block) => total + (block[0]?.length || 0), 0);
+
+        const bytesPerSample = 2;
+        const dataSize = frames * channels * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        function text(offset, value) {
+          for (let index = 0; index < value.length; index++) {
+            view.setUint8(offset + index, value.charCodeAt(index));
+          }
+        }
+
+        text(0, "RIFF");
+        view.setUint32(4, 36 + dataSize, true);
+        text(8, "WAVE");
+        text(12, "fmt ");
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, channels, true);
+        view.setUint32(24, rate, true);
+        view.setUint32(28, rate * channels * bytesPerSample, true);
+        view.setUint16(32, channels * bytesPerSample, true);
+        view.setUint16(34, 16, true);
+        text(36, "data");
+        view.setUint32(40, dataSize, true);
+
+        let offset = 44;
+
+        for (const block of blocks) {
+          const length = block[0]?.length || 0;
+
+          for (let frame = 0; frame < length; frame++) {
+            for (let channel = 0; channel < channels; channel++) {
+              const samples = block[channel] || block[0];
+              const sample = Math.max(-1, Math.min(1, samples[frame] || 0));
+
+              const integer = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+
+              view.setInt16(offset, integer, true);
+              offset += 2;
+            }
+          }
+        }
+
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+
+      function numericConstraint(input, scale = 1) {
+        if (!input.value) return undefined;
+
+        const value = Number(input.value) / scale;
+
+        return Number.isFinite(value) ? { ideal: value } : undefined;
+      }
+
+      function buildAudioConstraints(profile) {
+        const constraints = {};
+
+        if (audioInput.value) {
+          constraints.deviceId = { exact: audioInput.value };
+        }
+
+        const numericSettings = {
+          sampleRate: numericConstraint(sampleRate),
+          sampleSize: numericConstraint(sampleSize),
+          channelCount: numericConstraint(channelCount),
+          latency: numericConstraint(latency, 1000),
+        };
+
+        Object.entries(numericSettings).forEach(([key, value]) => {
+          if (value !== undefined) constraints[key] = value;
+        });
+
+        const processingSettings = {
+          echoCancellation: decodeCapabilityValue(echoCancellation.value),
+          noiseSuppression: decodeCapabilityValue(noiseSuppression.value),
+          autoGainControl: decodeCapabilityValue(autoGainControl.value),
+        };
+
+        Object.entries(processingSettings).forEach(([key, value]) => {
+          if (value !== undefined) {
+            constraints[key] = value;
+          } else if (profile.raw) {
+            constraints[key] = false;
+          }
+        });
+
+        return constraints;
+      }
+
+      function buildVideoConstraints() {
+        const constraints = {
+          deviceId: { exact: videoInput.value },
+        };
+
+        const settings = {
+          width: numericConstraint(videoWidth),
+          height: numericConstraint(videoHeight),
+          frameRate: numericConstraint(frameRate),
+        };
+
+        Object.entries(settings).forEach(([key, value]) => {
+          if (value !== undefined) constraints[key] = value;
+        });
+
+        return constraints;
+      }
+
+      function setConfigurationDisabled(disabled) {
+        uiLocked = disabled;
+
+        audioInput.disabled = disabled;
+        videoInput.disabled = disabled;
+        containerSelect.disabled = disabled;
+        audioCodecSelect.disabled = disabled;
+        videoCodecSelect.disabled = disabled || !videoInput.value;
+        refreshButton.disabled = disabled;
+        queryAudio.disabled = disabled;
+        queryVideo.disabled = disabled || !videoInput.value;
+
+        if (disabled) {
+          [sampleRate, sampleSize, channelCount, latency, echoCancellation, noiseSuppression, autoGainControl, videoWidth, videoHeight, frameRate].forEach(
+            (control) => {
+              control.disabled = true;
+            },
+          );
+        } else {
+          renderCapabilities("audio");
+          renderCapabilities("video");
+        }
+      }
+
+      function storeTrackCapabilities(kind, track, selectedId, fallbackLabel) {
+        if (!track || typeof track.getCapabilities !== "function") return;
+
+        const capabilities = track.getCapabilities();
+
+        if (!hasUsefulCapabilities(kind, capabilities)) return;
+
+        capabilityState[kind] = {
+          deviceId: selectedId,
+          capabilities,
+          settings: track.getSettings?.() || {},
+          label: track.label || fallbackLabel,
+        };
+      }
+
+      function recordingError(error) {
+        const constraint = error.constraint ? ` (${error.constraint})` : "";
+
+        return `${error.message || error.name}${constraint}`;
+      }
+
+      async function startRecording() {
+        const profile = resolveProfile();
+        if (!profile) return;
+
+        message.textContent = "";
+
+        try {
+          if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error("Media capture is unsupported.");
+          }
+
+          const hasVideo = Boolean(videoInput.value);
+
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: buildAudioConstraints(profile),
+            video: hasVideo ? buildVideoConstraints() : false,
+          });
+
+          const audioTrack = stream.getAudioTracks()[0];
+          const videoTrack = stream.getVideoTracks()[0];
+
+          const session = {
+            stream,
+            profile,
+            hasVideo,
+            startedAt: performance.now(),
+            audioName: audioTrack?.label || audioInput.selectedOptions[0]?.textContent || "Unknown audio input",
+            videoName: videoTrack?.label || videoInput.selectedOptions[0]?.textContent || "",
+            audioSettings: audioTrack?.getSettings?.() || {},
+            videoSettings: videoTrack?.getSettings?.() || {},
+            chunks: [],
+          };
+
+          activeSession = session;
+
+          storeTrackCapabilities("audio", audioTrack, audioInput.value, session.audioName);
+
+          if (hasVideo) {
+            storeTrackCapabilities("video", videoTrack, videoInput.value, session.videoName);
+          }
+
+          await startMonitor(stream, hasVideo);
+
+          if (profile.raw) {
+            session.pcm = await startPcmCapture();
+          } else {
+            session.recorder = new MediaRecorder(stream, {
+              mimeType: profile.mime,
+            });
+
+            session.recorder.addEventListener("dataavailable", (event) => {
+              if (event.data.size) session.chunks.push(event.data);
+            });
+
+            session.recorder.start(1000);
+          }
+
+          timer.textContent = "00:00.0";
+
+          timerInterval = setInterval(() => {
+            timer.textContent = formatTime(performance.now() - session.startedAt);
+          }, 100);
+
+          recordButton.textContent = "Stop recording";
+          recordButton.dataset.recording = "true";
+          recordButton.disabled = false;
+
+          status.textContent = hasVideo ? `${session.audioName} + ${session.videoName}` : session.audioName;
+
+          setConfigurationDisabled(true);
+        } catch (error) {
+          activeSession?.stream?.getTracks().forEach((track) => track.stop());
+          activeSession = null;
+
+          await stopMonitor();
+
+          setConfigurationDisabled(false);
+          updateFormats();
+
+          status.textContent = "Ready";
+          message.textContent = `Could not start: ${recordingError(error)}`;
+        }
+      }
+
+      async function stopRecording() {
+        const session = activeSession;
+        if (!session) return;
+
+        recordButton.disabled = true;
+        clearInterval(timerInterval);
+
+        try {
+          let blob;
+          let mimeType = session.profile.mime;
+
+          if (session.profile.raw) {
+            const blocks = await session.pcm.stop();
+            blob = encodeWav(blocks, session.pcm.sampleRate);
+          } else {
+            await new Promise((resolve) => {
+              session.recorder.addEventListener("stop", resolve, { once: true });
+
+              session.recorder.stop();
+            });
+
+            mimeType = session.recorder.mimeType || session.chunks[0]?.type || session.profile.mime;
+
+            blob = new Blob(session.chunks, { type: mimeType });
+          }
+
+          session.stream.getTracks().forEach((track) => track.stop());
+          await stopMonitor();
+
+          createRecording(session, blob, mimeType);
+        } catch (error) {
+          session.stream.getTracks().forEach((track) => track.stop());
+          await stopMonitor();
+
+          message.textContent = `Could not finish recording: ${error.message}`;
+        } finally {
+          activeSession = null;
+          recordButton.textContent = "Start recording";
+          recordButton.dataset.recording = "false";
+          status.textContent = "Ready";
+
+          setConfigurationDisabled(false);
+          updateFormats();
+        }
+      }
+
+      function extensionFor(mimeType, fallback) {
+        const type = mimeType.toLowerCase();
+
+        if (type.includes("wav")) return "wav";
+        if (type.includes("mpeg")) return "mp3";
+        if (type.includes("ogg")) return "ogg";
+        if (type.startsWith("audio/mp4")) return "m4a";
+        if (type.includes("mp4")) return "mp4";
+        if (type.includes("webm")) return "webm";
+
+        return fallback;
+      }
+
+      function onOff(value) {
+        return value === true ? "on" : value === false ? "off" : "";
+      }
+
+      function settingsDescription(session) {
+        const parts = [];
+        const audio = session.audioSettings;
+        const video = session.videoSettings;
+
+        if (audio.sampleRate) parts.push(`${audio.sampleRate} Hz`);
+        if (audio.sampleSize) parts.push(`${audio.sampleSize} bit`);
+
+        if (audio.channelCount) {
+          parts.push(`${audio.channelCount} ` + `${audio.channelCount === 1 ? "channel" : "channels"}`);
+        }
+
+        if (Number.isFinite(audio.latency)) {
+          parts.push(`${cleanNumber(audio.latency * 1000, 2)} ms latency`);
+        }
+
+        if (audio.echoCancellation !== undefined) {
+          parts.push(`echo ${onOff(audio.echoCancellation)}`);
+        }
+
+        if (audio.noiseSuppression !== undefined) {
+          parts.push(`noise suppression ${onOff(audio.noiseSuppression)}`);
+        }
+
+        if (audio.autoGainControl !== undefined) {
+          parts.push(`auto gain ${onOff(audio.autoGainControl)}`);
+        }
+
+        if (session.hasVideo && video.width && video.height) {
+          parts.push(`${video.width}×${video.height}`);
+        }
+
+        if (session.hasVideo && video.frameRate) {
+          parts.push(`${cleanNumber(video.frameRate, 2)} fps`);
+        }
+
+        return parts.join(" · ");
+      }
+
+      function createRecording(session, blob, mimeType) {
+        const date = new Date();
+        const duration = performance.now() - session.startedAt;
+        const extension = extensionFor(mimeType, session.profile.extension);
+
+        const filename = `${session.hasVideo ? "video" : "audio"}-` + `${date.toISOString().replace(/[:.]/g, "-")}.${extension}`;
+
+        const file = typeof File === "function" ? new File([blob], filename, { type: mimeType }) : blob;
+
+        const url = URL.createObjectURL(file);
+        $("#empty")?.remove();
+
+        const article = document.createElement("article");
+        const head = document.createElement("div");
+        head.className = "record-head";
+
+        const metadata = document.createElement("div");
+        metadata.className = "metadata";
+
+        const title = document.createElement("strong");
+        title.textContent = filename;
+
+        const sources = document.createElement("span");
+        sources.className = "muted";
+        sources.textContent = session.hasVideo ? `audio: ${session.audioName} · video: ${session.videoName}` : `audio: ${session.audioName}`;
+
+        const details = document.createElement("span");
+        details.className = "muted";
+        details.textContent = [date.toLocaleString(), formatTime(duration), settingsDescription(session), `${(blob.size / 1024).toFixed(1)} KB`, mimeType]
+          .filter(Boolean)
+          .join(" · ");
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Delete";
+
+        const media = document.createElement(session.hasVideo ? "video" : "audio");
+
+        media.controls = true;
+        media.preload = "metadata";
+        media.playsInline = true;
+        media.src = url;
+        media.title = filename;
+
+        remove.addEventListener("click", () => {
+          media.pause();
+          URL.revokeObjectURL(url);
+          article.remove();
+          sampleCount--;
+          updateCount();
+
+          if (!sampleCount) {
+            recordings.innerHTML = '<p id="empty">No recordings yet.</p>';
+          }
+        });
+
+        metadata.append(title, sources, details);
+        actions.append(remove);
+        head.append(metadata, actions);
+        article.append(head, media);
+        recordings.prepend(article);
+
+        sampleCount++;
+        updateCount();
+        routeMedia(media);
+      }
+
+      function updateCount() {
+        recordingCount.textContent = `${sampleCount} ${sampleCount === 1 ? "sample" : "samples"}`;
+      }
+
+      recordButton.addEventListener("click", () => {
+        activeSession ? stopRecording() : startRecording();
+      });
+
+      refreshButton.addEventListener("click", refreshDevices);
+
+      queryAudio.addEventListener("click", () => {
+        queryCapabilities("audio");
+      });
+
+      queryVideo.addEventListener("click", () => {
+        queryCapabilities("video");
+      });
+
+      audioInput.addEventListener("change", () => {
+        inspectDeviceInfoCapabilities("audio");
+      });
+
+      videoInput.addEventListener("change", () => {
+        inspectDeviceInfoCapabilities("video");
+        updateFormats("video");
+      });
+
+      containerSelect.addEventListener("change", () => {
+        updateFormats("container");
+      });
+
+      audioCodecSelect.addEventListener("change", () => {
+        updateFormats("audio");
+      });
+
+      videoCodecSelect.addEventListener("change", () => {
+        updateFormats("video");
+      });
+
+      audioOutput.addEventListener("change", routeAllMedia);
+
+      navigator.mediaDevices?.addEventListener("devicechange", () => {
+        message.textContent = "Device list changed. Press Refresh devices.";
+      });
+
+      resetCapabilities("audio");
+      resetCapabilities("video");
+      updateFormats();
+      refreshDevices();
+    </script>
+  </body>
+</html>

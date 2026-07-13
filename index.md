@@ -25,6 +25,7 @@
 - [Keyboard bounce tester](./keyboard-bounce-tester/)
 - [Markdown preview](./markdown-preview/)
 - [Markdown unique links](./markdown-unique-links/)
+- [Media Device Debugger](./media-device-debugger/)
 - [Micro Simulator](./micro-simulator/)
 - [MIT Courseek](https://chuanqisun.github.io/courseek/)
 - [OpenAI Code Interpreter](./openai-code-interpreter/)
