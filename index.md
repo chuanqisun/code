@@ -33,6 +33,7 @@
 - [Paper](https://chuanqisun.github.io/paper/)
 - [PDF → Markdown](./pdf-to-md/)
 - [PDF → Markdown](https://cloudflare-markdown-converter.fast.workers.dev/)
+- [PDF → Markdown Flash](./pdf-flash/)
 - [Pitch detector](./pitch-detector/)
 - [Plotter/Emoji](./plotters/emoji.html)
 - [Plotter/Hershey+JSON](./plotters/hershey-json.html)
