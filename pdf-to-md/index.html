@@ -1,348 +1,742 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF→MD</title>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PDF to Markdown</title>
     <style>
-        :root {
-            color-scheme: light dark;
+      :root {
+        --bg: #fff;
+        --fg: #000;
+        --muted: #555;
+        --line: #999;
+        --gap: 1rem;
+        --font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--fg);
+        background: var(--bg);
+        font: 13px/1.4 var(--font);
+      }
+
+      main {
+        width: min(60rem, calc(100% - 2rem));
+        margin: auto;
+      }
+
+      header,
+      .heading,
+      .actions,
+      .caption-row {
+        display: flex;
+        gap: 0.6rem;
+        align-items: center;
+      }
+
+      header {
+        padding: var(--gap) 0;
+        border-bottom: 2px solid var(--fg);
+      }
+
+      header h1 {
+        margin: 0 auto 0 0;
+        font-size: 1.2rem;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 1rem;
+        text-transform: uppercase;
+      }
+
+      section {
+        padding: var(--gap) 0;
+      }
+
+      input,
+      textarea,
+      button {
+        color: var(--fg);
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 0;
+        font: inherit;
+      }
+
+      input,
+      button {
+        min-height: 2rem;
+        padding: 0.25rem 0.55rem;
+      }
+
+      button {
+        border-color: var(--fg);
+        cursor: pointer;
+      }
+
+      button:hover:not(:disabled) {
+        color: var(--bg);
+        background: var(--fg);
+      }
+
+      button:disabled {
+        color: var(--muted);
+        border-color: var(--line);
+        cursor: wait;
+      }
+
+      #statusBar {
+        display: flex;
+        justify-content: space-between;
+        gap: 2rem;
+        min-height: 1.4em;
+        margin: 0.5rem 0 0;
+        color: var(--muted);
+      }
+
+      #stats {
+        flex: none;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .heading {
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+      }
+
+      #output {
+        width: 100%;
+        min-height: 20rem;
+        padding: 0.75rem;
+        resize: vertical;
+      }
+
+      #images figure {
+        display: grid;
+        grid-template-columns: 64px 1fr;
+        gap: 0.75rem;
+        margin: 0;
+        padding: 0.5rem 0;
+        border-top: 1px solid var(--line);
+      }
+
+      #images img {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+      }
+
+      .details {
+        min-width: 0;
+      }
+
+      .filename {
+        margin: 0 0 0.35rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+        overflow-wrap: anywhere;
+      }
+
+      .caption-row {
+        align-items: start;
+      }
+
+      .caption {
+        width: 100%;
+        min-height: 3.2rem;
+        padding: 0.35rem;
+        resize: vertical;
+      }
+
+      @media (max-width: 44rem) {
+        header {
+          align-items: stretch;
+          flex-direction: column;
         }
-        
-        body { 
-            max-width: 900px; 
-            margin: 0 auto; 
-            padding: 10px; 
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
+
+        header h1 {
+          margin: 0;
         }
-        
-        h3 { 
-            margin: 10px 0;
-            font-weight: normal;
+        header input,
+        header button {
+          width: 100%;
         }
-        
-        .header-row {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 10px;
+
+        #statusBar {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 0.2rem;
         }
-        
-        label {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        input[type="password"] { 
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            padding: 4px;
-            width: 350px;
-        }
-        
-        button {
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            padding: 4px 8px;
-            cursor: pointer;
-            border: 1px solid;
-        }
-        
-        #drop-zone { 
-            border: 2px dashed;
-            padding: 30px;
-            text-align: center;
-            cursor: pointer;
-            margin: 10px 0;
-            background: canvas;
-        }
-        
-        #drop-zone.dragover { 
-            opacity: 0.7;
-        }
-        
-        .result-card { 
-            border: 1px solid;
-            margin: 8px 0;
-            padding: 8px;
-            background: canvas;
-        }
-        
-        .result-header { 
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .result-title {
-            flex: 1;
-            min-width: 0;
-        }
-        
-        .result-title b {
-            font-weight: normal;
-        }
-        
-        .status {
-            opacity: 0.7;
-        }
-        
-        .btn-group {
-            display: flex;
-            gap: 5px;
-            flex-shrink: 0;
-        }
-        
-        .result-content { 
-            max-height: 400px;
-            overflow: auto;
-            border-top: 1px solid;
-            padding: 8px;
-            margin-top: 8px;
-            background: canvas;
-        }
-        
-        .result-content.collapsed { 
-            display: none;
-        }
-        
-        pre { 
-            margin: 0;
-            white-space: pre-wrap;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-        }
-        
-        .hidden { 
-            display: none;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            #drop-zone:hover {
-                opacity: 0.9;
-            }
-        }
-    </style>
-    <script type="importmap">
-      {
-        "imports": {
-          "@google/genai": "https://esm.run/@google/genai"
+
+        #stats {
+          text-align: left;
         }
       }
-    </script>
-</head>
-<body>
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>PDF → MARKDOWN</h1>
 
-    <h3>[ PDF → MARKDOWN CONVERTER ]</h3>
-
-    <div class="header-row">
         <label>
-            api_key:
-            <input type="password" id="api-key" placeholder="AIza...">
+          CEREBRAS API KEY
+          <input id="apiKey" type="password" autocomplete="off" />
         </label>
-        <button id="bulk-download" style="display:none;">download_all</button>
-    </div>
 
-    <div id="drop-zone">
-        [ drop pdf files here or click to select ]
-        <input type="file" id="file-input" multiple accept="application/pdf" class="hidden">
-    </div>
+        <input id="file" type="file" accept="application/pdf,.pdf" hidden />
+        <button id="upload" disabled>UPLOAD</button>
+      </header>
 
-    <div id="results-container"></div>
+      <div id="statusBar">
+        <span id="status">Loading libraries…</span>
+        <span id="stats">IN 0 · OUT 0 · $0.000000</span>
+      </div>
+
+      <section>
+        <div class="heading">
+          <h2>Markdown</h2>
+          <div class="actions">
+            <button id="synthesize" disabled>Synthesize</button>
+            <button id="copy" disabled>Copy</button>
+          </div>
+        </div>
+        <textarea id="output" spellcheck="false"></textarea>
+      </section>
+
+      <section>
+        <div class="heading">
+          <h2>Extracted Images</h2>
+          <button id="generateAll" disabled>Describe all</button>
+        </div>
+        <div id="images"></div>
+      </section>
+    </main>
 
     <script type="module">
-        import { GoogleGenAI } from "@google/genai";
+      import { Observable, from, mergeMap, catchError, EMPTY, finalize } from "https://esm.sh/rxjs";
 
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('file-input');
-        const apiKeyInput = document.getElementById('api-key');
-        const resultsContainer = document.getElementById('results-container');
-        const bulkDownloadBtn = document.getElementById('bulk-download');
+      const INPUT_PRICE_PER_MILLION = 0.99;
+      const OUTPUT_PRICE_PER_MILLION = 1.49;
+      const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 
-        // Store markdown content separately from UI
-        const results = new Map(); // filename -> markdown string
+      const $ = (selector) => document.querySelector(selector);
+      const apiKey = $("#apiKey");
+      const file = $("#file");
+      const upload = $("#upload");
+      const synthesize = $("#synthesize");
+      const copy = $("#copy");
+      const generateAll = $("#generateAll");
+      const output = $("#output");
+      const images = $("#images");
+      const status = $("#status");
+      const stats = $("#stats");
 
-        // Load API key
-        apiKeyInput.value = localStorage.getItem('gemini-api-key') || '';
-        apiKeyInput.addEventListener('change', () => {
-            localStorage.setItem('gemini-api-key', apiKeyInput.value.trim());
+      const byHash = new Map();
+      const byFilename = new Map();
+      const urls = [];
+
+      let parser;
+      let mupdf;
+      let bulkSubscription = null;
+      let synthesisSubscription = null;
+      let originalDocument = "";
+      let synthesizedDocument = "";
+
+      const usageTotals = {
+        input: 0,
+        output: 0,
+      };
+
+      function renderStats() {
+        const cost = (usageTotals.input / 1_000_000) * INPUT_PRICE_PER_MILLION + (usageTotals.output / 1_000_000) * OUTPUT_PRICE_PER_MILLION;
+
+        stats.textContent = `IN ${usageTotals.input.toLocaleString()} · ` + `OUT ${usageTotals.output.toLocaleString()} · ` + `$${cost.toFixed(6)}`;
+      }
+
+      function recordUsage(usage) {
+        if (!usage) return;
+
+        usageTotals.input += Number(usage.prompt_tokens) || 0;
+        usageTotals.output += Number(usage.completion_tokens) || 0;
+        renderStats();
+      }
+
+      apiKey.value = localStorage.getItem("cerebrasApiKey") || "";
+      apiKey.addEventListener("input", () => {
+        localStorage.setItem("cerebrasApiKey", apiKey.value);
+      });
+
+      try {
+        const base = "https://esm.sh/@llamaindex/liteparse-wasm@2.6.0";
+        const liteparse = await import(base);
+
+        await liteparse.default(`${base}/liteparse_wasm_bg.wasm`);
+
+        parser = new liteparse.LiteParse({
+          ocrEnabled: false,
+          outputFormat: "markdown",
         });
 
-        // Drag and Drop
-        dropZone.addEventListener('click', () => fileInput.click());
-        dropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            dropZone.classList.add('dragover');
-        });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            handleFiles(e.dataTransfer.files);
-        });
-        fileInput.addEventListener('change', (e) => {
-            handleFiles(e.target.files);
-            fileInput.value = '';
-        });
+        mupdf = await import("https://cdn.jsdelivr.net/npm/mupdf@1.28.0/dist/mupdf.js");
 
-        // Bulk Download
-        bulkDownloadBtn.addEventListener('click', () => {
-            if (results.size === 0) return;
-            
-            results.forEach((content, filename) => {
-                downloadMarkdown(filename, content);
-            });
-        });
+        upload.disabled = false;
+        status.textContent = "Ready.";
+      } catch (error) {
+        status.textContent = `Load failed: ${error.message}`;
+      }
 
-        function downloadMarkdown(filename, content) {
-            const blob = new Blob([content], { type: 'text/markdown' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename.replace('.pdf', '.md');
-            a.click();
-            URL.revokeObjectURL(url);
+      function escapeAlt(text) {
+        return text.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]").replaceAll("\n", " ").trim();
+      }
+
+      function applyCaptions(document) {
+        return document.replace(/!\[([^\]]*)\]\((image_p\d+_\d+\.png)\)/g, (match, oldAlt, filename) => {
+          const caption = byFilename.get(filename)?.caption.trim();
+
+          return caption ? `![${escapeAlt(caption)}](${filename})` : match;
+        });
+      }
+
+      function refreshPreview() {
+        output.value = applyCaptions(synthesizedDocument || originalDocument);
+      }
+
+      function setEntry(entry, changes = {}) {
+        Object.assign(entry, changes);
+
+        for (const view of entry.views) {
+          if (view.caption.value !== entry.caption) view.caption.value = entry.caption;
+
+          view.button.disabled = entry.loading;
+          view.button.textContent = "Describe";
         }
 
-        function handleFiles(files) {
-            const apiKey = apiKeyInput.value.trim();
-            if (!apiKey) {
-                alert("[ error: api key required ]");
-                return;
+        refreshPreview();
+      }
+
+      function clearImages() {
+        bulkSubscription?.unsubscribe();
+        bulkSubscription = null;
+
+        for (const entry of byHash.values()) entry.subscription?.unsubscribe();
+
+        urls.splice(0).forEach(URL.revokeObjectURL);
+        byHash.clear();
+        byFilename.clear();
+        images.replaceChildren();
+
+        generateAll.disabled = true;
+        generateAll.textContent = "Describe all";
+      }
+
+      async function sha1(bytes) {
+        const digest = await crypto.subtle.digest("SHA-1", bytes);
+
+        return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      }
+
+      function blobToDataURL(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      function streamCompletion(body, onText) {
+        return new Observable((subscriber) => {
+          const controller = new AbortController();
+
+          (async () => {
+            const key = apiKey.value.trim();
+            if (!key) throw new Error("Enter a Cerebras API key.");
+
+            const response = await fetch(CEREBRAS_URL, {
+              method: "POST",
+              signal: controller.signal,
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${key}`,
+              },
+              body: JSON.stringify(body),
+            });
+
+            if (!response.ok) throw new Error(`${response.status}: ${await response.text()}`);
+
+            if (!response.body) throw new Error("Streaming response is unavailable.");
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            let text = "";
+            let usageRecorded = false;
+
+            function processLine(line) {
+              if (!line.startsWith("data:")) return;
+
+              const data = line.slice(5).trim();
+              if (!data || data === "[DONE]") return;
+
+              try {
+                const event = JSON.parse(data);
+                const chunk = event.choices?.[0]?.delta?.content || "";
+
+                if (chunk) {
+                  text += chunk;
+                  onText(text);
+                }
+
+                if (event.usage && !usageRecorded) {
+                  recordUsage(event.usage);
+                  usageRecorded = true;
+                }
+              } catch {}
             }
 
-            Array.from(files).forEach(file => {
-                if (file.type !== 'application/pdf') return;
-                processFile(file, apiKey);
+            while (true) {
+              const { value, done } = await reader.read();
+
+              buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+              const lines = buffer.split(/\r?\n/);
+              buffer = done ? "" : lines.pop();
+
+              for (const line of lines) processLine(line);
+
+              if (done) {
+                if (buffer) processLine(buffer);
+                break;
+              }
+            }
+
+            subscriber.next(text.trim());
+            subscriber.complete();
+          })().catch((error) => {
+            if (error.name === "AbortError") subscriber.complete();
+            else subscriber.error(error);
+          });
+
+          return () => controller.abort();
+        });
+      }
+
+      function describeObservable(entry) {
+        setEntry(entry, {
+          loading: true,
+          caption: "",
+        });
+
+        return streamCompletion(
+          {
+            model: "gemma-4-31b",
+            stream: true,
+            max_tokens: 1024,
+            temperature: 0.4,
+            top_p: 0.95,
+            messages: [
+              {
+                role: "system",
+                content: "Write accessible caption text for the image, plaintext one sentence.",
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "image_url",
+                    image_url: { url: entry.dataUrl },
+                  },
+                ],
+              },
+            ],
+          },
+          (text) => {
+            setEntry(entry, { caption: text });
+          },
+        ).pipe(finalize(() => setEntry(entry, { loading: false })));
+      }
+
+      function describe(entry) {
+        entry.subscription?.unsubscribe();
+
+        entry.subscription = describeObservable(entry).subscribe({
+          next: (text) => {
+            setEntry(entry, {
+              caption: text || "No caption returned.",
             });
+            status.textContent = "Caption complete.";
+          },
+          error: (error) => {
+            setEntry(entry, {
+              caption: `Caption failed: ${error.message}`,
+            });
+            status.textContent = `Caption failed: ${error.message}`;
+          },
+        });
+      }
+
+      async function addImage(data, filename) {
+        const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+
+        const digest = await sha1(bytes);
+        const blob = new Blob([bytes], { type: "image/png" });
+        const url = URL.createObjectURL(blob);
+        urls.push(url);
+
+        let entry = byHash.get(digest);
+
+        if (!entry) {
+          entry = {
+            caption: "",
+            loading: false,
+            views: [],
+            dataUrl: await blobToDataURL(blob),
+            subscription: null,
+          };
+          byHash.set(digest, entry);
         }
 
-        async function processFile(file, apiKey) {
-            const ui = createResultCard(file.name);
-            resultsContainer.prepend(ui.card);
+        byFilename.set(filename, entry);
+
+        const figure = document.createElement("figure");
+        const image = document.createElement("img");
+        const details = document.createElement("div");
+        const name = document.createElement("p");
+        const row = document.createElement("div");
+        const button = document.createElement("button");
+        const caption = document.createElement("textarea");
+
+        image.src = url;
+        image.alt = filename;
+        image.loading = "lazy";
+
+        details.className = "details";
+        name.className = "filename";
+        name.textContent = filename;
+        row.className = "caption-row";
+        caption.className = "caption";
+        caption.placeholder = "Caption";
+        button.textContent = "Describe";
+
+        const view = { button, caption };
+        entry.views.push(view);
+
+        button.addEventListener("click", () => describe(entry));
+
+        caption.addEventListener("input", () => {
+          setEntry(entry, { caption: caption.value });
+        });
+
+        row.append(button, caption);
+        details.append(name, row);
+        figure.append(image, details);
+        images.append(figure);
+
+        setEntry(entry);
+        generateAll.disabled = false;
+      }
+
+      async function extractImages(bytes) {
+        const pdf = mupdf.Document.openDocument(bytes, "application/pdf");
+
+        try {
+          const pageCount = pdf.countPages();
+
+          for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+            const page = pdf.loadPage(pageIndex);
+            const found = [];
+
+            const device = new mupdf.Device({
+              fillImage: (image) => found.push(image),
+              fillImageMask: (image) => found.push(image),
+            });
 
             try {
-                ui.setStatus('processing...');
-                const base64Data = await fileToBase64(file);
+              page.runPageContents(device, mupdf.Matrix.identity);
+              device.close();
 
-                const ai = new GoogleGenAI({ apiKey: apiKey });
-                
-                const systemInstruction = "Convert the entire pdf to markdown in its entirety. Omit header, cover, footer. But preserve tables and formatted text. Replace image with captions.";
+              for (let index = 0; index < found.length; index++) {
+                const pixmap = found[index].toPixmap();
 
-                const contents = [
-                    {
-                        role: "user",
-                        parts: [
-                            {
-                                inlineData: {
-                                    mimeType: 'application/pdf',
-                                    data: base64Data
-                                }
-                            }
-                        ]
-                    }
-                ];
-
-                const response = await ai.models.generateContent({
-                    model: "gemini-3-flash-preview",
-                    contents: contents,
-                    config: {
-                        thinkingConfig: {
-                          thinkingBudget: 0,
-                        },
-                        systemInstruction: systemInstruction,
-                    }
-                });
-
-                const markdown = response.text;
-                
-                // Store the raw markdown content
-                results.set(file.name, markdown);
-                
-                // Update UI
-                ui.setContent(markdown);
-                ui.setStatus('complete');
-                ui.enableDownload(file.name, markdown);
-                
-                bulkDownloadBtn.style.display = 'inline';
-
-            } catch (error) {
-                console.error(error);
-                ui.setContent(`error: ${error.message}`);
-                ui.setStatus('failed');
-            }
-        }
-
-        function fileToBase64(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result.split(',')[1]);
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        }
-
-        function createResultCard(filename) {
-            const card = document.createElement('div');
-            card.className = 'result-card';
-
-            const header = document.createElement('div');
-            header.className = 'result-header';
-            
-            const title = document.createElement('div');
-            title.className = 'result-title';
-            title.innerHTML = `<b>${filename}</b> <span class="status">pending</span>`;
-            
-            const btnGroup = document.createElement('div');
-            btnGroup.className = 'btn-group';
-            
-            const toggleBtn = document.createElement('button');
-            toggleBtn.innerText = 'expand';
-            toggleBtn.style.display = 'none';
-            
-            const downloadBtn = document.createElement('button');
-            downloadBtn.innerText = 'download';
-            downloadBtn.style.display = 'none';
-
-            btnGroup.appendChild(toggleBtn);
-            btnGroup.appendChild(downloadBtn);
-            
-            header.appendChild(title);
-            header.appendChild(btnGroup);
-
-            const contentArea = document.createElement('div');
-            contentArea.className = 'result-content collapsed';
-            const pre = document.createElement('pre');
-            contentArea.appendChild(pre);
-
-            card.appendChild(header);
-            card.appendChild(contentArea);
-
-            // Toggle expand/collapse
-            toggleBtn.addEventListener('click', () => {
-                contentArea.classList.toggle('collapsed');
-                toggleBtn.innerText = contentArea.classList.contains('collapsed') ? 'expand' : 'collapse';
-            });
-
-            return {
-                card,
-                setStatus: (text) => {
-                    title.querySelector('.status').innerText = text;
-                },
-                setContent: (text) => {
-                    pre.innerText = text;
-                    toggleBtn.style.display = 'inline';
-                },
-                enableDownload: (filename, markdownContent) => {
-                    downloadBtn.style.display = 'inline';
-                    // Store reference to the actual content, not the DOM
-                    downloadBtn.onclick = () => downloadMarkdown(filename, markdownContent);
+                try {
+                  await addImage(pixmap.asPNG(), `image_p${pageIndex + 1}_${index}.png`);
+                } finally {
+                  pixmap.destroy?.();
                 }
-            };
+              }
+            } finally {
+              device.destroy?.();
+              page.destroy?.();
+            }
+
+            status.textContent = `Extracting images: ${pageIndex + 1}/${pageCount}`;
+
+            await new Promise(requestAnimationFrame);
+          }
+        } finally {
+          pdf.destroy?.();
         }
+      }
+
+      generateAll.addEventListener("click", () => {
+        if (bulkSubscription) {
+          bulkSubscription.unsubscribe();
+          bulkSubscription = null;
+          generateAll.textContent = "Describe all";
+          status.textContent = "Caption generation cancelled.";
+          return;
+        }
+
+        if (!apiKey.value.trim()) {
+          apiKey.focus();
+          status.textContent = "Enter a Cerebras API key.";
+          return;
+        }
+
+        const entries = [...byHash.values()];
+
+        generateAll.textContent = "Cancel";
+        status.textContent = `Generating ${entries.length} unique captions…`;
+
+        bulkSubscription = from(entries)
+          .pipe(
+            mergeMap((entry) => {
+              entry.subscription?.unsubscribe();
+
+              return describeObservable(entry).pipe(
+                catchError((error) => {
+                  setEntry(entry, {
+                    caption: `Caption failed: ${error.message}`,
+                  });
+                  return EMPTY;
+                }),
+              );
+            }, 5),
+            finalize(() => {
+              bulkSubscription = null;
+              generateAll.textContent = "Describe all";
+            }),
+          )
+          .subscribe({
+            complete: () => {
+              status.textContent = "Captions complete.";
+            },
+          });
+      });
+
+      synthesize.addEventListener("click", () => {
+        if (synthesisSubscription) {
+          synthesisSubscription.unsubscribe();
+          synthesisSubscription = null;
+          synthesize.textContent = "Synthesize";
+          status.textContent = "Synthesis cancelled.";
+          refreshPreview();
+          return;
+        }
+
+        if (!apiKey.value.trim()) {
+          apiKey.focus();
+          status.textContent = "Enter a Cerebras API key.";
+          return;
+        }
+
+        synthesize.textContent = "Cancel";
+        status.textContent = "Synthesizing document…";
+
+        let streamedDocument = "";
+
+        synthesisSubscription = streamCompletion(
+          {
+            model: "gemma-4-31b",
+            stream: true,
+            max_tokens: 32000,
+            temperature: 0,
+            top_p: 1,
+            messages: [
+              {
+                role: "system",
+                content: `Clean up OCR result and fix formatting. Respond with the full valid markdown document.
+
+1. Preserve all images like ![](file-name.png).
+2. Ensure valid heading hierarchy.
+3. Use a single column.`,
+              },
+              {
+                role: "user",
+                content: originalDocument,
+              },
+            ],
+          },
+          (text) => {
+            streamedDocument = text;
+            output.value = text;
+          },
+        ).subscribe({
+          next: (text) => {
+            synthesizedDocument = text || streamedDocument;
+            refreshPreview();
+            status.textContent = "Document synthesized.";
+          },
+          error: (error) => {
+            status.textContent = `Synthesis failed: ${error.message}`;
+            refreshPreview();
+          },
+          complete: () => {
+            synthesisSubscription = null;
+            synthesize.textContent = "Synthesize";
+          },
+        });
+      });
+
+      upload.addEventListener("click", () => file.click());
+
+      file.addEventListener("change", async () => {
+        if (!file.files[0]) return;
+
+        upload.disabled = true;
+        copy.disabled = true;
+        synthesize.disabled = true;
+        clearImages();
+
+        originalDocument = "";
+        synthesizedDocument = "";
+        output.value = "";
+
+        try {
+          const bytes = new Uint8Array(await file.files[0].arrayBuffer());
+
+          status.textContent = "Converting PDF…";
+          originalDocument = (await parser.parse(bytes)).text;
+          refreshPreview();
+
+          copy.disabled = false;
+          synthesize.disabled = false;
+
+          status.textContent = "Extracting images…";
+          await extractImages(bytes);
+          status.textContent = "Done.";
+        } catch (error) {
+          status.textContent = `Conversion failed: ${error.message}`;
+        } finally {
+          upload.disabled = false;
+          file.value = "";
+        }
+      });
+
+      copy.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(output.value);
+        status.textContent = "Markdown copied.";
+      });
+
+      window.addEventListener("pagehide", clearImages);
     </script>
-</body>
+  </body>
 </html>
