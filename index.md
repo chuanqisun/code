@@ -70,6 +70,7 @@
 - [Electric sheep](./electric-sheep/)
 - [Fable Knot](./fable-knot/)
 - [Face that is none](https://code.chuanqisun.com/recreating-the-past/salavon/demo.html)
+- [FirstCheck](./first-check/)
 - [Generational Parallax](./generational-parallax/)
 - [Grid Draw](https://chuanqisun.github.io/grid-draw/)
 - [Groq transcription](./groq-transcription/)
