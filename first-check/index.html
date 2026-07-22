@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>First Check</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1117;
+        --panel: #161b22;
+        --border: #30363d;
+        --txt: #e6edf3;
+        --dim: #8b949e;
+        --faint: #484f58;
+        --green: #3fb950;
+        --blue: #58a6ff;
+        --purple: #bc8cff;
+        --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--txt);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      /* full-viewport opening: only title + subtitle visible */
+      header {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+        max-width: 100%;
+      }
+      header .inner {
+        max-width: 860px;
+      }
+      header h1 {
+        font-size: 2.4rem;
+        margin-bottom: 16px;
+      }
+      header h1 span {
+        background: linear-gradient(90deg, var(--blue), var(--purple));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      header p {
+        color: var(--dim);
+        line-height: 1.7;
+      }
+      .scroll-hint {
+        margin-top: 48px;
+        color: var(--dim);
+        font-size: 0.85rem;
+        font-family: var(--mono);
+        animation: bob 1.6s ease-in-out infinite;
+      }
+      @keyframes bob {
+        50% {
+          transform: translateY(6px);
+        }
+      }
+      .hike {
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) minmax(380px, 520px);
+        gap: 48px;
+        max-width: 1200px;
+        margin: auto;
+        padding: 0 24px 120px;
+      }
+      @media (max-width: 900px) {
+        .hike {
+          grid-template-columns: 1fr;
+        }
+        .sticky-wrap {
+          position: static !important;
+        }
+      }
+
+      .step {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        opacity: 0.25;
+        transition: opacity 0.4s;
+        padding: 6vh 0;
+      }
+      .step.active {
+        opacity: 1;
+      }
+      .step-tag {
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+      .step h2 {
+        font-size: 1.5rem;
+        margin-bottom: 4px;
+      }
+      .step .lede {
+        color: var(--dim);
+        line-height: 1.65;
+        margin-bottom: 6px;
+        max-width: 52ch;
+        font-size: 0.92rem;
+      }
+      .label {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin: 18px 0 8px;
+      }
+      .label::before {
+        content: "// ";
+        color: var(--faint);
+      }
+      .stack {
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        line-height: 1.9;
+        color: var(--txt);
+      }
+      .stack i {
+        font-style: normal;
+        color: var(--faint);
+        padding: 0 6px;
+      }
+      ul.theory {
+        list-style: none;
+      }
+      ul.theory li {
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        padding: 3px 0 3px 18px;
+        position: relative;
+        color: var(--txt);
+      }
+      ul.theory li::before {
+        content: "*";
+        position: absolute;
+        left: 0;
+      }
+      figure {
+        margin: 20px 0 0;
+      }
+      figcaption {
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        color: var(--dim);
+        letter-spacing: 0.06em;
+        margin-top: 8px;
+        text-align: center;
+      }
+      svg text {
+        font-family: var(--mono);
+      }
+
+      .sticky-wrap {
+        position: sticky;
+        top: 6vh;
+        height: fit-content;
+        padding-top: 6vh;
+      }
+      /* card hidden until stage 01 enters */
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        transform: translateY(28px) scale(0.97);
+        transition:
+          opacity 0.6s ease,
+          transform 0.6s ease;
+        pointer-events: none;
+      }
+      .card.visible {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+      }
+      .card-head {
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .card-head h3 {
+        font-size: 1.05rem;
+      }
+      .card-head small {
+        display: block;
+        color: var(--dim);
+        font-size: 0.72rem;
+        margin-top: 3px;
+        font-family: var(--mono);
+      }
+      .status {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid;
+        transition: all 0.3s;
+      }
+      .card-body {
+        padding: 16px 20px 20px;
+        max-height: 80vh;
+      }
+      .section {
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transform: translateY(10px);
+        transition:
+          max-height 0.6s ease,
+          opacity 0.45s ease,
+          transform 0.45s ease;
+        margin-bottom: 0;
+      }
+      .section.show {
+        max-height: 640px;
+        opacity: 1;
+        transform: none;
+        margin-bottom: 14px;
+      }
+      .section h4 {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 8px;
+      }
+      .item {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 8px 10px;
+        background: #0d1117;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin-bottom: 6px;
+        font-size: 0.82rem;
+        opacity: 0;
+        transform: translateX(-8px);
+        transition: all 0.4s;
+      }
+      .item.in {
+        opacity: 1;
+        transform: none;
+      }
+      .item time {
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--dim);
+        white-space: nowrap;
+        padding-top: 2px;
+      }
+      .item .src {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 0.62rem;
+        color: var(--faint);
+        white-space: nowrap;
+        padding-top: 3px;
+      }
+      .file .icon {
+        width: 30px;
+        height: 36px;
+        border-radius: 4px;
+        background: linear-gradient(160deg, #e5534b, #b62324);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.55rem;
+        font-weight: 700;
+        color: #fff;
+        flex-shrink: 0;
+      }
+      .file .fname {
+        font-family: var(--mono);
+        font-size: 0.78rem;
+      }
+      .file .fmeta {
+        color: var(--dim);
+        font-size: 0.68rem;
+        font-family: var(--mono);
+      }
+      .file time {
+        margin-left: auto;
+      }
+      .icon-voice {
+        width: 30px;
+        height: 36px;
+        border-radius: 4px;
+        background: #0d1117;
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 0.9rem;
+      }
+      .signoff {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px dashed var(--green);
+        border-radius: 8px;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--green);
+        opacity: 0;
+        transition: opacity 0.5s;
+      }
+      .signoff.in {
+        opacity: 1;
+        cursor: pointer;
+      }
+      .signoff.in:hover {
+        background: rgba(63, 185, 80, 0.08);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- opening screen: title + subtitle only -->
+    <header>
+      <div class="inner">
+        <h1>First Check</h1>
+        <p>The Autonomous Venture Fund</p>
+        <div class="scroll-hint">▼ scroll</div>
+      </div>
+    </header>
+
+    <div class="hike">
+      <div class="steps">
+        <!-- ============ 01 SOURCING ============ -->
+        <section class="step" data-step="1">
+          <div class="step-tag" style="color: var(--blue)">Stage 01</div>
+          <h2>Source</h2>
+          <p class="lede">
+            Inbound and outbound signal parsed into verifiable facts. Founders and ideas recognized across opportunities. Data lands in the Card with source
+            attached.
+          </p>
+
+          <p class="label">Tech stack</p>
+          <p class="stack">Next.js <i>/</i> Temporal <i>/</i> LlamaParse <i>/</i> Zod <i>/</i> Drizzle&nbsp;ORM <i>/</i> PostgreSQL&nbsp;(RLS) <i>/</i> S3</p>
+
+          <p class="label">Theory</p>
+          <ul class="theory">
+            <li>Entity resolution &amp; fact provenance</li>
+            <li>Evidence-cited knowledge capture</li>
+          </ul>
+
+          <figure>
+            <svg viewBox="0 0 460 370" width="100%">
+              <defs>
+                <marker id="m1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0 0L8 4L0 8" fill="none" stroke="#484f58" stroke-width="1" />
+                </marker>
+              </defs>
+              <g stroke="#484f58" stroke-width="1" fill="none" marker-end="url(#m1)">
+                <path d="M100 44 L195 152" />
+                <path d="M230 44 V152" />
+                <path d="M360 44 L265 152" />
+                <path d="M55 84 L170 152" />
+                <path d="M170 84 L210 152" />
+                <path d="M285 84 L250 152" />
+                <path d="M400 84 L290 152" />
+              </g>
+              <g fill="var(--bg)" stroke="#8b949e" stroke-width="1">
+                <rect x="50" y="14" width="100" height="30" />
+                <rect x="180" y="14" width="100" height="30" />
+                <rect x="310" y="14" width="100" height="30" />
+                <rect x="5" y="54" width="100" height="30" />
+                <rect x="120" y="54" width="100" height="30" />
+                <rect x="235" y="54" width="100" height="30" />
+                <rect x="350" y="54" width="100" height="30" />
+              </g>
+              <g text-anchor="middle" font-size="10" fill="#e6edf3">
+                <text x="100" y="33">DECK</text>
+                <text x="230" y="33">FORM</text>
+                <text x="360" y="33">WEB</text>
+                <text x="55" y="73">SOCIAL</text>
+                <text x="170" y="73">GITHUB</text>
+                <text x="285" y="73">ARXIV</text>
+                <text x="400" y="73">PATENT</text>
+              </g>
+              <rect x="140" y="158" width="180" height="48" fill="none" stroke="#58a6ff" stroke-width="1.25" />
+              <text x="230" y="179" text-anchor="middle" font-size="12" font-weight="600" fill="#58a6ff">SOURCER</text>
+              <text x="230" y="196" text-anchor="middle" font-size="9" fill="#8b949e">parse · dedupe · cite</text>
+              <path d="M230 206 V244" stroke="#484f58" stroke-width="1" fill="none" marker-end="url(#m1)" />
+              <g fill="none" stroke="#8b949e" stroke-width="1">
+                <rect x="110" y="250" width="240" height="104" />
+                <path d="M110 278 H350" />
+              </g>
+              <text x="230" y="269" text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">OPPORTUNITY CARD</text>
+              <g font-size="10" fill="#8b949e">
+                <text x="128" y="300">founder_id</text>
+                <text x="128" y="320">fact + source</text>
+                <text x="128" y="340">...</text>
+              </g>
+            </svg>
+            <figcaption>fig 1 — many sources, one card</figcaption>
+          </figure>
+        </section>
+
+        <!-- ============ 02 RESEARCHING ============ -->
+        <section class="step" data-step="2">
+          <div class="step-tag" style="color: var(--purple)">Stage 02</div>
+          <h2>Research</h2>
+          <p class="lede">
+            Investment thesis drives evaluation. Due diligence per axis: Founder, Market, Finance, Legal & Ops. Risks and gaps flagged for interview.
+          </p>
+
+          <p class="label">Tech stack</p>
+          <p class="stack">Temporal <i>/</i> OpenAI&nbsp;Agents&nbsp;SDK <i>/</i> pgvector <i>/</i> TypeScript&nbsp;calculation&nbsp;engine</p>
+
+          <p class="label">Theory</p>
+          <ul class="theory">
+            <li>Investment thesis modeling</li>
+            <li>Zero-knowledge proofs for due-diligence sourcing</li>
+          </ul>
+
+          <figure>
+            <svg viewBox="0 0 460 350" width="100%">
+              <defs>
+                <marker id="m2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0 0L8 4L0 8" fill="none" stroke="#484f58" stroke-width="1" />
+                </marker>
+              </defs>
+              <rect x="140" y="10" width="180" height="32" fill="none" stroke="#8b949e" stroke-width="1" />
+              <text x="230" y="30" text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">INVESTMENT THESIS</text>
+              <rect x="10" y="140" width="70" height="56" fill="none" stroke="#8b949e" stroke-width="1" />
+              <text x="45" y="164" text-anchor="middle" font-size="10" fill="#e6edf3">CARD</text>
+              <text x="45" y="180" text-anchor="middle" font-size="9" fill="#484f58">rev n</text>
+              <g fill="none" stroke="#8b949e" stroke-width="1">
+                <rect x="120" y="76" width="220" height="48" />
+                <rect x="120" y="144" width="220" height="48" />
+                <rect x="120" y="212" width="220" height="48" />
+              </g>
+              <g text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">
+                <text x="230" y="96">FOUNDER</text>
+                <text x="230" y="164">MARKET</text>
+                <text x="230" y="232">IDEA × MARKET</text>
+              </g>
+              <g text-anchor="middle" font-size="9" fill="#8b949e">
+                <text x="230" y="113">independent evidence + verdict</text>
+                <text x="230" y="181">independent evidence + verdict</text>
+                <text x="230" y="249">independent evidence + verdict</text>
+              </g>
+              <g stroke="#484f58" stroke-width="1" fill="none" stroke-dasharray="3 3">
+                <path d="M360 26 H400 V236 H346" marker-end="url(#m2)" />
+                <path d="M400 100 H346" marker-end="url(#m2)" />
+                <path d="M400 168 H346" marker-end="url(#m2)" />
+              </g>
+              <g stroke="#484f58" stroke-width="1" fill="none" marker-end="url(#m2)">
+                <path d="M80 168 H114" />
+                <path d="M80 156 L100 156 L100 100 L114 100" />
+                <path d="M80 180 L100 180 L100 236 L114 236" />
+                <path d="M230 260 V292" />
+              </g>
+              <rect x="110" y="298" width="240" height="44" fill="none" stroke="#bc8cff" stroke-width="1.25" />
+              <text x="230" y="317" text-anchor="middle" font-size="11" font-weight="600" fill="#bc8cff">DRAFT TERM SHEET</text>
+              <text x="230" y="333" text-anchor="middle" font-size="9" fill="#8b949e">weighted composite evidence</text>
+            </svg>
+            <figcaption>fig 2 — thesis driven analysis</figcaption>
+          </figure>
+        </section>
+
+        <!-- ============ 03 INTERVIEWING ============ -->
+        <section class="step" data-step="3">
+          <div class="step-tag" style="color: var(--green)">Stage 03</div>
+          <h2>Interviewing</h2>
+          <p class="lede">
+            Agent-driven interview resolves open questions, converges founder and investor towards optimal deal within pre-approved bounds. Anormaly escalates
+            to the investor, who keeps final authority.
+          </p>
+
+          <p class="label">Tech stack</p>
+          <p class="stack">ElevenLabs&nbsp;Agents <i>/</i> WebRTC <i>/</i> Server-Sent&nbsp;Events <i>/</i> Clerk <i>/</i> Temporal</p>
+
+          <p class="label">Theory</p>
+          <ul class="theory">
+            <li>Multi-user social / personality modeling</li>
+            <li>Negotiation theory (BATNA, Nash bargaining)</li>
+          </ul>
+
+          <figure>
+            <svg viewBox="0 0 460 350" width="100%">
+              <defs>
+                <marker id="m3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                  <path d="M0 0L8 4L0 8" fill="none" stroke="#484f58" stroke-width="1" />
+                </marker>
+              </defs>
+              <rect x="30" y="42" width="400" height="200" fill="none" stroke="#8b949e" stroke-width="1" stroke-dasharray="5 4" />
+              <text x="40" y="32" font-size="9" fill="#8b949e">HUMAN-APPROVED BOUNDS</text>
+              <text x="60" y="72" font-size="11" font-weight="600" fill="#e6edf3">FOUNDER</text>
+              <text x="400" y="72" text-anchor="end" font-size="11" font-weight="600" fill="#e6edf3">INVESTOR</text>
+              <g stroke="#484f58" stroke-width="1" fill="none" marker-end="url(#m3)">
+                <path d="M70 92 H140" />
+                <path d="M390 92 H320" />
+                <path d="M150 130 H196" />
+                <path d="M310 130 H264" />
+                <path d="M188 168 H222" />
+                <path d="M272 168 H238" />
+              </g>
+              <g font-size="9" fill="#8b949e">
+                <text x="70" y="107">offer_1</text>
+                <text x="390" y="107" text-anchor="end">counter_1</text>
+                <text x="150" y="145">offer_2</text>
+                <text x="310" y="145" text-anchor="end">counter_2</text>
+                <text x="220" y="182" text-anchor="end">offer_3</text>
+                <text x="240" y="182">counter_3</text>
+              </g>
+              <text x="230" y="160" text-anchor="middle" font-size="9" font-weight="600" fill="#3fb950">converge</text>
+              <circle cx="230" cy="168" r="2.5" fill="#3fb950" />
+              <path d="M230 174 V196" stroke="#484f58" stroke-width="1" fill="none" marker-end="url(#m3)" />
+              <rect x="196" y="200" width="68" height="32" fill="none" stroke="#3fb950" stroke-width="1.25" />
+              <text x="230" y="220" text-anchor="middle" font-size="11" font-weight="600" fill="#3fb950">DEAL</text>
+              <path d="M230 242 V286" stroke="#484f58" stroke-width="1" fill="none" marker-end="url(#m3)" />
+              <text x="240" y="268" font-size="9" fill="#8b949e">out of bound</text>
+              <rect x="130" y="292" width="200" height="42" fill="none" stroke="#8b949e" stroke-width="1" />
+              <text x="230" y="310" text-anchor="middle" font-size="11" font-weight="600" fill="#e6edf3">HUMAN INVESTOR</text>
+              <text x="230" y="326" text-anchor="middle" font-size="9" fill="#8b949e">escalate · final authority</text>
+            </svg>
+            <figcaption>fig 3 — convergence within bounds</figcaption>
+          </figure>
+        </section>
+      </div>
+
+      <!-- ============ STICKY CARD ============ -->
+      <div class="sticky-wrap">
+        <div class="card" id="card">
+          <div class="card-head">
+            <div>
+              <h3>Nimbus AI</h3>
+              <small>Opportunity · Seed · Infra / AI Tooling</small>
+            </div>
+            <span class="status" id="status" style="color: var(--dim); border-color: var(--border)">EMPTY</span>
+          </div>
+          <div class="card-body">
+            <div class="section" id="sec1">
+              <h4 style="color: var(--blue)">01 · Source</h4>
+              <div class="item">
+                <time>09:02:11</time><span>Founders: <b>Ada Chen</b> (ex-Stripe infra) &amp; <b>Raj Mehta</b> (PhD, distributed systems)</span
+                ><span class="src">deck</span>
+              </div>
+              <div class="item">
+                <time>09:02:47</time><span>Idea: serverless GPU orchestration — “Vercel for model inference”</span><span class="src">form</span>
+              </div>
+              <div class="item"><time>09:03:15</time><span>Traction: 1.2k GitHub ⭐ in 6 weeks, 14 design partners</span><span class="src">github</span></div>
+              <div class="item"><time>09:03:58</time><span>Raising $3M seed; warm intro via portfolio founder</span><span class="src">social</span></div>
+            </div>
+
+            <div class="section" id="sec2">
+              <h4 style="color: var(--purple)">02 · Research</h4>
+              <div class="item file">
+                <div class="icon">PDF</div>
+                <div>
+                  <div class="fname">founder_assessment.pdf</div>
+                  <div class="fmeta">lens: FOUNDER · verdict: strong</div>
+                </div>
+                <time>09:41:20</time>
+              </div>
+              <div class="item file">
+                <div class="icon">PDF</div>
+                <div>
+                  <div class="fname">market_analysis.pdf</div>
+                  <div class="fmeta">lens: MARKET · TAM $41B</div>
+                </div>
+                <time>09:52:03</time>
+              </div>
+              <div class="item file">
+                <div class="icon">PDF</div>
+                <div>
+                  <div class="fname">idea_market_fit.pdf</div>
+                  <div class="fmeta">lens: IDEA × MARKET · verdict: pass</div>
+                </div>
+                <time>09:58:41</time>
+              </div>
+              <div class="item file">
+                <div class="icon">PDF</div>
+                <div>
+                  <div class="fname">term_sheet_draft_v1.pdf</div>
+                  <div class="fmeta">DRAFT · $18M pre · $3M check</div>
+                </div>
+                <time>10:05:44</time>
+              </div>
+            </div>
+
+            <div class="section" id="sec3">
+              <h4 style="color: var(--green)">03 · Interview</h4>
+              <div class="item">
+                <div class="icon-voice">🎙️</div>
+                <div>
+                  <div class="fname">Founder interview — Ada Chen &amp; Raj Mehta</div>
+                  <div class="fmeta">live voice · 42 min · 3 negotiation rounds · open questions resolved</div>
+                </div>
+                <time>13:40:00</time>
+              </div>
+              <div class="item file">
+                <div class="icon">PDF</div>
+                <div>
+                  <div class="fname">term_sheet_SIGNED.pdf</div>
+                  <div class="fmeta">SIGNED · $20M pre · $3.5M check · 20% pool</div>
+                </div>
+                <time>14:32:09</time>
+              </div>
+              <div class="signoff" id="signoff">✔ interviewer-agent: deal converged within human-approved bounds; card locked &amp; routed to investor</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import confetti from "https://esm.sh/canvas-confetti@1.9.3";
+
+      const cardEl = document.getElementById("card");
+      const statusEl = document.getElementById("status");
+      const signoffEl = document.getElementById("signoff");
+      const steps = [...document.querySelectorAll(".step")];
+      const visible = new Set();
+      const timers = new Map();
+      let currentLevel = 0;
+      let keyboardLevel = 0;
+
+      const statuses = {
+        0: { text: "EMPTY", color: "var(--dim)" },
+        1: { text: "SOURCING…", color: "var(--blue)" },
+        2: { text: "RESEARCHING…", color: "var(--purple)" },
+        3: { text: "DEAL SIGNED ✓", color: "var(--green)" },
+      };
+
+      function clearTimers(id) {
+        (timers.get(id) || []).forEach(clearTimeout);
+        timers.set(id, []);
+      }
+
+      function showSection(level) {
+        const section = document.getElementById(`sec${level}`);
+        if (section.classList.contains("show")) return;
+        section.classList.add("show");
+        clearTimers(section.id);
+        // for stage 01, wait for the card entrance before streaming items in
+        const base = level === 1 && currentLevel === 1 ? 550 : 200;
+        const delays = [...section.querySelectorAll(".item,.signoff")].map((el, i) => setTimeout(() => el.classList.add("in"), base + i * 240));
+        timers.set(section.id, delays);
+      }
+
+      function hideSection(level) {
+        const section = document.getElementById(`sec${level}`);
+        clearTimers(section.id);
+        section.querySelectorAll(".item,.signoff").forEach((el) => el.classList.remove("in"));
+        section.classList.remove("show");
+      }
+
+      function setLevel(level) {
+        if (level === currentLevel) return;
+        currentLevel = level;
+
+        // card only exists once stage 01 is reached; scrolling back to top removes it
+        cardEl.classList.toggle("visible", level >= 1);
+
+        for (let i = 1; i <= 3; i++) i <= level ? showSection(i) : hideSection(i);
+        const state = statuses[level];
+        statusEl.textContent = state.text;
+        statusEl.style.color = state.color;
+        statusEl.style.borderColor = state.color;
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            const level = Number(entry.target.dataset.step);
+            entry.target.classList.toggle("active", entry.isIntersecting);
+            entry.isIntersecting ? visible.add(level) : visible.delete(level);
+          });
+          const level = visible.size ? Math.max(...visible) : steps.filter((s) => s.getBoundingClientRect().bottom < 0).length;
+          setLevel(level);
+        },
+        { threshold: 0.4 },
+      );
+
+      steps.forEach((step) => observer.observe(step));
+
+      function celebrate() {
+        confetti({ particleCount: 140, spread: 75, origin: { y: 0.6 } });
+      }
+
+      function scrollToLevel(level) {
+        const target = level === 0 ? document.querySelector("header") : steps[level - 1];
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      document.addEventListener("keydown", (event) => {
+        const isSpace = event.key === " " || event.code === "Space";
+        const movesDown = event.key === "ArrowDown" || (isSpace && !event.shiftKey);
+        const movesUp = event.key === "ArrowUp" || (isSpace && event.shiftKey);
+        if ((!movesDown && !movesUp) || event.repeat) return;
+        event.preventDefault();
+
+        keyboardLevel = Math.max(keyboardLevel, currentLevel);
+        if (movesUp) {
+          keyboardLevel = Math.max(0, keyboardLevel - 1);
+          scrollToLevel(keyboardLevel);
+          return;
+        }
+
+        if (keyboardLevel >= steps.length) {
+          celebrate();
+          return;
+        }
+
+        keyboardLevel += 1;
+        scrollToLevel(keyboardLevel);
+      });
+
+      signoffEl.addEventListener("click", celebrate);
+    </script>
+  </body>
+</html>
