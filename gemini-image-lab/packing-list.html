@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Packing List</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+
+      ul {
+        padding-left: 0;
+      }
+
+      li {
+        margin-bottom: 0.5rem;
+        list-style: none;
+      }
+
+      label {
+        cursor: pointer;
+      }
+
+      input:checked + span {
+        text-decoration: line-through;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Packing List</h1>
+    <main id="checklist"></main>
+
+    <!-- The Markdown remains the source of truth. -->
+    <script id="markdown" type="text/plain">
+      ## Buy on the way
+      - Water
+      - Food and Snacks
+
+      ## Discuss before you pack
+      - Sleeping bag and blankets. Sun will bring one sleeping bag, 1.5 blankets, and maybe some sheet. You can bring sleeping bag if you prefer your personal sleeping bag.
+      - Sleeping pad. Cabin has mattress
+      - Headlamp or flashlight with extra batteries. Sun will bring two headlamps.
+      - Sunscreen. Sun will bring.
+      - Insect repellent. Sun will bring.
+
+      ## Individual Packing list
+      - Hiking backpack
+      - Water bottles
+      - Toiletries: toothbrush + toothpaste + menstrual products
+      - Necessary medications (including an Epi-Pen, if you are prescribed one)
+      - Spork, or Spoon + Fork
+      - 2 t-shirts/athletic shirts (non-cotton)
+      - Fleece jacket/warm layer (non-cotton)
+      - Outer-shell jacket
+      - Synthetic/athletic short hiking pants (non-cotton)
+      - Long underwear, joggers, or leggings or other warm pants (non-cotton)
+      - Enough underwear for 2 nights
+      - Enough socks for 2 nights
+      - Sturdy sneakers or hiking boots
+      - Personal identification and relevant documents
+      - Trash bag
+
+      ## Optional
+      - Personal first aid kit, Sun will bring some bandages and distinction pads.
+      - Swimsuit and towel
+      - Warm hat
+      - Plastic or metal bowl for food
+      - Hiking poles
+      - Baseball cap/sun hat
+      - Pocket knife
+      - Small camera
+      - Sunglasses
+      - Journal or book
+      - One pair camp shoes (sneakers, crocs, or sport sandals)
+      - Ear plugs and eye mask
+      - Schlafmütze
+    </script>
+
+    <script>
+      const STORAGE_KEY = "packing-list-state";
+      const markdown = document.getElementById("markdown").textContent;
+      const checklist = document.getElementById("checklist");
+
+      let state = {};
+      try {
+        state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+      } catch {
+        state = {};
+      }
+
+      let currentList = null;
+
+      for (const rawLine of markdown.split("\n")) {
+        const line = rawLine.trim();
+
+        if (line.startsWith("## ")) {
+          const heading = document.createElement("h2");
+          heading.textContent = line.slice(3);
+          checklist.appendChild(heading);
+
+          currentList = document.createElement("ul");
+          checklist.appendChild(currentList);
+        } else if (line.startsWith("- ") && currentList) {
+          const content = line.slice(2);
+          const item = document.createElement("li");
+          const label = document.createElement("label");
+          const checkbox = document.createElement("input");
+          const text = document.createElement("span");
+
+          checkbox.type = "checkbox";
+          checkbox.checked = state[content] === true;
+          text.textContent = ` ${content}`;
+
+          checkbox.addEventListener("change", () => {
+            state[content] = checkbox.checked;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          });
+
+          label.append(checkbox, text);
+          item.appendChild(label);
+          currentList.appendChild(item);
+        }
+      }
+    </script>
+  </body>
+</html>
