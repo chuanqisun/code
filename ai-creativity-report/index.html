@@ -191,6 +191,26 @@
         font-weight: 700;
       }
 
+      .announcement {
+        position: relative;
+        background: var(--ink);
+        color: var(--bg);
+        padding-inline: var(--space);
+      }
+
+      .announcement .index {
+        color: inherit;
+      }
+
+      .announcement .verdict {
+        color: var(--ink);
+        background: var(--bg);
+      }
+
+      .announcement p {
+        color: inherit;
+      }
+
       footer {
         display: flex;
         justify-content: space-between;
@@ -238,7 +258,7 @@
 
     <main>
       <section class="summary" aria-label="Report summary">
-        <div class="metric"><strong>07</strong><span>signals tracked</span></div>
+        <div class="metric"><strong>08</strong><span>signals tracked</span></div>
         <div class="metric"><strong>04</strong><span>creative modalities</span></div>
         <div class="metric"><strong>01</strong><span>clear direction: realtime</span></div>
       </section>
@@ -339,8 +359,25 @@
         </div>
       </article>
 
+      <article class="announcement">
+        <div class="index">06 / Special announcement</div>
+        <div>
+          <span class="verdict">Announced today · Chart leader</span>
+          <h2>FLUX 3 — Real World Models</h2>
+          <p>
+            Announced today by Black Forest Labs, FLUX 3 tops the chart with a unified multimodal model for image, video, audio and action. FLUX 3 Video is
+            available in early access.
+          </p>
+          <p><strong>Also announced: FLUX-mimic</strong>, a FLUX 3 video-action model built with mimic robotics and demonstrated on real production tasks.</p>
+          <div class="links">
+            <og-card href="https://bfl.ai/blog/flux-3"> FLUX 3 announcement </og-card>
+            <og-card href="https://bfl.ai/blog/flux-3-mimic"> FLUX 3 Mimic demo video </og-card>
+          </div>
+        </div>
+      </article>
+
       <article>
-        <div class="index">06 / Voice</div>
+        <div class="index">07 / Voice</div>
         <div>
           <span class="verdict">Mainstreaming</span>
           <h2>ElevenLabs</h2>
@@ -356,7 +393,7 @@
       </article>
 
       <article>
-        <div class="index">07 / Language</div>
+        <div class="index">08 / Language</div>
         <div>
           <span class="verdict">Cheap + fast</span>
           <h2>GPT-4o-level models are becoming nearly instant</h2>
