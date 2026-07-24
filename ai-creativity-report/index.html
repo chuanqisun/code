@@ -151,6 +151,38 @@
         margin-top: 1.5rem;
       }
 
+      .examples {
+        display: grid;
+        gap: 1.5rem;
+        margin-top: 2rem;
+      }
+
+      .example {
+        margin: 0;
+      }
+
+      .example img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--line);
+      }
+
+      .example figcaption {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding-top: 0.55rem;
+        color: var(--muted);
+        font-size: 0.72rem;
+      }
+
+      .example figcaption strong {
+        color: var(--ink);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
       .prediction {
         margin-top: 1.5rem;
         padding: 1rem 0;
@@ -244,6 +276,24 @@
             <li>Low-fidelity sketches.</li>
             <li>Error-free text rendering.</li>
           </ul>
+          <div class="examples" aria-label="GPT Image 2 example outputs">
+            <figure class="example">
+              <img
+                src="sketch-example.webp"
+                alt="Industrial design sketch sheet for a behavioral programming interface, showing multiple product views and handwritten annotations"
+                loading="lazy"
+              />
+              <figcaption><strong>Industrial design study</strong><span>Sketch fidelity + spatial coherence</span></figcaption>
+            </figure>
+            <figure class="example">
+              <img
+                src="text-rendering-example.webp"
+                alt="Detailed illustrated concept board titled Behavioral Programming Through Pucks and Frames, with six clearly labeled feature panels"
+                loading="lazy"
+              />
+              <figcaption><strong>Concept explainer</strong><span>Dense text + visual hierarchy</span></figcaption>
+            </figure>
+          </div>
         </div>
       </article>
 
