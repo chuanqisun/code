@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gen AI × Creativity — Field Report</title>
+    <meta name="description" content="What’s new in the generative AI and creativity space." />
+    <style>
+      :root {
+        --bg: #fff;
+        --ink: #000;
+        --muted: #555;
+        --line: #000;
+        --soft: #eee;
+        --max-width: 1120px;
+        --space: clamp(1rem, 2vw, 2rem);
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 16px;
+        line-height: 1.55;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+      }
+
+      a {
+        color: inherit;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+      }
+
+      header,
+      main,
+      footer {
+        width: min(calc(100% - 2rem), var(--max-width));
+        margin-inline: auto;
+      }
+
+      header {
+        min-height: 52vh;
+        display: grid;
+        align-content: end;
+        padding: clamp(4rem, 12vw, 9rem) 0 2rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .kicker,
+      .eyebrow,
+      .index,
+      .status {
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      h1 {
+        max-width: 13ch;
+        margin: 0.5rem 0 1rem;
+        font-size: clamp(2.8rem, 9vw, 7.5rem);
+        line-height: 0.9;
+        letter-spacing: -0.08em;
+      }
+
+      .dek {
+        max-width: 68ch;
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: var(--space);
+        padding: 1.25rem 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric strong {
+        display: block;
+        font-size: clamp(1.7rem, 4vw, 3.2rem);
+        line-height: 1;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: 0.78rem;
+      }
+
+      article {
+        display: grid;
+        grid-template-columns: minmax(8rem, 0.28fr) minmax(0, 1fr);
+        gap: var(--space);
+        padding: clamp(2rem, 6vw, 5rem) 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .index {
+        position: sticky;
+        top: 1rem;
+        align-self: start;
+      }
+
+      h2 {
+        margin: 0 0 1rem;
+        font-size: clamp(1.5rem, 3vw, 2.65rem);
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+      }
+
+      p {
+        max-width: 74ch;
+      }
+
+      ul {
+        margin: 1rem 0 0;
+        padding-left: 1.4rem;
+      }
+
+      li {
+        margin: 0.45rem 0;
+      }
+
+      .verdict {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.25rem 0.45rem;
+        color: var(--bg);
+        background: var(--ink);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .links {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 1.5rem;
+      }
+
+      .prediction {
+        margin-top: 1.5rem;
+        padding: 1rem 0;
+        border-block: 1px solid var(--line);
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 2rem;
+        padding: 2rem 0 4rem;
+        color: var(--muted);
+        font-size: 0.75rem;
+      }
+
+      @media (max-width: 720px) {
+        .summary,
+        .links {
+          grid-template-columns: 1fr;
+        }
+
+        article {
+          grid-template-columns: 1fr;
+        }
+
+        .index {
+          position: static;
+        }
+
+        footer {
+          display: block;
+        }
+      }
+
+      @media print {
+        header {
+          min-height: auto;
+        }
+        article {
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="kicker">Field Report / Gen AI × Creativity</div>
+      <h1>What’s new.</h1>
+      <p class="dek">A compact scan of image, video, voice and language-model developments— with practical signals, demos and predictions.</p>
+    </header>
+
+    <main>
+      <section class="summary" aria-label="Report summary">
+        <div class="metric"><strong>07</strong><span>signals tracked</span></div>
+        <div class="metric"><strong>04</strong><span>creative modalities</span></div>
+        <div class="metric"><strong>01</strong><span>clear direction: realtime</span></div>
+      </section>
+
+      <article>
+        <div class="index">01 / Image</div>
+        <div>
+          <span class="verdict">Plateau</span>
+          <h2>Nano Banana Pro</h2>
+          <p>Nano Banana Pro appears to have reached a plateau. The next meaningful movement is the upgrade from Nano Banana to Nano Banana 2.</p>
+        </div>
+      </article>
+
+      <article>
+        <div class="index">02 / Image</div>
+        <div>
+          <span class="verdict">Incremental gain</span>
+          <h2>Nano Banana → Nano Banana 2</h2>
+          <ul>
+            <li>Similar generation speed.</li>
+            <li>Fewer hallucinations.</li>
+            <li>Better text rendering and handling.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article>
+        <div class="index">03 / Image</div>
+        <div>
+          <span class="verdict">Best model</span>
+          <h2>GPT Image 2</h2>
+          <p>Confirmed creative use cases:</p>
+          <ul>
+            <li>Storyboards.</li>
+            <li>Low-fidelity sketches.</li>
+            <li>Error-free text rendering.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article>
+        <div class="index">04 / Video</div>
+        <div>
+          <span class="verdict">Now via API</span>
+          <h2>Realtime video-to-video</h2>
+          <p>Realtime transformation is moving from research spectacle into programmable creative infrastructure.</p>
+          <div class="links">
+            <og-card href="https://fal.ai/models/decart/lucy-2-5/realtime"> Lucy 2.5 Realtime </og-card>
+            <og-card href="https://fal.ai/models/fal-ai/flux-2/klein/realtime"> FLUX.2 Klein Realtime </og-card>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <div class="index">05 / Video</div>
+        <div>
+          <span class="verdict">For spectacle</span>
+          <h2>Gemini Omni Flash</h2>
+          <ul>
+            <li>Not realtime.</li>
+            <li>High-quality video-to-video output.</li>
+            <li>Supports iterative editing.</li>
+          </ul>
+          <div class="links">
+            <og-card href="https://ai.google.dev/gemini-api/docs/omni"> Gemini Omni documentation </og-card>
+            <og-card href="https://www.linkedin.com/feed/update/urn:li:activity:7462943325474549761/"> Material edit </og-card>
+            <og-card href="https://www.linkedin.com/feed/update/urn:li:activity:7466089877957312512/"> Bird demo </og-card>
+            <og-card href="https://www.linkedin.com/posts/alexanderchen_omni-draw-i-quickly-vibe-coded-a-tool-ugcPost-7465493029412470784-M7Vf/">
+              Kettle and rope-trace demo
+            </og-card>
+            <og-card href="https://x.com/alexanderchen/status/2057925025915666673"> Line drawing </og-card>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <div class="index">06 / Voice</div>
+        <div>
+          <span class="verdict">Mainstreaming</span>
+          <h2>ElevenLabs</h2>
+          <ul>
+            <li>Voice cloning is entering mainstream creative workflows.</li>
+            <li>Professional face-and-voice cloning is possible, but face cloning remains expensive.</li>
+          </ul>
+          <div class="links">
+            <og-card href="https://elevenlabs.io/app/image-video?modality=lipsync&exploreAvatarId=dkKeZngIDpvDB4iVm5vw"> ElevenLabs studio UI </og-card>
+            <og-card href="https://www.youtube.com/watch?v=Vo8XtRx24BE"> Hackathon video demo </og-card>
+          </div>
+        </div>
+      </article>
+
+      <article>
+        <div class="index">07 / Language</div>
+        <div>
+          <span class="verdict">Cheap + fast</span>
+          <h2>GPT-4o-level models are becoming nearly instant</h2>
+          <p>High-capability language models are reaching low-cost, low-latency operation. Google Gemma 4 31B in Iter provides one demonstration.</p>
+          <div class="links">
+            <og-card href="https://chuanqisun.github.io/iter/"> Google Gemma 4 31B in Iter </og-card>
+          </div>
+          <p class="prediction">Prediction: within six months, a GPT-5.6 “Terra-level” model will feel nearly instant.</p>
+          <p>
+            Self-hosting is not currently compelling for this use case: approximately 30 tokens/second on a high-end device versus roughly 300 tokens/second
+            from a cloud provider.
+          </p>
+        </div>
+      </article>
+    </main>
+
+    <footer>
+      <span>GEN AI × CREATIVITY / FIELD NOTES</span>
+      <span>Claims and predictions reflect the supplied observations.</span>
+    </footer>
+
+    <script>
+      class OGCard extends HTMLElement {
+        static dataPromise;
+
+        connectedCallback() {
+          const href = this.getAttribute("href");
+          const fallbackTitle = this.textContent.trim() || "External resource";
+
+          if (!href) return;
+
+          let url;
+          try {
+            url = new URL(href);
+          } catch {
+            return;
+          }
+
+          this.attachShadow({ mode: "open" });
+          this.render({
+            href,
+            title: fallbackTitle,
+            description: "Open external resource",
+            site: url.hostname.replace(/^www\./, ""),
+            state: "preview",
+          });
+
+          this.loadPreview(href, fallbackTitle, url);
+        }
+
+        async loadPreview(href, fallbackTitle, url) {
+          try {
+            OGCard.dataPromise ??= fetch("data.json").then((response) => {
+              if (!response.ok) throw new Error("Preview data unavailable");
+              return response.json();
+            });
+            const data = (await OGCard.dataPromise)[href];
+
+            if (!data) throw new Error("Preview not found");
+
+            this.render({
+              href,
+              title: data.fetched ? data.title : fallbackTitle,
+              description: data.description || "Open external resource",
+              site: data.site || url.hostname.replace(/^www\./, ""),
+              image: data.image || "",
+              state: data.fetched ? "fetched" : "fallback",
+            });
+          } catch {
+            this.render({
+              href,
+              title: fallbackTitle,
+              description: "Preview unavailable — open the source directly.",
+              site: url.hostname.replace(/^www\./, ""),
+              state: "fallback",
+            });
+          }
+        }
+
+        render(data) {
+          const safe = (value) => {
+            const node = document.createElement("div");
+            node.textContent = value;
+            return node.innerHTML;
+          };
+
+          const initials = data.site
+            .split(/[.\-\s]/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0])
+            .join("")
+            .toUpperCase();
+          const fallbackVisual = `<span class="initials" aria-hidden="true">${safe(initials || "↗")}</span>`;
+          const visual = data.image ? `<img src="${safe(data.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" />${fallbackVisual}` : fallbackVisual;
+
+          this.shadowRoot.innerHTML = `
+          <style>
+            :host {
+              display: block;
+              min-width: 0;
+              font-family: var(--mono, monospace);
+            }
+
+            a {
+              min-height: 10rem;
+              height: 100%;
+              display: flex;
+              flex-direction: column;
+              color: var(--ink, #000);
+              background: var(--bg, #fff);
+              border: 1px solid var(--line, #000);
+              text-decoration: none;
+            }
+
+            a:hover,
+            a:focus-visible {
+              color: var(--bg, #fff);
+              background: var(--ink, #000);
+              outline: none;
+            }
+
+            .visual {
+              position: relative;
+              display: grid;
+              place-items: center;
+              aspect-ratio: 16 / 9;
+              overflow: hidden;
+              background: var(--soft, #eee);
+              border-bottom: 1px solid currentColor;
+              font-size: 1.25rem;
+              font-weight: 800;
+            }
+
+            .visual img {
+              position: absolute;
+              inset: 0;
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+            }
+
+            .visual img + .initials {
+              display: none;
+            }
+
+            .copy {
+              flex: 1;
+              min-width: 0;
+              display: flex;
+              flex-direction: column;
+              padding: 1rem;
+            }
+
+            .site,
+            .state {
+              font-size: 0.65rem;
+              font-weight: 700;
+              letter-spacing: 0.09em;
+              text-transform: uppercase;
+            }
+
+            h3 {
+              margin: 0.8rem 0 0.45rem;
+              font-size: 1rem;
+              line-height: 1.2;
+            }
+
+            p {
+              margin: 0;
+              font-size: 0.75rem;
+              line-height: 1.45;
+              opacity: 0.72;
+            }
+
+            .state {
+              margin-top: auto;
+              padding-top: 1rem;
+            }
+          </style>
+
+          <a href="${safe(data.href)}" target="_blank" rel="noopener noreferrer">
+            <div class="visual">${visual}</div>
+            <div class="copy">
+              <span class="site">${safe(data.site)}</span>
+              <h3>${safe(data.title)}</h3>
+              <p>${safe(data.description)}</p>
+              <span class="state">${safe(data.state)} / open ↗</span>
+            </div>
+          </a>
+        `;
+
+          const image = this.shadowRoot.querySelector("img");
+          image?.addEventListener("error", () => {
+            image.remove();
+            this.shadowRoot.querySelector(".initials").style.display = "block";
+          });
+        }
+      }
+
+      customElements.define("og-card", OGCard);
+    </script>
+  </body>
+</html>
