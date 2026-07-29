@@ -19,6 +19,9 @@
         >Output:
         <select id="audioOutput" aria-label="Audio output device"></select
       ></label>
+      <label
+        >iOS Keypad: <input id="keyCaptureInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Tap here for iOS virtual keypad capture"
+      /></label>
     </header>
 
     <section class="controls">
@@ -29,13 +32,7 @@
       <span id="status">Ready</span>
     </section>
 
-    <section class="keyboard-capture-section">
-      <label for="keyCaptureInput" class="capture-label">iOS Keypad Capture:</label>
-      <input id="keyCaptureInput" type="text" inputmode="numeric" autocomplete="off" placeholder="Tap here for iOS virtual keypad capture" />
-    </section>
-
     <section class="keypad-section" id="keypadContainer">
-      <p class="section-title">Context Bracketing Keypad (Hold 0–9):</p>
       <div class="keypad-grid">
         <button type="button" class="keypad-btn" data-slot="0"><span class="num">0</span></button>
         <button type="button" class="keypad-btn" data-slot="1"><span class="num">1</span></button>

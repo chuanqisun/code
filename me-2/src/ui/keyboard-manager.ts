@@ -158,9 +158,14 @@ export class KeyboardManager {
     }
   }
 
+  private getSlotButton(target: EventTarget | null): HTMLElement | null {
+    const element = target instanceof Element ? target : (target as Node | null)?.parentElement;
+    if (!element || typeof element.closest !== "function") return null;
+    return element.closest<HTMLElement>("[data-slot]");
+  }
+
   private handlePointerDown(e: PointerEvent): void {
-    const target = e.target as HTMLElement | null;
-    const button = target?.closest("[data-slot]") as HTMLElement | null;
+    const button = this.getSlotButton(e.target);
     if (!button || !button.dataset.slot) return;
 
     const slotIndex = parseInt(button.dataset.slot, 10);
@@ -173,8 +178,7 @@ export class KeyboardManager {
   }
 
   private handlePointerUp(e: PointerEvent): void {
-    const target = e.target as HTMLElement | null;
-    const button = target?.closest("[data-slot]") as HTMLElement | null;
+    const button = this.getSlotButton(e.target);
     if (!button || !button.dataset.slot) return;
 
     const slotIndex = parseInt(button.dataset.slot, 10);

@@ -98,13 +98,18 @@ describe("KeyboardManager", () => {
   it("handles touch/pointer press and release on keypad buttons", () => {
     const keypadBtn = document.createElement("button");
     keypadBtn.dataset.slot = "3";
+    const span = document.createElement("span");
+    const textNode = document.createTextNode("3");
+    span.appendChild(textNode);
+    keypadBtn.appendChild(span);
     document.body.appendChild(keypadBtn);
 
-    keypadBtn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    // Test targeting text node child inside button
+    textNode.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     expect(onInterrupt).toHaveBeenCalled();
     expect(onBracketStart).toHaveBeenCalledWith(new Set([3]));
 
-    keypadBtn.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+    textNode.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
     expect(onBracketEnd).toHaveBeenCalledWith(new Set([3]));
   });
 
