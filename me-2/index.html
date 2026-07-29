@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>me-2</title>
+  </head>
+  <body>
+    <header>
+      <label>Groq key: <input id="groqKey" name="groqKey" type="password" placeholder="gsk_..." /></label>
+      <label>ElevenLabs key: <input id="elevenKey" name="elevenKey" type="password" placeholder="xi-api-key" /></label>
+      <label>Voice ID: <input id="voiceId" name="elevenVoice" value="LRBMsOzRzI614MxPFGIY" /></label>
+      <label
+        >Input:
+        <select id="audioInput" aria-label="Audio input device"></select
+      ></label>
+      <label
+        >Output:
+        <select id="audioOutput" aria-label="Audio output device"></select
+      ></label>
+    </header>
+
+    <section>
+      <button id="talk">Press to talk</button>
+      <button id="cancel">Cancel</button>
+      <span id="rec">● REC</span>
+      <span id="status">Ready</span>
+    </section>
+
+    <div id="results" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
