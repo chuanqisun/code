@@ -1,3 +1,5 @@
+import type { ChatMessage } from "./thread-manager";
+
 export class GroqService {
   async transcribe(apiKey: string, audio: Blob, signal?: AbortSignal): Promise<string> {
     const form = new FormData();
@@ -20,7 +22,19 @@ export class GroqService {
     return data.text || "";
   }
 
-  async complete(apiKey: string, text: string, signal?: AbortSignal): Promise<string> {
+  async complete(apiKey: string, messages: ChatMessage[] | string, signal?: AbortSignal): Promise<string> {
+    const formattedMessages: ChatMessage[] =
+      typeof messages === "string"
+        ? [
+            {
+              role: "system",
+              content:
+                "Complete user's sentence in the most sensible way. Respond only with a few words to fill the __ as if uttered by the user themselves. Respond with the __ portion and don't say anything else.",
+            },
+            { role: "user", content: messages.trim().endsWith("__") ? messages : `${messages} __` },
+          ]
+        : messages;
+
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -30,14 +44,7 @@ export class GroqService {
       signal,
       body: JSON.stringify({
         model: "openai/gpt-oss-120b",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Complete user's sentence in the most sensible way. Respond only with a few words to fill the __ as if uttered by the user themselves. Respond with the __ portion and don't say anything else.",
-          },
-          { role: "user", content: `${text} __` },
-        ],
+        messages: formattedMessages,
         temperature: 0,
         max_completion_tokens: 120,
         reasoning_effort: "low",

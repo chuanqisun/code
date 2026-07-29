@@ -41,6 +41,98 @@ button {
 button:disabled {
   opacity: 0.5;
 }
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.keyboard-capture-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.keyboard-capture-section input {
+  max-width: 300px;
+  padding: 4px 8px;
+}
+
+.keypad-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  margin: 0;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+
+.keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+}
+
+.keypad-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  font-weight: bold;
+  border: 1px solid #ccc;
+  background: #f8f8f8;
+  border-radius: 4px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.keypad-btn.active {
+  background: #0070f3;
+  color: white;
+  border-color: #0051a8;
+  transform: scale(0.96);
+}
+
+.context-slots-section details {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fafafa;
+}
+
+.context-slots-section summary {
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.slot-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.slot-item span {
+  font-weight: bold;
+  min-width: 1.5rem;
+}
+
+.slot-item input {
+  flex: 1;
+  padding: 4px 6px;
+}
+
 #rec {
   display: none;
   color: red;

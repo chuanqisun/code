@@ -1,9 +1,12 @@
 import { AudioDevices } from "./audio/audio-devices";
 import { AudioPlayer } from "./audio/audio-player";
 import { AudioRecorder } from "./audio/audio-recorder";
+import { ContextManager } from "./chat/context-manager";
 import { ElevenLabsTTS } from "./chat/elevent-labs-tts";
 import { GroqService } from "./chat/groq-service";
+import { ThreadManager } from "./chat/thread-manager";
 import "./style.css";
+import { KeyboardManager } from "./ui/keyboard-manager";
 import { UIManager } from "./ui/ui-manager";
 
 export class VoiceAssistantApp {
@@ -13,24 +16,64 @@ export class VoiceAssistantApp {
   private audioPlayer = new AudioPlayer();
   private groqService = new GroqService();
   private elevenLabsTTS = new ElevenLabsTTS();
+  private contextManager = new ContextManager();
+  private threadManager = new ThreadManager();
+  private keyboardManager!: KeyboardManager;
 
   private turnId = 0;
   private recording = false;
   private releasedAt = 0;
   private ttsSentAt = 0;
   private firstAudioReceived = false;
+  private currentBracketKeys = new Set<number>();
 
   private requestController: AbortController | null = null;
   private socketReady: Promise<WebSocket> | null = null;
 
   constructor() {
+    this.initContextAndKeyboard();
     this.bindEvents();
     this.populateAudioDevices();
+  }
+
+  getKeyboardManager(): KeyboardManager {
+    return this.keyboardManager;
+  }
+
+  private initContextAndKeyboard(): void {
+    this.ui.renderContextSlots(this.contextManager.getSlots(), (index, text) => this.contextManager.setSlot(index, text));
+
+    this.keyboardManager = new KeyboardManager({
+      keyCaptureInput: this.ui.keyCaptureInput,
+      keypadContainer: this.ui.keypadContainer,
+      callbacks: {
+        onInterrupt: () => {
+          this.cancelAll("Cancelled");
+        },
+        onBracketStart: (bracketKeys) => {
+          this.ui.updateActiveKeys(bracketKeys, bracketKeys);
+          this.startTurn(undefined, bracketKeys);
+        },
+        onBracketUpdate: (bracketKeys, activeKeys) => {
+          this.ui.updateActiveKeys(activeKeys, bracketKeys);
+        },
+        onBracketEnd: () => {
+          this.ui.updateActiveKeys(new Set(), new Set());
+          this.stopRecording();
+        },
+      },
+    });
   }
 
   private bindEvents(): void {
     this.ui.talkButton.addEventListener("click", (e) => this.toggleRecording(e));
     this.ui.cancelButton.addEventListener("click", () => this.cancelAll("Cancelled"));
+    if (this.ui.clearThreadButton) {
+      this.ui.clearThreadButton.addEventListener("click", () => {
+        this.threadManager.clear();
+        this.ui.appendLog("THREAD", "Conversation history cleared");
+      });
+    }
     this.ui.audioOutputSelect.addEventListener("change", () => this.selectAudioOutput());
 
     navigator.mediaDevices?.addEventListener("devicechange", () => this.populateAudioDevices());
@@ -58,8 +101,8 @@ export class VoiceAssistantApp {
     }
   }
 
-  private async startTurn(event: Event): Promise<void> {
-    event.preventDefault();
+  private async startTurn(event?: Event, bracketKeys?: Set<number>): Promise<void> {
+    event?.preventDefault();
     if (this.recording) return;
 
     const { groqKey, elevenKey, voiceId } = this.ui.getSettings();
@@ -71,6 +114,7 @@ export class VoiceAssistantApp {
     this.cancelAll(null);
     const currentTurn = ++this.turnId;
     this.requestController = new AbortController();
+    this.currentBracketKeys = bracketKeys ? new Set(bracketKeys) : new Set();
 
     try {
       this.socketReady = this.connectTTS(currentTurn, elevenKey, voiceId);
@@ -117,6 +161,7 @@ export class VoiceAssistantApp {
     const audio = this.audioRecorder.getAudioBlob();
     this.audioRecorder.stopMicrophone();
 
+    const bracketKeys = new Set(this.currentBracketKeys);
     const { groqKey } = this.ui.getSettings();
 
     try {
@@ -129,10 +174,16 @@ export class VoiceAssistantApp {
 
       this.ui.setStatus("Generating...");
       const llmSentAt = performance.now();
-      const completion = await this.groqService.complete(groqKey, text, this.requestController?.signal);
+
+      const dynamicSystemPrompt = this.contextManager.buildSystemPrompt(bracketKeys);
+      const messages = this.threadManager.buildMessages(dynamicSystemPrompt, text);
+
+      const completion = await this.groqService.complete(groqKey, messages, this.requestController?.signal);
       if (currentTurn !== this.turnId) return;
 
-      this.ui.appendLog("LLM", completion || "(empty response)", performance.now() - llmSentAt);
+      this.threadManager.addTurn(text, completion);
+
+      this.ui.appendLog("LLM", completion || "(empty response)", performance.now() - llmSentAt, bracketKeys);
 
       if (!completion.trim()) throw new Error("Empty LLM response");
 
