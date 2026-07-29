@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Website Metadata Fetcher</title>
+  </head>
+  <body>
+    <main>
+      <h1>Metadata Debugger</h1>
+
+      <form id="fetch-form">
+        <label for="url">Website URL</label>
+        <input id="url" name="url" type="url" placeholder="https://example.com" required />
+        <button id="submit-button" type="submit">Fetch metadata</button>
+      </form>
+
+      <pre id="output">Enter an HTTP or HTTPS URL.</pre>
+    </main>
+
+    <footer>
+      <a href="https://developer.puter.com" target="_blank" rel="noopener noreferrer"> Powered by Puter </a>
+    </footer>
+
+    <script src="https://js.puter.com/v2/"></script>
+    <script>
+      const form = document.getElementById("fetch-form");
+      const urlInput = document.getElementById("url");
+      const submitButton = document.getElementById("submit-button");
+      const output = document.getElementById("output");
+
+      function normalizeUrl(value) {
+        const input = value.trim();
+        const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`;
+
+        const url = new URL(withProtocol);
+
+        if (!["http:", "https:"].includes(url.protocol)) {
+          throw new Error("Only HTTP and HTTPS URLs are supported.");
+        }
+
+        return url.href;
+      }
+
+      function addValue(target, key, value) {
+        if (!key) return;
+
+        if (target[key] === undefined) {
+          target[key] = value;
+        } else if (Array.isArray(target[key])) {
+          target[key].push(value);
+        } else {
+          target[key] = [target[key], value];
+        }
+      }
+
+      function resolveUrl(value, baseUrl) {
+        if (!value) return value;
+
+        try {
+          return new URL(value, baseUrl).href;
+        } catch {
+          return value;
+        }
+      }
+
+      async function fetchWithRedirects(url, maxRedirects = 10) {
+        let currentUrl = url;
+        const redirects = [];
+
+        for (let count = 0; count <= maxRedirects; count++) {
+          const response = await puter.net.fetch(currentUrl, {
+            method: "GET",
+            redirect: "follow",
+            headers: {
+              Accept: "text/html,application/xhtml+xml",
+            },
+          });
+
+          /*
+           * redirect: "follow" automatically handles 301, 302, 303,
+           * 307 and 308 responses. This fallback handles implementations
+           * that return a redirect response instead.
+           */
+          if (response.status >= 300 && response.status < 400) {
+            const location = response.headers.get("location");
+
+            if (!location) {
+              throw new Error(`Redirect response ${response.status} did not include a Location header.`);
+            }
+
+            const nextUrl = resolveUrl(location, currentUrl);
+
+            redirects.push({
+              status: response.status,
+              from: currentUrl,
+              to: nextUrl,
+            });
+
+            currentUrl = nextUrl;
+            continue;
+          }
+
+          const finalUrl = response.url || currentUrl;
+
+          if (finalUrl !== currentUrl && redirects.length === 0) {
+            redirects.push({
+              status: "followed",
+              from: currentUrl,
+              to: finalUrl,
+            });
+          }
+
+          return { response, finalUrl, redirects };
+        }
+
+        throw new Error(`Too many redirects. Maximum allowed: ${maxRedirects}.`);
+      }
+
+      function extractMetadata(html, requestedUrl, finalUrl, response, redirects) {
+        const documentNode = new DOMParser().parseFromString(html, "text/html");
+        const baseElement = documentNode.querySelector("base[href]");
+        const baseUrl = baseElement ? resolveUrl(baseElement.getAttribute("href"), finalUrl) : finalUrl;
+
+        const metadata = {
+          requestedUrl,
+          finalUrl,
+          redirected: response.redirected || requestedUrl !== finalUrl,
+          redirects,
+          response: {
+            status: response.status,
+            statusText: response.statusText,
+            contentType: response.headers.get("content-type"),
+          },
+          title: documentNode.title.trim() || null,
+          language: documentNode.documentElement.getAttribute("lang") || null,
+          description: null,
+          canonical: null,
+          openGraph: {},
+          twitter: {},
+          meta: {},
+          links: {},
+          icons: [],
+          jsonLd: [],
+        };
+
+        documentNode.querySelectorAll("meta").forEach((element) => {
+          const key =
+            element.getAttribute("property") || element.getAttribute("name") || element.getAttribute("http-equiv") || element.getAttribute("itemprop");
+
+          if (!key) return;
+
+          const value = element.getAttribute("content") || "";
+          addValue(metadata.meta, key, value);
+
+          const normalizedKey = key.toLowerCase();
+
+          if (normalizedKey === "description") {
+            metadata.description = value;
+          }
+
+          if (normalizedKey.startsWith("og:")) {
+            addValue(metadata.openGraph, normalizedKey.slice(3), value);
+          }
+
+          if (normalizedKey.startsWith("twitter:")) {
+            addValue(metadata.twitter, normalizedKey.slice(8), value);
+          }
+        });
+
+        documentNode.querySelectorAll("link[href]").forEach((element) => {
+          const href = resolveUrl(element.getAttribute("href"), baseUrl);
+          const relValue = element.getAttribute("rel") || "unknown";
+          const rels = relValue.toLowerCase().split(/\s+/).filter(Boolean);
+
+          rels.forEach((rel) => addValue(metadata.links, rel, href));
+
+          if (rels.includes("canonical")) {
+            metadata.canonical = href;
+          }
+
+          if (rels.includes("icon") || rels.includes("shortcut") || rels.includes("apple-touch-icon") || rels.includes("mask-icon")) {
+            metadata.icons.push({
+              rel: relValue,
+              href,
+              type: element.getAttribute("type"),
+              sizes: element.getAttribute("sizes"),
+            });
+          }
+        });
+
+        documentNode.querySelectorAll('script[type="application/ld+json"]').forEach((element) => {
+          const text = element.textContent.trim();
+          if (!text) return;
+
+          try {
+            metadata.jsonLd.push(JSON.parse(text));
+          } catch {
+            metadata.jsonLd.push({
+              parseError: true,
+              raw: text,
+            });
+          }
+        });
+
+        return metadata;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        submitButton.disabled = true;
+        output.textContent = "Fetching metadata...";
+
+        try {
+          const requestedUrl = normalizeUrl(urlInput.value);
+          urlInput.value = requestedUrl;
+
+          const { response, finalUrl, redirects } = await fetchWithRedirects(requestedUrl);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`);
+          }
+
+          const html = await response.text();
+          const metadata = extractMetadata(html, requestedUrl, finalUrl, response, redirects);
+
+          output.textContent = JSON.stringify(metadata, null, 2);
+        } catch (error) {
+          output.textContent = JSON.stringify(
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+            null,
+            2,
+          );
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
