@@ -1,10 +1,10 @@
-import { AudioDevices } from "./audio/AudioDevices";
-import { AudioPlayer } from "./audio/AudioPlayer";
-import { AudioRecorder } from "./audio/AudioRecorder";
-import { ElevenLabsTTS } from "./chat/ElevenLabsTTS";
-import { GroqService } from "./chat/GroqService";
+import { AudioDevices } from "./audio/audio-devices";
+import { AudioPlayer } from "./audio/audio-player";
+import { AudioRecorder } from "./audio/audio-recorder";
+import { ElevenLabsTTS } from "./chat/elevent-labs-tts";
+import { GroqService } from "./chat/groq-service";
 import "./style.css";
-import { UIManager } from "./ui/UIManager";
+import { UIManager } from "./ui/ui-manager";
 
 export class VoiceAssistantApp {
   private ui = new UIManager();

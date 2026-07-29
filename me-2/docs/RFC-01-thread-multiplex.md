@@ -71,6 +71,14 @@ The current `VoiceAssistantApp` lifecycle in `src/main.ts` uses:
   3. The current turn's user message with ` __` placeholder suffix.
 - Appends the turn transcript and response to history upon successful completion.
 
+### 2.5 Testing & TDD Requirement (Vitest)
+
+- **Test-Driven Development (TDD)**: All new and modified components (`ContextManager`, `ThreadManager`, `GroqService`, `KeyboardManager`, etc.) must be implemented following a strict TDD methodology—writing unit/integration tests using **Vitest** prior to writing implementation code.
+- **Vitest Framework**: Vitest is installed and configured as the primary testing suite (`vitest run` / `npm run test`).
+- **File Naming Convention**: All source and test files must use `kebab-case.ts` naming convention (e.g., `context-manager.ts` and `context-manager.test.ts`).
+- **Test Colocation**: Test files must be colocated directly alongside source files in the same directory (e.g., `src/chat/context-manager.test.ts` placed next to `src/chat/context-manager.ts`).
+- **Test Coverage & Verification**: Tests must validate component state changes, dynamic system prompt formatting, thread history interleaving, keyboard event capture/filtering, and turn cancellation/reset logic.
+
 ---
 
 ## 3. Architecture & Interaction Flow
@@ -120,7 +128,7 @@ sequenceDiagram
 
 ## 4. Component Implementation Details
 
-### 4.1 `KeyboardManager` (`src/ui/KeyboardManager.ts`)
+### 4.1 `KeyboardManager` (`src/ui/keyboard-manager.ts`)
 
 - Binds listeners to both `window` and the dedicated `<input id="keyCaptureInput">` element (with `inputmode="numeric"` for iOS virtual keyboard trigger).
 - Listens to `keydown`, `keyup`, `beforeinput`, and `input` events.
@@ -132,7 +140,7 @@ sequenceDiagram
 - Tracks `activeKeys: Set<number>` and `bracketKeys: Set<number>`.
 - Triggers callbacks: `onInterrupt`, `onBracketStart`, `onBracketUpdate`, `onBracketEnd`.
 
-### 4.2 `ContextManager` (`src/chat/ContextManager.ts`)
+### 4.2 `ContextManager` (`src/chat/context-manager.ts`)
 
 - Holds array of 10 string slots (`0`..`9`).
 - Initializes default 10 simple first-person facts:
@@ -149,7 +157,7 @@ sequenceDiagram
 - Builds overarching system prompt given selected slot indices array.
 - Persists user edits to `localStorage`.
 
-### 4.3 `ThreadManager` (`src/chat/ThreadManager.ts`)
+### 4.3 `ThreadManager` (`src/chat/thread-manager.ts`)
 
 - Maintains history of turns: `{ user: string; assistant: string }[]`.
 - Generates OpenAI/Groq compatible chat messages array:
@@ -157,11 +165,11 @@ sequenceDiagram
   - Interleaved past `user` and `assistant` messages.
   - Current `user` text + ` __`.
 
-### 4.4 `GroqService` Refactoring (`src/chat/GroqService.ts`)
+### 4.4 `GroqService` Refactoring (`src/chat/groq-service.ts`)
 
 - Update `complete()` signature: `complete(apiKey: string, messages: ChatMessage[], signal?: AbortSignal): Promise<string>`.
 
-### 4.5 `UIManager` Extensions (`src/ui/UIManager.ts`, `index.html`, `src/style.css`)
+### 4.5 `UIManager` Extensions (`src/ui/ui-manager.ts`, `index.html`, `src/style.css`)
 
 - Renders 10 context slot text inputs in UI.
 - Displays active key indicators (`0`..`9`) for visual feedback during bracket holding.
@@ -177,11 +185,11 @@ sequenceDiagram
    - Handled text input isolation so slot inputs and API key fields work seamlessly.
    - Preserves pre-connecting TTS connection model for minimum latency.
 
-2. **Execution Steps**:
-   - **Step 1**: Implement `ContextManager` (`src/chat/ContextManager.ts`).
-   - **Step 2**: Implement `ThreadManager` (`src/chat/ThreadManager.ts`).
-   - **Step 3**: Refactor `GroqService` (`src/chat/GroqService.ts`) for multi-message chat array.
-   - **Step 4**: Implement `KeyboardManager` (`src/ui/KeyboardManager.ts`).
-   - **Step 5**: Update UI layout, styles, and controls in `index.html`, `style.css`, and `UIManager.ts`.
+2. **Execution Steps (TDD Workflow)**:
+   - **Step 1**: Write Vitest unit tests for `ContextManager` (`src/chat/context-manager.test.ts`), then implement `ContextManager` (`src/chat/context-manager.ts`).
+   - **Step 2**: Write Vitest unit tests for `ThreadManager` (`src/chat/thread-manager.test.ts`), then implement `ThreadManager` (`src/chat/thread-manager.ts`).
+   - **Step 3**: Write Vitest unit tests for `GroqService` (`src/chat/groq-service.test.ts`), then refactor `GroqService` (`src/chat/groq-service.ts`) for multi-message chat array.
+   - **Step 4**: Write Vitest unit tests for `KeyboardManager` (`src/ui/keyboard-manager.test.ts`), then implement `KeyboardManager` (`src/ui/keyboard-manager.ts`).
+   - **Step 5**: Update UI layout, styles, and controls in `index.html`, `style.css`, and `ui-manager.ts`.
    - **Step 6**: Wire components in `VoiceAssistantApp` (`src/main.ts`).
-   - **Step 7**: Validate build & test turns, key bracketing, and interruptions.
+   - **Step 7**: Run full Vitest suite (`npm run test`) and validate build, turns, key bracketing, and interruptions.
