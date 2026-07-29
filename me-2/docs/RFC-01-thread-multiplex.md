@@ -1,6 +1,7 @@
 # RFC-01: Multi-System Prompt Multiplexed Thread
 
 ## 1. Overview
+
 This RFC defines the architecture and implementation plan for transforming the single-turn voice assistant into a multi-turn, multi-system-prompt multiplexed voice chat experience grounded directly on top of the existing `VoiceAssistantApp` in `src/main.ts`.
 
 The system allows users to press and hold number keys (`0`-`9` or Numpad `0`-`9`) to record voice input and direct it to one or more selected context items (system prompts). The chat maintains a single conversational thread that builds up over time, while each turn dynamically composes an overarching system prompt containing active `<context>` items.
@@ -10,13 +11,16 @@ The system allows users to press and hold number keys (`0`-`9` or Numpad `0`-`9`
 ## 2. Core Requirements & Feasibility Analysis
 
 ### 2.1 Grounded Integration with `main.ts` Architecture
+
 The current `VoiceAssistantApp` lifecycle in `src/main.ts` uses:
+
 - `turnId`: Monotonically increasing identifier to invalidate superseded async tasks.
 - `cancelAll(message)`: Aborts active `AbortController` (STT/LLM), closes ElevenLabs TTS WebSocket, cleans up `AudioRecorder`, and stops `AudioPlayer`.
 - `startTurn()`: Pre-connects TTS WebSocket while recording audio via `AudioRecorder`.
 - `finishTurn(currentTurn)`: STT transcription $\rightarrow$ LLM completion $\rightarrow$ TTS audio playback.
 
 ### 2.2 Key Bracketing & Interruption Lifecycle
+
 1. **Target Element Filtering & Special Key Capture Input Box (iOS Virtual Keyboard Support)**:
    - **iOS Virtual Keyboard Challenge**: iOS Mobile Safari does not fire global `window` level `keydown`/`keyup` events for virtual software keyboards unless a text `<input>` or `<textarea>` is actively focused.
    - **Key Capture Input Box**:
@@ -45,9 +49,11 @@ The current `VoiceAssistantApp` lifecycle in `src/main.ts` uses:
    - The UI includes on-screen touch buttons for slots `0`–`9` supporting `pointerdown`/`pointerup`/`pointercancel` to handle press-and-hold bracketing directly on mobile devices alongside the virtual keyboard input capture box.
 
 ### 2.3 Context Items & Overarching Prompt Spec
+
 1. **10 Context Item Slots (`0`..`9`)**:
    - Managed by `ContextManager`. Editable in the UI, stored in `localStorage`.
 2. **Overarching Prompt Format**:
+
    ```xml
    Complete user's sentence in the most sensible way in first-person voice ('I ...').
    Respond only with a few words to fill the __ as if uttered by the user themselves.
@@ -57,6 +63,7 @@ The current `VoiceAssistantApp` lifecycle in `src/main.ts` uses:
    ```
 
 ### 2.4 Multi-turn Conversational History (`ThreadManager`)
+
 - Maintains thread history array: `Array<{ role: 'user' | 'assistant', content: string }>`.
 - For each turn completion, `GroqService.complete()` receives:
   1. `{ role: 'system', content: dynamicSystemPrompt }`
@@ -114,6 +121,7 @@ sequenceDiagram
 ## 4. Component Implementation Details
 
 ### 4.1 `KeyboardManager` (`src/ui/KeyboardManager.ts`)
+
 - Binds listeners to both `window` and the dedicated `<input id="keyCaptureInput">` element (with `inputmode="numeric"` for iOS virtual keyboard trigger).
 - Listens to `keydown`, `keyup`, `beforeinput`, and `input` events.
 - Clears `keyCaptureInput.value` on every input tick to keep it ready for continuous key presses.
@@ -125,6 +133,7 @@ sequenceDiagram
 - Triggers callbacks: `onInterrupt`, `onBracketStart`, `onBracketUpdate`, `onBracketEnd`.
 
 ### 4.2 `ContextManager` (`src/chat/ContextManager.ts`)
+
 - Holds array of 10 string slots (`0`..`9`).
 - Initializes default 10 simple first-person facts:
   - `0`: "My name is Alex and I am 28 years old."
@@ -141,6 +150,7 @@ sequenceDiagram
 - Persists user edits to `localStorage`.
 
 ### 4.3 `ThreadManager` (`src/chat/ThreadManager.ts`)
+
 - Maintains history of turns: `{ user: string; assistant: string }[]`.
 - Generates OpenAI/Groq compatible chat messages array:
   - System message with current turn's dynamic context.
@@ -148,9 +158,11 @@ sequenceDiagram
   - Current `user` text + ` __`.
 
 ### 4.4 `GroqService` Refactoring (`src/chat/GroqService.ts`)
+
 - Update `complete()` signature: `complete(apiKey: string, messages: ChatMessage[], signal?: AbortSignal): Promise<string>`.
 
 ### 4.5 `UIManager` Extensions (`src/ui/UIManager.ts`, `index.html`, `src/style.css`)
+
 - Renders 10 context slot text inputs in UI.
 - Displays active key indicators (`0`..`9`) for visual feedback during bracket holding.
 - Renders prompt index tags in results (e.g. `[Prompts: 0, 2]`).
@@ -173,4 +185,3 @@ sequenceDiagram
    - **Step 5**: Update UI layout, styles, and controls in `index.html`, `style.css`, and `UIManager.ts`.
    - **Step 6**: Wire components in `VoiceAssistantApp` (`src/main.ts`).
    - **Step 7**: Validate build & test turns, key bracketing, and interruptions.
-
