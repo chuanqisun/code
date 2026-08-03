@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gemini Omni Lab</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        max-width: 64rem;
+        margin: 0 auto;
+        padding: 1rem;
+        font-family: sans-serif;
+        line-height: 1.4;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      h2 {
+        font-size: 1.1rem;
+      }
+
+      section {
+        margin-bottom: 1.5rem;
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        font: inherit;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 0.5rem;
+      }
+
+      textarea {
+        min-height: 7rem;
+        resize: vertical;
+      }
+
+      button {
+        padding: 0.45rem 0.75rem;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: default;
+      }
+
+      .row,
+      .section-heading,
+      .output-heading,
+      .actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
+      .row > label {
+        flex: 1;
+      }
+
+      label > span,
+      .muted,
+      .meta {
+        display: block;
+        color: #555;
+        font-size: 0.875rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .section-heading,
+      .output-heading {
+        justify-content: space-between;
+      }
+
+      .section-heading h2,
+      .output-heading h3 {
+        margin: 0;
+      }
+
+      .composer,
+      .context,
+      .output {
+        border: 1px solid #bbb;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .context {
+        background: #f5f5f5;
+      }
+
+      .media-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+        gap: 0.75rem;
+        margin: 0.75rem 0;
+      }
+
+      .media-item {
+        min-width: 0;
+        border: 1px solid #ccc;
+        padding: 0.5rem;
+      }
+
+      .media-item img,
+      .media-item video {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        background: #000;
+        margin-bottom: 0.4rem;
+      }
+
+      .media-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.8rem;
+      }
+
+      .actions {
+        margin-top: 0.75rem;
+        flex-wrap: wrap;
+      }
+
+      .actions .primary {
+        margin-left: auto;
+        font-weight: bold;
+      }
+
+      .output {
+        border-left-width: 4px;
+      }
+
+      .output.selected {
+        border-left-color: #1769aa;
+      }
+
+      .output video {
+        display: block;
+        width: 100%;
+        max-height: 70vh;
+        background: #000;
+        margin-top: 0.75rem;
+      }
+
+      .output-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .prompt {
+        white-space: pre-wrap;
+        margin: 0.5rem 0;
+      }
+
+      .error {
+        color: #b00020;
+        white-space: pre-wrap;
+      }
+
+      @media (max-width: 38rem) {
+        .row,
+        .output-heading {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .output-actions {
+          justify-content: flex-start;
+        }
+
+        .actions .primary {
+          width: 100%;
+          margin-left: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Gemini Omni Lab</h1>
+
+      <section aria-labelledby="configuration-heading">
+        <h2 id="configuration-heading">Configuration</h2>
+        <div class="row">
+          <label>
+            <span>Gemini API key</span>
+            <input id="api-key" type="password" autocomplete="off" placeholder="Enter API key" />
+          </label>
+          <label>
+            <span>Aspect ratio</span>
+            <select id="aspect-ratio">
+              <option value="16:9">16:9 Landscape</option>
+              <option value="9:16">9:16 Portrait</option>
+            </select>
+          </label>
+          <label>
+            <span>Task</span>
+            <select id="task">
+              <option value="">Infer automatically</option>
+              <option value="text_to_video">Text to video</option>
+              <option value="image_to_video">Image to video</option>
+              <option value="reference_to_video">Reference to video</option>
+              <option value="edit">Edit</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section aria-labelledby="composer-heading">
+        <div class="section-heading">
+          <h2 id="composer-heading">Create or edit</h2>
+          <button id="new-thread" type="button" hidden>Start new thread</button>
+        </div>
+
+        <div id="context" class="context" hidden>
+          <strong>Continuing from an existing output</strong>
+          <div id="context-detail" class="muted"></div>
+        </div>
+
+        <div id="drop-zone" class="composer">
+          <label for="prompt" class="muted">Prompt or editing instruction</label>
+          <textarea id="prompt" placeholder="Describe a video, or select an output below and describe what to change."></textarea>
+          <div id="media-list" class="media-list"></div>
+          <div class="actions">
+            <button id="add-images" type="button">Add images</button>
+            <button id="add-video" type="button">Add video</button>
+            <button id="clear-media" type="button" hidden>Clear media</button>
+            <span class="muted">You can also paste or drop image and video files.</span>
+            <button id="generate" class="primary" type="button">Generate video</button>
+          </div>
+          <div id="request-status" class="meta" role="status"></div>
+        </div>
+      </section>
+
+      <section aria-labelledby="outputs-heading">
+        <div class="section-heading">
+          <h2 id="outputs-heading">Threads</h2>
+          <button id="clear-outputs" type="button">Clear all</button>
+        </div>
+        <p id="empty-state" class="muted">Generated videos will appear here. Select any output to continue or branch its thread.</p>
+        <div id="output-list"></div>
+      </section>
+    </main>
+
+    <input id="file-picker" type="file" hidden multiple />
+
+    <script type="module">
+      import { createStore, get, set } from "https://esm.sh/idb-keyval";
+
+      const API_URL = "https://generativelanguage.googleapis.com/v1beta";
+      const MODEL = "gemini-omni-flash-preview";
+
+      class OmniLab {
+        constructor() {
+          this.store = createStore("gemini-omni-lab", "state");
+          this.media = [];
+          this.outputs = [];
+          this.selectedOutputId = null;
+          this.abortController = null;
+          this.timer = null;
+
+          this.dom = {
+            apiKey: document.getElementById("api-key"),
+            aspectRatio: document.getElementById("aspect-ratio"),
+            task: document.getElementById("task"),
+            prompt: document.getElementById("prompt"),
+            mediaList: document.getElementById("media-list"),
+            outputList: document.getElementById("output-list"),
+            emptyState: document.getElementById("empty-state"),
+            filePicker: document.getElementById("file-picker"),
+            context: document.getElementById("context"),
+            contextDetail: document.getElementById("context-detail"),
+            newThread: document.getElementById("new-thread"),
+            clearMedia: document.getElementById("clear-media"),
+            generate: document.getElementById("generate"),
+            requestStatus: document.getElementById("request-status"),
+            dropZone: document.getElementById("drop-zone"),
+          };
+
+          this.bindEvents();
+          this.loadState();
+        }
+
+        bindEvents() {
+          this.dom.apiKey.oninput = () => set("apiKey", this.dom.apiKey.value, this.store);
+          this.dom.aspectRatio.onchange = () => this.saveConfig();
+          this.dom.task.onchange = () => this.saveConfig();
+          this.dom.prompt.oninput = () => set("draft", this.dom.prompt.value, this.store);
+
+          document.getElementById("add-images").onclick = () => this.openFilePicker("image/*", true);
+          document.getElementById("add-video").onclick = () => this.openFilePicker("video/*", false);
+          this.dom.clearMedia.onclick = () => this.clearMedia();
+          this.dom.newThread.onclick = () => this.selectOutput(null);
+          this.dom.generate.onclick = () => (this.abortController ? this.cancelGeneration() : this.generate());
+          document.getElementById("clear-outputs").onclick = () => this.clearOutputs();
+
+          this.dom.filePicker.onchange = async (event) => {
+            await this.addFiles(event.target.files);
+            event.target.value = "";
+          };
+
+          document.addEventListener("paste", (event) => {
+            if (event.clipboardData?.files.length) {
+              event.preventDefault();
+              this.addFiles(event.clipboardData.files);
+            }
+          });
+
+          document.body.addEventListener("dragover", (event) => {
+            if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+          });
+          document.body.addEventListener("drop", (event) => {
+            if (!event.dataTransfer?.files.length) return;
+            event.preventDefault();
+            this.addFiles(event.dataTransfer.files);
+          });
+        }
+
+        async loadState() {
+          const [apiKey, config, draft, outputs] = await Promise.all([
+            get("apiKey", this.store),
+            get("config", this.store),
+            get("draft", this.store),
+            get("outputs", this.store),
+          ]);
+
+          if (apiKey) this.dom.apiKey.value = apiKey;
+          if (config?.aspectRatio) this.dom.aspectRatio.value = config.aspectRatio;
+          if (config?.task) this.dom.task.value = config.task;
+          if (draft) this.dom.prompt.value = draft;
+          if (Array.isArray(outputs)) this.outputs = outputs;
+          this.renderOutputs();
+        }
+
+        saveConfig() {
+          return set("config", { aspectRatio: this.dom.aspectRatio.value, task: this.dom.task.value }, this.store);
+        }
+
+        openFilePicker(accept, multiple) {
+          this.dom.filePicker.accept = accept;
+          this.dom.filePicker.multiple = multiple;
+          this.dom.filePicker.click();
+        }
+
+        async addFiles(fileList) {
+          const files = [...fileList].filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
+          for (const file of files) {
+            if (file.type.startsWith("video/") && this.media.some((item) => item.type === "video")) {
+              this.setStatus("Only one uploaded video can be used in a request.", true);
+              continue;
+            }
+            this.media.push({
+              id: crypto.randomUUID(),
+              type: file.type.startsWith("image/") ? "image" : "video",
+              name: file.name || "pasted media",
+              mimeType: file.type,
+              dataUrl: await this.blobToDataUrl(file),
+            });
+          }
+          this.renderMedia();
+        }
+
+        clearMedia() {
+          this.media = [];
+          this.renderMedia();
+        }
+
+        renderMedia() {
+          this.dom.mediaList.replaceChildren();
+          for (const item of this.media) {
+            const card = document.createElement("div");
+            card.className = "media-item";
+
+            const preview = document.createElement(item.type === "image" ? "img" : "video");
+            preview.src = item.dataUrl;
+            preview.alt = item.type === "image" ? item.name : "";
+            if (item.type === "video") preview.controls = true;
+
+            const name = document.createElement("div");
+            name.className = "media-name";
+            name.textContent = item.name;
+            name.title = item.name;
+
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.textContent = "Remove";
+            remove.onclick = () => {
+              this.media = this.media.filter((media) => media.id !== item.id);
+              this.renderMedia();
+            };
+
+            card.append(preview, name, remove);
+            this.dom.mediaList.appendChild(card);
+          }
+          this.dom.clearMedia.hidden = this.media.length === 0;
+        }
+
+        selectOutput(id) {
+          this.selectedOutputId = id;
+          const selected = this.outputs.find((output) => output.id === id);
+          this.dom.context.hidden = !selected;
+          this.dom.newThread.hidden = !selected;
+          this.dom.contextDetail.textContent = selected ? `Editing output from: ${this.shortPrompt(selected.prompt)}` : "";
+          if (selected) this.dom.task.value = "edit";
+          this.renderOutputs();
+          this.dom.prompt.focus();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        async generate() {
+          const apiKey = this.dom.apiKey.value.trim();
+          const prompt = this.dom.prompt.value.trim();
+          const parent = this.outputs.find((output) => output.id === this.selectedOutputId);
+          if (!apiKey) return this.setStatus("Enter a Gemini API key.", true);
+          if (!prompt && this.media.length === 0) return this.setStatus("Add a prompt or media input.", true);
+          if (parent && !prompt) return this.setStatus("Describe the edit you want to make.", true);
+          if (parent && this.media.length) {
+            return this.setStatus("Thread edits use the selected output as context. Start a new thread to upload media.", true);
+          }
+
+          this.abortController = new AbortController();
+          this.setGenerating(true);
+          const startedAt = Date.now();
+          this.timer = setInterval(() => {
+            this.setStatus(`Generating... ${Math.floor((Date.now() - startedAt) / 1000)}s`);
+          }, 1000);
+
+          try {
+            const body = this.buildRequest(prompt, parent);
+            const response = await fetch(`${API_URL}/interactions?key=${encodeURIComponent(apiKey)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+              signal: this.abortController.signal,
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error?.message || `Request failed with status ${response.status}`);
+
+            const video = this.findVideo(result);
+            if (!video) throw new Error("The interaction completed without a video output.");
+            const videoDataUrl = video.data
+              ? `data:${video.mimeType};base64,${video.data}`
+              : await this.downloadVideo(video.uri, apiKey, this.abortController.signal);
+
+            const output = {
+              id: crypto.randomUUID(),
+              interactionId: result.id,
+              parentId: parent?.id || null,
+              prompt,
+              createdAt: Date.now(),
+              aspectRatio: this.dom.aspectRatio.value,
+              videoDataUrl,
+            };
+            this.outputs.push(output);
+            await set("outputs", this.outputs, this.store);
+            this.dom.prompt.value = "";
+            await set("draft", "", this.store);
+            this.clearMedia();
+            this.selectOutput(output.id);
+            this.setStatus("Video ready.");
+          } catch (error) {
+            this.setStatus(error.name === "AbortError" ? "Generation cancelled." : error.message, error.name !== "AbortError");
+          } finally {
+            clearInterval(this.timer);
+            this.timer = null;
+            this.abortController = null;
+            this.setGenerating(false);
+          }
+        }
+
+        buildRequest(prompt, parent) {
+          const body = {
+            model: MODEL,
+            response_format: { type: "video", delivery: "uri", aspect_ratio: this.dom.aspectRatio.value },
+            generation_config: { video_config: {} },
+            background: false,
+            store: true,
+            stream: false,
+          };
+
+          if (this.dom.task.value) body.generation_config.video_config.task = this.dom.task.value;
+          if (parent) {
+            body.previous_interaction_id = parent.interactionId;
+            body.input = prompt;
+            return body;
+          }
+
+          const content = this.media.map((item) => ({
+            type: item.type,
+            data: item.dataUrl.split(",")[1],
+            mime_type: item.mimeType,
+          }));
+          if (prompt) content.push({ type: "text", text: prompt });
+          if (content.some((item) => item.type === "video")) {
+            body.input = [{ type: "user_input", content }];
+          } else {
+            body.input = content.length === 1 && content[0].type === "text" ? prompt : content;
+          }
+          return body;
+        }
+
+        findVideo(result) {
+          if (result.output_video) {
+            return {
+              data: result.output_video.data,
+              uri: result.output_video.uri,
+              mimeType: result.output_video.mime_type || "video/mp4",
+            };
+          }
+          for (const step of result.steps || []) {
+            for (const content of step.content || []) {
+              if (content.type === "video") {
+                return { data: content.data, uri: content.uri, mimeType: content.mime_type || "video/mp4" };
+              }
+            }
+          }
+          return null;
+        }
+
+        async downloadVideo(uri, apiKey, signal) {
+          if (!uri) throw new Error("The video response contained neither data nor a URI.");
+          const fileId = uri.match(/files\/([^/:?]+)/)?.[1];
+          if (fileId) {
+            while (true) {
+              const statusResponse = await fetch(`${API_URL}/files/${fileId}?key=${encodeURIComponent(apiKey)}`, {
+                signal,
+              });
+              const file = await statusResponse.json();
+              if (!statusResponse.ok) {
+                throw new Error(file.error?.message || `File status failed with status ${statusResponse.status}`);
+              }
+              const state = typeof file.state === "string" ? file.state : file.state?.name;
+              if (state === "ACTIVE") break;
+              if (state === "FAILED") throw new Error("Gemini failed to process the generated video.");
+              await this.wait(5000, signal);
+            }
+          }
+          const response = await fetch(uri, {
+            headers: { "x-goog-api-key": apiKey },
+            signal,
+          });
+          if (!response.ok) throw new Error(`Video download failed with status ${response.status}`);
+          return this.blobToDataUrl(await response.blob());
+        }
+
+        wait(milliseconds, signal) {
+          return new Promise((resolve, reject) => {
+            const timeout = setTimeout(resolve, milliseconds);
+            signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timeout);
+                reject(new DOMException("Generation cancelled", "AbortError"));
+              },
+              { once: true },
+            );
+          });
+        }
+
+        cancelGeneration() {
+          this.abortController?.abort();
+        }
+
+        setGenerating(active) {
+          this.dom.generate.textContent = active ? "Cancel" : "Generate video";
+          this.dom.apiKey.disabled = active;
+          this.dom.prompt.disabled = active;
+          this.dom.aspectRatio.disabled = active;
+          this.dom.task.disabled = active;
+        }
+
+        setStatus(message, error = false) {
+          this.dom.requestStatus.textContent = message;
+          this.dom.requestStatus.classList.toggle("error", error);
+        }
+
+        renderOutputs() {
+          this.dom.outputList.replaceChildren();
+          this.dom.emptyState.hidden = this.outputs.length > 0;
+
+          const depthById = new Map();
+          for (const output of this.outputs) {
+            const parentDepth = output.parentId ? (depthById.get(output.parentId) ?? 0) : -1;
+            depthById.set(output.id, parentDepth + 1);
+          }
+
+          for (const output of [...this.outputs].reverse()) {
+            const card = document.createElement("article");
+            card.className = `output ${output.id === this.selectedOutputId ? "selected" : ""}`;
+            card.style.marginLeft = `${Math.min(depthById.get(output.id) || 0, 4) * 0.75}rem`;
+
+            const heading = document.createElement("div");
+            heading.className = "output-heading";
+            const title = document.createElement("h3");
+            const depth = depthById.get(output.id) || 0;
+            title.textContent = depth ? `Edit ${depth}` : "Original";
+
+            const actions = document.createElement("div");
+            actions.className = "output-actions";
+            const use = document.createElement("button");
+            use.type = "button";
+            use.textContent = output.id === this.selectedOutputId ? "Selected as context" : "Continue from here";
+            use.disabled = output.id === this.selectedOutputId;
+            use.onclick = () => this.selectOutput(output.id);
+            const download = document.createElement("a");
+            download.href = output.videoDataUrl;
+            download.download = `gemini-omni-${output.id}.mp4`;
+            download.textContent = "Download";
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.textContent = "Remove";
+            remove.onclick = () => this.removeOutput(output.id);
+            actions.append(use, download, remove);
+            heading.append(title, actions);
+
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            meta.textContent = `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio}`;
+            const prompt = document.createElement("div");
+            prompt.className = "prompt";
+            prompt.textContent = output.prompt || "Media input only";
+            const video = document.createElement("video");
+            video.src = output.videoDataUrl;
+            video.controls = true;
+            video.loop = true;
+            video.preload = "metadata";
+            card.append(heading, meta, prompt, video);
+            this.dom.outputList.appendChild(card);
+          }
+        }
+
+        async removeOutput(id) {
+          if (this.selectedOutputId === id) this.selectOutput(null);
+          this.outputs = this.outputs.filter((output) => output.id !== id);
+          for (const output of this.outputs) {
+            if (output.parentId === id) output.parentId = null;
+          }
+          await set("outputs", this.outputs, this.store);
+          this.renderOutputs();
+        }
+
+        async clearOutputs() {
+          if (!this.outputs.length || !confirm("Remove all saved outputs and thread history?")) return;
+          this.selectOutput(null);
+          this.outputs = [];
+          await set("outputs", [], this.store);
+          this.renderOutputs();
+        }
+
+        shortPrompt(prompt) {
+          if (!prompt) return "media input";
+          return prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt;
+        }
+
+        blobToDataUrl(blob) {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+
+      new OmniLab();
+    </script>
+  </body>
+</html>
