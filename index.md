@@ -118,6 +118,7 @@
 - [Townsquare](https://chuanqisun.github.io/townsquare/)
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)
+- [Visual Geiger](./visual-geiger/)
 - [Voxel intersection](./voxel-intersection/)
 - [WASM 3D](./wasm-3d/)
 - [Web Speech API](./web-speech-api/)
