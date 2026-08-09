@@ -60,6 +60,7 @@
 - [Bubbles](./bubbles/)
 - [Buttons](./buttons/)
 - [Clipboard++](./clipboard/)
+- [Context Puck](./context-puck/)
 - [CyberMUSE](https://chuanqisun.github.io/cybermuse/)
 - [Device Orientation API](./device-orientation-api/)
 - [Dialogarithm](./dialogarithm/)
