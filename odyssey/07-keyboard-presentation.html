@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STT to Image Generator PoC</title>
+  </head>
+  <body>
+    <h1>Speech-to-Text to Image Generator (PoC)</h1>
+
+    <section>
+      <div>
+        <label for="elevenKey">ElevenLabs API Key:</label><br />
+        <input type="password" id="elevenKey" placeholder="Enter ElevenLabs API Key" size="45" />
+      </div>
+      <br />
+      <div>
+        <label for="falKey">fal.ai API Key:</label><br />
+        <input type="password" id="falKey" placeholder="Enter fal.ai API Key" size="45" />
+      </div>
+    </section>
+
+    <br />
+
+    <section>
+      <button id="startBtn">Start Recording</button>
+      <button id="stopBtn" disabled>Stop Recording</button>
+      <button id="presentBtn">Present</button>
+    </section>
+
+    <p>Status: <strong id="status">Idle</strong></p>
+
+    <section>
+      <h2>Live Delta (Partial Transcript)</h2>
+      <div id="partialTranscript"><em>(Listening for audio...)</em></div>
+    </section>
+
+    <section>
+      <h2>Generated Visualizations (Newest First)</h2>
+      <div id="gallery"></div>
+    </section>
+
+    <!-- Presentation Overlay -->
+    <div id="presentationOverlay" style="display: none; position: fixed; inset: 0; background: black; z-index: 9999">
+      <div
+        style="
+          position: absolute;
+          top: 15px;
+          right: 20px;
+          color: white;
+          font-family: sans-serif;
+          font-size: 18px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          z-index: 10000;
+        "
+      >
+        <span id="statusDot" style="width: 12px; height: 12px; border-radius: 50%; background: green; display: inline-block"></span>
+        <span id="imgCounter">0</span>
+      </div>
+      <img id="presImg" style="width: 100vw; height: 100vh; object-fit: contain; display: none" alt="Presentation View" />
+    </div>
+
+    <script type="module">
+      import { ElevenLabsClient } from "https://esm.sh/@elevenlabs/elevenlabs-js";
+      import { Scribe, RealtimeEvents, CommitStrategy } from "https://esm.sh/@elevenlabs/client";
+
+      const ELEVEN_STORAGE_KEY = "elevenlabs_api_key";
+      const FAL_STORAGE_KEY = "fal_api_key";
+      const INACTIVITY_DELAY = 200;
+
+      const ART_DIRECTIONS = ["front view", "three quaters view", "top down view", "side profile close up view"];
+
+      const elevenKeyInput = document.getElementById("elevenKey");
+      const falKeyInput = document.getElementById("falKey");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const presentBtn = document.getElementById("presentBtn");
+      const statusEl = document.getElementById("status");
+      const partialEl = document.getElementById("partialTranscript");
+      const galleryEl = document.getElementById("gallery");
+
+      // Presentation elements & state
+      const presentationOverlay = document.getElementById("presentationOverlay");
+      const statusDot = document.getElementById("statusDot");
+      const imgCounter = document.getElementById("imgCounter");
+      const presImg = document.getElementById("presImg");
+
+      let activeConnection = null;
+      let lastCommittedId = null;
+      let inactivityTimer = null;
+
+      // Presentation Queue State
+      let isPresentationMode = false;
+      let presentationQueue = [];
+      let pendingGenerations = 0;
+      let counterIsQuestionMark = false;
+      let currentUtteranceId = 0;
+
+      // Sync API keys with LocalStorage
+      const savedElevenKey = localStorage.getItem(ELEVEN_STORAGE_KEY);
+      if (savedElevenKey) elevenKeyInput.value = savedElevenKey;
+
+      const savedFalKey = localStorage.getItem(FAL_STORAGE_KEY);
+      if (savedFalKey) falKeyInput.value = savedFalKey;
+
+      elevenKeyInput.addEventListener("input", (e) => {
+        localStorage.setItem(ELEVEN_STORAGE_KEY, e.target.value.trim());
+      });
+
+      falKeyInput.addEventListener("input", (e) => {
+        localStorage.setItem(FAL_STORAGE_KEY, e.target.value.trim());
+      });
+
+      startBtn.addEventListener("click", startSession);
+      stopBtn.addEventListener("click", stopSession);
+      presentBtn.addEventListener("click", enterPresentationMode);
+
+      // Keyboard navigation for Presentation Mode
+      window.addEventListener("keydown", (e) => {
+        if (!isPresentationMode) return;
+
+        if (e.key === "Escape") {
+          exitPresentationMode();
+        } else if (e.key === "Enter") {
+          showNextPresentationImage();
+        }
+      });
+
+      function enterPresentationMode() {
+        isPresentationMode = true;
+        presentationOverlay.style.display = "block";
+        updatePresentationStatus();
+      }
+
+      function exitPresentationMode() {
+        isPresentationMode = false;
+        presentationOverlay.style.display = "none";
+      }
+
+      function showNextPresentationImage() {
+        if (presentationQueue.length > 0) {
+          const nextSrc = presentationQueue.shift();
+          presImg.src = nextSrc;
+          presImg.style.display = "block";
+          updatePresentationStatus();
+        }
+      }
+
+      function updatePresentationStatus() {
+        // Dot color: Yellow when generating images, Green when idle/complete
+        if (pendingGenerations > 0) {
+          statusDot.style.background = "yellow";
+        } else {
+          statusDot.style.background = "green";
+        }
+
+        // Counter display logic
+        if (counterIsQuestionMark) {
+          imgCounter.textContent = "?";
+        } else {
+          imgCounter.textContent = presentationQueue.length;
+        }
+      }
+
+      async function startSession() {
+        const elevenKey = elevenKeyInput.value.trim();
+        const falKey = falKeyInput.value.trim();
+
+        if (!elevenKey) {
+          alert("Please enter a valid ElevenLabs API key.");
+          return;
+        }
+
+        if (!falKey) {
+          alert("Please enter a valid fal.ai API key.");
+          return;
+        }
+
+        startBtn.disabled = true;
+        statusEl.textContent = "Requesting single-use token...";
+
+        try {
+          const elevenlabs = new ElevenLabsClient({ apiKey: elevenKey });
+          const tokenResponse = await elevenlabs.tokens.singleUse.create("realtime_scribe");
+          const token = typeof tokenResponse === "string" ? tokenResponse : tokenResponse.token || tokenResponse.value || tokenResponse;
+
+          statusEl.textContent = "Connecting to ElevenLabs Scribe Realtime...";
+
+          activeConnection = Scribe.connect({
+            token,
+            modelId: "scribe_v2_realtime",
+            languageCode: "en",
+            language: "en",
+            commitStrategy: CommitStrategy?.MANUAL || "manual",
+            includeTimestamps: true,
+            microphone: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+
+          setupConnectionHandlers(activeConnection);
+        } catch (err) {
+          console.error("Initialization error:", err);
+          statusEl.textContent = `Error: ${err.message || err}`;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }
+
+      function setupConnectionHandlers(connection) {
+        connection.on(RealtimeEvents.OPEN, () => {
+          statusEl.textContent = "Connected to WebSocket.";
+        });
+
+        connection.on(RealtimeEvents.SESSION_STARTED, () => {
+          statusEl.textContent = "Recording & Transcribing... Speak into your microphone.";
+          stopBtn.disabled = false;
+        });
+
+        // Partial / Delta live transcripts
+        connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (data) => {
+          if (data && data.text) {
+            partialEl.textContent = data.text;
+            resetInactivityTimer();
+          }
+        });
+
+        // Committed / Finalized transcripts
+        connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, (data) => {
+          clearInactivityTimer();
+          if (data && data.text) {
+            if (data.id && data.id === lastCommittedId) return;
+            lastCommittedId = data.id || null;
+
+            handleCommittedTranscript(data.text);
+            partialEl.textContent = "(Listening for audio...)";
+          }
+        });
+
+        connection.on(RealtimeEvents.ERROR, (error) => {
+          console.error("Scribe Realtime Error:", error);
+          statusEl.textContent = `Error: ${error.message || JSON.stringify(error)}`;
+        });
+
+        connection.on(RealtimeEvents.CLOSE, () => {
+          clearInactivityTimer();
+          statusEl.textContent = "Disconnected.";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          activeConnection = null;
+        });
+      }
+
+      function resetInactivityTimer() {
+        clearInactivityTimer();
+
+        inactivityTimer = setTimeout(() => {
+          if (activeConnection) {
+            activeConnection.commit();
+          }
+        }, INACTIVITY_DELAY);
+      }
+
+      function clearInactivityTimer() {
+        if (inactivityTimer) {
+          clearTimeout(inactivityTimer);
+          inactivityTimer = null;
+        }
+      }
+
+      function stopSession() {
+        clearInactivityTimer();
+        if (activeConnection) {
+          statusEl.textContent = "Disconnecting...";
+          try {
+            activeConnection.close();
+          } catch (e) {
+            console.error("Error closing connection:", e);
+          }
+          activeConnection = null;
+        }
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+
+      function stripTrailingPunctuation(text) {
+        return text
+          .trim()
+          .replace(/[.,!?;:]+$/, "")
+          .trim();
+      }
+
+      function handleCommittedTranscript(rawText) {
+        const cleanedText = stripTrailingPunctuation(rawText);
+        if (!cleanedText) return;
+
+        const falKey = falKeyInput.value.trim();
+
+        // DOM container for this utterance
+        const itemDiv = document.createElement("div");
+        itemDiv.style.marginBottom = "20px";
+
+        const textPara = document.createElement("p");
+        textPara.innerHTML = `<strong>Uttered:</strong> "${cleanedText}"`;
+        itemDiv.appendChild(textPara);
+
+        const imagesContainer = document.createElement("div");
+        imagesContainer.style.display = "flex";
+        imagesContainer.style.flexWrap = "wrap";
+        imagesContainer.style.gap = "10px";
+        itemDiv.appendChild(imagesContainer);
+
+        galleryEl.insertBefore(itemDiv, galleryEl.firstChild);
+
+        if (!falKey) {
+          const errPara = document.createElement("p");
+          errPara.textContent = "Error: Missing fal.ai API Key.";
+          itemDiv.appendChild(errPara);
+          return;
+        }
+
+        // Empty presentation stack for the new phrase
+        currentUtteranceId++;
+        const myUtteranceId = currentUtteranceId;
+        presentationQueue = [];
+        counterIsQuestionMark = true;
+        pendingGenerations = ART_DIRECTIONS.length;
+        updatePresentationStatus();
+
+        // Fire off 4 parallel requests
+        ART_DIRECTIONS.forEach((artDirection) => {
+          const promptText = `High Renaissance oil painting of ${cleanedText}, ${artDirection}, chiaroscuro lighting, oil on canvas masterwork. No text.`;
+          generateSingleImage(falKey, promptText, imagesContainer, myUtteranceId);
+        });
+      }
+
+      async function generateSingleImage(falKey, promptText, container, utteranceId) {
+        try {
+          const response = await fetch("https://fal.run/fal-ai/flux-2/flash", {
+            method: "POST",
+            headers: {
+              Authorization: `Key ${falKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              prompt: promptText,
+              sync_mode: true,
+              image_size: "square",
+              guidance_scale: 2.5,
+              output_format: "webp",
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.images && data.images.length > 0) {
+            const imgUrl = data.images[0].url;
+
+            // DOM gallery
+            const img = document.createElement("img");
+            img.src = imgUrl;
+            img.alt = promptText;
+            img.title = promptText;
+            img.width = 256;
+            img.height = 256;
+            img.style.objectFit = "cover";
+            container.appendChild(img);
+
+            // Add to Presentation Queue only if still the active phrase utterance
+            if (utteranceId === currentUtteranceId) {
+              presentationQueue.push(imgUrl);
+            }
+          }
+        } catch (err) {
+          console.error("Image generation error:", err);
+          const errSpan = document.createElement("span");
+          errSpan.style.color = "red";
+          errSpan.textContent = `[Failed to load image: ${err.message || err}]`;
+          container.appendChild(errSpan);
+        } finally {
+          if (utteranceId === currentUtteranceId) {
+            pendingGenerations--;
+            if (pendingGenerations <= 0) {
+              pendingGenerations = 0;
+              counterIsQuestionMark = false;
+            }
+            updatePresentationStatus();
+          }
+        }
+      }
+    </script>
+  </body>
+</html>

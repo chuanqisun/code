@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ElevenLabs Scribe Realtime STT PoC</title>
+  </head>
+  <body>
+    <h1>ElevenLabs Scribe Realtime Speech-to-Text</h1>
+
+    <section>
+      <label for="apiKey">ElevenLabs API Key:</label>
+      <input type="password" id="apiKey" placeholder="Enter API Key" size="45" />
+    </section>
+
+    <br />
+
+    <section>
+      <button id="startBtn">Start Recording</button>
+      <button id="stopBtn" disabled>Stop Recording</button>
+    </section>
+
+    <p>Status: <strong id="status">Idle</strong></p>
+
+    <section>
+      <h2>Live Delta (Partial Transcript)</h2>
+      <div id="partialTranscript"><em>(Listening for audio...)</em></div>
+    </section>
+
+    <section>
+      <h2>Finalized Transcripts (Committed)</h2>
+      <ul id="committedTranscripts"></ul>
+    </section>
+
+    <script type="module">
+      import { ElevenLabsClient } from "https://esm.sh/@elevenlabs/elevenlabs-js";
+      import { Scribe, RealtimeEvents } from "https://esm.sh/@elevenlabs/client";
+
+      const LOCAL_STORAGE_KEY = "elevenlabs_api_key";
+
+      const apiKeyInput = document.getElementById("apiKey");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const statusEl = document.getElementById("status");
+      const partialEl = document.getElementById("partialTranscript");
+      const committedListEl = document.getElementById("committedTranscripts");
+
+      let activeConnection = null;
+      let lastCommittedId = null;
+
+      // Local Storage Sync
+      const savedApiKey = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+      }
+
+      apiKeyInput.addEventListener("input", (e) => {
+        localStorage.setItem(LOCAL_STORAGE_KEY, e.target.value.trim());
+      });
+
+      startBtn.addEventListener("click", startSession);
+      stopBtn.addEventListener("click", stopSession);
+
+      async function startSession() {
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          alert("Please enter a valid ElevenLabs API key.");
+          return;
+        }
+
+        startBtn.disabled = true;
+        statusEl.textContent = "Requesting single-use token...";
+
+        try {
+          // Generate single-use token on client side using API key
+          const elevenlabs = new ElevenLabsClient({ apiKey });
+          const tokenResponse = await elevenlabs.tokens.singleUse.create("realtime_scribe");
+          const token = typeof tokenResponse === "string" ? tokenResponse : tokenResponse.token || tokenResponse.value || tokenResponse;
+
+          statusEl.textContent = "Connecting to ElevenLabs Scribe Realtime...";
+
+          // Connect to Scribe Realtime API via SDK
+          activeConnection = Scribe.connect({
+            token,
+            modelId: "scribe_v2_realtime",
+            includeTimestamps: true,
+            microphone: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+
+          setupConnectionHandlers(activeConnection);
+        } catch (err) {
+          console.error("Initialization error:", err);
+          statusEl.textContent = `Error: ${err.message || err}`;
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+        }
+      }
+
+      function setupConnectionHandlers(connection) {
+        connection.on(RealtimeEvents.OPEN, () => {
+          statusEl.textContent = "Connected to WebSocket.";
+        });
+
+        connection.on(RealtimeEvents.SESSION_STARTED, () => {
+          statusEl.textContent = "Recording & Transcribing... Speak into your microphone.";
+          stopBtn.disabled = false;
+        });
+
+        // Partial / Delta live transcripts
+        connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, (data) => {
+          if (data && data.text) {
+            partialEl.textContent = data.text;
+          }
+        });
+
+        // Committed / Finalized transcripts
+        connection.on(RealtimeEvents.COMMITTED_TRANSCRIPT, (data) => {
+          if (data && data.text) {
+            // Avoid duplicate entries if timestamps event also fires
+            if (data.id && data.id === lastCommittedId) return;
+            lastCommittedId = data.id || null;
+
+            addCommittedItem(data.text);
+            partialEl.textContent = "(Listening for audio...)";
+          }
+        });
+
+        connection.on(RealtimeEvents.ERROR, (error) => {
+          console.error("Scribe Realtime Error:", error);
+          statusEl.textContent = `Error: ${error.message || JSON.stringify(error)}`;
+        });
+
+        connection.on(RealtimeEvents.CLOSE, () => {
+          statusEl.textContent = "Disconnected.";
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          activeConnection = null;
+        });
+      }
+
+      function stopSession() {
+        if (activeConnection) {
+          statusEl.textContent = "Disconnecting...";
+          try {
+            activeConnection.close();
+          } catch (e) {
+            console.error("Error closing connection:", e);
+          }
+          activeConnection = null;
+        }
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+
+      function addCommittedItem(text) {
+        const li = document.createElement("li");
+        li.textContent = text;
+        committedListEl.appendChild(li);
+      }
+    </script>
+  </body>
+</html>

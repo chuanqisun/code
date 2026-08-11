@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FLUX 2 Flash Generator</title>
+  </head>
+  <body>
+    <h1>FLUX 2 Flash Image Generator</h1>
+
+    <!-- API Key Input -->
+    <section>
+      <label for="apiKey">fal.ai API Key:</label><br />
+      <input type="password" id="apiKey" placeholder="Key xxx..." style="width: 300px" />
+    </section>
+
+    <hr />
+
+    <!-- Generation Form -->
+    <section>
+      <div>
+        <label for="prompt">Prompt:</label><br />
+        <textarea id="prompt" rows="4" cols="60" placeholder="An army of ants battles for a sugar cube in a giant sandbox..."></textarea>
+      </div>
+      <br />
+      <div>
+        <label for="imageSize">Image Size:</label>
+        <select id="imageSize">
+          <option value="landscape_4_3" selected>Landscape 4:3</option>
+          <option value="square">Square</option>
+          <option value="square_hd">Square HD</option>
+          <option value="portrait_4_3">Portrait 4:3</option>
+          <option value="landscape_16_9">Landscape 16:9</option>
+          <option value="portrait_16_9">Portrait 16:9</option>
+        </select>
+      </div>
+      <br />
+      <div>
+        <label for="guidanceScale">Guidance Scale:</label>
+        <input type="number" id="guidanceScale" value="2.5" step="0.1" min="0" max="20" />
+      </div>
+      <br />
+      <div>
+        <label for="outputFormat">Output Format:</label>
+        <select id="outputFormat">
+          <option value="png" selected>PNG</option>
+          <option value="jpeg">JPEG</option>
+          <option value="webp">WEBP</option>
+        </select>
+      </div>
+      <br />
+      <button id="generateBtn">Generate Image</button>
+    </section>
+
+    <hr />
+
+    <!-- Status & Results -->
+    <section>
+      <h2>Output</h2>
+      <p id="statusMessage">Status: Ready</p>
+
+      <div id="imageContainer">
+        <img id="resultImage" alt="Generated Output" style="max-width: 100%; display: none" />
+      </div>
+
+      <h3>Response JSON</h3>
+      <pre id="jsonOutput" style="background: #f0f0f0; padding: 10px; overflow-x: auto"></pre>
+    </section>
+
+    <script>
+      const STORAGE_KEY = "fal_api_key";
+
+      // DOM Elements
+      const apiKeyInput = document.getElementById("apiKey");
+      const promptInput = document.getElementById("prompt");
+      const imageSizeSelect = document.getElementById("imageSize");
+      const guidanceScaleInput = document.getElementById("guidanceScale");
+      const outputFormatSelect = document.getElementById("outputFormat");
+      const generateBtn = document.getElementById("generateBtn");
+      const statusMessage = document.getElementById("statusMessage");
+      const resultImage = document.getElementById("resultImage");
+      const jsonOutput = document.getElementById("jsonOutput");
+
+      // Sync API key with LocalStorage
+      const savedApiKey = localStorage.getItem(STORAGE_KEY);
+      if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+      }
+
+      apiKeyInput.addEventListener("input", (e) => {
+        localStorage.setItem(STORAGE_KEY, e.target.value.trim());
+      });
+
+      // Image Generation Handler
+      generateBtn.addEventListener("click", async () => {
+        const apiKey = apiKeyInput.value.trim();
+        const prompt = promptInput.value.trim();
+
+        if (!apiKey) {
+          alert("Please enter your fal.ai API key.");
+          return;
+        }
+
+        if (!prompt) {
+          alert("Please enter a prompt.");
+          return;
+        }
+
+        // UI Loading state
+        generateBtn.disabled = true;
+        statusMessage.textContent = "Status: Generating image via sync mode...";
+        resultImage.style.display = "none";
+        resultImage.src = "";
+        jsonOutput.textContent = "";
+
+        const requestBody = {
+          prompt: prompt,
+          sync_mode: true, // Guarantees returning data URI base64 format directly
+          image_size: imageSizeSelect.value,
+          guidance_scale: parseFloat(guidanceScaleInput.value) || 2.5,
+          output_format: outputFormatSelect.value,
+        };
+
+        try {
+          const response = await fetch("https://fal.run/fal-ai/flux-2/flash", {
+            method: "POST",
+            headers: {
+              Authorization: `Key ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
+
+          const data = await response.json();
+          statusMessage.textContent = "Status: Success!";
+          jsonOutput.textContent = JSON.stringify(data, null, 2);
+
+          if (data.images && data.images.length > 0) {
+            // data.images[0].url contains the base64 data URI when sync_mode is true
+            resultImage.src = data.images[0].url;
+            resultImage.style.display = "block";
+          }
+        } catch (error) {
+          console.error(error);
+          statusMessage.textContent = `Status: Error - ${error.message}`;
+        } finally {
+          generateBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

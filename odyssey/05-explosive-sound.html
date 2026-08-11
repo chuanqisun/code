@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Banging Sound Detector PoC</title>
+  </head>
+  <body>
+    <h1>Banging Sound Detector</h1>
+
+    <button id="startButton">Start Microphone</button>
+    <button id="stopButton" disabled>Stop</button>
+
+    <br /><br />
+
+    <label for="sensitivity">Sensitivity (1 - 100):</label>
+    <!-- Sensible default set to 60 -->
+    <input type="range" id="sensitivity" min="1" max="100" value="60" />
+    <span id="sensitivityValue">60</span>
+
+    <br /><br />
+
+    <div>Current Peak: <meter id="volumeMeter" min="0" max="1" value="0"></meter></div>
+
+    <br />
+
+    <h3>Event Log:</h3>
+    <div id="logOutput" style="font-family: monospace; height: 150px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px"></div>
+
+    <script>
+      let audioContext;
+      let analyser;
+      let microphoneStream;
+      let animationFrameId;
+
+      // Detection variables
+      let previousPeak = 0;
+      let lastHitTime = 0;
+      const COOLDOWN_MS = 50; // Minimum time between hits to prevent double-triggering
+
+      // UI Elements
+      const startButton = document.getElementById("startButton");
+      const stopButton = document.getElementById("stopButton");
+      const sensitivityInput = document.getElementById("sensitivity");
+      const sensitivityValueDisplay = document.getElementById("sensitivityValue");
+      const volumeMeter = document.getElementById("volumeMeter");
+      const logOutput = document.getElementById("logOutput");
+
+      sensitivityInput.addEventListener("input", () => {
+        sensitivityValueDisplay.textContent = sensitivityInput.value;
+      });
+
+      startButton.addEventListener("click", async () => {
+        try {
+          // Request default microphone
+          microphoneStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false, // Turned off to prevent suppressing transient sounds
+              noiseSuppression: false, // Turned off to ensure accurate raw peak detection
+              autoGainControl: false,
+            },
+          });
+
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = audioContext.createAnalyser();
+
+          // Small FFT size for high temporal resolution (fast updates)
+          analyser.fftSize = 512;
+
+          const source = audioContext.createMediaStreamSource(microphoneStream);
+          source.connect(analyser);
+
+          startButton.disabled = true;
+          stopButton.disabled = false;
+
+          log("Microphone started. Listening for bangs...");
+          processAudio();
+        } catch (err) {
+          console.error("Error accessing microphone:", err);
+          log("Error: Could not access microphone.");
+        }
+      });
+
+      stopButton.addEventListener("click", () => {
+        if (microphoneStream) {
+          microphoneStream.getTracks().forEach((track) => track.stop());
+        }
+        if (audioContext) {
+          audioContext.close();
+        }
+        cancelAnimationFrame(animationFrameId);
+
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        volumeMeter.value = 0;
+        log("Microphone stopped.");
+      });
+
+      function processAudio() {
+        const bufferLength = analyser.fftSize;
+        const dataArray = new Float32Array(bufferLength);
+
+        // Get raw pulse-code modulation (PCM) time-domain data
+        analyser.getFloatTimeDomainData(dataArray);
+
+        let sumSquares = 0;
+        let currentPeak = 0;
+
+        // Calculate Peak Volume and Root Mean Square (RMS) for this frame
+        for (let i = 0; i < bufferLength; i++) {
+          const sample = Math.abs(dataArray[i]);
+          if (sample > currentPeak) {
+            currentPeak = sample;
+          }
+          sumSquares += sample * sample;
+        }
+
+        const rms = Math.sqrt(sumSquares / bufferLength);
+
+        // 1. Calculate Onset Speed (How fast the volume spiked)
+        const onset = currentPeak - previousPeak;
+
+        // 2. Calculate Crest Factor (Peak to Average ratio)
+        // Bangs have high peak-to-average ratio (> 3.5), speech has lower (~1.5 to 2.5)
+        const crestFactor = rms > 0.001 ? currentPeak / rms : 0;
+
+        // Map Sensitivity Slider (1-100) to a Peak Threshold (0.95 down to 0.05)
+        const sensitivity = parseInt(sensitivityInput.value, 10);
+        const peakThreshold = 1.0 - (sensitivity / 100) * 0.9;
+
+        // Minimum Onset Threshold (Fast spike required)
+        const onsetThreshold = peakThreshold * 0.3;
+
+        const now = Date.now();
+
+        // HEURISTIC DISCRIMINATION LOGIC:
+        // - Is Peak higher than Sensitivity Threshold?
+        // - Is Onset fast enough? (Spike vs gradual vocal swell)
+        // - Is Crest Factor high enough? (Impulsive sound vs sustained speech)
+        // - Has cooldown period passed?
+        if (currentPeak > peakThreshold && onset > onsetThreshold && crestFactor > 3.0 && now - lastHitTime > COOLDOWN_MS) {
+          triggerHit(currentPeak);
+          lastHitTime = now;
+        }
+
+        // Update UI Volume Meter
+        volumeMeter.value = currentPeak;
+
+        // Store peak for next frame onset calculation
+        previousPeak = currentPeak;
+
+        // Continue loop
+        animationFrameId = requestAnimationFrame(processAudio);
+      }
+
+      function triggerHit(intensity) {
+        // Log to developer console
+        console.log("hit", { intensity: intensity.toFixed(2), timestamp: new Date().toISOString() });
+
+        // Log to UI
+        log(`hit (Intensity: ${intensity.toFixed(2)})`);
+      }
+
+      function log(message) {
+        const entry = document.createElement("div");
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logOutput.appendChild(entry);
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
+    </script>
+  </body>
+</html>

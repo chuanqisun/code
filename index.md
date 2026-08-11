@@ -92,6 +92,7 @@
 - [Media Lab Game of Life](./media-lab-game-of-life/)
 - [Metaball Surface Geometry](./metaball-surface-geometry/)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
+- [Odyssey](./odyssey/)
 - [Paper CAD](https://chuanqisun.github.io/paper-cad/)
 - [Parametric Poetry](./parametric-poetry/)
 - [Perlin noise](./perlin-noise/)

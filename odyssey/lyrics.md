@@ -1,0 +1,3 @@
+A face... a fleet... a war... a man... a thought...
+a trick... a trick to break the walls of Troy
+and burn it screaming to the ground
