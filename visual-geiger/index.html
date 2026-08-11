@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Webcam Image Similarity</title>
+<style>
+  body { font-family: sans-serif; margin: 16px; }
+  video { width: 320px; background: #000; }
+  canvas { width: 320px; background: #000; }
+  #row { display: flex; gap: 16px; align-items: flex-start; }
+  #score { font-size: 32px; margin-top: 12px; }
+  #bar { width: 400px; height: 20px; background: #eee; }
+  #fill { height: 100%; width: 0; background: #4a4; transition: width .05s linear; }
+  .controls { margin-top: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  button { padding: 6px 12px; font-size: 14px; cursor: pointer; }
+  #cps { font-variant-numeric: tabular-nums; color: #666; font-size: 14px; }
+  label { font-size: 14px; color: #333; }
+  select { padding: 5px; font-size: 14px; max-width: 320px; }
+</style>
+</head>
+<body>
+
+<h3>MediaPipe Image Embedder — Webcam Similarity</h3>
+<div id="status">Loading model…</div>
+
+<div class="controls">
+  <label>Camera
+    <select id="cameraSelect" disabled><option>Loading…</option></select>
+  </label>
+</div>
+
+<div id="row">
+  <div>
+    <div>Live</div>
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+  <div>
+    <div>Reference</div>
+    <canvas id="ref" width="320" height="240"></canvas>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="capture" disabled>Capture reference photo</button>
+  <button id="soundBtn">🔇 Sound: off</button>
+  <label>Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+  <span id="cps">0.0 clicks/s</span>
+</div>
+
+<div id="score">–</div>
+<div id="bar"><div id="fill"></div></div>
+
+<script type="module">
+import { FilesetResolver, ImageEmbedder } from
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+
+/* ============================================================
+   GEIGER COUNTER AUDIO
+   ============================================================ */
+const Geiger = (() => {
+  // Tunables
+  const SIM_MIN   = 0.30;  // below this -> minimum rate
+  const SIM_MAX   = 0.90;  // at/above this -> maximum rate
+  const RATE_MIN  = 1.0;   // clicks per second at SIM_MIN
+  const RATE_MAX  = 60.0;  // clicks per second at SIM_MAX
+  const LOOKAHEAD = 0.100; // seconds of audio scheduled ahead
+  const TICK_MS   = 25;    // scheduler wake-up interval
+
+  let ctx = null;
+  let masterGain = null;
+  let noiseBuffer = null;
+  let schedulerId = null;
+  let nextClickTime = 0;
+  let enabled = false;
+  let currentRate = RATE_MIN;
+  let volume = 0.5;
+
+  function makeNoiseBuffer(ac) {
+    // 0.2 s of white noise, reused for every click
+    const len = Math.floor(ac.sampleRate * 0.2);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+
+  function init() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = ctx.createGain();
+    masterGain.gain.value = volume;
+    masterGain.connect(ctx.destination);
+    noiseBuffer = makeNoiseBuffer(ctx);
+  }
+
+  /** Synthesize one Geiger "tick" at absolute AudioContext time t. */
+  function scheduleClick(t) {
+    // --- Noise burst: the "crack" ---
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuffer;
+    // Random start offset so consecutive clicks aren't identical
+    const offset = Math.random() * 0.15;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2200 + Math.random() * 1600; // 2.2–3.8 kHz
+    bp.Q.value = 1.2;
+
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 900;
+
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(1.0, t + 0.0006);   // near-instant attack
+    env.gain.exponentialRampToValueAtTime(0.0005, t + 0.030); // fast decay
+
+    src.connect(bp).connect(hp).connect(env).connect(masterGain);
+    src.start(t, offset, 0.05);
+    src.stop(t + 0.06);
+
+    // --- Tiny pitched blip: adds "body" to the click ---
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(1500 + Math.random() * 900, t);
+
+    const oenv = ctx.createGain();
+    oenv.gain.setValueAtTime(0, t);
+    oenv.gain.linearRampToValueAtTime(0.28, t + 0.0005);
+    oenv.gain.exponentialRampToValueAtTime(0.0005, t + 0.012);
+
+    osc.connect(oenv).connect(masterGain);
+    osc.start(t);
+    osc.stop(t + 0.02);
+  }
+
+  /** Poisson process: exponentially distributed gap for rate r (Hz). */
+  function nextGap(r) {
+    const u = Math.max(Math.random(), 1e-6);
+    const gap = -Math.log(u) / r;
+    // Clamp so we never machine-gun or stall completely
+    return Math.min(Math.max(gap, 0.012), 4.0);
+  }
+
+  function scheduler() {
+    const horizon = ctx.currentTime + LOOKAHEAD;
+    while (nextClickTime < horizon) {
+      if (nextClickTime < ctx.currentTime) nextClickTime = ctx.currentTime + 0.005;
+      scheduleClick(nextClickTime);
+      nextClickTime += nextGap(currentRate);
+    }
+  }
+
+  return {
+    async enable() {
+      init();
+      if (ctx.state === "suspended") await ctx.resume();
+      enabled = true;
+      nextClickTime = ctx.currentTime + 0.05;
+      if (!schedulerId) schedulerId = setInterval(scheduler, TICK_MS);
+    },
+    disable() {
+      enabled = false;
+      if (schedulerId) { clearInterval(schedulerId); schedulerId = null; }
+    },
+    isEnabled: () => enabled,
+    setVolume(v) {
+      volume = v;
+      if (masterGain) masterGain.gain.setTargetAtTime(v, ctx.currentTime, 0.02);
+    },
+    /** Feed similarity in [-1, 1]; returns the resulting click rate (Hz). */
+    setSimilarity(sim) {
+      // Normalize similarity into 0..1 across [SIM_MIN, SIM_MAX]
+      let x = (sim - SIM_MIN) / (SIM_MAX - SIM_MIN);
+      x = Math.max(0, Math.min(1, x));
+      // Perceptually smoother ramp near the top
+      const shaped = Math.pow(x, 1.6);
+      // Exponential rate interpolation (log-linear) feels natural for click density
+      currentRate = RATE_MIN * Math.pow(RATE_MAX / RATE_MIN, shaped);
+      return currentRate;
+    },
+    silence() { currentRate = RATE_MIN; }
+  };
+})();
+
+/* ============================================================
+   VISION PIPELINE
+   ============================================================ */
+const video = document.getElementById("video");
+const refCanvas = document.getElementById("ref");
+const refCtx = refCanvas.getContext("2d", { willReadFrequently: true });
+const statusEl = document.getElementById("status");
+const scoreEl = document.getElementById("score");
+const fill = document.getElementById("fill");
+const captureBtn = document.getElementById("capture");
+const soundBtn = document.getElementById("soundBtn");
+const volSlider = document.getElementById("vol");
+const cpsEl = document.getElementById("cps");
+const cameraSelect = document.getElementById("cameraSelect");
+
+let embedder, refEmbedding = null;
+let smoothedSim = 0;
+let currentStream = null;
+
+soundBtn.onclick = async () => {
+  if (Geiger.isEnabled()) {
+    Geiger.disable();
+    soundBtn.textContent = "🔇 Sound: off";
+  } else {
+    await Geiger.enable();          // user gesture satisfies autoplay policy
+    Geiger.setVolume(parseFloat(volSlider.value));
+    soundBtn.textContent = "🔊 Sound: on";
+  }
+};
+volSlider.oninput = () => Geiger.setVolume(parseFloat(volSlider.value));
+
+const vision = await FilesetResolver.forVisionTasks(
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+);
+
+embedder = await ImageEmbedder.createFromOptions(vision, {
+  baseOptions: {
+    modelAssetPath:
+      "https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite",
+    delegate: "GPU"
+  },
+  runningMode: "VIDEO",
+  quantize: false
+});
+
+/* ---------- Camera selection ---------- */
+
+/** Full reset: drop reference, clear score/UI, silence audio rate. */
+function resetSystem() {
+  refEmbedding = null;
+  smoothedSim = 0;
+  Geiger.silence();
+  scoreEl.textContent = "–";
+  fill.style.width = "0%";
+  fill.style.background = "#4a4";
+  cpsEl.textContent = "0.0 clicks/s";
+  refCtx.clearRect(0, 0, refCanvas.width, refCanvas.height);
+}
+
+/** Match the reference canvas to the live video's aspect ratio. */
+function syncCanvasToVideo() {
+  const w = video.videoWidth || 320;
+  const h = video.videoHeight || 240;
+  // Keep a 320px-wide backing store, height follows the camera's aspect ratio.
+  refCanvas.width = 320;
+  refCanvas.height = Math.max(1, Math.round(320 * h / w));
+}
+
+function stopStream() {
+  if (currentStream) {
+    currentStream.getTracks().forEach(t => t.stop());
+    currentStream = null;
+  }
+}
+
+async function startCamera(deviceId) {
+  // Changing camera invalidates the old reference (different view / aspect ratio).
+  resetSystem();
+  captureBtn.disabled = true;
+  statusEl.textContent = "Starting camera…";
+
+  stopStream();
+  const constraints = {
+    video: deviceId ? { deviceId: { exact: deviceId } } : true
+  };
+  currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+  video.srcObject = currentStream;
+  await new Promise(r => { video.onloadeddata = r; });
+  await video.play().catch(() => {});
+
+  syncCanvasToVideo();
+  captureBtn.disabled = false;
+  statusEl.textContent = "Ready. Capture a reference photo.";
+}
+
+async function populateCameras() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cams = devices.filter(d => d.kind === "videoinput");
+  const active = currentStream?.getVideoTracks()[0]?.getSettings().deviceId;
+
+  cameraSelect.innerHTML = "";
+  cams.forEach((d, i) => {
+    const opt = document.createElement("option");
+    opt.value = d.deviceId;
+    opt.textContent = d.label || `Camera ${i + 1}`;
+    cameraSelect.appendChild(opt);
+  });
+  if (active) cameraSelect.value = active;
+  cameraSelect.disabled = cams.length === 0;
+}
+
+// Initial camera (also grants permission so device labels become available)
+await startCamera(null);
+await populateCameras();
+
+cameraSelect.onchange = async () => {
+  try {
+    await startCamera(cameraSelect.value);
+  } catch (e) {
+    statusEl.textContent = "Could not open that camera: " + e.message;
+  }
+};
+
+navigator.mediaDevices.addEventListener?.("devicechange", populateCameras);
+
+/* ---------- Capture / loop ---------- */
+
+captureBtn.onclick = () => {
+  syncCanvasToVideo();
+  refCtx.drawImage(video, 0, 0, refCanvas.width, refCanvas.height);
+  refEmbedding = embedder.embedForVideo(refCanvas, performance.now()).embeddings[0];
+  statusEl.textContent = "Reference captured. Comparing live frames…";
+};
+
+function loop() {
+  if (refEmbedding && video.readyState >= 2) {
+    const result = embedder.embedForVideo(video, performance.now());
+    const sim = ImageEmbedder.cosineSimilarity(refEmbedding, result.embeddings[0]);
+
+    // Light temporal smoothing so the audio doesn't jitter frame-to-frame
+    smoothedSim = smoothedSim * 0.75 + sim * 0.25;
+
+    scoreEl.textContent = sim.toFixed(4);
+    const pct = Math.max(0, Math.min(1, sim / 0.9)) * 100;
+    fill.style.width = pct + "%";
+    fill.style.background = `hsl(${Math.round(120 * Math.min(1, sim / 0.9))} 60% 45%)`;
+
+    const rate = Geiger.setSimilarity(smoothedSim);
+    cpsEl.textContent = rate.toFixed(1) + " clicks/s";
+  } else {
+    Geiger.silence();
+  }
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>

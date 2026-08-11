@@ -1,0 +1,745 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Multi-object Blob Detector — OpenCV.js 5</title>
+    <style>
+      body {
+        font-family: monospace;
+        margin: 12px;
+        background: #111;
+        color: #eee;
+      }
+      canvas {
+        border: 1px solid #444;
+      }
+      #out {
+        cursor: crosshair;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        margin: 4px 0;
+      }
+      input[type="range"] {
+        width: 150px;
+        vertical-align: middle;
+      }
+      #log {
+        white-space: pre;
+        font-size: 12px;
+        color: #6f6;
+        margin-top: 6px;
+      }
+      video {
+        position: absolute;
+        left: -10000px;
+        top: 0;
+      }
+      select,
+      button,
+      input[type="text"] {
+        font-family: monospace;
+        margin: 2px 0;
+      }
+      .box {
+        border: 1px solid #333;
+        padding: 6px;
+        margin-bottom: 6px;
+      }
+      .hint {
+        font-size: 12px;
+        color: #aaa;
+      }
+      .swatch {
+        display: inline-block;
+        width: 24px;
+        height: 12px;
+        border: 1px solid #888;
+        vertical-align: middle;
+      }
+
+      #objs {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .obj {
+        border: 1px solid #333;
+        padding: 5px;
+        border-left-width: 6px;
+        background: #161616;
+      }
+      .obj.active {
+        background: #242424;
+        border-color: #777;
+      }
+      .obj-head {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+      .obj-head .name {
+        flex: 1;
+      }
+      .obj-body {
+        margin-top: 4px;
+      }
+      .sect {
+        margin-top: 5px;
+        padding-top: 4px;
+        border-top: 1px dashed #333;
+      }
+      .sect-title {
+        font-size: 11px;
+        color: #8af;
+      }
+      .tag {
+        font-size: 11px;
+        color: #aaa;
+      }
+      .armed {
+        color: #ff0;
+      }
+      .dim {
+        opacity: 0.4;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>Multi-object detector — per-object color + shape filters</h3>
+    <div id="status">loading opencv.js…</div>
+
+    <div class="box">
+      camera:
+      <select id="camsel"></select>
+      <button id="startBtn">start / switch</button>
+    </div>
+
+    <video id="cam" playsinline muted autoplay></video>
+
+    <div class="row">
+      <div>
+        <canvas id="out" width="640" height="480"></canvas>
+        <div class="hint" id="clickHint">click the video to sample a 5px-radius patch</div>
+      </div>
+
+      <div>
+        <div class="box">
+          <button id="addObj">+ add object</button>
+          <span class="hint">click a row to make it the sampling target</span>
+          <div id="objs"></div>
+        </div>
+
+        <div class="box">
+          <label
+            >mask preview:
+            <select id="maskView">
+              <option value="-1">selected object</option>
+            </select>
+          </label>
+        </div>
+
+        <canvas id="mask" width="320" height="240"></canvas>
+        <div class="hint">mask</div>
+
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <script>
+      var Module = { onRuntimeInitialized: () => onReady() };
+    </script>
+    <script async src="https://docs.opencv.org/5.x/opencv.js"></script>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const video = $("cam"),
+        out = $("out"),
+        maskCv = $("mask");
+      const octx = out.getContext("2d", { willReadFrequently: true });
+
+      const grab = document.createElement("canvas");
+      const gctx = grab.getContext("2d", { willReadFrequently: true });
+
+      let W = 0,
+        H = 0,
+        running = false,
+        cvReady = false,
+        stream = null;
+      let src, rgb, hsv, mask, m2, kernel, hierarchy, contours, tmp, maskA, maskB;
+
+      /* ---------- object model ---------- */
+      const PALETTE = ["#00ff66", "#ff3b30", "#ffcc00", "#00ccff", "#ff66ff", "#ff8800", "#88ff00", "#aa88ff"];
+      let objects = [];
+      let nextId = 1;
+      let activeId = null;
+      let pendingClick = null;
+
+      function addObject(name) {
+        const id = nextId++;
+        objects.push({
+          id,
+          name: name || `object ${id}`,
+          color: PALETTE[(id - 1) % PALETTE.length],
+          pick: null,
+          htol: 12,
+          stol: 70,
+          vtol: 80, // color
+          minArea: 600, // shape
+          useCirc: true, // circularity check is OPTIONAL
+          minCirc: 0.7,
+          enabled: true,
+          result: null,
+        });
+        activeId = id;
+        renderObjects();
+      }
+
+      function removeObject(id) {
+        objects = objects.filter((o) => o.id !== id);
+        if (activeId === id) activeId = objects.length ? objects[0].id : null;
+        renderObjects();
+      }
+
+      const getObj = (id) => objects.find((o) => o.id === id);
+      const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+      /* ---------- helpers to build controls ---------- */
+      function slider(parent, labelText, value, min, max, step, onChange, fmt) {
+        const l = document.createElement("label");
+        const r = document.createElement("input");
+        r.type = "range";
+        r.min = min;
+        r.max = max;
+        r.step = step;
+        r.value = value;
+        const sp = document.createElement("span");
+        const show = (v) => (sp.textContent = " " + (fmt ? fmt(v) : v));
+        show(value);
+        r.oninput = () => {
+          show(+r.value);
+          onChange(+r.value);
+        };
+        l.append(labelText + " ", r, sp);
+        parent.appendChild(l);
+        return l;
+      }
+
+      /* ---------- object list UI ---------- */
+      function renderObjects() {
+        const host = $("objs");
+        host.innerHTML = "";
+
+        objects.forEach((o) => {
+          const div = document.createElement("div");
+          div.className = "obj" + (o.id === activeId ? " active" : "");
+          div.style.borderLeftColor = o.color;
+          div.onclick = () => {
+            activeId = o.id;
+            renderObjects();
+          };
+
+          /* header */
+          const head = document.createElement("div");
+          head.className = "obj-head";
+
+          const en = document.createElement("input");
+          en.type = "checkbox";
+          en.checked = o.enabled;
+          en.title = "enable";
+          en.onclick = (e) => {
+            e.stopPropagation();
+            o.enabled = en.checked;
+          };
+
+          const nm = document.createElement("input");
+          nm.type = "text";
+          nm.value = o.name;
+          nm.size = 9;
+          nm.className = "name";
+          nm.onclick = (e) => e.stopPropagation();
+          nm.oninput = () => {
+            o.name = nm.value;
+            refreshMaskViewOptions();
+          };
+
+          const sw = document.createElement("span");
+          sw.className = "swatch";
+          sw.style.background = o.pick ? `rgb(${o.pick.rgb.join(",")})` : "transparent";
+
+          const tag = document.createElement("span");
+          tag.className = "tag" + (o.id === activeId ? " armed" : "");
+          tag.textContent = o.id === activeId ? "◀ sampling" : "";
+
+          const del = document.createElement("button");
+          del.textContent = "×";
+          del.title = "remove";
+          del.onclick = (e) => {
+            e.stopPropagation();
+            removeObject(o.id);
+          };
+
+          head.append(en, nm, sw, tag, del);
+
+          /* body */
+          const body = document.createElement("div");
+          body.className = "obj-body";
+          body.onclick = (e) => e.stopPropagation();
+
+          /* --- color section --- */
+          const cs = document.createElement("div");
+          cs.className = "sect";
+          const cst = document.createElement("div");
+          cst.className = "sect-title";
+          cst.textContent = "color (HSV)";
+          cs.appendChild(cst);
+
+          const hsvLine = document.createElement("div");
+          hsvLine.className = "hint";
+          hsvLine.textContent = o.pick ? `picked H=${o.pick.h} S=${o.pick.s} V=${o.pick.v}` : "no color picked — click the video";
+          cs.appendChild(hsvLine);
+
+          const rangeLine = document.createElement("div");
+          rangeLine.className = "hint";
+
+          slider(cs, "H tol ±", o.htol, 1, 90, 1, (v) => {
+            o.htol = v;
+            rangeLine.textContent = rangeText(o);
+          });
+          slider(cs, "S tol ±", o.stol, 5, 255, 1, (v) => {
+            o.stol = v;
+            rangeLine.textContent = rangeText(o);
+          });
+          slider(cs, "V tol ±", o.vtol, 5, 255, 1, (v) => {
+            o.vtol = v;
+            rangeLine.textContent = rangeText(o);
+          });
+
+          rangeLine.textContent = rangeText(o);
+          cs.appendChild(rangeLine);
+
+          /* --- shape section --- */
+          const ss = document.createElement("div");
+          ss.className = "sect";
+          const sst = document.createElement("div");
+          sst.className = "sect-title";
+          sst.textContent = "shape";
+          ss.appendChild(sst);
+
+          slider(ss, "min area", o.minArea, 50, 20000, 50, (v) => (o.minArea = v));
+
+          const circWrap = document.createElement("div");
+          const circToggle = document.createElement("label");
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = o.useCirc;
+          circToggle.append(cb, " require circular");
+          circWrap.appendChild(circToggle);
+
+          const circRow = document.createElement("div");
+          const circSlider = slider(
+            circRow,
+            "min circularity",
+            o.minCirc,
+            0.1,
+            1.0,
+            0.01,
+            (v) => (o.minCirc = v),
+            (v) => (+v).toFixed(2),
+          );
+          circWrap.appendChild(circRow);
+
+          const syncCirc = () => (circRow.className = o.useCirc ? "" : "dim");
+          cb.onchange = () => {
+            o.useCirc = cb.checked;
+            syncCirc();
+          };
+          syncCirc();
+
+          ss.appendChild(circWrap);
+
+          body.append(cs, ss);
+          div.append(head, body);
+          host.appendChild(div);
+        });
+
+        refreshMaskViewOptions();
+        $("clickHint").textContent = activeId ? `click the video to sample for "${getObj(activeId).name}"` : "add an object first";
+      }
+
+      function rangeText(o) {
+        if (!o.pick) return "range: —";
+        const wrap = o.pick.h - o.htol < 0 || o.pick.h + o.htol > 179;
+        const h1 = (o.pick.h - o.htol + 180) % 180,
+          h2 = (o.pick.h + o.htol) % 180;
+        return (
+          `H ${h1}..${h2}${wrap ? " (wrap)" : ""}  ` +
+          `S ${clamp(o.pick.s - o.stol, 0, 255)}..${clamp(o.pick.s + o.stol, 0, 255)}  ` +
+          `V ${clamp(o.pick.v - o.vtol, 0, 255)}..${clamp(o.pick.v + o.vtol, 0, 255)}`
+        );
+      }
+
+      function refreshMaskViewOptions() {
+        const sel = $("maskView"),
+          prev = sel.value;
+        sel.innerHTML = '<option value="-1">selected object</option>';
+        objects.forEach((o) => {
+          const opt = document.createElement("option");
+          opt.value = o.id;
+          opt.textContent = o.name;
+          sel.appendChild(opt);
+        });
+        if ([...sel.options].some((op) => op.value === prev)) sel.value = prev;
+      }
+
+      $("addObj").onclick = () => addObject();
+
+      out.addEventListener("click", (ev) => {
+        if (!W || !activeId) return;
+        const r = out.getBoundingClientRect();
+        pendingClick = {
+          x: Math.round((ev.clientX - r.left) * (W / r.width)),
+          y: Math.round((ev.clientY - r.top) * (H / r.height)),
+        };
+      });
+
+      /* ---------- camera ---------- */
+      async function listCams(selectId) {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        const cams = devs.filter((d) => d.kind === "videoinput");
+        const sel = $("camsel"),
+          prev = selectId || sel.value;
+        sel.innerHTML = "";
+        cams.forEach((c, i) => {
+          const o = document.createElement("option");
+          o.value = c.deviceId;
+          o.textContent = c.label || `camera ${i + 1}`;
+          sel.appendChild(o);
+        });
+        if (prev && cams.some((c) => c.deviceId === prev)) sel.value = prev;
+        return cams;
+      }
+
+      $("startBtn").onclick = () => startCam($("camsel").value);
+
+      async function onReady() {
+        cvReady = true;
+        $("status").textContent = "opencv ready — requesting camera permission…";
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ video: true });
+          s.getTracks().forEach((t) => t.stop());
+        } catch (e) {
+          $("status").textContent = "camera permission denied: " + e.message;
+          return;
+        }
+        await listCams();
+        navigator.mediaDevices.addEventListener?.("devicechange", () => listCams());
+        addObject();
+        startCam($("camsel").value);
+      }
+
+      async function startCam(deviceId) {
+        if (!cvReady) return;
+        running = false;
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: deviceId
+              ? { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+              : { width: { ideal: 640 }, height: { ideal: 480 } },
+          });
+          video.srcObject = stream;
+          await new Promise((res) => {
+            if (video.readyState >= 2 && video.videoWidth) return res();
+            video.onloadedmetadata = () => res();
+          });
+          await video.play();
+          for (let i = 0; i < 60 && !video.videoWidth; i++) await new Promise((r) => requestAnimationFrame(r));
+
+          await listCams(deviceId);
+          setupForCurrentSize();
+          running = true;
+          requestAnimationFrame(loop);
+        } catch (e) {
+          $("status").textContent = "camera error: " + e.message;
+          console.error(e);
+        }
+      }
+
+      /* ---------- mats ---------- */
+      function setupForCurrentSize() {
+        const vw = video.videoWidth,
+          vh = video.videoHeight;
+        if (!vw || !vh) return;
+        if (vw === W && vh === H && src) return;
+
+        W = vw;
+        H = vh;
+        video.width = W;
+        video.height = H;
+        grab.width = W;
+        grab.height = H;
+        out.width = W;
+        out.height = H;
+        maskCv.width = Math.max(1, W >> 1);
+        maskCv.height = Math.max(1, H >> 1);
+
+        freeMats();
+        allocate();
+        $("status").textContent = `running — ${W}x${H}`;
+      }
+
+      function allocate() {
+        src = new cv.Mat(H, W, cv.CV_8UC4);
+        rgb = new cv.Mat(H, W, cv.CV_8UC3);
+        hsv = new cv.Mat(H, W, cv.CV_8UC3);
+        mask = new cv.Mat(H, W, cv.CV_8UC1);
+        m2 = new cv.Mat(H, W, cv.CV_8UC1);
+        maskA = new cv.Mat(H, W, cv.CV_8UC1);
+        maskB = new cv.Mat(H, W, cv.CV_8UC1);
+        hierarchy = new cv.Mat();
+        contours = new cv.MatVector();
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
+        tmp = new cv.Mat();
+      }
+
+      function freeMats() {
+        [src, rgb, hsv, mask, m2, maskA, maskB, kernel, hierarchy, tmp].forEach((m) => m && m.delete());
+        if (contours) contours.delete();
+        src = rgb = hsv = mask = m2 = maskA = maskB = kernel = hierarchy = tmp = contours = null;
+      }
+
+      function readFrame(dst) {
+        gctx.drawImage(video, 0, 0, W, H);
+        dst.data.set(gctx.getImageData(0, 0, W, H).data);
+      }
+
+      /* ---------- sampling ---------- */
+      function samplePatch(cx, cy) {
+        const R = 5;
+        const x0 = clamp(cx - R, 0, W - 1),
+          x1 = clamp(cx + R, 0, W - 1);
+        const y0 = clamp(cy - R, 0, H - 1),
+          y1 = clamp(cy + R, 0, H - 1);
+        let r = 0,
+          g = 0,
+          b = 0,
+          n = 0;
+        const d = src.data;
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const dx = x - cx,
+              dy = y - cy;
+            if (dx * dx + dy * dy > R * R) continue;
+            const i = (y * W + x) * 4;
+            r += d[i];
+            g += d[i + 1];
+            b += d[i + 2];
+            n++;
+          }
+        }
+        if (!n) return null;
+        r = Math.round(r / n);
+        g = Math.round(g / n);
+        b = Math.round(b / n);
+
+        const one = new cv.Mat(1, 1, cv.CV_8UC3);
+        one.data[0] = r;
+        one.data[1] = g;
+        one.data[2] = b;
+        const oh = new cv.Mat();
+        cv.cvtColor(one, oh, cv.COLOR_RGB2HSV);
+        const res = { h: oh.data[0], s: oh.data[1], v: oh.data[2], rgb: [r, g, b] };
+        one.delete();
+        oh.delete();
+        return res;
+      }
+
+      /* ---------- per-object mask ---------- */
+      function makeMask(o, dst) {
+        const p = o.pick;
+        const sLo = clamp(p.s - o.stol, 0, 255),
+          sHi = clamp(p.s + o.stol, 0, 255);
+        const vLo = clamp(p.v - o.vtol, 0, 255),
+          vHi = clamp(p.v + o.vtol, 0, 255);
+        const hLo = p.h - o.htol,
+          hHi = p.h + o.htol;
+
+        const mk = (h1, h2, target) => {
+          const lo = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [h1, sLo, vLo, 0]);
+          const hi = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [h2, sHi, vHi, 255]);
+          cv.inRange(hsv, lo, hi, target);
+          lo.delete();
+          hi.delete();
+        };
+
+        if (hLo >= 0 && hHi <= 179) {
+          mk(hLo, hHi, dst);
+        } else if (hLo < 0) {
+          mk(0, hHi, maskA);
+          mk(180 + hLo, 179, maskB);
+          cv.bitwise_or(maskA, maskB, dst);
+        } else {
+          mk(hLo, 179, maskA);
+          mk(0, hHi - 180, maskB);
+          cv.bitwise_or(maskA, maskB, dst);
+        }
+      }
+
+      /* ---------- detection ---------- */
+      function detectObject(o) {
+        makeMask(o, mask);
+        cv.morphologyEx(mask, m2, cv.MORPH_OPEN, kernel);
+        cv.morphologyEx(m2, mask, cv.MORPH_CLOSE, kernel);
+        cv.GaussianBlur(mask, mask, new cv.Size(9, 9), 2, 2, cv.BORDER_DEFAULT);
+
+        contours.delete();
+        contours = new cv.MatVector();
+        cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let best = null;
+        for (let i = 0; i < contours.size(); i++) {
+          const c = contours.get(i);
+          const area = cv.contourArea(c);
+          if (area >= o.minArea) {
+            const per = cv.arcLength(c, true);
+            const circularity = per > 0 ? (4 * Math.PI * area) / (per * per) : 0;
+            const mec = cv.minEnclosingCircle(c);
+            const fill = area / (Math.PI * mec.radius * mec.radius);
+
+            // circularity gate is optional; when off, area alone qualifies the blob
+            const shapeOk = !o.useCirc || (circularity >= o.minCirc && fill > 0.6);
+
+            if (shapeOk) {
+              const score = o.useCirc ? area * circularity : area;
+              if (!best || score > best.score) {
+                const rect = cv.boundingRect(c);
+                best = { score, x: mec.center.x, y: mec.center.y, r: mec.radius, circularity, area, rect };
+              }
+            }
+          }
+          c.delete();
+        }
+        o.result = best;
+        return contours.size();
+      }
+
+      /* ---------- loop ---------- */
+      function loop() {
+        if (!running) return;
+        try {
+          if (video.videoWidth && video.videoHeight) {
+            if (video.videoWidth !== W || video.videoHeight !== H) setupForCurrentSize();
+            if (src) frame();
+          }
+        } catch (e) {
+          $("status").textContent = "err: " + e;
+          console.error(e);
+        }
+        requestAnimationFrame(loop);
+      }
+
+      function frame() {
+        readFrame(src);
+
+        if (pendingClick && activeId) {
+          const o = getObj(activeId);
+          const p = samplePatch(pendingClick.x, pendingClick.y);
+          pendingClick = null;
+          if (o && p) {
+            o.pick = p;
+            renderObjects();
+          }
+        }
+
+        cv.cvtColor(src, rgb, cv.COLOR_RGBA2RGB);
+        cv.cvtColor(rgb, hsv, cv.COLOR_RGB2HSV);
+
+        const viewSel = $("maskView").value;
+        const viewId = viewSel === "-1" ? activeId : +viewSel;
+        let viewedMaskDrawn = false;
+
+        const lines = [];
+        objects.forEach((o) => {
+          if (!o.pick || !o.enabled) {
+            o.result = null;
+            return;
+          }
+          const n = detectObject(o);
+          if (o.id === viewId) {
+            cv.resize(mask, tmp, new cv.Size(maskCv.width, maskCv.height));
+            cv.imshow("mask", tmp);
+            viewedMaskDrawn = true;
+          }
+          lines.push(
+            o.result
+              ? `${o.name}: x=${o.result.x.toFixed(1)} y=${o.result.y.toFixed(1)} ` +
+                  `r=${o.result.r.toFixed(1)} area=${o.result.area | 0} circ=${o.result.circularity.toFixed(2)}` +
+                  (o.useCirc ? "" : " [shape off]")
+              : `${o.name}: not found (blobs=${n})`,
+          );
+        });
+
+        if (!viewedMaskDrawn) {
+          mask.setTo(new cv.Scalar(0));
+          cv.resize(mask, tmp, new cv.Size(maskCv.width, maskCv.height));
+          cv.imshow("mask", tmp);
+        }
+
+        /* overlay */
+        octx.drawImage(video, 0, 0, W, H);
+        octx.lineWidth = 3;
+        octx.font = "15px monospace";
+        objects.forEach((o) => {
+          const r = o.result;
+          if (!r) return;
+          octx.strokeStyle = o.color;
+          octx.fillStyle = o.color;
+          if (o.useCirc) {
+            octx.beginPath();
+            octx.arc(r.x, r.y, r.r, 0, 6.284);
+            octx.stroke();
+          } else {
+            octx.strokeRect(r.rect.x, r.rect.y, r.rect.width, r.rect.height);
+          }
+          octx.beginPath();
+          octx.arc(r.x, r.y, 4, 0, 6.284);
+          octx.fill();
+          octx.fillText(o.name, r.x - r.r, r.y - r.r - 6);
+        });
+
+        const found = objects.filter((o) => o.result);
+        if (found.length >= 2) {
+          const a = found[0].result,
+            b = found[1].result;
+          octx.strokeStyle = "#fff";
+          octx.lineWidth = 1;
+          octx.beginPath();
+          octx.moveTo(a.x, a.y);
+          octx.lineTo(b.x, b.y);
+          octx.stroke();
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          octx.fillStyle = "#fff";
+          octx.fillText(d.toFixed(0) + "px", (a.x + b.x) / 2 + 6, (a.y + b.y) / 2 - 6);
+          lines.push(`dist(${found[0].name},${found[1].name}) = ${d.toFixed(1)} px`);
+        }
+
+        $("log").textContent = objects.length ? lines.join("\n") || "no colors picked yet" : "add an object";
+      }
+
+      window.addEventListener("beforeunload", () => {
+        running = false;
+        freeMats();
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+      });
+    </script>
+  </body>
+</html>
