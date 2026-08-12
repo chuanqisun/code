@@ -67,7 +67,8 @@
 
       button,
       select,
-      input {
+      input,
+      .button {
         min-height: 2.4rem;
         padding: 0.4rem 0.55rem;
         color: inherit;
@@ -77,21 +78,28 @@
         font: inherit;
       }
 
-      button {
+      button,
+      .button {
         cursor: pointer;
         white-space: nowrap;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
 
       button:disabled,
       select:disabled,
-      input:disabled {
+      input:disabled,
+      .button:disabled {
         cursor: not-allowed;
         opacity: 0.5;
       }
 
       button:focus-visible,
       select:focus-visible,
-      input:focus-visible {
+      input:focus-visible,
+      .button:focus-visible {
         outline: 2px solid;
         outline-offset: 2px;
       }
@@ -1755,6 +1763,12 @@
         const actions = document.createElement("div");
         actions.className = "actions";
 
+        const download = document.createElement("a");
+        download.href = url;
+        download.download = filename;
+        download.textContent = "Download";
+        download.className = "button";
+
         const remove = document.createElement("button");
         remove.type = "button";
         remove.textContent = "Delete";
@@ -1780,7 +1794,7 @@
         });
 
         metadata.append(title, sources, details);
-        actions.append(remove);
+        actions.append(download, remove);
         head.append(metadata, actions);
         article.append(head, media);
         recordings.prepend(article);
