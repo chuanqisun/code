@@ -18,6 +18,7 @@
 - [File → URL](https://chuanqisun.github.io/fileurl/)
 - [Gemini Image Lab](./gemini-image-lab/)
 - [Gemini Video Lab](./gemini-video-lab/)
+- [Gemini Omni Lab](./gemini-omni-lab/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
 - [JSON → TypeScript](./json-to-typescript/)
 - [JSON ↔ YAML](./json-to-yaml)
