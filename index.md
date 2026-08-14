@@ -7,6 +7,7 @@
 - [Audio trim](./audio-trim/)
 - [Audio Analyzer](./audio-analyzer/)
 - [Audio visualizer](./audio-visualizer/)
+- [Camera](./camera/)
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [Color Analyzer](./color-analyzer/)
 - [CSV Visualizer](./csv-visualizer/)

@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAW_CAM</title>
+    <!-- JSZip for bulk downloading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0a;
+        --panel: #121212;
+        --fg: #f0f0f0;
+        --accent: #ffffff;
+        --dim: #707070;
+        --border: #2a2a2a;
+        --border-focus: #ffffff;
+        --danger: #ff3333;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 12px;
+      }
+
+      body {
+        background-color: var(--bg);
+        color: var(--fg);
+        display: flex;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      /* Layout */
+      #workspace {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+      }
+
+      #sidebar {
+        width: 320px;
+        display: flex;
+        flex-direction: column;
+        background: var(--panel);
+      }
+
+      /* Viewport Area */
+      #viewport-container {
+        flex: 1;
+        position: relative;
+        background: #000;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      video {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        transition: transform 0.15s ease;
+      }
+
+      /* Bars */
+      .bar {
+        padding: 8px 12px;
+        background: var(--panel);
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        flex-wrap: wrap;
+      }
+
+      .bar.bottom {
+        border-bottom: none;
+        border-top: 1px solid var(--border);
+        justify-content: space-between;
+        flex-wrap: nowrap;
+      }
+
+      /* Elements */
+      button,
+      select {
+        background: #181818;
+        color: var(--fg);
+        border: 1px solid var(--border);
+        padding: 6px 10px;
+        cursor: pointer;
+        text-transform: uppercase;
+        outline: none;
+        border-radius: 0;
+      }
+
+      button:hover,
+      select:hover {
+        border-color: var(--border-focus);
+        background: #222;
+      }
+
+      button:active {
+        background: #fff;
+        color: #000;
+      }
+
+      /* High Contrast Accent Controls */
+      button.primary {
+        background: #fff;
+        color: #000;
+        font-weight: bold;
+        border-color: #fff;
+      }
+
+      button.primary:hover {
+        background: #ccc;
+        border-color: #ccc;
+      }
+
+      button.primary:active {
+        background: #999;
+        border-color: #999;
+      }
+
+      /* Danger Button Styles */
+      button.danger {
+        color: var(--danger);
+        border-color: var(--danger);
+      }
+
+      button.danger:hover {
+        background: var(--danger);
+        color: #000;
+        border-color: var(--danger);
+      }
+
+      button.danger:active {
+        background: #fff;
+        color: #000;
+        border-color: #fff;
+      }
+
+      .checkbox-container {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        padding: 5px 8px;
+        background: #181818;
+        user-select: none;
+      }
+
+      .checkbox-container:hover {
+        border-color: var(--border-focus);
+      }
+
+      .checkbox-container input {
+        accent-color: #ffffff;
+      }
+
+      /* Gallery/Sidebar */
+      .sidebar-header {
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: bold;
+      }
+
+      .bulk-actions {
+        display: none;
+        gap: 6px;
+      }
+
+      #gallery {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .thumb-card {
+        border: 1px solid var(--border);
+        background: #000;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .thumb-card img {
+        width: 100%;
+        height: 130px;
+        object-fit: cover;
+        display: block;
+        border: 1px solid #1a1a1a;
+      }
+
+      .thumb-meta {
+        font-size: 10px;
+        color: var(--dim);
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .thumb-actions {
+        display: flex;
+        gap: 4px;
+      }
+      .thumb-actions button {
+        flex: 1;
+        padding: 4px;
+        font-size: 10px;
+      }
+
+      #flash {
+        position: absolute;
+        inset: 0;
+        background: white;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.05s ease-out;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="workspace">
+      <!-- Top Configuration Bar -->
+      <div class="bar">
+        <select id="camera-select">
+          <option>SCANNING DEVICES...</option>
+        </select>
+
+        <select id="resolution-select">
+          <option value="MAX">MAX AUTO</option>
+        </select>
+
+        <button id="btn-mirror">MIRROR: OFF</button>
+        <button id="btn-rotate">ROT: 0°</button>
+        <label class="checkbox-container">
+          <input type="checkbox" id="chk-sound" checked />
+          <span>BEEP</span>
+        </label>
+      </div>
+
+      <!-- Live Preview -->
+      <div id="viewport-container">
+        <video id="video" autoplay playsinline muted></video>
+        <div id="flash"></div>
+      </div>
+
+      <!-- Bottom Trigger Bar -->
+      <div class="bar bottom">
+        <span id="active-stats">STATUS: INITIALIZING...</span>
+        <button id="btn-capture" class="primary">CAPTURE PHOTO [SPACE]</button>
+      </div>
+    </div>
+
+    <!-- Filmstrip / Bulk Action Sidebar -->
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <span>FILM ROLL (<span id="photo-count">0</span>)</span>
+        <div class="bulk-actions" id="bulk-controls">
+          <button id="btn-bulk-download">ZIP ALL</button>
+          <button id="btn-bulk-delete" class="danger">DEL ALL</button>
+        </div>
+      </div>
+      <div id="gallery"></div>
+    </div>
+
+    <script>
+      // Known Standard Resolution Targets to Test
+      const COMMON_RESOLUTIONS = [
+        { label: "4K (UHD)", width: 3840, height: 2160 },
+        { label: "1440p (QHD)", width: 2560, height: 1440 },
+        { label: "1080p (FHD)", width: 1920, height: 1080 },
+        { label: "720p (HD)", width: 1280, height: 720 },
+        { label: "480p (SD)", width: 640, height: 480 },
+        { label: "VGA", width: 640, height: 360 },
+      ];
+
+      let currentStream = null;
+      let selectedDeviceId = null;
+      let mirror = false;
+      let rotation = 0; // 0, 90, 180, 270
+      let photos = [];
+
+      // DOM Elements
+      const video = document.getElementById("video");
+      const cameraSelect = document.getElementById("camera-select");
+      const resolutionSelect = document.getElementById("resolution-select");
+      const btnCapture = document.getElementById("btn-capture");
+      const btnMirror = document.getElementById("btn-mirror");
+      const btnRotate = document.getElementById("btn-rotate");
+      const chkSound = document.getElementById("chk-sound");
+      const flash = document.getElementById("flash");
+      const gallery = document.getElementById("gallery");
+      const photoCount = document.getElementById("photo-count");
+      const bulkControls = document.getElementById("bulk-controls");
+      const btnBulkDownload = document.getElementById("btn-bulk-download");
+      const btnBulkDelete = document.getElementById("btn-bulk-delete");
+      const activeStats = document.getElementById("active-stats");
+
+      // UI Tone Synth
+      function playShutterSound() {
+        if (!chkSound.checked) return;
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = "square";
+          osc.frequency.setValueAtTime(880, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.05);
+          gain.gain.setValueAtTime(0.2, ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.05);
+        } catch (e) {
+          console.warn(e);
+        }
+      }
+
+      // Identify Cameras
+      async function getDevices() {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+        cameraSelect.innerHTML = "";
+
+        videoDevices.forEach((device, index) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.text = device.label || `CAM_${index + 1}`;
+          cameraSelect.appendChild(option);
+        });
+        return videoDevices;
+      }
+
+      // Probe Supported Resolutions for Selected Device
+      async function scanSupportedResolutions(deviceId) {
+        resolutionSelect.innerHTML = `<option value="MAX">MAX AUTO</option>`;
+        const supported = [];
+
+        for (const res of COMMON_RESOLUTIONS) {
+          try {
+            const testStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                deviceId: { exact: deviceId },
+                width: { exact: res.width },
+                height: { exact: res.height },
+              },
+            });
+
+            testStream.getTracks().forEach((t) => t.stop());
+            supported.push(res);
+          } catch (e) {
+            // Resolution unavailable on this sensor
+          }
+        }
+
+        supported.forEach((res) => {
+          const option = document.createElement("option");
+          option.value = `${res.width}x${res.height}`;
+          option.text = `${res.width}x${res.height} [${res.label}]`;
+          resolutionSelect.appendChild(option);
+        });
+      }
+
+      // Mount Active Stream
+      async function startCamera(deviceId = null, resolution = "MAX") {
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+        }
+
+        let videoConstraint = {};
+
+        if (deviceId) {
+          videoConstraint.deviceId = { exact: deviceId };
+        }
+
+        if (resolution === "MAX") {
+          videoConstraint.width = { ideal: 4096 };
+          videoConstraint.height = { ideal: 2160 };
+        } else {
+          const [w, h] = resolution.split("x").map(Number);
+          videoConstraint.width = { exact: w };
+          videoConstraint.height = { exact: h };
+        }
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: videoConstraint,
+          });
+
+          video.srcObject = currentStream;
+
+          video.onloadedmetadata = () => {
+            const track = currentStream.getVideoTracks()[0];
+            const settings = track.getSettings();
+            activeStats.innerText = `ACTIVE: ${settings.width || video.videoWidth}x${settings.height || video.videoHeight} @ ${Math.round(settings.frameRate || 0)}FPS`;
+          };
+        } catch (err) {
+          console.error(err);
+          activeStats.innerText = `ERR: ${err.name.toUpperCase()}`;
+        }
+      }
+
+      function updateTransforms() {
+        const scaleX = mirror ? -1 : 1;
+        video.style.transform = `rotate(${rotation}deg) scaleX(${scaleX})`;
+        btnMirror.innerText = `MIRROR: ${mirror ? "ON" : "OFF"}`;
+        btnRotate.innerText = `ROT: ${rotation}°`;
+      }
+
+      async function captureFrame() {
+        if (!currentStream) return;
+
+        flash.style.opacity = "1";
+        setTimeout(() => (flash.style.opacity = "0"), 40);
+        playShutterSound();
+
+        const videoTrack = currentStream.getVideoTracks()[0];
+        let bitmap = null;
+
+        if ("ImageCapture" in window) {
+          try {
+            const captureDevice = new ImageCapture(videoTrack);
+            bitmap = await captureDevice.grabFrame();
+          } catch (e) {
+            console.warn("ImageCapture fallback to canvas draw", e);
+          }
+        }
+
+        const sourceWidth = bitmap ? bitmap.width : video.videoWidth;
+        const sourceHeight = bitmap ? bitmap.height : video.videoHeight;
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+
+        if (rotation === 90 || rotation === 270) {
+          canvas.width = sourceHeight;
+          canvas.height = sourceWidth;
+        } else {
+          canvas.width = sourceWidth;
+          canvas.height = sourceHeight;
+        }
+
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.scale(mirror ? -1 : 1, 1);
+
+        if (bitmap) {
+          ctx.drawImage(bitmap, -sourceWidth / 2, -sourceHeight / 2);
+        } else {
+          ctx.drawImage(video, -sourceWidth / 2, -sourceHeight / 2);
+        }
+        ctx.restore();
+
+        canvas.toBlob(
+          (blob) => {
+            const id = "RAW_" + new Date().toISOString().replace(/[:.]/g, "-");
+            const dataUrl = URL.createObjectURL(blob);
+            photos.unshift({ id, blob, dataUrl, width: canvas.width, height: canvas.height });
+            renderGallery();
+          },
+          "image/jpeg",
+          1.0,
+        );
+      }
+
+      function renderGallery() {
+        gallery.innerHTML = "";
+        photoCount.innerText = photos.length;
+        bulkControls.style.display = photos.length > 0 ? "flex" : "none";
+
+        photos.forEach((photo, idx) => {
+          const card = document.createElement("div");
+          card.className = "thumb-card";
+          card.innerHTML = `
+          <img src="${photo.dataUrl}" alt="${photo.id}">
+          <div class="thumb-meta">
+            <span>${photo.width}x${photo.height}</span>
+            <span>${(photo.blob.size / 1024 / 1024).toFixed(2)} MB</span>
+          </div>
+          <div class="thumb-actions">
+            <button onclick="downloadSingle(${idx})">SAVE</button>
+            <button class="danger" onclick="deleteSingle(${idx})">DEL</button>
+          </div>
+        `;
+          gallery.appendChild(card);
+        });
+      }
+
+      window.downloadSingle = function (index) {
+        const p = photos[index];
+        const a = document.createElement("a");
+        a.href = p.dataUrl;
+        a.download = `${p.id}.jpg`;
+        a.click();
+      };
+
+      window.deleteSingle = function (index) {
+        URL.revokeObjectURL(photos[index].dataUrl);
+        photos.splice(index, 1);
+        renderGallery();
+      };
+
+      btnBulkDownload.addEventListener("click", async () => {
+        if (!photos.length) return;
+        btnBulkDownload.innerText = "PACKING...";
+        const zip = new JSZip();
+
+        photos.forEach((photo) => zip.file(`${photo.id}.jpg`, photo.blob));
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(content);
+        a.download = `CAP_ARCHIVE_${Date.now()}.zip`;
+        a.click();
+        btnBulkDownload.innerText = "ZIP ALL";
+      });
+
+      btnBulkDelete.addEventListener("click", () => {
+        if (!photos.length) return;
+        if (confirm(`PURGE ${photos.length} FILE(S)?`)) {
+          photos.forEach((photo) => URL.revokeObjectURL(photo.dataUrl));
+          photos = [];
+          renderGallery();
+        }
+      });
+
+      btnMirror.addEventListener("click", () => {
+        mirror = !mirror;
+        updateTransforms();
+      });
+
+      btnRotate.addEventListener("click", () => {
+        rotation = (rotation + 90) % 360;
+        updateTransforms();
+      });
+
+      cameraSelect.addEventListener("change", async (e) => {
+        selectedDeviceId = e.target.value;
+        await scanSupportedResolutions(selectedDeviceId);
+        startCamera(selectedDeviceId, resolutionSelect.value);
+      });
+
+      resolutionSelect.addEventListener("change", (e) => {
+        startCamera(selectedDeviceId, e.target.value);
+      });
+
+      btnCapture.addEventListener("click", captureFrame);
+
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space" && e.target.tagName !== "BUTTON" && e.target.tagName !== "SELECT") {
+          e.preventDefault();
+          captureFrame();
+        }
+      });
+
+      // Initialization Sequence
+      (async function init() {
+        await startCamera();
+        const devices = await getDevices();
+        if (devices.length > 0) {
+          selectedDeviceId = devices[0].deviceId;
+          await scanSupportedResolutions(selectedDeviceId);
+        }
+      })();
+    </script>
+  </body>
+</html>
