@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tangible AI — UROP Poster</title>
+    <style>
+      :root {
+        --color-bg: #ffffff;
+        --color-fg: #000000;
+        --color-muted: #555555;
+        --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
+        --rhythm: 0.32in;
+        --pad: 0.6in;
+        --border: 2px solid var(--color-fg);
+        --hairline: 1px solid var(--color-fg);
+        --page-w: 8.5in;
+        --page-h: 11in;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        background: #e5e5e5; /* screen backdrop only */
+        font-family: var(--font-mono);
+        color: var(--color-fg);
+      }
+
+      /* ---- The poster page ---- */
+
+      .poster {
+        width: var(--page-w);
+        height: var(--page-h);
+        background: var(--color-bg);
+        margin: 0.5in auto;
+        padding: var(--pad);
+        display: flex;
+        flex-direction: column;
+        outline: 1px solid #bbb; /* screen only, shows page edge */
+      }
+
+      @page {
+        size: letter;
+        margin: 0;
+      }
+
+      @media print {
+        html,
+        body {
+          background: var(--color-bg);
+        }
+        .poster {
+          margin: 0;
+          outline: none;
+        }
+      }
+
+      /* ---- Masthead ---- */
+
+      .masthead {
+        border-bottom: var(--border);
+        padding-bottom: calc(var(--rhythm) / 2);
+        display: flex;
+        justify-content: space-between;
+        font-size: 10pt;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+
+      /* ---- Hero ---- */
+
+      .hero {
+        padding: var(--rhythm) 0;
+      }
+
+      .hero h1 {
+        font-size: 46pt;
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        text-transform: uppercase;
+      }
+
+      .hero .sub {
+        margin-top: calc(var(--rhythm) / 1.5);
+        font-size: 13pt;
+        line-height: 1.5;
+        max-width: 6.6in;
+      }
+
+      /* ---- Body columns ---- */
+
+      .body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--rhythm);
+        border-top: var(--hairline);
+        padding-top: var(--rhythm);
+      }
+
+      .body h2 {
+        font-size: 10pt;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: calc(var(--rhythm) / 2);
+      }
+
+      .body h2::before {
+        content: "// ";
+        color: var(--color-muted);
+      }
+
+      .body ul {
+        list-style: none;
+        font-size: 10.5pt;
+        line-height: 1.55;
+      }
+
+      .body li {
+        padding-left: 1.4em;
+        text-indent: -1.4em;
+        margin-bottom: 0.5em;
+      }
+
+      .body li::before {
+        content: "→ ";
+        color: var(--color-fg);
+      }
+
+      /* ---- Footer / CTA ---- */
+
+      .cta {
+        border-top: var(--border);
+        padding-top: var(--rhythm);
+        display: flex;
+        align-items: center;
+        gap: var(--rhythm);
+      }
+
+      .qr {
+        flex: 0 0 auto;
+        width: 1.6in;
+        height: 1.6in;
+        border: var(--border);
+      }
+
+      .qr img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+      }
+
+      .cta-text {
+        flex: 1;
+      }
+
+      .cta-text .scan {
+        font-size: 16pt;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        line-height: 1.3;
+      }
+
+      .cta-text .contact {
+        margin-top: 0.5em;
+        font-size: 10.5pt;
+        line-height: 1.5;
+      }
+
+      .cta-text .fine {
+        margin-top: 0.5em;
+        font-size: 9pt;
+        color: var(--color-muted);
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <header class="masthead">
+        <span>MIT Media Lab · Tangible Media Group</span>
+        <span>UROP · Fall / IAP / Spring</span>
+      </header>
+
+      <section class="hero">
+        <h1>Give AI<br />a Body.</h1>
+        <p class="sub">
+          Most people talk to AI through a text box. We don't. We build hardware, vision systems, and programming languages that let you grab an agent with your
+          hands and steer it in real time.
+        </p>
+      </section>
+
+      <section class="body">
+        <div>
+          <h2>You will build</h2>
+          <ul>
+            <li>Real-time speech, gesture, and vision interaction loops</li>
+            <li>Custom hardware, embedded circuits, tangible objects</li>
+            <li>Fine-tuned vision models for spatial tracking</li>
+            <li>DSLs for programming agent behavior by direct manipulation</li>
+            <li>Work that ships: top-tier papers or open source</li>
+          </ul>
+        </div>
+        <div>
+          <h2>You will fit</h2>
+          <ul>
+            <li>SICP made you rethink what a program is</li>
+            <li>You've CAD'd and 3D printed real things</li>
+            <li>You make art with code</li>
+            <li>You ask <em>why</em> to build something, not just <em>how</em> or <em>what</em></li>
+            <li>You want to build, not just theorize</li>
+          </ul>
+        </div>
+      </section>
+
+      <footer class="cta">
+        <div class="qr">
+          <!-- Placeholder QR code — replace with generated QR linking to the full posting -->
+          <img src="./qr-code.jpeg" alt="QR code linking to the full UROP posting and application details" />
+        </div>
+        <div class="cta-text">
+          <p class="scan">Scan for the full posting →</p>
+          <p class="contact">Or email <strong>stack@mit.edu</strong><br />Subject: "UROP Application - Your Name"</p>
+          <p class="fine">
+            Tangible AI · Hiroshi Ishii's Tangible Media Group · 30+ years bridging bits and atoms. High commitment. Real research. Not a credit filler.
+          </p>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>
