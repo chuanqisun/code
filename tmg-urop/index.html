@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tangible AI — MIT Lab UROP Opening</title>
+    <style>
+      :root {
+        --color-bg: #ffffff;
+        --color-fg: #000000;
+        --color-muted: #555555;
+        --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
+        --rhythm: 1.5rem;
+        --measure: 68ch;
+        --font-size: 1rem;
+        --font-size-sm: 0.8125rem;
+        --border: 1px solid var(--color-fg);
+        --space-section: calc(var(--rhythm) * 3);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html {
+        font-size: 100%;
+      }
+
+      body {
+        font-family: var(--font-mono);
+        font-size: var(--font-size);
+        line-height: var(--rhythm);
+        background: var(--color-bg);
+        color: var(--color-fg);
+        max-width: var(--measure);
+        margin: 0 auto;
+        padding: var(--space-section) var(--rhythm);
+      }
+
+      /* ---- Typography ---- */
+
+      h1 {
+        font-size: 1.5rem;
+        line-height: calc(var(--rhythm) * 1.5);
+        letter-spacing: -0.02em;
+        text-transform: uppercase;
+      }
+
+      h2 {
+        font-size: 1rem;
+        line-height: var(--rhythm);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-top: var(--space-section);
+        margin-bottom: var(--rhythm);
+        padding-bottom: calc(var(--rhythm) / 2);
+        border-bottom: var(--border);
+      }
+
+      h2::before {
+        content: "// ";
+        color: var(--color-muted);
+      }
+
+      h3 {
+        font-size: var(--font-size);
+        line-height: var(--rhythm);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: calc(var(--rhythm) * 1.5);
+        margin-bottom: calc(var(--rhythm) / 2);
+      }
+
+      p {
+        margin-bottom: var(--rhythm);
+      }
+
+      ul,
+      ol {
+        margin-bottom: var(--rhythm);
+        padding-left: calc(var(--rhythm) * 1.25);
+      }
+
+      li {
+        margin-bottom: calc(var(--rhythm) / 2);
+      }
+
+      li::marker {
+        color: var(--color-muted);
+      }
+
+      a {
+        color: var(--color-fg);
+        text-decoration: underline;
+        text-underline-offset: 0.2em;
+      }
+
+      a:hover,
+      a:focus-visible {
+        background: var(--color-fg);
+        color: var(--color-bg);
+        text-decoration: none;
+        outline: none;
+      }
+
+      strong {
+        font-weight: 700;
+      }
+
+      em {
+        font-style: italic;
+      }
+
+      /* ---- Header ---- */
+
+      header.masthead {
+        border-bottom: var(--border);
+        padding-bottom: var(--rhythm);
+        margin-bottom: var(--rhythm);
+      }
+
+      header.masthead .kicker {
+        font-size: var(--font-size-sm);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--color-muted);
+        margin-bottom: calc(var(--rhythm) / 2);
+      }
+
+      /* ---- Call to action ---- */
+
+      .cta {
+        margin-top: var(--space-section);
+        border: var(--border);
+        padding: var(--rhythm);
+        text-align: center;
+      }
+
+      .cta .cta-button {
+        display: inline-block;
+        background: var(--color-fg);
+        color: var(--color-bg);
+        text-decoration: none;
+        padding: calc(var(--rhythm) / 2) var(--rhythm);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        margin-bottom: var(--rhythm);
+      }
+
+      .cta .cta-button:hover,
+      .cta .cta-button:focus-visible {
+        background: var(--color-bg);
+        color: var(--color-fg);
+        outline: var(--border);
+      }
+
+      .cta .cta-note {
+        font-size: var(--font-size-sm);
+        line-height: var(--rhythm);
+        color: var(--color-muted);
+        margin-bottom: 0;
+      }
+
+      /* ---- Footer ---- */
+
+      footer {
+        margin-top: var(--space-section);
+        border-top: var(--border);
+        padding-top: var(--rhythm);
+        font-size: var(--font-size-sm);
+        color: var(--color-muted);
+      }
+
+      /* ---- Mobile ---- */
+
+      @media (max-width: 480px) {
+        :root {
+          --space-section: calc(var(--rhythm) * 2);
+        }
+        body {
+          padding: var(--rhythm);
+        }
+        h1 {
+          font-size: 1.25rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="masthead">
+      <p class="kicker">MIT Media Lab · Tangible Media Group · UROP Opening</p>
+      <h1>Tangible AI — MIT Lab UROP Opening</h1>
+      <p class="kicker">Terms: 26 Fall · 26 IAP · 27 Spring</p>
+    </header>
+
+    <main>
+      <section aria-labelledby="about">
+        <h2 id="about">About Tangible Media Group &amp; Tangible AI</h2>
+        <p>
+          The Tangible Media Group (TMG) at the MIT Media Lab, led by Professor Hiroshi Ishii, has spent over 30 years researching human-computer interaction by
+          bridging the digital and physical worlds.
+        </p>
+        <p>
+          Our Tangible AI effort focuses on giving intelligence a physical, interactive body. Instead of interacting with AI solely through text prompts in
+          isolated chat windows, we build physical interfaces, custom hardware, real-time multimodal interaction systems, and domain-specific languages that
+          fuse AI capabilities directly into physical environments and end-user programming workflows.
+        </p>
+      </section>
+
+      <section aria-labelledby="work">
+        <h2 id="work">What you will work on</h2>
+        <p>Your day-to-day work spans design and storytelling, physical fabrication, software engineering, machine learning, and publication:</p>
+        <ul>
+          <li>
+            <strong>Design &amp; storytelling:</strong> Collaborative brainstorming, whiteboarding, concept ideation, and crafting compelling visual/interaction
+            narratives.
+          </li>
+          <li><strong>Computer vision &amp; multimodal models:</strong> Training and fine-tuning vision models for spatial tracking and object recognition.</li>
+          <li>
+            <strong>Real-time interaction systems:</strong> Engineering low-latency speech, gesture, vision, and robotic interaction loops for human-computer
+            collaboration.
+          </li>
+          <li>
+            <strong>Domain-specific languages (DSLs):</strong> Designing DSLs and programming abstractions for end-user behavioral programming and direct
+            manipulation.
+          </li>
+          <li><strong>Hardware &amp; embedded systems:</strong> Fabricating custom hardware, embedded circuits, and tangible physical objects.</li>
+          <li>
+            <strong>Impact &amp; dissemination:</strong> Shipping impactful work either as top-tier conference publications or open-source software projects.
+          </li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="fit">
+        <h2 id="fit">Who this is for</h2>
+
+        <h3>Good fit</h3>
+        <ul>
+          <li>You enjoy the ideas behind Structure and Interpretation of Computer Programs (SICP) and thinking deeply about programming abstractions.</li>
+          <li>You have designed, CAD modeled, and 3D printed physical objects or mechanical assemblies.</li>
+          <li>You enjoy creating art with code or building interactive media.</li>
+          <li>You ask <em>why</em> to build something, more than just <em>how</em> or <em>what</em> to build.</li>
+        </ul>
+
+        <h3>Poor fit</h3>
+        <ul>
+          <li>You rely primarily on tokenmaxxing or offloading all problem-solving to AI output without understanding the underlying mechanics.</li>
+          <li>You are oversubscribed with classes or other commitments and looking for a low-effort credit filler.</li>
+          <li>You are only interested in theoretical machine learning research without building working physical or software artifacts.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="team">
+        <h2 id="team">Who you will work with</h2>
+        <ul>
+          <li>
+            <strong>Sun Chuanqi (Stack):</strong> 10+ years of full-time software engineering experience at Microsoft. Experienced mentor to early-career
+            engineers and designers. Website: <a href="https://chuanqisun.com/">chuanqisun.com</a>
+          </li>
+          <li>
+            <strong>Tangible Media Group (TMG):</strong> Led by Hiroshi Ishii, with 30+ years of track record publishing research at the intersection of
+            physical design and computing. Lab website: <a href="https://tangible.media.mit.edu/">tangible.media.mit.edu</a>
+          </li>
+          <li><strong>UROP Peer Cohort:</strong> A small team of UROPs bringing complementary hardware, software, and design skills.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="outcomes">
+        <h2 id="outcomes">What you will walk away with</h2>
+        <ul>
+          <li>Compelling portfolio projects for careers in AI hardware, software engineering, and interaction design.</li>
+          <li>Practical experience building and deploying real-time AI hardware and software systems.</li>
+          <li>Connections to researchers, designers, and engineers across the Media Lab ecosystem.</li>
+          <li>Applied software engineering habits: version control, testing, software architecture, and CI/CD pipelines.</li>
+          <li>An environment that encourages original thinking, rapid prototyping, and startup incubation.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="culture">
+        <h2 id="culture">Team culture</h2>
+        <ul>
+          <li><strong>High commitment:</strong> We work hard. This is an active research commitment rather than a minimum-effort UROP.</li>
+          <li><strong>Building as thinking:</strong> We iterate quickly through hacking, physical fabrication, and software prototyping.</li>
+          <li><strong>Collaboration over ego:</strong> We prioritize helping teammates, sharing knowledge, and building together.</li>
+          <li><strong>Community:</strong> We spend time together outside the lab, including hiking, skiing, grabbing food, sailing, and visiting museums.</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="projects">
+        <h2 id="projects">Past projects</h2>
+        <p>To understand our lab's work and style, explore these project videos:</p>
+        <ul>
+          <li><a href="https://www.instagram.com/reel/DVOl2a0DWNE/">Packing Rush</a></li>
+          <li><a href="https://www.youtube.com/watch?v=FUGcTMSbbyM">Dream Brush</a></li>
+          <li><a href="https://www.youtube.com/watch?v=WapWovoUq5U">Tangible Prompting</a></li>
+          <li><a href="https://www.youtube.com/watch?v=F1KOJxsaAfY">Tangible Visual RAG</a></li>
+          <li><a href="https://www.youtube.com/watch?v=0V7LAdV-e4c">Time Machine</a></li>
+          <li><a href="https://www.youtube.com/watch?v=-WRwk7b3agE">Thinking Machine</a></li>
+          <li><a href="https://www.youtube.com/watch?v=DMJaME2IuUs">CyberMUSE</a></li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="apply">
+        <h2 id="apply">What to submit when applying</h2>
+        <p>When reaching out, please include your resume/portfolio and answers to the following four questions:</p>
+        <ol>
+          <li><strong>Goals:</strong> What skills do you want to build during this UROP, and what goals are you pursuing that this project supports?</li>
+          <li><strong>Projects:</strong> Describe something cool you have made (hardware, software, art, or design).</li>
+          <li>
+            <strong>Reflections on failure:</strong> Share a mistake or technical failure from a past project. What happened, and what would you do differently
+            now?
+          </li>
+          <li><strong>AI usage:</strong> How do you currently use AI tools in your workflow? What works well, and what do you find frustrating or limiting?</li>
+        </ol>
+
+        <div class="cta">
+          <a class="cta-button" href="mailto:stack@mit.edu?subject=UROP%20Application%20-%20Your%20Name">Apply Now</a>
+          <p class="cta-note">
+            To apply, email <a href="mailto:stack@mit.edu?subject=UROP%20Application%20-%20Your%20Name">stack@mit.edu</a> with the subject title
+            <span style="white-space: nowrap; color: var(--color-fg)">&ldquo;UROP Application - Your Name&rdquo;</span> and include the relevant material.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Tangible Media Group · MIT Media Lab · tangible.media.mit.edu</p>
+    </footer>
+  </body>
+</html>
