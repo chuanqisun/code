@@ -287,7 +287,7 @@
       });
 
       try {
-        const base = "https://esm.sh/@llamaindex/liteparse-wasm@2.6.0";
+        const base = "https://esm.sh/@llamaindex/liteparse-wasm@2.13.1";
         const liteparse = await import(base);
 
         await liteparse.default(`${base}/liteparse_wasm_bg.wasm`);
@@ -726,7 +726,9 @@
           const bytes = new Uint8Array(await file.files[0].arrayBuffer());
 
           status.textContent = "Converting PDF…";
-          originalDocument = (await parser.parse(bytes)).text;
+          const rawResult = await parser.parse(bytes);
+          console.log("rawResult", rawResult);
+          originalDocument = rawResult.text;
           refreshPreview();
 
           copy.disabled = false;
