@@ -1,661 +1,408 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Infinite Canvas</title>
+    <title>Infinite Canvas POC</title>
     <style>
-      body, html { height: 100%; margin: 0; overflow: hidden; font-family: system-ui; }
-
-      canvas-element {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-        background: #f8f8f8;
-        position: relative;
-        outline: none;
-        cursor: crosshair;
-        /* Fractal Dot Grid Background */
-        background-image: radial-gradient(#bbb 1px, transparent 1px);
-        background-size: var(--grid-size, 20px) var(--grid-size, 20px);
-        background-position: var(--pan-x, 0px) var(--pan-y, 0px);
+      :root {
+        --bg: #f4f4f4;
+        --dot: #bbb;
+        --panel: #fff;
+        --border: #ccc;
+        --accent: blue;
       }
 
-      canvas-element.panning-ready { cursor: grab; }
-      canvas-element.panning-active { cursor: grabbing; }
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        user-select: none;
+        background-color: var(--bg);
+        background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+        background-size: 20px 20px;
+      }
 
-      .stage {
+      #app,
+      .viewport {
+        width: 100%;
+        height: 100%;
         position: absolute;
         top: 0;
         left: 0;
-        width: 0;
-        height: 0;
-        transform: translate(var(--pan-x, 0px), var(--pan-y, 0px)) scale(var(--zoom, 1));
-        transform-origin: 0 0;
-        will-change: transform;
       }
 
-      canvas-item {
+      .action-box {
         position: absolute;
-        cursor: move;
-        font-size: 40px;
-        user-select: none;
-        text-align: center;
-        left: var(--x, 0);
-        top: var(--y, 0);
-        touch-action: none;
-        padding: 4px;
-        border: 2px solid transparent;
-        border-radius: 4px;
-        line-height: 1;
-        z-index: 1;
-        width: 60px;
-        height: 60px;
-        box-sizing: border-box;
-        transform: scale(calc(1 / var(--zoom, 1)));
-        transform-origin: 0 0;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        background: var(--panel);
+        padding: 6px;
+        border: 1px solid var(--border);
+        display: flex;
+        gap: 6px;
       }
 
-      canvas-item[selected] {
-        border-color: #007bff;
-        background: rgba(0, 123, 255, 0.1);
-        z-index: 2;
-      }
-
-      canvas-item.draft {
-        opacity: 0.6;
-        pointer-events: none;
-        z-index: 1000;
-      }
-
-      canvas-item small {
-        display: block;
-        font-size: 10px;
-        pointer-events: none;
-        max-width: 100%;
+      .item {
+        position: absolute;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        padding: 6px;
+        min-width: 40px;
+        max-width: 200px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        color: #333;
+        cursor: move;
       }
 
-      marquee-box {
+      .item.selected {
+        border-color: var(--accent);
+      }
+
+      .marquee {
         position: absolute;
-        border: 1px solid #007bff;
-        background: rgba(0, 123, 255, 0.15);
+        border: 1px dashed var(--accent);
+        background: rgba(0, 0, 255, 0.05);
         pointer-events: none;
-        z-index: 1000;
+        z-index: 5;
+      }
+
+      #click-anchor {
+        position: fixed;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+        anchor-name: --click-anchor;
+      }
+
+      #context-menu {
+        margin: 0;
+        padding: 4px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        position-anchor: --click-anchor;
+        position-area: bottom right;
+        position-try-fallbacks:
+          flip-inline,
+          flip-block,
+          flip-inline flip-block;
+      }
+
+      #context-menu button {
+        display: block;
+        width: 100%;
+        text-align: left;
       }
     </style>
   </head>
   <body>
-    <canvas-element id="world" tabindex="0">
-      <div class="stage"></div>
-    </canvas-element>
+    <div id="app"></div>
 
-    <script>
-      // --- DATA MODEL & COMMANDS ---
+    <script type="module">
+      import { html, render } from "https://esm.sh/lit-html@3";
+      import { get, set } from "https://esm.sh/idb-keyval@6";
 
-      class WorldState {
-        constructor() {
-          this.items = new Map();
-          this.selection = new Set();
-          this.listeners = [];
-        }
-        subscribe(fn) {
-          this.listeners.push(fn);
-        }
-        notify() {
-          this.listeners.forEach((fn) => fn(this));
-        }
-        getItems() {
-          return Array.from(this.items.values());
-        }
-        getItem(id) {
-          return this.items.get(id);
-        }
-        getSelectedIds() {
-          return Array.from(this.selection);
-        }
-      }
+      const state = {
+        pan: { x: 0, y: 0 },
+        items: [],
+        selectedIds: new Set(),
+        editingItem: null,
+        contextTargetId: null,
+        contextType: null,
+        isSpaceDown: false,
+        dragMode: null,
+        dragStart: { x: 0, y: 0 },
+        marqueeBox: null,
+        itemOrigins: new Map(),
+        selectionOrigin: new Set(),
+      };
 
-      class Command {
-        execute(state) {}
-        undo(state) {}
-      }
+      const update = () => {
+        document.body.style.backgroundPosition = `${state.pan.x}px ${state.pan.y}px`;
 
-      class CmdAddItems extends Command {
-        constructor(items) {
-          super();
-          this.items = items.map((i) => ({ ...i, id: i.id || crypto.randomUUID() }));
-          this.prevSelection = null;
-        }
-        execute(state) {
-          this.prevSelection = new Set(state.selection);
-          this.items.forEach((item) => state.items.set(item.id, item));
-          state.selection.clear();
-          this.items.forEach((i) => state.selection.add(i.id));
-        }
-        undo(state) {
-          this.items.forEach((item) => state.items.delete(item.id));
-          state.selection = new Set(this.prevSelection);
-        }
-      }
+        const view = html`
+          <div id="click-anchor"></div>
 
-      class CmdMoveItems extends Command {
-        constructor(ids, dx, dy) {
-          super();
-          this.ids = ids;
-          this.dx = dx;
-          this.dy = dy;
+          <div id="context-menu" popover="auto">
+            ${state.contextType === "item"
+              ? html`
+                  <button autofocus @click=${() => editContextItem()}>Open</button>
+                  <button @click=${() => deleteContextItem()}>Delete</button>
+                `
+              : html` <button autofocus @click=${() => clearCanvas()}>Clear</button> `}
+          </div>
+
+          <dialog id="edit-dialog" @close=${onDialogClose}>
+            <form method="dialog">
+              <textarea rows="6" cols="30" autofocus>${state.editingItem?.text ?? ""}</textarea>
+              <div>
+                <button value="cancel">Cancel</button>
+                <button value="save">Save</button>
+              </div>
+            </form>
+          </dialog>
+
+          <form class="action-box" @submit=${onActionSubmit}>
+            <input id="action-input" type="text" placeholder="Type text and press Enter..." autocomplete="off" />
+            <button type="submit">Submit</button>
+          </form>
+
+          <div
+            style="width: 100%; height: 100%;"
+            @mousedown=${onPointerDown}
+            @mousemove=${onPointerMove}
+            @mouseup=${onPointerUp}
+            @dblclick=${onDoubleClick}
+            @contextmenu=${onContextMenu}
+          >
+            <div class="viewport" style="transform: translate(${state.pan.x}px, ${state.pan.y}px);">
+              ${state.items.map(
+                (item) => html`
+                  <div
+                    class="item ${state.selectedIds.has(item.id) ? "selected" : ""}"
+                    data-id=${item.id}
+                    style="transform: translate(${item.x}px, ${item.y}px);"
+                  >
+                    ${item.text}
+                  </div>
+                `,
+              )}
+            </div>
+
+            ${state.marqueeBox
+              ? html`
+                  <div
+                    class="marquee"
+                    style="
+                left: ${Math.min(state.marqueeBox.x1, state.marqueeBox.x2)}px;
+                top: ${Math.min(state.marqueeBox.y1, state.marqueeBox.y2)}px;
+                width: ${Math.abs(state.marqueeBox.x2 - state.marqueeBox.x1)}px;
+                height: ${Math.abs(state.marqueeBox.y2 - state.marqueeBox.y1)}px;
+              "
+                  ></div>
+                `
+              : ""}
+          </div>
+        `;
+
+        render(view, document.getElementById("app"));
+      };
+
+      const persist = () => set("canvas-items", state.items);
+
+      const addItem = (text) => {
+        const center = screenToWorld(window.innerWidth / 2, window.innerHeight / 2, state.pan);
+        const item = { id: Date.now().toString(), x: center.x, y: center.y, text };
+        state.items.push(item);
+        state.selectedIds = new Set([item.id]);
+        persist();
+        update();
+      };
+
+      const deleteItems = (ids) => {
+        state.items = state.items.filter((it) => !ids.has(it.id));
+        ids.forEach((id) => state.selectedIds.delete(id));
+        persist();
+        update();
+      };
+
+      const clearCanvas = () => {
+        closePopover();
+        state.items = [];
+        state.selectedIds.clear();
+        persist();
+        update();
+      };
+
+      const openEditDialog = (item) => {
+        if (!item) return;
+        state.editingItem = item;
+        update();
+        document.getElementById("edit-dialog")?.showModal();
+      };
+
+      const editContextItem = () => {
+        closePopover();
+        openEditDialog(state.items.find((i) => i.id === state.contextTargetId));
+      };
+
+      const deleteContextItem = () => {
+        closePopover();
+        const targets = state.selectedIds.has(state.contextTargetId) ? new Set(state.selectedIds) : new Set([state.contextTargetId]);
+        deleteItems(targets);
+      };
+
+      const onPointerDown = (e) => {
+        if (e.button === 2) return;
+        const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
+        const itemEl = e.target.closest(".item");
+        state.dragStart = { x: e.clientX, y: e.clientY };
+
+        if (state.isSpaceDown || e.button === 1) {
+          state.dragMode = "pan";
+          document.body.style.cursor = "grabbing";
+        } else if (itemEl) {
+          const id = itemEl.dataset.id;
+          if (!state.selectedIds.has(id)) {
+            if (!isMulti) state.selectedIds.clear();
+            state.selectedIds.add(id);
+          } else if (isMulti) {
+            state.selectedIds.delete(id);
+          }
+
+          state.dragMode = "move";
+          state.itemOrigins.clear();
+          state.items.filter((it) => state.selectedIds.has(it.id)).forEach((it) => state.itemOrigins.set(it.id, { x: it.x, y: it.y }));
+        } else {
+          state.dragMode = "marquee";
+          state.selectionOrigin = isMulti ? new Set(state.selectedIds) : new Set();
+          if (!isMulti) state.selectedIds.clear();
+          state.marqueeBox = { x1: e.clientX, y1: e.clientY, x2: e.clientX, y2: e.clientY };
         }
-        execute(state) {
-          this.ids.forEach((id) => {
-            const item = state.items.get(id);
-            if (item) {
-              item.x += this.dx;
-              item.y += this.dy;
+        update();
+      };
+
+      const onPointerMove = (e) => {
+        if (!state.dragMode) return;
+        const dx = e.clientX - state.dragStart.x;
+        const dy = e.clientY - state.dragStart.y;
+
+        if (state.dragMode === "pan") {
+          state.pan.x += dx;
+          state.pan.y += dy;
+          state.dragStart = { x: e.clientX, y: e.clientY };
+        } else if (state.dragMode === "move") {
+          state.items.forEach((it) => {
+            const origin = state.itemOrigins.get(it.id);
+            if (origin) {
+              it.x = origin.x + dx;
+              it.y = origin.y + dy;
             }
           });
+        } else if (state.dragMode === "marquee") {
+          state.marqueeBox.x2 = e.clientX;
+          state.marqueeBox.y2 = e.clientY;
+          state.selectedIds = getOverlappingItemIds(state.marqueeBox, state.selectionOrigin);
         }
-        undo(state) {
-          this.ids.forEach((id) => {
-            const item = state.items.get(id);
-            if (item) {
-              item.x -= this.dx;
-              item.y -= this.dy;
-            }
-          });
-        }
-      }
+        update();
+      };
 
-      class CmdDeleteItems extends Command {
-        constructor(ids) {
-          super();
-          this.ids = ids;
-          this.deletedItems = [];
-          this.prevSelection = null;
-        }
-        execute(state) {
-          this.prevSelection = new Set(state.selection);
-          this.deletedItems = this.ids.map((id) => state.items.get(id)).filter(Boolean);
-          this.ids.forEach((id) => {
-            state.items.delete(id);
-            state.selection.delete(id);
-          });
-        }
-        undo(state) {
-          this.deletedItems.forEach((item) => state.items.set(item.id, item));
-          state.selection = new Set(this.prevSelection);
-        }
-      }
+      const onPointerUp = () => {
+        if (state.dragMode === "move") persist();
+        state.dragMode = null;
+        state.marqueeBox = null;
+        document.body.style.cursor = state.isSpaceDown ? "grab" : "default";
+        update();
+      };
 
-      class CmdSetSelection extends Command {
-        constructor(ids, mode = "replace") {
-          super();
-          this.ids = ids;
-          this.mode = mode;
-          this.prevSelection = null;
-        }
-        execute(state) {
-          this.prevSelection = new Set(state.selection);
-          if (this.mode === "replace") state.selection.clear();
-          this.ids.forEach((id) => {
-            if (this.mode === "toggle") {
-              if (state.selection.has(id)) state.selection.delete(id);
-              else state.selection.add(id);
-            } else {
-              state.selection.add(id);
-            }
-          });
-        }
-        undo(state) {
-          state.selection = new Set(this.prevSelection);
-        }
-      }
+      const onContextMenu = (e) => {
+        e.preventDefault();
+        const itemEl = e.target.closest(".item");
+        state.contextType = itemEl ? "item" : "canvas";
+        state.contextTargetId = itemEl?.dataset.id ?? null;
 
-      class Editor {
-        constructor(state) {
-          this.state = state;
-          this.undoStack = [];
-          this.redoStack = [];
-        }
-        execute(command, saveToHistory = true) {
-          command.execute(this.state);
-          if (saveToHistory) {
-            this.undoStack.push(command);
-            this.redoStack = [];
-          }
-          this.state.notify();
-        }
-        undo() {
-          const cmd = this.undoStack.pop();
-          if (cmd) {
-            cmd.undo(this.state);
-            this.redoStack.push(cmd);
-            this.state.notify();
-          }
-        }
-        redo() {
-          const cmd = this.redoStack.pop();
-          if (cmd) {
-            cmd.execute(this.state);
-            this.undoStack.push(cmd);
-            this.state.notify();
-          }
-        }
-      }
-
-      // --- WEB COMPONENTS ---
-
-      class MarqueeBoxElement extends HTMLElement {
-        update(x1, y1, x2, y2) {
-          const left = Math.min(x1, x2);
-          const top = Math.min(y1, y2);
-          const width = Math.abs(x1 - x2);
-          const height = Math.abs(y1 - y2);
-          this.style.left = left + "px";
-          this.style.top = top + "px";
-          this.style.width = width + "px";
-          this.style.height = height + "px";
-        }
-        getRect() {
-          return this.getBoundingClientRect();
-        }
-      }
-
-      class CanvasItemElement extends HTMLElement {
-        static create(data) {
-          const el = document.createElement("canvas-item");
-          el.dataset.id = data.id;
-          el.innerHTML = `${data.emoji}<small>${data.label}</small>`;
-          el.updatePos(data.x, data.y);
-          return el;
-        }
-        updatePos(x, y) {
-          this.style.setProperty("--x", x + "px");
-          this.style.setProperty("--y", y + "px");
-        }
-        setSelected(bool) {
-          if (bool) this.setAttribute("selected", "");
-          else this.removeAttribute("selected");
-        }
-      }
-
-      class CanvasElement extends HTMLElement {
-        constructor() {
-          super();
-          this.state = new WorldState();
-          this.editor = new Editor(this.state);
-          this.draftItems = null;
-          this.lastMousePos = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-
-          this.panX = 0;
-          this.panY = 0;
-          this.zoom = 1;
-          this.isSpacePressed = false;
-
-          this.state.subscribe(() => this.render());
+        if (itemEl && !state.selectedIds.has(state.contextTargetId)) {
+          state.selectedIds = new Set([state.contextTargetId]);
         }
 
-        connectedCallback() {
-          this.stage = this.querySelector(".stage");
-          this.addEventListener("dragover", (e) => e.preventDefault());
-          this.addEventListener("drop", (e) => this.handleExternalDrop(e));
-          this.addEventListener("pointerdown", (e) => this.handlePointerDown(e), true);
-          this.addEventListener("keydown", (e) => this.handleKeyDown(e));
-          this.addEventListener("keyup", (e) => this.handleKeyUp(e));
-          this.addEventListener("wheel", (e) => this.handleWheel(e), { passive: false });
-          window.addEventListener("paste", (e) => this.handlePaste(e));
-          window.addEventListener("copy", (e) => this.handleCopy(e));
-          window.addEventListener("cut", (e) => this.handleCut(e));
-          window.addEventListener("pointermove", (e) => {
-            this.lastMousePos = { x: e.clientX, y: e.clientY };
-            if (this.draftItems) this.updateDraftVisuals(e.clientX, e.clientY);
-          });
-          this.updatePan();
-          this.focus();
+        const anchor = document.getElementById("click-anchor");
+        anchor.style.left = `${e.clientX}px`;
+        anchor.style.top = `${e.clientY}px`;
+
+        update();
+        document.getElementById("context-menu").showPopover();
+      };
+
+      const onDoubleClick = (e) => {
+        const itemEl = e.target.closest(".item");
+        if (itemEl) openEditDialog(state.items.find((i) => i.id === itemEl.dataset.id));
+      };
+
+      const onDialogClose = (e) => {
+        const dialog = e.target;
+        if (dialog.returnValue === "save" && state.editingItem) {
+          state.editingItem.text = dialog.querySelector("textarea")?.value ?? "";
+          persist();
         }
+        state.editingItem = null;
+        update();
+      };
 
-        toWorld(clientX, clientY) {
-          return { x: (clientX - this.panX) / this.zoom, y: (clientY - this.panY) / this.zoom };
+      const onActionSubmit = (e) => {
+        e.preventDefault();
+        const input = document.getElementById("action-input");
+        const val = input?.value.trim();
+        if (val) {
+          addItem(val);
+          input.value = "";
+          input.blur();
         }
+      };
 
-        updatePan() {
-          // Fractal Grid Logic:
-          // We want the grid size to stay between 20px and 40px.
-          // As we zoom in, the grid grows. When it hits 40px, it snaps back to 20px.
-          // Because 40 is a multiple of 20, the dots align perfectly during the snap.
-          const logZ = Math.log2(this.zoom);
-          const level = Math.floor(logZ);
-          const normalizedZoom = Math.pow(2, logZ - level);
-          const gridSize = 20 * normalizedZoom;
+      window.addEventListener("keydown", (e) => {
+        if (document.getElementById("edit-dialog")?.open) return;
 
-          this.style.setProperty("--pan-x", this.panX + "px");
-          this.style.setProperty("--pan-y", this.panY + "px");
-          this.style.setProperty("--zoom", this.zoom);
-          this.style.setProperty("--grid-size", gridSize + "px");
-        }
-
-        applyZoom(delta, centerX, centerY) {
-          const oldZoom = this.zoom;
-          this.zoom = Math.min(Math.max(this.zoom * (1 + delta), 0.01), 100);
-          const worldX = (centerX - this.panX) / oldZoom;
-          const worldY = (centerY - this.panY) / oldZoom;
-          this.panX = centerX - worldX * this.zoom;
-          this.panY = centerY - worldY * this.zoom;
-          this.updatePan();
-        }
-
-        resetView() {
-          const items = this.state.getItems();
-          if (items.length === 0) {
-            this.panX = 0;
-            this.panY = 0;
-            this.zoom = 1;
-            this.updatePan();
-            return;
-          }
-          let minX = Infinity,
-            minY = Infinity,
-            maxX = -Infinity,
-            maxY = -Infinity;
-          items.forEach((item) => {
-            minX = Math.min(minX, item.x);
-            minY = Math.min(minY, item.y);
-            maxX = Math.max(maxX, item.x + 60);
-            maxY = Math.max(maxY, item.y + 60);
-          });
-          const contentW = maxX - minX,
-            contentH = maxY - minY;
-          const viewportW = this.clientWidth,
-            viewportH = this.clientHeight;
-          const margin = 60;
-          this.zoom = Math.min((viewportW - margin * 2) / contentW, (viewportH - margin * 2) / contentH, 1.5);
-          this.panX = viewportW / 2 - this.zoom * (minX + contentW / 2);
-          this.panY = viewportH / 2 - this.zoom * (minY + contentH / 2);
-          this.updatePan();
-        }
-
-        handleWheel(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
           e.preventDefault();
-          const delta = -e.deltaY * 0.001;
-          this.applyZoom(delta, e.clientX, e.clientY);
+          const input = document.getElementById("action-input");
+          input?.focus();
+          input?.select();
+          return;
         }
 
-        render() {
-          const items = this.state.getItems();
-          const selectedIds = this.state.selection;
-          const existingEls = new Map();
-          this.stage.querySelectorAll("canvas-item:not(.draft)").forEach((el) => existingEls.set(el.dataset.id, el));
+        if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
 
-          items.forEach((item) => {
-            let el = existingEls.get(item.id);
-            if (!el) {
-              el = CanvasItemElement.create(item);
-              this.stage.appendChild(el);
-            } else {
-              if (!el.isDragging) el.updatePos(item.x, item.y);
-              existingEls.delete(item.id);
-            }
-            el.setSelected(selectedIds.has(item.id));
-          });
-          existingEls.forEach((el) => el.remove());
-        }
-
-        handlePointerDown(e) {
-          if (e.button !== 0) return;
-          if (this.isSpacePressed) {
-            this.startPan(e);
-            return;
-          }
-          if (this.draftItems) {
-            this.commitDrafts();
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-
-          const targetItem = e.target.closest("canvas-item");
-          const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
-
-          if (!targetItem) {
-            this.startMarquee(e, isMulti);
-            return;
-          }
-
-          const isSelected = this.state.selection.has(targetItem.dataset.id);
-          if (isMulti) {
-            this.editor.execute(new CmdSetSelection([targetItem.dataset.id], "toggle"));
-          } else if (!isSelected) {
-            this.editor.execute(new CmdSetSelection([targetItem.dataset.id], "replace"));
-          }
-
-          if (this.state.selection.has(targetItem.dataset.id)) this.startDrag(e);
-        }
-
-        startPan(e) {
-          this.classList.add("panning-active");
-          const startX = e.clientX,
-            startY = e.clientY;
-          const initialPanX = this.panX,
-            initialPanY = this.panY;
-          const onPointerMove = (ev) => {
-            this.panX = initialPanX + (ev.clientX - startX);
-            this.panY = initialPanY + (ev.clientY - startY);
-            this.updatePan();
-          };
-          const onPointerUp = () => {
-            this.classList.remove("panning-active");
-            window.removeEventListener("pointermove", onPointerMove);
-            window.removeEventListener("pointerup", onPointerUp);
-          };
-          window.addEventListener("pointermove", onPointerMove);
-          window.addEventListener("pointerup", onPointerUp);
-        }
-
-        startDrag(e) {
-          const startX = e.clientX,
-            startY = e.clientY;
-          const selectedIds = this.state.getSelectedIds();
-          const domSnapshots = selectedIds.map((id) => {
-            const el = this.stage.querySelector(`canvas-item[data-id="${id}"]`);
-            if (el) el.isDragging = true;
-            const itemData = this.state.getItem(id);
-            return { el, startX: itemData.x, startY: itemData.y };
-          });
-
-          const onPointerMove = (ev) => {
-            const dx = (ev.clientX - startX) / this.zoom;
-            const dy = (ev.clientY - startY) / this.zoom;
-            domSnapshots.forEach((snap) => {
-              if (snap.el) snap.el.updatePos(snap.startX + dx, snap.startY + dy);
-            });
-          };
-
-          const onPointerUp = (ev) => {
-            window.removeEventListener("pointermove", onPointerMove);
-            window.removeEventListener("pointerup", onPointerUp);
-            const finalDx = (ev.clientX - startX) / this.zoom;
-            const finalDy = (ev.clientY - startY) / this.zoom;
-            domSnapshots.forEach((snap) => {
-              if (snap.el) snap.el.isDragging = false;
-            });
-            if (finalDx !== 0 || finalDy !== 0) this.editor.execute(new CmdMoveItems(selectedIds, finalDx, finalDy));
-          };
-          window.addEventListener("pointermove", onPointerMove);
-          window.addEventListener("pointerup", onPointerUp);
-        }
-
-        startMarquee(e, isMulti) {
-          const startX = e.clientX,
-            startY = e.clientY;
-          const marquee = document.createElement("marquee-box");
-          this.appendChild(marquee);
-          const initialSelection = new Set(this.state.selection);
-          const allItems = Array.from(this.stage.querySelectorAll("canvas-item:not(.draft)"));
-
-          const onPointerMove = (ev) => {
-            marquee.update(startX, startY, ev.clientX, ev.clientY);
-            const rect = marquee.getRect();
-            const finalSet = new Set(isMulti ? initialSelection : []);
-            allItems.forEach((el) => {
-              const itemRect = el.getBoundingClientRect();
-              const isInside = !(itemRect.right < rect.left || itemRect.left > rect.right || itemRect.bottom < rect.top || itemRect.top > rect.bottom);
-              if (isInside) {
-                if (isMulti && initialSelection.has(el.dataset.id)) finalSet.delete(el.dataset.id);
-                else finalSet.add(el.dataset.id);
-              }
-            });
-            this.state.selection = finalSet;
-            this.state.notify();
-          };
-
-          const onPointerUp = () => {
-            marquee.remove();
-            window.removeEventListener("pointermove", onPointerMove);
-            window.removeEventListener("pointerup", onPointerUp);
-            this.editor.execute(new CmdSetSelection(Array.from(this.state.selection), "replace"));
-          };
-          window.addEventListener("pointermove", onPointerMove);
-          window.addEventListener("pointerup", onPointerUp);
-        }
-
-        handleExternalDrop(e) {
+        if ((e.key === "Backspace" || e.key === "Delete") && state.selectedIds.size > 0) {
           e.preventDefault();
-          const world = this.toWorld(e.clientX, e.clientY);
-          const files = Array.from(e.dataTransfer.files);
-          const text = e.dataTransfer.getData("text");
-          const newItems = [];
-          if (files.length > 0) {
-            files.forEach((file, index) =>
-              newItems.push({
-                emoji: file.type.startsWith("image/") ? "🖼️" : "📄",
-                label: file.name,
-                x: world.x - 30 + index * 20,
-                y: world.y - 30 + index * 20,
-              })
-            );
-          } else if (text) {
-            newItems.push({ emoji: "📝", label: text.substring(0, 15) || "Text", x: world.x - 30, y: world.y - 30 });
-          }
-          if (newItems.length > 0) this.editor.execute(new CmdAddItems(newItems));
+          deleteItems(state.selectedIds);
+        } else if (e.code === "Space" && !state.isSpaceDown) {
+          state.isSpaceDown = true;
+          document.body.style.cursor = "grab";
         }
+      });
 
-        handlePaste(e) {
-          const files = Array.from(e.clipboardData.files);
-          const text = e.clipboardData.getData("text");
-          let rawData = [];
-          if (files.length > 0) {
-            rawData = files.map((f, i) => ({ emoji: f.type.startsWith("image/") ? "🖼️" : "📄", label: f.name, relX: i * 20, relY: i * 20 }));
-          } else if (text) {
-            try {
-              const json = JSON.parse(text);
-              if (json.type === "mugen-items") rawData = json.items;
-              else throw 1;
-            } catch {
-              rawData = [{ emoji: "📝", label: text.substring(0, 15), relX: 0, relY: 0 }];
-            }
-          }
-          if (rawData.length === 0) return;
-          const minX = Math.min(...rawData.map((i) => i.relX)),
-            maxX = Math.max(...rawData.map((i) => i.relX));
-          const minY = Math.min(...rawData.map((i) => i.relY)),
-            maxY = Math.max(...rawData.map((i) => i.relY));
-          const centerX = (minX + maxX + 60) / 2,
-            centerY = (minY + maxY + 60) / 2;
-          this.clearDrafts();
-          this.draftItems = rawData.map((d) => ({ ...d, offsetX: (d.relX || 0) - centerX, offsetY: (d.relY || 0) - centerY }));
-          this.draftItems.forEach((d) => {
-            const el = CanvasItemElement.create({ ...d, id: "draft", x: -999, y: -999 });
-            el.classList.add("draft");
-            this.stage.appendChild(el);
-            d.el = el;
-          });
-          this.updateDraftVisuals(this.lastMousePos.x, this.lastMousePos.y);
+      window.addEventListener("keyup", (e) => {
+        if (e.code === "Space") {
+          state.isSpaceDown = false;
+          document.body.style.cursor = "default";
         }
+      });
 
-        updateDraftVisuals(mx, my) {
-          if (this.draftItems) {
-            const world = this.toWorld(mx, my);
-            this.draftItems.forEach((d) => d.el.updatePos(world.x + d.offsetX, world.y + d.offsetY));
-          }
+      const closePopover = () => document.getElementById("context-menu")?.hidePopover();
+
+      const screenToWorld = (sx, sy, pan) => ({ x: sx - pan.x, y: sy - pan.y });
+
+      const getOverlappingItemIds = (box, initialSelection) => {
+        const left = Math.min(box.x1, box.x2);
+        const right = Math.max(box.x1, box.x2);
+        const top = Math.min(box.y1, box.y2);
+        const bottom = Math.max(box.y1, box.y2);
+        const selected = new Set(initialSelection);
+
+        document.querySelectorAll(".item").forEach((el) => {
+          const rect = el.getBoundingClientRect();
+          const overlaps = !(rect.right < left || rect.left > right || rect.bottom < top || rect.top > bottom);
+          if (overlaps) selected.add(el.dataset.id);
+        });
+
+        return selected;
+      };
+
+      get("canvas-items").then((stored) => {
+        if (stored) {
+          state.items = stored;
+          update();
         }
+      });
 
-        commitDrafts() {
-          if (!this.draftItems) return;
-          const world = this.toWorld(this.lastMousePos.x, this.lastMousePos.y);
-          const itemsToAdd = this.draftItems.map((d) => ({ emoji: d.emoji, label: d.label, x: world.x + d.offsetX, y: world.y + d.offsetY }));
-          this.editor.execute(new CmdAddItems(itemsToAdd));
-          this.clearDrafts();
-        }
-
-        clearDrafts() {
-          if (this.draftItems) {
-            this.draftItems.forEach((d) => d.el.remove());
-            this.draftItems = null;
-          }
-        }
-
-        handleCopy(e) {
-          const selectedIds = this.state.getSelectedIds();
-          if (selectedIds.length === 0) return;
-          const items = selectedIds.map((id) => this.state.getItem(id));
-          const minX = Math.min(...items.map((i) => i.x)),
-            minY = Math.min(...items.map((i) => i.y));
-          const data = {
-            type: "mugen-items",
-            items: items.map((item) => ({ emoji: item.emoji, label: item.label, relX: item.x - minX, relY: item.y - minY })),
-          };
-          e.clipboardData.setData("text/plain", JSON.stringify(data));
-          e.preventDefault();
-        }
-
-        handleCut(e) {
-          if (this.state.selection.size === 0) return;
-          this.handleCopy(e);
-          this.editor.execute(new CmdDeleteItems(this.state.getSelectedIds()));
-        }
-
-        handleKeyDown(e) {
-          if (e.code === "Space" && !this.isSpacePressed) {
-            this.isSpacePressed = true;
-            this.classList.add("panning-ready");
-            e.preventDefault();
-          }
-          const isMod = e.metaKey || e.ctrlKey;
-          if (isMod && (e.key === "=" || e.key === "+")) {
-            e.preventDefault();
-            this.applyZoom(0.2, this.lastMousePos.x, this.lastMousePos.y);
-          } else if (isMod && e.key === "-") {
-            e.preventDefault();
-            this.applyZoom(-0.2, this.lastMousePos.x, this.lastMousePos.y);
-          } else if (isMod && e.key === "0") {
-            e.preventDefault();
-            this.resetView();
-          } else if (isMod && e.key === "z") {
-            e.preventDefault();
-            if (e.shiftKey) this.editor.redo();
-            else this.editor.undo();
-          } else if (isMod && e.key === "y") {
-            e.preventDefault();
-            this.editor.redo();
-          } else if (e.key === "Backspace" || e.key === "Delete") {
-            const ids = this.state.getSelectedIds();
-            if (ids.length > 0) this.editor.execute(new CmdDeleteItems(ids));
-          }
-        }
-
-        handleKeyUp(e) {
-          if (e.code === "Space") {
-            this.isSpacePressed = false;
-            this.classList.remove("panning-ready");
-          }
-        }
-      }
-
-      customElements.define("marquee-box", MarqueeBoxElement);
-      customElements.define("canvas-item", CanvasItemElement);
-      customElements.define("canvas-element", CanvasElement);
+      update();
     </script>
   </body>
 </html>
