@@ -83,7 +83,7 @@
       }
 
       #context-menu {
-        margin: 0;
+        margin: 4px;
         padding: 4px;
         border: 1px solid var(--border);
         background: var(--panel);
@@ -130,7 +130,7 @@
         const view = html`
           <div id="click-anchor"></div>
 
-          <div id="context-menu" popover="auto">
+          <div id="context-menu" popover="manual">
             ${state.contextType === "item"
               ? html`
                   <button autofocus @click=${() => editContextItem()}>Open</button>
@@ -240,6 +240,10 @@
       };
 
       const onPointerDown = (e) => {
+        if (!e.target.closest("#context-menu")) {
+          closePopover();
+        }
+
         if (e.button === 2) return;
         const isMulti = e.shiftKey || e.ctrlKey || e.metaKey;
         const itemEl = e.target.closest(".item");
@@ -347,6 +351,7 @@
       };
 
       window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closePopover();
         if (document.getElementById("edit-dialog")?.open) return;
 
         if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -375,7 +380,10 @@
         }
       });
 
-      const closePopover = () => document.getElementById("context-menu")?.hidePopover();
+      const closePopover = () => {
+        const menu = document.getElementById("context-menu");
+        if (menu?.matches(":popover-open")) menu.hidePopover();
+      };
 
       const screenToWorld = (sx, sy, pan) => ({ x: sx - pan.x, y: sy - pan.y });
 
