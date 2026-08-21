@@ -137,3 +137,4 @@
 - [OpenAI](https://github.com/chuanqisun/code/blob/master/prompts/openai.md)
 - [OpenAI Agents SDK](https://github.com/chuanqisun/code/blob/master/prompts/openai-agents-sdk.md)
 - [Three.js](https://github.com/chuanqisun/code/blob/master/prompts/three-js.md)
+- [Single HTML App Compaction](./prompts/single-html-compaction.md)
