@@ -53,6 +53,7 @@
 - [3D Text Editor](./3d-text-editor/)
 - [Acousitc Beacon](./acoustic-beacon/)
 - [Ancient Robots](./ancient-robots/)
+- [Annotator](./annotator/)
 - [Answering Machine](./answering-machine/)
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
