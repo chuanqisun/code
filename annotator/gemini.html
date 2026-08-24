@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ProseMirror Multi-Segment Annotations</title>
+    <style>
+      body {
+        font-family: monospace;
+        margin: 16px;
+      }
+      #editor {
+        border: 1px solid #000;
+        min-height: 120px;
+        padding: 8px;
+        margin-bottom: 12px;
+      }
+      .ProseMirror {
+        outline: none;
+        white-space: pre-wrap;
+      }
+      .staged-segment {
+        text-decoration: underline dotted;
+        background-color: #eee;
+      }
+      .annotation-marker {
+        text-decoration: underline solid;
+        background-color: #ddd;
+      }
+      .panel {
+        border: 1px solid #000;
+        padding: 8px;
+        margin-bottom: 12px;
+      }
+      .annotation-item {
+        border-top: 1px solid #000;
+        padding: 6px 0;
+      }
+      .toolbar {
+        margin-bottom: 8px;
+      }
+      button,
+      input {
+        font-family: monospace;
+        margin-right: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <button id="btn-undo">Undo</button>
+      <button id="btn-redo">Redo</button>
+    </div>
+
+    <div id="editor"></div>
+
+    <div class="panel">
+      <div>
+        <strong>Staged Selection Set (<span id="staged-count">0</span> segments):</strong>
+      </div>
+      <div id="staged-list">none</div>
+      <div style="margin-top: 8px">
+        <input type="text" id="annotation-input" placeholder="Comment (optional)" style="width: 250px" />
+        <button id="btn-commit">Commit</button>
+        <button id="btn-clear-sel">Clear</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div><strong>Annotations:</strong></div>
+      <div id="annotations-list">none</div>
+    </div>
+
+    <script type="module">
+      import { EditorState, Plugin, PluginKey } from "https://esm.sh/prosemirror-state";
+      import { EditorView, Decoration, DecorationSet } from "https://esm.sh/prosemirror-view";
+      import { schema } from "https://esm.sh/prosemirror-schema-basic";
+      import { baseKeymap } from "https://esm.sh/prosemirror-commands";
+      import { history, undo, redo } from "https://esm.sh/prosemirror-history";
+      import { keymap } from "https://esm.sh/prosemirror-keymap";
+      import { Step, StepResult, StepMap } from "https://esm.sh/prosemirror-transform";
+
+      // Merges overlapping and touching segments
+      function mergeSegments(ranges) {
+        if (!ranges || ranges.length === 0) return [];
+        const valid = ranges.filter((r) => r.from < r.to).sort((a, b) => a.from - b.from || a.to - b.to);
+
+        if (valid.length === 0) return [];
+
+        const merged = [{ from: valid[0].from, to: valid[0].to }];
+        for (let i = 1; i < valid.length; i++) {
+          const prev = merged[merged.length - 1];
+          const curr = valid[i];
+          if (curr.from <= prev.to) {
+            prev.to = Math.max(prev.to, curr.to);
+          } else {
+            merged.push({ from: curr.from, to: curr.to });
+          }
+        }
+        return merged;
+      }
+
+      function mapSegments(ranges, mapping) {
+        if (!ranges) return [];
+        const mapped = ranges.map((r) => ({
+          from: mapping.map(r.from),
+          to: mapping.map(r.to),
+        }));
+        return mergeSegments(mapped);
+      }
+
+      // Step for staged selection segment transitions (tracked in undo/redo history)
+      class SelectionStep extends Step {
+        constructor(prev, next) {
+          super();
+          this.prev = prev;
+          this.next = next;
+        }
+        apply(doc) {
+          return StepResult.ok(doc);
+        }
+        invert(doc) {
+          return new SelectionStep(this.next, this.prev);
+        }
+        map(mapping) {
+          return new SelectionStep(mapSegments(this.prev, mapping), mapSegments(this.next, mapping));
+        }
+        getMap() {
+          return StepMap.empty;
+        }
+        toJSON() {
+          return { stepType: "selectionStep", prev: this.prev, next: this.next };
+        }
+        static fromJSON(schema, json) {
+          return new SelectionStep(json.prev, json.next);
+        }
+      }
+      Step.jsonID("selectionStep", SelectionStep);
+
+      // Step for committed annotation markers (tracked in undo/redo history)
+      class AnnotationCommitStep extends Step {
+        constructor(id, segments, isAdd = true) {
+          super();
+          this.id = id;
+          this.segments = segments;
+          this.isAdd = isAdd;
+        }
+        apply(doc) {
+          return StepResult.ok(doc);
+        }
+        invert(doc) {
+          return new AnnotationCommitStep(this.id, this.segments, !this.isAdd);
+        }
+        map(mapping) {
+          return new AnnotationCommitStep(this.id, mapSegments(this.segments, mapping), this.isAdd);
+        }
+        getMap() {
+          return StepMap.empty;
+        }
+        toJSON() {
+          return {
+            stepType: "annotationCommitStep",
+            id: this.id,
+            segments: this.segments,
+            isAdd: this.isAdd,
+          };
+        }
+        static fromJSON(schema, json) {
+          return new AnnotationCommitStep(json.id, json.segments, json.isAdd);
+        }
+      }
+      Step.jsonID("annotationCommitStep", AnnotationCommitStep);
+
+      // Comments store: independent of undo/redo doc history so edits remain persistent
+      const commentStore = new Map();
+      let annotationIdCounter = 1;
+
+      const annotationPluginKey = new PluginKey("annotationPlugin");
+
+      const annotationPlugin = new Plugin({
+        key: annotationPluginKey,
+        state: {
+          init() {
+            return {
+              staged: [], // active disjoint selection segments: [{from, to}]
+              committed: [], // active committed annotations: [{id, segments}]
+            };
+          },
+          apply(tr, value) {
+            let staged = value.staged;
+            let committed = value.committed;
+
+            // Map positions across document edits (typing, deletions, etc.)
+            if (tr.docChanged) {
+              staged = mapSegments(staged, tr.mapping);
+              committed = committed
+                .map((ann) => ({
+                  id: ann.id,
+                  segments: mapSegments(ann.segments, tr.mapping),
+                }))
+                .filter((ann) => ann.segments.length > 0);
+            }
+
+            // Apply steps (handles normal execution as well as Undo & Redo)
+            for (let i = 0; i < tr.steps.length; i++) {
+              const step = tr.steps[i];
+              if (step instanceof SelectionStep) {
+                staged = step.next;
+              } else if (step instanceof AnnotationCommitStep) {
+                if (step.isAdd) {
+                  if (!committed.some((a) => a.id === step.id)) {
+                    committed = committed.concat([{ id: step.id, segments: step.segments }]);
+                  }
+                } else {
+                  committed = committed.filter((a) => a.id !== step.id);
+                }
+              }
+            }
+
+            return { staged, committed };
+          },
+        },
+        props: {
+          decorations(state) {
+            const { staged, committed } = annotationPluginKey.getState(state);
+            const decos = [];
+
+            // Render committed annotation markers in the document
+            committed.forEach((ann) => {
+              ann.segments.forEach((seg) => {
+                if (seg.from < seg.to) {
+                  decos.push(
+                    Decoration.inline(seg.from, seg.to, {
+                      class: "annotation-marker",
+                      title: `Annotation #${ann.id}`,
+                    }),
+                  );
+                }
+              });
+            });
+
+            // Render active staged selection markers
+            staged.forEach((s) => {
+              if (s.from < s.to) {
+                decos.push(
+                  Decoration.inline(s.from, s.to, {
+                    class: "staged-segment",
+                  }),
+                );
+              }
+            });
+
+            return DecorationSet.create(state.doc, decos);
+          },
+        },
+      });
+
+      const initialDoc = schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text(
+            "Type text here. Hold Ctrl/Cmd while selecting disjoint pieces to accumulate them. Committing adds annotation markers. Undo and redo apply seamlessly to typing, selection steps, and committed annotation markers.",
+          ),
+        ]),
+      ]);
+
+      const state = EditorState.create({
+        doc: initialDoc,
+        schema,
+        plugins: [
+          history(),
+          keymap({
+            "Mod-z": undo,
+            "Mod-y": redo,
+            "Shift-Mod-z": redo,
+          }),
+          keymap(baseKeymap),
+          annotationPlugin,
+        ],
+      });
+
+      let isModPressed = false;
+
+      const view = new EditorView(document.querySelector("#editor"), {
+        state,
+        dispatchTransaction(tr) {
+          const newState = view.state.apply(tr);
+          view.updateState(newState);
+          renderUI();
+        },
+      });
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Control" || e.key === "Meta") isModPressed = true;
+      });
+      window.addEventListener("keyup", (e) => {
+        if (e.key === "Control" || e.key === "Meta") isModPressed = false;
+      });
+
+      view.dom.addEventListener("mouseup", (e) => {
+        setTimeout(() => {
+          const { from, to, empty } = view.state.selection;
+          if (empty) return;
+
+          const isMod = e.ctrlKey || e.metaKey || isModPressed;
+          const currentStaged = annotationPluginKey.getState(view.state).staged || [];
+          let nextStaged;
+
+          if (isMod) {
+            nextStaged = mergeSegments(currentStaged.concat({ from, to }));
+          } else {
+            nextStaged = mergeSegments([{ from, to }]);
+          }
+
+          const tr = view.state.tr.step(new SelectionStep(currentStaged, nextStaged));
+          view.dispatch(tr);
+        }, 10);
+      });
+
+      // Undo / Redo buttons
+      document.querySelector("#btn-undo").onclick = () => {
+        undo(view.state, view.dispatch);
+        view.focus();
+      };
+      document.querySelector("#btn-redo").onclick = () => {
+        redo(view.state, view.dispatch);
+        view.focus();
+      };
+
+      document.querySelector("#btn-clear-sel").onclick = () => {
+        const currentStaged = annotationPluginKey.getState(view.state).staged || [];
+        if (currentStaged.length === 0) return;
+        const tr = view.state.tr.step(new SelectionStep(currentStaged, []));
+        view.dispatch(tr);
+        view.focus();
+      };
+
+      // Commit button: applies an AnnotationCommitStep that is undoable/redoable
+      document.querySelector("#btn-commit").onclick = () => {
+        const { staged } = annotationPluginKey.getState(view.state);
+        if (!staged || staged.length === 0) return;
+
+        const input = document.querySelector("#annotation-input");
+        const id = String(annotationIdCounter++);
+        commentStore.set(id, input.value);
+
+        const tr = view.state.tr
+          .step(
+            new AnnotationCommitStep(
+              id,
+              staged.map((s) => ({ from: s.from, to: s.to })),
+              true,
+            ),
+          )
+          .step(new SelectionStep(staged, []));
+
+        view.dispatch(tr);
+
+        input.value = "";
+        view.focus();
+      };
+
+      function deleteAnnotation(id) {
+        const { committed } = annotationPluginKey.getState(view.state);
+        const target = committed.find((a) => a.id === id);
+        if (target) {
+          const tr = view.state.tr.step(new AnnotationCommitStep(id, target.segments, false));
+          view.dispatch(tr);
+        }
+      }
+
+      function renderUI() {
+        const { staged, committed } = annotationPluginKey.getState(view.state);
+        document.querySelector("#staged-count").textContent = staged.length;
+
+        const stagedList = document.querySelector("#staged-list");
+        if (staged.length === 0) {
+          stagedList.textContent = "none";
+        } else {
+          stagedList.innerHTML = "";
+          const ul = document.createElement("ul");
+          ul.style.margin = "4px 0";
+          ul.style.paddingLeft = "20px";
+          staged.forEach((seg) => {
+            const li = document.createElement("li");
+            const text = view.state.doc.textBetween(seg.from, seg.to, " ");
+            li.textContent = `[${seg.from}-${seg.to}] "${text}"`;
+            ul.appendChild(li);
+          });
+          stagedList.appendChild(ul);
+        }
+
+        const listEl = document.querySelector("#annotations-list");
+        if (committed.length === 0) {
+          listEl.textContent = "none";
+        } else {
+          listEl.innerHTML = "";
+          committed.forEach((ann) => {
+            const item = document.createElement("div");
+            item.className = "annotation-item";
+
+            const header = document.createElement("div");
+            header.innerHTML = `<strong>#${ann.id}</strong> comment: `;
+
+            const commentInput = document.createElement("input");
+            commentInput.type = "text";
+            commentInput.value = commentStore.get(ann.id) || "";
+            commentInput.style.width = "200px";
+            commentInput.oninput = () => {
+              commentStore.set(ann.id, commentInput.value);
+            };
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "Delete";
+            delBtn.onclick = () => deleteAnnotation(ann.id);
+
+            header.appendChild(commentInput);
+            header.appendChild(delBtn);
+            item.appendChild(header);
+
+            const ul = document.createElement("ul");
+            ul.style.margin = "4px 0";
+            ul.style.paddingLeft = "20px";
+            ann.segments.forEach((seg) => {
+              const li = document.createElement("li");
+              const text = view.state.doc.textBetween(seg.from, seg.to, " ");
+              li.textContent = `[${seg.from}-${seg.to}] "${text}"`;
+              ul.appendChild(li);
+            });
+            item.appendChild(ul);
+            listEl.appendChild(item);
+          });
+        }
+      }
+
+      renderUI();
+    </script>
+  </body>
+</html>

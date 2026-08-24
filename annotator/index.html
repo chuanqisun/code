@@ -1,437 +1,243 @@
 <!doctype html>
-<html lang="en">
+<html>
   <head>
-    <meta charset="UTF-8" />
-    <title>ProseMirror Multi-Segment Annotations</title>
+    <meta charset="utf-8" />
+    <title>Annotator</title>
     <style>
       body {
         font-family: monospace;
-        margin: 16px;
+        margin: 20px;
+        max-width: 800px;
       }
       #editor {
-        border: 1px solid #000;
+        border: 1px solid #888;
+        padding: 10px;
         min-height: 120px;
-        padding: 8px;
-        margin-bottom: 12px;
       }
       .ProseMirror {
         outline: none;
         white-space: pre-wrap;
       }
-      .staged-segment {
-        text-decoration: underline dotted;
-        background-color: #eee;
+      span.staged {
+        text-decoration: underline dotted 1px;
       }
-      .annotation-marker {
-        text-decoration: underline solid;
-        background-color: #ddd;
+      span.anno {
+        text-decoration: underline solid 1px;
       }
       .panel {
-        border: 1px solid #000;
+        border: 1px solid #888;
+        margin-top: 12px;
         padding: 8px;
-        margin-bottom: 12px;
       }
-      .annotation-item {
-        border-top: 1px solid #000;
-        padding: 6px 0;
+      .panel h3 {
+        margin: 0 0 6px 0;
+        font-size: 14px;
       }
-      .toolbar {
-        margin-bottom: 8px;
+      .seg,
+      .annoRow {
+        margin: 4px 0;
       }
-      button,
-      input {
+      button {
         font-family: monospace;
-        margin-right: 4px;
+      }
+      input.comment {
+        font-family: monospace;
+        width: 300px;
       }
     </style>
   </head>
   <body>
-    <div class="toolbar">
-      <button id="btn-undo">Undo</button>
-      <button id="btn-redo">Redo</button>
-    </div>
-
     <div id="editor"></div>
-
-    <div class="panel">
-      <div>
-        <strong>Staged Selection Set (<span id="staged-count">0</span> segments):</strong>
-      </div>
-      <div id="staged-list">none</div>
-      <div style="margin-top: 8px">
-        <input type="text" id="annotation-input" placeholder="Comment (optional)" style="width: 250px" />
-        <button id="btn-commit">Commit</button>
-        <button id="btn-clear-sel">Clear</button>
-      </div>
+    <div class="panel" id="stagePanel">
+      <h3>Staged segments: <span id="stageCount">0</span> <button id="commitBtn">Commit</button> <button id="clearBtn">Clear</button></h3>
+      <div id="stageList"></div>
     </div>
-
     <div class="panel">
-      <div><strong>Annotations:</strong></div>
-      <div id="annotations-list">none</div>
+      <h3>Annotations</h3>
+      <div id="annoList"></div>
     </div>
 
     <script type="module">
-      import { EditorState, Plugin, PluginKey } from "https://esm.sh/prosemirror-state";
-      import { EditorView, Decoration, DecorationSet } from "https://esm.sh/prosemirror-view";
-      import { schema } from "https://esm.sh/prosemirror-schema-basic";
-      import { baseKeymap } from "https://esm.sh/prosemirror-commands";
+      import { EditorState, TextSelection } from "https://esm.sh/prosemirror-state";
+      import { EditorView } from "https://esm.sh/prosemirror-view";
+      import { Schema, DOMParser } from "https://esm.sh/prosemirror-model";
+      import { schema as basic } from "https://esm.sh/prosemirror-schema-basic";
       import { history, undo, redo } from "https://esm.sh/prosemirror-history";
       import { keymap } from "https://esm.sh/prosemirror-keymap";
-      import { Step, StepResult, StepMap } from "https://esm.sh/prosemirror-transform";
+      import { baseKeymap } from "https://esm.sh/prosemirror-commands";
 
-      // Merges overlapping and touching segments
-      function mergeSegments(ranges) {
-        if (!ranges || ranges.length === 0) return [];
-        const valid = ranges.filter((r) => r.from < r.to).sort((a, b) => a.from - b.from || a.to - b.to);
-
-        if (valid.length === 0) return [];
-
-        const merged = [{ from: valid[0].from, to: valid[0].to }];
-        for (let i = 1; i < valid.length; i++) {
-          const prev = merged[merged.length - 1];
-          const curr = valid[i];
-          if (curr.from <= prev.to) {
-            prev.to = Math.max(prev.to, curr.to);
-          } else {
-            merged.push({ from: curr.from, to: curr.to });
-          }
-        }
-        return merged;
-      }
-
-      function mapSegments(ranges, mapping) {
-        if (!ranges) return [];
-        const mapped = ranges.map((r) => ({
-          from: mapping.map(r.from),
-          to: mapping.map(r.to),
-        }));
-        return mergeSegments(mapped);
-      }
-
-      // Step for staged selection segment transitions (tracked in undo/redo history)
-      class SelectionStep extends Step {
-        constructor(prev, next) {
-          super();
-          this.prev = prev;
-          this.next = next;
-        }
-        apply(doc) {
-          return StepResult.ok(doc);
-        }
-        invert(doc) {
-          return new SelectionStep(this.next, this.prev);
-        }
-        map(mapping) {
-          return new SelectionStep(mapSegments(this.prev, mapping), mapSegments(this.next, mapping));
-        }
-        getMap() {
-          return StepMap.empty;
-        }
-        toJSON() {
-          return { stepType: "selectionStep", prev: this.prev, next: this.next };
-        }
-        static fromJSON(schema, json) {
-          return new SelectionStep(json.prev, json.next);
-        }
-      }
-      Step.jsonID("selectionStep", SelectionStep);
-
-      // Step for committed annotation markers (tracked in undo/redo history)
-      class AnnotationCommitStep extends Step {
-        constructor(id, segments, isAdd = true) {
-          super();
-          this.id = id;
-          this.segments = segments;
-          this.isAdd = isAdd;
-        }
-        apply(doc) {
-          return StepResult.ok(doc);
-        }
-        invert(doc) {
-          return new AnnotationCommitStep(this.id, this.segments, !this.isAdd);
-        }
-        map(mapping) {
-          return new AnnotationCommitStep(this.id, mapSegments(this.segments, mapping), this.isAdd);
-        }
-        getMap() {
-          return StepMap.empty;
-        }
-        toJSON() {
-          return {
-            stepType: "annotationCommitStep",
-            id: this.id,
-            segments: this.segments,
-            isAdd: this.isAdd,
-          };
-        }
-        static fromJSON(schema, json) {
-          return new AnnotationCommitStep(json.id, json.segments, json.isAdd);
-        }
-      }
-      Step.jsonID("annotationCommitStep", AnnotationCommitStep);
-
-      // Comments store: independent of undo/redo doc history so edits remain persistent
-      const commentStore = new Map();
-      let annotationIdCounter = 1;
-
-      const annotationPluginKey = new PluginKey("annotationPlugin");
-
-      const annotationPlugin = new Plugin({
-        key: annotationPluginKey,
-        state: {
-          init() {
-            return {
-              staged: [], // active disjoint selection segments: [{from, to}]
-              committed: [], // active committed annotations: [{id, segments}]
-            };
+      const schema = new Schema({
+        nodes: basic.spec.nodes,
+        marks: basic.spec.marks.append({
+          staged: {
+            inclusive: false,
+            parseDOM: [{ tag: "span.staged" }],
+            toDOM: () => ["span", { class: "staged" }, 0],
           },
-          apply(tr, value) {
-            let staged = value.staged;
-            let committed = value.committed;
-
-            // Map positions across document edits (typing, deletions, etc.)
-            if (tr.docChanged) {
-              staged = mapSegments(staged, tr.mapping);
-              committed = committed
-                .map((ann) => ({
-                  id: ann.id,
-                  segments: mapSegments(ann.segments, tr.mapping),
-                }))
-                .filter((ann) => ann.segments.length > 0);
-            }
-
-            // Apply steps (handles normal execution as well as Undo & Redo)
-            for (let i = 0; i < tr.steps.length; i++) {
-              const step = tr.steps[i];
-              if (step instanceof SelectionStep) {
-                staged = step.next;
-              } else if (step instanceof AnnotationCommitStep) {
-                if (step.isAdd) {
-                  if (!committed.some((a) => a.id === step.id)) {
-                    committed = committed.concat([{ id: step.id, segments: step.segments }]);
-                  }
-                } else {
-                  committed = committed.filter((a) => a.id !== step.id);
-                }
-              }
-            }
-
-            return { staged, committed };
+          anno: {
+            inclusive: false,
+            attrs: { id: {} },
+            parseDOM: [{ tag: "span.anno", getAttrs: (d) => ({ id: d.getAttribute("data-id") }) }],
+            toDOM: (m) => ["span", { class: "anno", "data-id": m.attrs.id }, 0],
           },
-        },
-        props: {
-          decorations(state) {
-            const { staged, committed } = annotationPluginKey.getState(state);
-            const decos = [];
-
-            // Render committed annotation markers in the document
-            committed.forEach((ann) => {
-              ann.segments.forEach((seg) => {
-                if (seg.from < seg.to) {
-                  decos.push(
-                    Decoration.inline(seg.from, seg.to, {
-                      class: "annotation-marker",
-                      title: `Annotation #${ann.id}`,
-                    }),
-                  );
-                }
-              });
-            });
-
-            // Render active staged selection markers
-            staged.forEach((s) => {
-              if (s.from < s.to) {
-                decos.push(
-                  Decoration.inline(s.from, s.to, {
-                    class: "staged-segment",
-                  }),
-                );
-              }
-            });
-
-            return DecorationSet.create(state.doc, decos);
-          },
-        },
+        }),
       });
 
-      const initialDoc = schema.node("doc", null, [
+      const comments = new Map(); // id -> comment text (independent of doc history)
+
+      const doc = schema.node("doc", null, [
         schema.node("paragraph", null, [
-          schema.text(
-            "Type text here. Hold Ctrl/Cmd while selecting disjoint pieces to accumulate them. Committing adds annotation markers. Undo and redo apply seamlessly to typing, selection steps, and committed annotation markers.",
-          ),
+          schema.text("Select text normally, or hold Ctrl/Cmd while selecting to stage multiple disjoint segments. Then commit them as an annotation."),
         ]),
       ]);
 
-      const state = EditorState.create({
-        doc: initialDoc,
-        schema,
-        plugins: [
-          history(),
-          keymap({
-            "Mod-z": undo,
-            "Mod-y": redo,
-            "Shift-Mod-z": redo,
-          }),
-          keymap(baseKeymap),
-          annotationPlugin,
-        ],
-      });
+      let modHeld = false;
 
-      let isModPressed = false;
-
-      const view = new EditorView(document.querySelector("#editor"), {
-        state,
+      const view = new EditorView(document.getElementById("editor"), {
+        state: EditorState.create({
+          doc,
+          plugins: [history(), keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }), keymap(baseKeymap)],
+        }),
+        handleDOMEvents: {
+          mousedown: (v, e) => {
+            modHeld = e.metaKey || e.ctrlKey;
+            return false;
+          },
+          mouseup: (v, e) => {
+            const wasMod = e.metaKey || e.ctrlKey || modHeld;
+            setTimeout(() => {
+              const { from, to, empty } = v.state.selection;
+              if (empty) return;
+              const st = schema.marks.staged;
+              let tr = v.state.tr;
+              if (wasMod) {
+                if (v.state.doc.rangeHasMark(from, to, st) && rangeFullyStaged(v.state, from, to)) return;
+                tr.addMark(from, to, st.create());
+              } else {
+                tr.removeMark(0, v.state.doc.content.size, st);
+                tr.addMark(from, to, st.create());
+              }
+              if (tr.docChanged || tr.steps.length) v.dispatch(tr);
+            }, 0);
+            return false;
+          },
+        },
         dispatchTransaction(tr) {
-          const newState = view.state.apply(tr);
-          view.updateState(newState);
-          renderUI();
+          view.updateState(view.state.apply(tr));
+          renderPanels();
         },
       });
 
-      window.addEventListener("keydown", (e) => {
-        if (e.key === "Control" || e.key === "Meta") isModPressed = true;
-      });
-      window.addEventListener("keyup", (e) => {
-        if (e.key === "Control" || e.key === "Meta") isModPressed = false;
-      });
-
-      view.dom.addEventListener("mouseup", (e) => {
-        setTimeout(() => {
-          const { from, to, empty } = view.state.selection;
-          if (empty) return;
-
-          const isMod = e.ctrlKey || e.metaKey || isModPressed;
-          const currentStaged = annotationPluginKey.getState(view.state).staged || [];
-          let nextStaged;
-
-          if (isMod) {
-            nextStaged = mergeSegments(currentStaged.concat({ from, to }));
-          } else {
-            nextStaged = mergeSegments([{ from, to }]);
+      function rangeFullyStaged(state, from, to) {
+        let ok = true;
+        state.doc.nodesBetween(from, to, (node, pos) => {
+          if (node.isText) {
+            if (!schema.marks.staged.isInSet(node.marks)) ok = false;
           }
-
-          const tr = view.state.tr.step(new SelectionStep(currentStaged, nextStaged));
-          view.dispatch(tr);
-        }, 10);
-      });
-
-      // Undo / Redo buttons
-      document.querySelector("#btn-undo").onclick = () => {
-        undo(view.state, view.dispatch);
-        view.focus();
-      };
-      document.querySelector("#btn-redo").onclick = () => {
-        redo(view.state, view.dispatch);
-        view.focus();
-      };
-
-      document.querySelector("#btn-clear-sel").onclick = () => {
-        const currentStaged = annotationPluginKey.getState(view.state).staged || [];
-        if (currentStaged.length === 0) return;
-        const tr = view.state.tr.step(new SelectionStep(currentStaged, []));
-        view.dispatch(tr);
-        view.focus();
-      };
-
-      // Commit button: applies an AnnotationCommitStep that is undoable/redoable
-      document.querySelector("#btn-commit").onclick = () => {
-        const { staged } = annotationPluginKey.getState(view.state);
-        if (!staged || staged.length === 0) return;
-
-        const input = document.querySelector("#annotation-input");
-        const id = String(annotationIdCounter++);
-        commentStore.set(id, input.value);
-
-        const tr = view.state.tr
-          .step(
-            new AnnotationCommitStep(
-              id,
-              staged.map((s) => ({ from: s.from, to: s.to })),
-              true,
-            ),
-          )
-          .step(new SelectionStep(staged, []));
-
-        view.dispatch(tr);
-
-        input.value = "";
-        view.focus();
-      };
-
-      function deleteAnnotation(id) {
-        const { committed } = annotationPluginKey.getState(view.state);
-        const target = committed.find((a) => a.id === id);
-        if (target) {
-          const tr = view.state.tr.step(new AnnotationCommitStep(id, target.segments, false));
-          view.dispatch(tr);
-        }
+        });
+        return ok;
       }
 
-      function renderUI() {
-        const { staged, committed } = annotationPluginKey.getState(view.state);
-        document.querySelector("#staged-count").textContent = staged.length;
-
-        const stagedList = document.querySelector("#staged-list");
-        if (staged.length === 0) {
-          stagedList.textContent = "none";
-        } else {
-          stagedList.innerHTML = "";
-          const ul = document.createElement("ul");
-          ul.style.margin = "4px 0";
-          ul.style.paddingLeft = "20px";
-          staged.forEach((seg) => {
-            const li = document.createElement("li");
-            const text = view.state.doc.textBetween(seg.from, seg.to, " ");
-            li.textContent = `[${seg.from}-${seg.to}] "${text}"`;
-            ul.appendChild(li);
-          });
-          stagedList.appendChild(ul);
-        }
-
-        const listEl = document.querySelector("#annotations-list");
-        if (committed.length === 0) {
-          listEl.textContent = "none";
-        } else {
-          listEl.innerHTML = "";
-          committed.forEach((ann) => {
-            const item = document.createElement("div");
-            item.className = "annotation-item";
-
-            const header = document.createElement("div");
-            header.innerHTML = `<strong>#${ann.id}</strong> comment: `;
-
-            const commentInput = document.createElement("input");
-            commentInput.type = "text";
-            commentInput.value = commentStore.get(ann.id) || "";
-            commentInput.style.width = "200px";
-            commentInput.oninput = () => {
-              commentStore.set(ann.id, commentInput.value);
-            };
-
-            const delBtn = document.createElement("button");
-            delBtn.textContent = "Delete";
-            delBtn.onclick = () => deleteAnnotation(ann.id);
-
-            header.appendChild(commentInput);
-            header.appendChild(delBtn);
-            item.appendChild(header);
-
-            const ul = document.createElement("ul");
-            ul.style.margin = "4px 0";
-            ul.style.paddingLeft = "20px";
-            ann.segments.forEach((seg) => {
-              const li = document.createElement("li");
-              const text = view.state.doc.textBetween(seg.from, seg.to, " ");
-              li.textContent = `[${seg.from}-${seg.to}] "${text}"`;
-              ul.appendChild(li);
-            });
-            item.appendChild(ul);
-            listEl.appendChild(item);
-          });
-        }
+      function collectRanges(markType, matchAttrs) {
+        const ranges = [];
+        view.state.doc.descendants((node, pos) => {
+          if (!node.isText) return;
+          const m = node.marks.find((m) => m.type === markType && (!matchAttrs || m.attrs.id === matchAttrs.id));
+          if (m) {
+            const last = ranges[ranges.length - 1];
+            if (last && last.to === pos && (!last.id || last.id === m.attrs.id)) last.to = pos + node.nodeSize;
+            else ranges.push({ from: pos, to: pos + node.nodeSize, id: m.attrs ? m.attrs.id : null });
+          }
+        });
+        return ranges;
       }
 
-      renderUI();
+      function stagedRanges() {
+        return collectRanges(schema.marks.staged);
+      }
+
+      function annotations() {
+        const map = new Map(); // id -> ranges
+        view.state.doc.descendants((node, pos) => {
+          if (!node.isText) return;
+          for (const m of node.marks)
+            if (m.type === schema.marks.anno) {
+              const arr = map.get(m.attrs.id) || [];
+              const last = arr[arr.length - 1];
+              if (last && last.to === pos) last.to = pos + node.nodeSize;
+              else arr.push({ from: pos, to: pos + node.nodeSize });
+              map.set(m.attrs.id, arr);
+            }
+        });
+        return map;
+      }
+
+      // ---- Actions ----
+      document.getElementById("clearBtn").onclick = () => {
+        const tr = view.state.tr.removeMark(0, view.state.doc.content.size, schema.marks.staged);
+        view.dispatch(tr);
+      };
+
+      document.getElementById("commitBtn").onclick = () => {
+        const ranges = stagedRanges();
+        if (!ranges.length) return;
+        const id = "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        comments.set(id, "");
+        let tr = view.state.tr;
+        for (const r of ranges) {
+          tr.removeMark(r.from, r.to, schema.marks.staged);
+          tr.addMark(r.from, r.to, schema.marks.anno.create({ id }));
+        }
+        view.dispatch(tr);
+      };
+
+      function deleteAnno(id) {
+        let tr = view.state.tr;
+        const rs = annotations().get(id) || [];
+        for (const r of rs) tr.removeMark(r.from, r.to, schema.marks.anno);
+        view.dispatch(tr);
+      }
+
+      // ---- Panels ----
+      let lastAnnoSig = null;
+
+      function renderPanels() {
+        const ranges = stagedRanges();
+        document.getElementById("stageCount").textContent = ranges.length;
+        const sl = document.getElementById("stageList");
+        sl.innerHTML = "";
+        for (const r of ranges) {
+          const d = document.createElement("div");
+          d.className = "seg";
+          d.textContent = `[${r.from}, ${r.to}] "${view.state.doc.textBetween(r.from, r.to, " ")}"`;
+          sl.appendChild(d);
+        }
+
+        const annos = annotations();
+        const sig = JSON.stringify([...annos.entries()]);
+        const al = document.getElementById("annoList");
+        const focused = document.activeElement && al.contains(document.activeElement);
+        if (sig === lastAnnoSig && focused) return; // don't destroy focused input
+        lastAnnoSig = sig;
+        al.innerHTML = "";
+        for (const [id, rs] of annos) {
+          const row = document.createElement("div");
+          row.className = "annoRow";
+          const label = document.createElement("span");
+          label.textContent = rs.map((r) => `[${r.from},${r.to}] "${view.state.doc.textBetween(r.from, r.to, " ")}"`).join(" + ") + " ";
+          const input = document.createElement("input");
+          input.className = "comment";
+          input.placeholder = "comment (optional)";
+          input.value = comments.get(id) || "";
+          input.oninput = () => comments.set(id, input.value);
+          const del = document.createElement("button");
+          del.textContent = "Delete";
+          del.onclick = () => deleteAnno(id);
+          row.append(label, input, document.createTextNode(" "), del);
+          al.appendChild(row);
+        }
+      }
+      renderPanels();
     </script>
   </body>
 </html>
