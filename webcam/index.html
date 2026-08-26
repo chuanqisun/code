@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webcam Viewer</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        background-color: #000; /* Letterbox padding color */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+
+      /* Video expands to full window, letterboxing via 'contain' */
+      #webcam {
+        width: 100vw;
+        height: 100vh;
+        object-fit: contain;
+      }
+
+      /* Floating control bar, fades out when mouse leaves */
+      #controls {
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        z-index: 100;
+        background: rgba(20, 20, 20, 0.85);
+        padding: 10px 14px;
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      #controls:hover {
+        opacity: 1;
+      }
+
+      select {
+        background: #222;
+        color: #fff;
+        border: 1px solid #444;
+        padding: 6px 10px;
+        border-radius: 4px;
+        font-size: 13px;
+        cursor: pointer;
+        outline: none;
+      }
+
+      select:focus {
+        border-color: #3b82f6;
+      }
+
+      #resolutionBadge {
+        color: #aaa;
+        font-size: 12px;
+        font-family: monospace;
+        padding-left: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="controls">
+      <!-- Camera List -->
+      <select id="cameraSelect">
+        <option value="" disabled selected>Loading cameras...</option>
+      </select>
+
+      <!-- Resolution List -->
+      <select id="resSelect">
+        <option value="480">480p (SD)</option>
+        <option value="720">720p (HD)</option>
+        <option value="1080" selected>1080p (FHD)</option>
+        <option value="1440">2K (QHD)</option>
+        <option value="2160">4K (UHD)</option>
+      </select>
+
+      <!-- Real-time Active Resolution Feedback -->
+      <span id="resolutionBadge">0x0</span>
+    </div>
+
+    <video id="webcam" autoplay playsinline muted></video>
+
+    <script>
+      const videoElement = document.getElementById("webcam");
+      const cameraSelect = document.getElementById("cameraSelect");
+      const resSelect = document.getElementById("resSelect");
+      const resolutionBadge = document.getElementById("resolutionBadge");
+      let currentStream = null;
+
+      // Resolution lookup table
+      const resolutions = {
+        480: { width: 640, height: 480 },
+        720: { width: 1280, height: 720 },
+        1080: { width: 1920, height: 1080 },
+        1440: { width: 2560, height: 1440 },
+        2160: { width: 3840, height: 2160 },
+      };
+
+      // Stop current active stream
+      function stopMediaTracks(stream) {
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+        }
+      }
+
+      // Request stream with specific device and resolution
+      async function startCamera() {
+        const deviceId = cameraSelect.value;
+        const resChoice = resSelect.value;
+        const targetRes = resolutions[resChoice];
+
+        stopMediaTracks(currentStream);
+
+        const constraints = {
+          video: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            // "ideal" tries to match closely without throwing hard errors if unsupported
+            width: { ideal: targetRes.width },
+            height: { ideal: targetRes.height },
+          },
+          audio: false,
+        };
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+          videoElement.srcObject = currentStream;
+
+          // Wait until metadata is loaded to show the actual output resolution
+          videoElement.onloadedmetadata = () => {
+            resolutionBadge.innerText = `${videoElement.videoWidth}x${videoElement.videoHeight}`;
+          };
+        } catch (err) {
+          console.error("Error accessing webcam with requested constraints:", err);
+          resolutionBadge.innerText = "Failed";
+        }
+      }
+
+      // Enumerate and populate all camera choices
+      async function getCameras() {
+        try {
+          // Request temporary permission to read hardware labels
+          const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          stopMediaTracks(tempStream);
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter((device) => device.kind === "videoinput");
+
+          cameraSelect.innerHTML = "";
+
+          videoDevices.forEach((device, index) => {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.text = device.label || `Camera ${index + 1}`;
+            cameraSelect.appendChild(option);
+          });
+
+          if (videoDevices.length > 0) {
+            startCamera();
+          }
+        } catch (err) {
+          console.error("Permission denied or device enumeration error:", err);
+          cameraSelect.innerHTML = "<option>Camera Access Denied</option>";
+        }
+      }
+
+      // Event Listeners
+      cameraSelect.addEventListener("change", startCamera);
+      resSelect.addEventListener("change", startCamera);
+
+      // Run
+      getCameras();
+    </script>
+  </body>
+</html>
