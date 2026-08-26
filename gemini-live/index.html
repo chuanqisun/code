@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Gemini 3.1 Flash Live — Prototype</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1rem;
+        max-width: 1050px;
+        font-size: 14px;
+      }
+      h1 {
+        font-size: 1.2rem;
+        margin: 0 0 0.5rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 0.5rem;
+      }
+      .row > div {
+        flex: 1;
+        min-width: 160px;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        color: #555;
+      }
+      .filter-bar {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: center;
+        background: #f4f4f5;
+        padding: 0.4rem 0.6rem;
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+        font-size: 0.82rem;
+      }
+      .filter-bar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        color: #222;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+      input[type="password"],
+      textarea,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .main {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .main > .left {
+        flex: 0 0 340px;
+      }
+      .main > .right {
+        flex: 1;
+        min-width: 320px;
+      }
+      video {
+        background: #000;
+        width: 100%;
+        display: block;
+        margin-bottom: 0.25rem;
+      }
+      #log {
+        height: 420px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-size: 0.85rem;
+        border: 1px solid #ddd;
+        padding: 0.5rem;
+        background: #fafafa;
+        border-radius: 4px;
+      }
+
+      /* Color-coded log items */
+      .log-item {
+        line-height: 1.4;
+        margin-bottom: 2px;
+      }
+      .log-time {
+        color: #888;
+        font-family: monospace;
+        font-size: 0.75rem;
+        user-select: none;
+        margin-right: 4px;
+      }
+      .log-user {
+        color: #0052cc;
+        font-weight: 500;
+      }
+      .log-model {
+        color: #0a7c42;
+        font-weight: 500;
+      }
+      .log-events {
+        color: #b45309;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-audio {
+        color: #7c3aed;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-usage {
+        color: #0284c7;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-tools {
+        color: #be185d;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-system {
+        color: #475569;
+      }
+      .log-errors {
+        color: #dc2626;
+        font-weight: 500;
+      }
+
+      /* Log event visibility filters */
+      .hide-user .log-user {
+        display: none;
+      }
+      .hide-model .log-model {
+        display: none;
+      }
+      .hide-events .log-events {
+        display: none;
+      }
+      .hide-audio .log-audio {
+        display: none;
+      }
+      .hide-usage .log-usage {
+        display: none;
+      }
+      .hide-tools .log-tools {
+        display: none;
+      }
+      .hide-system .log-system {
+        display: none;
+      }
+      .hide-errors .log-errors {
+        display: none;
+      }
+
+      #status {
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Gemini 3.1 Flash Live — Prototype</h1>
+
+    <div class="row">
+      <div style="flex: 2">
+        <label for="apiKey">API key</label>
+        <input type="password" id="apiKey" autocomplete="off" />
+      </div>
+      <div>
+        <label for="voiceSel">Voice</label>
+        <select id="voiceSel"></select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex: 3">
+        <label for="sysInstr">System instruction</label>
+        <textarea id="sysInstr" rows="2">You are a helpful assistant.</textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="micSel">Microphone</label>
+        <select id="micSel"></select>
+      </div>
+      <div>
+        <label for="camSel">Webcam</label>
+        <select id="camSel"></select>
+      </div>
+      <div style="flex: 0">
+        <button id="refreshDevices" type="button">↻</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex: 0"><button id="connectBtn" type="button">Connect</button><button id="disconnectBtn" type="button" disabled>Disconnect</button></div>
+      <div><span id="status">disconnected</span></div>
+    </div>
+
+    <div class="filter-bar">
+      <strong style="font-size: 0.8rem; color: #444">Filters:</strong>
+      <label><input type="checkbox" id="flt-user" checked /> <span style="color: #0052cc">● User</span></label>
+      <label><input type="checkbox" id="flt-model" checked /> <span style="color: #0a7c42">● Model</span></label>
+      <label><input type="checkbox" id="flt-events" checked /> <span style="color: #b45309">● Events</span></label>
+      <label><input type="checkbox" id="flt-audio" checked /> <span style="color: #7c3aed">● Audio</span></label>
+      <label><input type="checkbox" id="flt-usage" checked /> <span style="color: #0284c7">● Usage</span></label>
+      <label><input type="checkbox" id="flt-tools" checked /> <span style="color: #be185d">● Tools</span></label>
+      <label><input type="checkbox" id="flt-system" checked /> <span style="color: #475569">● System</span></label>
+      <label><input type="checkbox" id="flt-errors" checked /> <span style="color: #dc2626">● Errors</span></label>
+      <button id="clearLogBtn" type="button" style="margin-left: auto; font-size: 0.75rem">Clear log</button>
+    </div>
+
+    <div class="main">
+      <div class="left">
+        <video id="preview" autoplay muted playsinline></video>
+        <button id="captureBtn" type="button" disabled>📷 Send frame as context (no response)</button>
+      </div>
+      <div class="right">
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <script>
+      "use strict";
+      const MODEL = "gemini-3.1-flash-live-preview";
+      const TOKEN_URL = "https://generativelanguage.googleapis.com/v1beta/auth_tokens";
+      const WS_BASE = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
+      const IN_RATE = 16000,
+        OUT_RATE = 24000;
+
+      const VOICES = [
+        ["Zephyr", "Bright"],
+        ["Puck", "Upbeat"],
+        ["Charon", "Informative"],
+        ["Kore", "Firm"],
+        ["Fenrir", "Excitable"],
+        ["Leda", "Youthful"],
+        ["Orus", "Firm"],
+        ["Aoede", "Breezy"],
+        ["Callirrhoe", "Easy-going"],
+        ["Autonoe", "Bright"],
+        ["Enceladus", "Breathy"],
+        ["Iapetus", "Clear"],
+        ["Umbriel", "Easy-going"],
+        ["Algieba", "Smooth"],
+        ["Despina", "Smooth"],
+        ["Erinome", "Clear"],
+        ["Algenib", "Gravelly"],
+        ["Rasalgethi", "Informative"],
+        ["Laomedeia", "Upbeat"],
+        ["Achernar", "Soft"],
+        ["Alnilam", "Firm"],
+        ["Schedar", "Even"],
+        ["Gacrux", "Mature"],
+        ["Pulcherrima", "Forward"],
+        ["Achird", "Friendly"],
+        ["Zubenelgenubi", "Casual"],
+        ["Vindemiatrix", "Gentle"],
+        ["Sadachbia", "Lively"],
+        ["Sadaltager", "Knowledgeable"],
+        ["Sulafat", "Warm"],
+      ];
+
+      const $ = (id) => document.getElementById(id);
+      const logEl = $("log");
+      function ts() {
+        return new Date().toTimeString().slice(0, 8);
+      }
+
+      // Smart auto-scroll: auto-scroll by default; detach on scroll-up; re-attach near bottom
+      let autoScroll = true;
+      const SCROLL_THRESHOLD = 30;
+
+      logEl.addEventListener("scroll", () => {
+        const distanceFromBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight;
+        autoScroll = distanceFromBottom <= SCROLL_THRESHOLD;
+      });
+
+      function maybeScrollToBottom() {
+        if (autoScroll) {
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      }
+
+      // Logging with conditional auto-scroll
+      function log(text, category = "system") {
+        const d = document.createElement("div");
+        d.className = `log-item log-${category}`;
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "log-time";
+        timeSpan.textContent = ts();
+        d.appendChild(timeSpan);
+        const textNode = document.createTextNode(text);
+        d.appendChild(textNode);
+        logEl.appendChild(d);
+        maybeScrollToBottom();
+        return d;
+      }
+
+      function logEv(name, detail, category = "events") {
+        log("▸ " + name + (detail !== undefined && detail !== "" ? " " + detail : ""), category);
+      }
+
+      // Log category filters
+      const filterCategories = ["user", "model", "events", "audio", "usage", "tools", "system", "errors"];
+      filterCategories.forEach((cat) => {
+        const cb = $("flt-" + cat);
+        if (!cb) return;
+        const update = () => {
+          logEl.classList.toggle("hide-" + cat, !cb.checked);
+          maybeScrollToBottom();
+        };
+        cb.addEventListener("change", update);
+        update();
+      });
+      $("clearLogBtn").onclick = () => {
+        logEl.innerHTML = "";
+        userLine = null;
+        modelLine = null;
+        autoScroll = true;
+      };
+
+      // ---------- voices ----------
+      VOICES.forEach(([name, desc]) => {
+        const o = document.createElement("option");
+        o.value = name;
+        o.textContent = name + " — " + desc;
+        $("voiceSel").appendChild(o);
+      });
+
+      // ---------- settings persistence ----------
+      $("apiKey").value = localStorage.getItem("gemini_api_key") || "";
+      if (localStorage.getItem("gemini_sys_instr") !== null) $("sysInstr").value = localStorage.getItem("gemini_sys_instr");
+      $("voiceSel").value = localStorage.getItem("gemini_voice") || "Puck";
+      $("apiKey").addEventListener("input", (e) => localStorage.setItem("gemini_api_key", e.target.value));
+      $("sysInstr").addEventListener("input", (e) => localStorage.setItem("gemini_sys_instr", e.target.value));
+      $("voiceSel").addEventListener("change", (e) => localStorage.setItem("gemini_voice", e.target.value));
+
+      // ---------- devices ----------
+      async function refreshDevices() {
+        try {
+          const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          tmp.getTracks().forEach((t) => t.stop());
+        } catch (e) {
+          log("Permission error: " + e.message, "errors");
+        }
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        for (const [sel, kind] of [
+          [$("micSel"), "audioinput"],
+          [$("camSel"), "videoinput"],
+        ]) {
+          const prev = sel.value;
+          sel.innerHTML = "";
+          devs
+            .filter((d) => d.kind === kind)
+            .forEach((d, i) => {
+              const o = document.createElement("option");
+              o.value = d.deviceId;
+              o.textContent = d.label || kind + " " + (i + 1);
+              sel.appendChild(o);
+            });
+          if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+        }
+      }
+      $("refreshDevices").onclick = refreshDevices;
+      refreshDevices();
+
+      // ---------- session state ----------
+      let ws = null,
+        micStream = null,
+        camStream = null;
+      let inCtx = null,
+        outCtx = null,
+        procNode = null,
+        srcNode = null;
+      let playTime = 0,
+        playingSources = [];
+      let userLine = null,
+        modelLine = null;
+      let audioChunksIn = 0;
+
+      function setStatus(s) {
+        $("status").textContent = s;
+      }
+
+      // ---------- ephemeral token ----------
+      async function createEphemeralToken(apiKey) {
+        const now = Date.now();
+        const r = await fetch(TOKEN_URL, {
+          method: "POST",
+          headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uses: 1,
+            expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
+            newSessionExpireTime: new Date(now + 2 * 60 * 1000).toISOString(),
+          }),
+        });
+        if (!r.ok) throw new Error("Token request failed: " + r.status + " " + (await r.text()));
+        const j = await r.json();
+        if (!j.name) throw new Error("No token in response: " + JSON.stringify(j));
+        return j.name;
+      }
+
+      // ---------- audio helpers ----------
+      function b64FromBytes(bytes) {
+        let s = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return btoa(s);
+      }
+      function floatToPcm16(f32) {
+        const out = new Int16Array(f32.length);
+        for (let i = 0; i < f32.length; i++) {
+          const v = Math.max(-1, Math.min(1, f32[i]));
+          out[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+        }
+        return out;
+      }
+      function downsample(f32, fromRate, toRate) {
+        if (fromRate === toRate) return f32;
+        const ratio = fromRate / toRate;
+        const n = Math.floor(f32.length / ratio);
+        const out = new Float32Array(n);
+        for (let i = 0; i < n; i++) out[i] = f32[Math.floor(i * ratio)];
+        return out;
+      }
+      function playAudioChunk(b64) {
+        if (!outCtx) {
+          outCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: OUT_RATE });
+          playTime = 0;
+        }
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const i16 = new Int16Array(bytes.buffer, 0, Math.floor(bytes.length / 2));
+        const f32 = new Float32Array(i16.length);
+        for (let i = 0; i < i16.length; i++) f32[i] / 0x8000;
+        for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 0x8000;
+        const buf = outCtx.createBuffer(1, f32.length, OUT_RATE);
+        buf.getChannelData(0).set(f32);
+        const src = outCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(outCtx.destination);
+        const start = Math.max(outCtx.currentTime, playTime);
+        src.start(start);
+        playTime = start + buf.duration;
+        playingSources.push(src);
+        src.onended = () => {
+          playingSources = playingSources.filter((s) => s !== src);
+        };
+        return buf.duration;
+      }
+      function stopPlayback() {
+        playingSources.forEach((s) => {
+          try {
+            s.stop();
+          } catch (_) {}
+        });
+        playingSources = [];
+        playTime = 0;
+      }
+
+      // ---------- mic streaming ----------
+      async function startMic(deviceId) {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: deviceId ? { exact: deviceId } : undefined, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        });
+        inCtx = new (window.AudioContext || window.webkitAudioContext)();
+        srcNode = inCtx.createMediaStreamSource(micStream);
+        procNode = inCtx.createScriptProcessor(4096, 1, 1);
+        procNode.onaudioprocess = (e) => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          const ds = downsample(e.inputBuffer.getChannelData(0), inCtx.sampleRate, IN_RATE);
+          const pcm = floatToPcm16(ds);
+          ws.send(
+            JSON.stringify({
+              realtimeInput: {
+                audio: { data: b64FromBytes(new Uint8Array(pcm.buffer)), mimeType: "audio/pcm;rate=" + IN_RATE },
+              },
+            }),
+          );
+        };
+        srcNode.connect(procNode);
+        procNode.connect(inCtx.destination);
+        logEv("mic.started", micStream.getAudioTracks()[0].label, "system");
+      }
+
+      // ---------- webcam (live-swappable) ----------
+      async function startCam(deviceId) {
+        if (camStream) {
+          camStream.getTracks().forEach((t) => t.stop());
+          camStream = null;
+        }
+        camStream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: deviceId ? { exact: deviceId } : undefined, width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 } },
+        });
+        $("preview").srcObject = camStream;
+        logEv("cam.started", camStream.getVideoTracks()[0].label, "system");
+      }
+      $("camSel").addEventListener("change", () => {
+        startCam($("camSel").value).catch((e) => log("Webcam error: " + e.message, "errors"));
+      });
+      setTimeout(() => {
+        if ($("camSel").value) startCam($("camSel").value).catch(() => {});
+      }, 1500);
+
+      $("captureBtn").onclick = () => {
+        const v = $("preview");
+        if (!ws || ws.readyState !== WebSocket.OPEN || !v.videoWidth) return;
+        const scale = Math.min(1, 1280 / v.videoWidth, 720 / v.videoHeight);
+        const c = document.createElement("canvas");
+        c.width = Math.round(v.videoWidth * scale);
+        c.height = Math.round(v.videoHeight * scale);
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        const b64 = c.toDataURL("image/jpeg", 0.8).split(",")[1];
+        ws.send(JSON.stringify({ realtimeInput: { video: { data: b64, mimeType: "image/jpeg" } } }));
+        logEv("client.frameSent", c.width + "x" + c.height + " jpeg " + Math.round((b64.length * 0.75) / 1024) + " KB (context only)", "events");
+      };
+
+      // ---------- server messages ----------
+      function handleServerMessage(msg) {
+        if (msg.setupComplete !== undefined) {
+          logEv("setupComplete", "— start talking", "events");
+          startMic($("micSel").value).catch((e) => log("Mic error: " + e.message, "errors"));
+          return;
+        }
+        if (msg.usageMetadata) {
+          const u = msg.usageMetadata;
+          logEv(
+            "usageMetadata",
+            "prompt=" +
+              (u.promptTokenCount || 0) +
+              " response=" +
+              (u.responseTokenCount || 0) +
+              (u.thoughtsTokenCount ? " thoughts=" + u.thoughtsTokenCount : "") +
+              " total=" +
+              (u.totalTokenCount || 0),
+            "usage",
+          );
+        }
+        const sc = msg.serverContent;
+        if (sc) {
+          if (sc.interrupted) {
+            stopPlayback();
+            logEv("serverContent.interrupted", "— playback queue flushed", "events");
+            modelLine = null;
+          }
+          if (sc.inputTranscription && sc.inputTranscription.text) {
+            if (!userLine) {
+              userLine = document.createElement("div");
+              userLine.className = "log-item log-user";
+              const tsSpan = document.createElement("span");
+              tsSpan.className = "log-time";
+              tsSpan.textContent = ts();
+              userLine.appendChild(tsSpan);
+              const prefix = document.createElement("strong");
+              prefix.textContent = "You: ";
+              userLine.appendChild(prefix);
+              const textSpan = document.createElement("span");
+              userLine.appendChild(textSpan);
+              logEl.appendChild(userLine);
+            }
+            userLine.lastChild.textContent += sc.inputTranscription.text;
+            maybeScrollToBottom();
+          }
+          if (sc.outputTranscription && sc.outputTranscription.text) {
+            if (!modelLine) {
+              modelLine = document.createElement("div");
+              modelLine.className = "log-item log-model";
+              const tsSpan = document.createElement("span");
+              tsSpan.className = "log-time";
+              tsSpan.textContent = ts();
+              modelLine.appendChild(tsSpan);
+              const prefix = document.createElement("strong");
+              prefix.textContent = "Gemini: ";
+              modelLine.appendChild(prefix);
+              const textSpan = document.createElement("span");
+              modelLine.appendChild(textSpan);
+              logEl.appendChild(modelLine);
+            }
+            modelLine.lastChild.textContent += sc.outputTranscription.text;
+            maybeScrollToBottom();
+          }
+          if (sc.modelTurn && sc.modelTurn.parts) {
+            for (const p of sc.modelTurn.parts) {
+              if (p.inlineData && p.inlineData.data) {
+                const dur = playAudioChunk(p.inlineData.data);
+                audioChunksIn++;
+                logEv("serverContent.audio", "#" + audioChunksIn + " " + (p.inlineData.mimeType || "") + " " + Math.round(dur * 1000) + "ms", "audio");
+              } else if (p.text) {
+                logEv("serverContent.text", JSON.stringify(p.text), "events");
+              }
+            }
+          }
+          if (sc.generationComplete) logEv("serverContent.generationComplete", "", "events");
+          if (sc.turnComplete) {
+            logEv("serverContent.turnComplete", "(" + audioChunksIn + " audio chunks this turn)", "events");
+            audioChunksIn = 0;
+            userLine = null;
+            modelLine = null;
+          }
+          if (sc.groundingMetadata) logEv("serverContent.groundingMetadata", JSON.stringify(sc.groundingMetadata).slice(0, 200), "events");
+        }
+        if (msg.toolCall) {
+          logEv("toolCall", JSON.stringify(msg.toolCall.functionCalls?.map((f) => ({ name: f.name, id: f.id, args: f.args }))), "tools");
+          log("[toolCall not handled in prototype]", "tools");
+        }
+        if (msg.toolCallCancellation) logEv("toolCallCancellation", "ids=" + JSON.stringify(msg.toolCallCancellation.ids), "tools");
+        if (msg.goAway) logEv("goAway", "timeLeft=" + JSON.stringify(msg.goAway.timeLeft) + " — server disconnecting soon", "events");
+        if (msg.sessionResumptionUpdate) {
+          const sru = msg.sessionResumptionUpdate;
+          logEv("sessionResumptionUpdate", "resumable=" + !!sru.resumable + (sru.newHandle ? " handle=…" + sru.newHandle.slice(-8) : ""), "events");
+        }
+      }
+
+      // ---------- connect / disconnect ----------
+      $("connectBtn").onclick = async () => {
+        const apiKey = $("apiKey").value.trim();
+        if (!apiKey) {
+          log("Set an API key first.", "errors");
+          return;
+        }
+        $("connectBtn").disabled = true;
+        try {
+          setStatus("minting token…");
+          const token = await createEphemeralToken(apiKey);
+          logEv("client.ephemeralToken", "created (uses=1, session ≤30min)", "system");
+
+          if (!camStream) await startCam($("camSel").value).catch((e) => log("Webcam error: " + e.message, "errors"));
+
+          setStatus("connecting…");
+          ws = new WebSocket(WS_BASE + "?access_token=" + encodeURIComponent(token));
+          ws.onopen = () => {
+            setStatus("connected · " + $("voiceSel").value);
+            $("disconnectBtn").disabled = false;
+            $("captureBtn").disabled = false;
+            logEv("ws.open", "", "events");
+            const setup = {
+              setup: {
+                model: "models/" + MODEL,
+                generationConfig: {
+                  responseModalities: ["AUDIO"],
+                  speechConfig: {
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: $("voiceSel").value } },
+                  },
+                },
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
+              },
+            };
+            const si = $("sysInstr").value.trim();
+            if (si) setup.setup.systemInstruction = { parts: [{ text: si }] };
+            ws.send(JSON.stringify(setup));
+            logEv("client.setup", "model=" + MODEL + " voice=" + $("voiceSel").value, "events");
+          };
+          ws.onmessage = async (ev) => {
+            const data = ev.data instanceof Blob ? await ev.data.text() : ev.data;
+            try {
+              handleServerMessage(JSON.parse(data));
+            } catch (e) {
+              log("Parse error: " + e.message, "errors");
+            }
+          };
+          ws.onerror = () => log("WebSocket error", "errors");
+          ws.onclose = (ev) => {
+            logEv("ws.close", "code=" + ev.code + (ev.reason ? " reason=" + ev.reason : ""), "events");
+            teardown();
+          };
+        } catch (e) {
+          log(e.message, "errors");
+          teardown();
+        }
+      };
+      $("disconnectBtn").onclick = () => {
+        if (ws) ws.close();
+        teardown();
+      };
+
+      function teardown() {
+        if (ws && ws.readyState <= WebSocket.OPEN) {
+          try {
+            ws.close();
+          } catch (_) {}
+        }
+        ws = null;
+        stopPlayback();
+        if (procNode) {
+          procNode.disconnect();
+          procNode = null;
+        }
+        if (srcNode) {
+          srcNode.disconnect();
+          srcNode = null;
+        }
+        if (inCtx) {
+          inCtx.close();
+          inCtx = null;
+        }
+        if (micStream) {
+          micStream.getTracks().forEach((t) => t.stop());
+          micStream = null;
+        }
+        $("connectBtn").disabled = false;
+        $("disconnectBtn").disabled = true;
+        $("captureBtn").disabled = true;
+        setStatus("disconnected");
+        userLine = modelLine = null;
+        audioChunksIn = 0;
+      }
+    </script>
+  </body>
+</html>
