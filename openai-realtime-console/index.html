@@ -55,6 +55,16 @@
         width: 100%;
         box-sizing: border-box;
       }
+
+      /* Auto-grow system instruction textarea and remove manual vertical resizing */
+      #sysInstr {
+        field-sizing: content;
+        resize: none;
+        min-height: 2.4em;
+        font-family: inherit;
+        font-size: inherit;
+      }
+
       .main {
         display: flex;
         gap: 1rem;
@@ -165,10 +175,7 @@
     </style>
   </head>
   <body>
-    <h1>OpenAI GPT-Realtime-2.1 Mini — Prototype</h1>
-
-    <!-- Hidden audio element for WebRTC model audio output -->
-    <audio id="remoteAudio" autoplay></audio>
+    <h1>OpenAI GPT-Realtime-2.1 Mini — Agents SDK Prototype</h1>
 
     <div class="row">
       <div style="flex: 2">
@@ -234,14 +241,12 @@
     </div>
 
     <script type="module">
-      import OpenAI from "https://esm.sh/openai";
+      import { RealtimeAgent, RealtimeSession } from "https://esm.sh/@openai/agents-realtime";
 
       const MODEL = "gpt-realtime-2.1-mini";
-      const REASONING_EFFORT = "low"; // Lowest reasoning effort supported
-      const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+      const REASONING_EFFORT = "low";
       const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 
-      // OpenAI supported voices
       const VOICES = [
         ["marin", "Warm & Natural (Recommended)"],
         ["cedar", "Crisp & Clear (Recommended)"],
@@ -294,7 +299,7 @@
         log("▸ " + name + (detail !== undefined && detail !== "" ? " " + detail : ""), category);
       }
 
-      // Filter management
+      // Filters
       const filterCategories = ["user", "model", "events", "audio", "usage", "tools", "system", "errors"];
       filterCategories.forEach((cat) => {
         const cb = $("flt-" + cat);
@@ -363,9 +368,8 @@
       refreshDevices();
 
       // State
-      let pc = null;
-      let dc = null;
-      let micStream = null;
+      let agent = null;
+      let session = null;
       let camStream = null;
       let userLine = null;
       let modelLine = null;
@@ -374,14 +378,35 @@
         $("status").textContent = s;
       }
 
-      // Mint ephemeral client token or reuse provided ephemeral key
+      // Hidden developer shortcut: Cmd/Ctrl + Enter in system prompt textarea
+      $("sysInstr").addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          e.preventDefault();
+          const newInstr = $("sysInstr").value.trim();
+          localStorage.setItem("openai_sys_instr", newInstr);
+          if (session?.transport) {
+            session.transport.sendEvent({
+              type: "session.update",
+              session: {
+                type: "realtime",
+                instructions: newInstr,
+              },
+            });
+            logEv("client.session.update", `instructions updated (${newInstr.length} chars)`, "events");
+          } else {
+            logEv("client.session.update", "saved locally (not connected)", "system");
+          }
+        }
+      });
+
+      // Ephemeral token helper
       async function getEphemeralToken(rawKey) {
         if (rawKey.startsWith("ek_")) {
           logEv("client.ephemeralKey", "using direct ephemeral key", "system");
           return rawKey;
         }
 
-        logEv("client.ephemeralToken", "minting client secret from API key...", "system");
+        logEv("client.ephemeralToken", "minting ephemeral secret via client_secrets...", "system");
         const resp = await fetch(CLIENT_SECRETS_URL, {
           method: "POST",
           headers: {
@@ -405,18 +430,18 @@
         });
 
         if (!resp.ok) {
-          throw new Error("Client secret minting failed: " + resp.status + " " + (await resp.text()));
+          throw new Error("Token request failed: " + resp.status + " " + (await resp.text()));
         }
 
         const data = await resp.json();
         const token = data.value || data.client_secret?.value;
         if (!token) {
-          throw new Error("No ephemeral token in response: " + JSON.stringify(data));
+          throw new Error("No token returned in client_secrets payload");
         }
         return token;
       }
 
-      // Camera streaming
+      // Webcam handling
       async function startCam(deviceId) {
         if (camStream) {
           camStream.getTracks().forEach((t) => t.stop());
@@ -440,10 +465,10 @@
         if ($("camSel").value) startCam($("camSel").value).catch(() => {});
       }, 1200);
 
-      // Frame capture button (Send image context to session without prompting a response)
+      // Frame capture button (Send image context using session.addImage)
       $("captureBtn").onclick = () => {
         const v = $("preview");
-        if (!dc || dc.readyState !== "open" || !v.videoWidth) return;
+        if (!session || !v.videoWidth) return;
 
         const scale = Math.min(1, 1280 / v.videoWidth, 720 / v.videoHeight);
         const c = document.createElement("canvas");
@@ -452,27 +477,13 @@
         c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
         const dataUrl = c.toDataURL("image/jpeg", 0.8);
 
-        const event = {
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [
-              {
-                type: "input_image",
-                image_url: dataUrl,
-              },
-            ],
-          },
-        };
-
-        dc.send(JSON.stringify(event));
+        session.addImage(dataUrl, { triggerResponse: false });
         const estKb = Math.round((dataUrl.length * 0.75) / 1024);
-        logEv("client.frameSent", `${c.width}x${c.height} jpeg ~${estKb} KB (context added, no response triggered)`, "events");
+        logEv("client.addImage", `${c.width}x${c.height} jpeg ~${estKb} KB (context only, triggerResponse=false)`, "events");
       };
 
-      // Server event dispatcher
-      function handleServerEvent(ev) {
+      // Realtime transport event logger & handler
+      function handleTransportEvent(ev) {
         switch (ev.type) {
           case "session.created":
             logEv("session.created", "ID=" + (ev.session?.id || ""), "events");
@@ -490,11 +501,6 @@
             logEv("speech_stopped", "item_id=" + (ev.item_id || ""), "audio");
             break;
 
-          case "input_audio_buffer.committed":
-            logEv("input_audio_buffer.committed", "item_id=" + (ev.item_id || ""), "audio");
-            break;
-
-          // Input transcription events
           case "conversation.item.input_audio_transcription.completed":
           case "response.input_audio_transcription.completed": {
             const text = ev.transcript || ev.text || "";
@@ -519,7 +525,6 @@
             break;
           }
 
-          // Model output transcription & text streams
           case "response.audio_transcript.delta":
           case "response.output_audio_transcript.delta":
           case "response.output_text.delta":
@@ -578,14 +583,6 @@
             }
             break;
 
-          case "response.function_call_arguments.delta":
-            logEv("toolCall.arguments.delta", ev.delta || "", "tools");
-            break;
-
-          case "response.function_call_arguments.done":
-            logEv("toolCall.arguments.done", ev.arguments || "", "tools");
-            break;
-
           case "rate_limits.updated":
             logEv("rate_limits", JSON.stringify(ev.rate_limits?.[0] || {}), "usage");
             break;
@@ -602,7 +599,7 @@
         }
       }
 
-      // Connect via WebRTC to OpenAI Realtime
+      // Connect button using @openai/agents-realtime SDK
       $("connectBtn").onclick = async () => {
         const apiKey = $("apiKey").value.trim();
         if (!apiKey) {
@@ -613,132 +610,73 @@
         $("connectBtn").disabled = true;
 
         try {
-          setStatus("authorizing…");
+          setStatus("minting token…");
           const ephemeralToken = await getEphemeralToken(apiKey);
 
           if (!camStream) {
             await startCam($("camSel").value).catch((e) => log("Webcam notice: " + e.message, "errors"));
           }
 
-          setStatus("initiating WebRTC…");
-          pc = new RTCPeerConnection();
+          setStatus("initializing agent session…");
 
-          // Remote audio element handling
-          const remoteAudio = $("remoteAudio");
-          pc.ontrack = (e) => {
-            remoteAudio.srcObject = e.streams[0];
-            logEv("webrtc.ontrack", "remote audio stream connected", "audio");
-          };
-
-          // Capture microphone stream
-          const micDeviceId = $("micSel").value;
-          micStream = await navigator.mediaDevices.getUserMedia({
-            audio: micDeviceId
-              ? {
-                  deviceId: { exact: micDeviceId },
-                  echoCancellation: true,
-                  noiseSuppression: true,
-                }
-              : {
-                  echoCancellation: true,
-                  noiseSuppression: true,
-                },
+          // 1. Create RealtimeAgent
+          agent = new RealtimeAgent({
+            name: "Assistant",
+            instructions: $("sysInstr").value.trim() || "You are a helpful assistant.",
           });
-          const micTrack = micStream.getAudioTracks()[0];
-          pc.addTrack(micTrack, micStream);
-          logEv("mic.started", micTrack.label, "system");
 
-          // WebRTC Data Channel for Realtime control events
-          dc = pc.createDataChannel("oai-events");
-
-          dc.onopen = () => {
-            setStatus("connected · " + $("voiceSel").value);
-            $("disconnectBtn").disabled = false;
-            $("captureBtn").disabled = false;
-            logEv("dc.open", "Realtime DataChannel open", "events");
-
-            // Initial session.update configuration
-            const sessionUpdate = {
-              type: "session.update",
-              session: {
-                type: "realtime",
-                model: MODEL,
-                output_modalities: ["audio"],
-                reasoning: {
-                  effort: REASONING_EFFORT,
+          // 2. Instantiate RealtimeSession with model config & lowest reasoning effort
+          session = new RealtimeSession(agent, {
+            model: MODEL,
+            config: {
+              outputModalities: ["audio"],
+              reasoning: {
+                effort: REASONING_EFFORT,
+              },
+              audio: {
+                input: {
+                  turnDetection: {
+                    type: "semantic_vad",
+                    createResponse: true,
+                    interruptResponse: true,
+                  },
+                  transcription: {
+                    model: "gpt-live-transcribe",
+                  },
                 },
-                audio: {
-                  input: {
-                    format: { type: "audio/pcm", rate: 24000 },
-                    turn_detection: {
-                      type: "semantic_vad",
-                      create_response: true,
-                      interrupt_response: true,
-                    },
-                    transcription: {
-                      model: "gpt-live-transcribe",
-                    },
-                  },
-                  output: {
-                    format: { type: "audio/pcm" },
-                    voice: $("voiceSel").value,
-                  },
+                output: {
+                  voice: $("voiceSel").value,
                 },
               },
-            };
-
-            const si = $("sysInstr").value.trim();
-            if (si) {
-              sessionUpdate.session.instructions = si;
-            }
-
-            dc.send(JSON.stringify(sessionUpdate));
-            logEv("client.session.update", `model=${MODEL} reasoning=${REASONING_EFFORT} voice=${$("voiceSel").value}`, "events");
-          };
-
-          dc.onmessage = (e) => {
-            try {
-              const data = typeof e.data === "string" ? JSON.parse(e.data) : JSON.parse(new TextDecoder().decode(e.data));
-              handleServerEvent(data);
-            } catch (err) {
-              log("Parse error: " + err.message, "errors");
-            }
-          };
-
-          dc.onerror = (err) => log("DataChannel error: " + (err.message || err), "errors");
-
-          dc.onclose = () => {
-            logEv("dc.close", "DataChannel closed", "events");
-            teardown();
-          };
-
-          // WebRTC Offer / Answer exchange with /v1/realtime/calls
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-
-          logEv("webrtc.sdpOffer", "sending offer to OpenAI Realtime endpoint", "events");
-          const sdpResponse = await fetch(REALTIME_CALLS_URL, {
-            method: "POST",
-            body: offer.sdp,
-            headers: {
-              Authorization: `Bearer ${ephemeralToken}`,
-              "Content-Type": "application/sdp",
             },
           });
 
-          if (!sdpResponse.ok) {
-            throw new Error(`WebRTC handshake failed: ${sdpResponse.status} ${await sdpResponse.text()}`);
-          }
-
-          const answerSdp = await sdpResponse.text();
-          await pc.setRemoteDescription({
-            type: "answer",
-            sdp: answerSdp,
+          // Listen to session & transport events
+          session.transport.on("*", (event) => {
+            handleTransportEvent(event);
           });
 
-          logEv("webrtc.sdpAnswer", "remote description configured successfully", "events");
+          session.on("audio_interrupted", () => {
+            logEv("session.audio_interrupted", "user spoke over assistant", "events");
+          });
+
+          session.on("error", (err) => {
+            log("Session error: " + (err.message || JSON.stringify(err)), "errors");
+          });
+
+          setStatus("connecting via WebRTC…");
+
+          // 3. Connect via WebRTC automatically handling browser audio I/O
+          await session.connect({
+            apiKey: ephemeralToken,
+          });
+
+          setStatus("connected · " + $("voiceSel").value);
+          $("disconnectBtn").disabled = false;
+          $("captureBtn").disabled = false;
+          logEv("session.connect", `connected with ${MODEL} (voice: ${$("voiceSel").value})`, "system");
         } catch (e) {
-          log("Connection failed: " + e.message, "errors");
+          log("Connection error: " + e.message, "errors");
           teardown();
         }
       };
@@ -748,28 +686,13 @@
       };
 
       function teardown() {
-        if (dc) {
+        if (session) {
           try {
-            dc.close();
+            session.close();
           } catch (_) {}
-          dc = null;
+          session = null;
         }
-        if (pc) {
-          try {
-            pc.close();
-          } catch (_) {}
-          pc = null;
-        }
-        if (micStream) {
-          micStream.getTracks().forEach((t) => t.stop());
-          micStream = null;
-        }
-
-        const remoteAudio = $("remoteAudio");
-        if (remoteAudio.srcObject) {
-          remoteAudio.srcObject.getTracks().forEach((t) => t.stop());
-          remoteAudio.srcObject = null;
-        }
+        agent = null;
 
         $("connectBtn").disabled = false;
         $("disconnectBtn").disabled = true;
