@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OpenAI GPT-Realtime-2.1 Console</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1rem;
+        max-width: 1050px;
+        font-size: 14px;
+      }
+      h1 {
+        font-size: 1.2rem;
+        margin: 0 0 0.5rem;
+      }
+      .row {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: end;
+        margin-bottom: 0.5rem;
+      }
+      .row > div {
+        flex: 1;
+        min-width: 160px;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        color: #555;
+      }
+      .filter-bar {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: center;
+        background: #f4f4f5;
+        padding: 0.4rem 0.6rem;
+        border-radius: 4px;
+        margin-bottom: 0.5rem;
+        font-size: 0.82rem;
+      }
+      .filter-bar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        color: #222;
+        font-size: 0.82rem;
+        cursor: pointer;
+      }
+      input[type="password"],
+      textarea,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .main {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .main > .left {
+        flex: 0 0 340px;
+      }
+      .main > .right {
+        flex: 1;
+        min-width: 320px;
+      }
+      video {
+        background: #000;
+        width: 100%;
+        display: block;
+        margin-bottom: 0.25rem;
+      }
+      #log {
+        height: 420px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-size: 0.85rem;
+        border: 1px solid #ddd;
+        padding: 0.5rem;
+        background: #fafafa;
+        border-radius: 4px;
+      }
+
+      /* Color-coded log items */
+      .log-item {
+        line-height: 1.4;
+        margin-bottom: 2px;
+      }
+      .log-time {
+        color: #888;
+        font-family: monospace;
+        font-size: 0.75rem;
+        user-select: none;
+        margin-right: 4px;
+      }
+      .log-user {
+        color: #0052cc;
+        font-weight: 500;
+      }
+      .log-model {
+        color: #0a7c42;
+        font-weight: 500;
+      }
+      .log-events {
+        color: #b45309;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-audio {
+        color: #7c3aed;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-usage {
+        color: #0284c7;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-tools {
+        color: #be185d;
+        font-family: monospace;
+        font-size: 0.82rem;
+      }
+      .log-system {
+        color: #475569;
+      }
+      .log-errors {
+        color: #dc2626;
+        font-weight: 500;
+      }
+
+      /* Log event visibility filters */
+      .hide-user .log-user {
+        display: none;
+      }
+      .hide-model .log-model {
+        display: none;
+      }
+      .hide-events .log-events {
+        display: none;
+      }
+      .hide-audio .log-audio {
+        display: none;
+      }
+      .hide-usage .log-usage {
+        display: none;
+      }
+      .hide-tools .log-tools {
+        display: none;
+      }
+      .hide-system .log-system {
+        display: none;
+      }
+      .hide-errors .log-errors {
+        display: none;
+      }
+
+      #status {
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OpenAI GPT-Realtime-2.1 Mini — Prototype</h1>
+
+    <!-- Hidden audio element for WebRTC model audio output -->
+    <audio id="remoteAudio" autoplay></audio>
+
+    <div class="row">
+      <div style="flex: 2">
+        <label for="apiKey">OpenAI API Key (or Ephemeral Client Secret ek_...)</label>
+        <input type="password" id="apiKey" autocomplete="off" placeholder="sk-... or ek_..." />
+      </div>
+      <div>
+        <label for="voiceSel">Voice</label>
+        <select id="voiceSel"></select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex: 3">
+        <label for="sysInstr">System instruction</label>
+        <textarea id="sysInstr" rows="2">You are a helpful and concise assistant.</textarea>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="micSel">Microphone</label>
+        <select id="micSel"></select>
+      </div>
+      <div>
+        <label for="camSel">Webcam</label>
+        <select id="camSel"></select>
+      </div>
+      <div style="flex: 0">
+        <button id="refreshDevices" type="button">↻</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex: 0">
+        <button id="connectBtn" type="button">Connect</button>
+        <button id="disconnectBtn" type="button" disabled>Disconnect</button>
+      </div>
+      <div><span id="status">disconnected</span></div>
+    </div>
+
+    <div class="filter-bar">
+      <strong style="font-size: 0.8rem; color: #444">Filters:</strong>
+      <label><input type="checkbox" id="flt-user" checked /> <span style="color: #0052cc">● User</span></label>
+      <label><input type="checkbox" id="flt-model" checked /> <span style="color: #0a7c42">● Model</span></label>
+      <label><input type="checkbox" id="flt-events" checked /> <span style="color: #b45309">● Events</span></label>
+      <label><input type="checkbox" id="flt-audio" checked /> <span style="color: #7c3aed">● Audio</span></label>
+      <label><input type="checkbox" id="flt-usage" checked /> <span style="color: #0284c7">● Usage</span></label>
+      <label><input type="checkbox" id="flt-tools" checked /> <span style="color: #be185d">● Tools</span></label>
+      <label><input type="checkbox" id="flt-system" checked /> <span style="color: #475569">● System</span></label>
+      <label><input type="checkbox" id="flt-errors" checked /> <span style="color: #dc2626">● Errors</span></label>
+      <button id="clearLogBtn" type="button" style="margin-left: auto; font-size: 0.75rem">Clear log</button>
+    </div>
+
+    <div class="main">
+      <div class="left">
+        <video id="preview" autoplay muted playsinline></video>
+        <button id="captureBtn" type="button" disabled>📷 Send frame as context (no response)</button>
+      </div>
+      <div class="right">
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import OpenAI from "https://esm.sh/openai";
+
+      const MODEL = "gpt-realtime-2.1-mini";
+      const REASONING_EFFORT = "low"; // Lowest reasoning effort supported
+      const REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+      const CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
+
+      // OpenAI supported voices
+      const VOICES = [
+        ["marin", "Warm & Natural (Recommended)"],
+        ["cedar", "Crisp & Clear (Recommended)"],
+        ["alloy", "Neutral & Balanced"],
+        ["ash", "Soft & Gentle"],
+        ["ballad", "Melodic & Expressive"],
+        ["coral", "Warm & Friendly"],
+        ["echo", "Deep & Resonant"],
+        ["sage", "Calm & Wise"],
+        ["shimmer", "Bright & Energetic"],
+        ["verse", "Dynamic & Expressive"],
+      ];
+
+      const $ = (id) => document.getElementById(id);
+      const logEl = $("log");
+      function ts() {
+        return new Date().toTimeString().slice(0, 8);
+      }
+
+      // Smart auto-scroll
+      let autoScroll = true;
+      const SCROLL_THRESHOLD = 30;
+
+      logEl.addEventListener("scroll", () => {
+        const distanceFromBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight;
+        autoScroll = distanceFromBottom <= SCROLL_THRESHOLD;
+      });
+
+      function maybeScrollToBottom() {
+        if (autoScroll) {
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      }
+
+      function log(text, category = "system") {
+        const d = document.createElement("div");
+        d.className = `log-item log-${category}`;
+        const timeSpan = document.createElement("span");
+        timeSpan.className = "log-time";
+        timeSpan.textContent = ts();
+        d.appendChild(timeSpan);
+        const textNode = document.createTextNode(text);
+        d.appendChild(textNode);
+        logEl.appendChild(d);
+        maybeScrollToBottom();
+        return d;
+      }
+
+      function logEv(name, detail, category = "events") {
+        log("▸ " + name + (detail !== undefined && detail !== "" ? " " + detail : ""), category);
+      }
+
+      // Filter management
+      const filterCategories = ["user", "model", "events", "audio", "usage", "tools", "system", "errors"];
+      filterCategories.forEach((cat) => {
+        const cb = $("flt-" + cat);
+        if (!cb) return;
+        const update = () => {
+          logEl.classList.toggle("hide-" + cat, !cb.checked);
+          maybeScrollToBottom();
+        };
+        cb.addEventListener("change", update);
+        update();
+      });
+
+      $("clearLogBtn").onclick = () => {
+        logEl.innerHTML = "";
+        userLine = null;
+        modelLine = null;
+        autoScroll = true;
+      };
+
+      // Populate voices
+      VOICES.forEach(([name, desc]) => {
+        const o = document.createElement("option");
+        o.value = name;
+        o.textContent = name + " — " + desc;
+        $("voiceSel").appendChild(o);
+      });
+
+      // Settings persistence
+      $("apiKey").value = localStorage.getItem("openai_api_key") || "";
+      if (localStorage.getItem("openai_sys_instr") !== null) {
+        $("sysInstr").value = localStorage.getItem("openai_sys_instr");
+      }
+      $("voiceSel").value = localStorage.getItem("openai_voice") || "marin";
+
+      $("apiKey").addEventListener("input", (e) => localStorage.setItem("openai_api_key", e.target.value));
+      $("sysInstr").addEventListener("input", (e) => localStorage.setItem("openai_sys_instr", e.target.value));
+      $("voiceSel").addEventListener("change", (e) => localStorage.setItem("openai_voice", e.target.value));
+
+      // Device management
+      async function refreshDevices() {
+        try {
+          const tmp = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          tmp.getTracks().forEach((t) => t.stop());
+        } catch (e) {
+          log("Permission note: " + e.message, "errors");
+        }
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        for (const [sel, kind] of [
+          [$("micSel"), "audioinput"],
+          [$("camSel"), "videoinput"],
+        ]) {
+          const prev = sel.value;
+          sel.innerHTML = "";
+          devs
+            .filter((d) => d.kind === kind)
+            .forEach((d, i) => {
+              const o = document.createElement("option");
+              o.value = d.deviceId;
+              o.textContent = d.label || kind + " " + (i + 1);
+              sel.appendChild(o);
+            });
+          if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+        }
+      }
+      $("refreshDevices").onclick = refreshDevices;
+      refreshDevices();
+
+      // State
+      let pc = null;
+      let dc = null;
+      let micStream = null;
+      let camStream = null;
+      let userLine = null;
+      let modelLine = null;
+
+      function setStatus(s) {
+        $("status").textContent = s;
+      }
+
+      // Mint ephemeral client token or reuse provided ephemeral key
+      async function getEphemeralToken(rawKey) {
+        if (rawKey.startsWith("ek_")) {
+          logEv("client.ephemeralKey", "using direct ephemeral key", "system");
+          return rawKey;
+        }
+
+        logEv("client.ephemeralToken", "minting client secret from API key...", "system");
+        const resp = await fetch(CLIENT_SECRETS_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${rawKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session: {
+              type: "realtime",
+              model: MODEL,
+              reasoning: {
+                effort: REASONING_EFFORT,
+              },
+              audio: {
+                output: {
+                  voice: $("voiceSel").value,
+                },
+              },
+            },
+          }),
+        });
+
+        if (!resp.ok) {
+          throw new Error("Client secret minting failed: " + resp.status + " " + (await resp.text()));
+        }
+
+        const data = await resp.json();
+        const token = data.value || data.client_secret?.value;
+        if (!token) {
+          throw new Error("No ephemeral token in response: " + JSON.stringify(data));
+        }
+        return token;
+      }
+
+      // Camera streaming
+      async function startCam(deviceId) {
+        if (camStream) {
+          camStream.getTracks().forEach((t) => t.stop());
+          camStream = null;
+        }
+        camStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            width: { ideal: 1280, max: 1280 },
+            height: { ideal: 720, max: 720 },
+          },
+        });
+        $("preview").srcObject = camStream;
+        logEv("cam.started", camStream.getVideoTracks()[0].label, "system");
+      }
+
+      $("camSel").addEventListener("change", () => {
+        startCam($("camSel").value).catch((e) => log("Webcam error: " + e.message, "errors"));
+      });
+      setTimeout(() => {
+        if ($("camSel").value) startCam($("camSel").value).catch(() => {});
+      }, 1200);
+
+      // Frame capture button (Send image context to session without prompting a response)
+      $("captureBtn").onclick = () => {
+        const v = $("preview");
+        if (!dc || dc.readyState !== "open" || !v.videoWidth) return;
+
+        const scale = Math.min(1, 1280 / v.videoWidth, 720 / v.videoHeight);
+        const c = document.createElement("canvas");
+        c.width = Math.round(v.videoWidth * scale);
+        c.height = Math.round(v.videoHeight * scale);
+        c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+        const dataUrl = c.toDataURL("image/jpeg", 0.8);
+
+        const event = {
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              {
+                type: "input_image",
+                image_url: dataUrl,
+              },
+            ],
+          },
+        };
+
+        dc.send(JSON.stringify(event));
+        const estKb = Math.round((dataUrl.length * 0.75) / 1024);
+        logEv("client.frameSent", `${c.width}x${c.height} jpeg ~${estKb} KB (context added, no response triggered)`, "events");
+      };
+
+      // Server event dispatcher
+      function handleServerEvent(ev) {
+        switch (ev.type) {
+          case "session.created":
+            logEv("session.created", "ID=" + (ev.session?.id || ""), "events");
+            break;
+
+          case "session.updated":
+            logEv("session.updated", "voice=" + (ev.session?.audio?.output?.voice || $("voiceSel").value), "events");
+            break;
+
+          case "input_audio_buffer.speech_started":
+            logEv("speech_started", "item_id=" + (ev.item_id || ""), "audio");
+            break;
+
+          case "input_audio_buffer.speech_stopped":
+            logEv("speech_stopped", "item_id=" + (ev.item_id || ""), "audio");
+            break;
+
+          case "input_audio_buffer.committed":
+            logEv("input_audio_buffer.committed", "item_id=" + (ev.item_id || ""), "audio");
+            break;
+
+          // Input transcription events
+          case "conversation.item.input_audio_transcription.completed":
+          case "response.input_audio_transcription.completed": {
+            const text = ev.transcript || ev.text || "";
+            if (text) {
+              if (!userLine) {
+                userLine = document.createElement("div");
+                userLine.className = "log-item log-user";
+                const tsSpan = document.createElement("span");
+                tsSpan.className = "log-time";
+                tsSpan.textContent = ts();
+                userLine.appendChild(tsSpan);
+                const prefix = document.createElement("strong");
+                prefix.textContent = "You: ";
+                userLine.appendChild(prefix);
+                const textSpan = document.createElement("span");
+                userLine.appendChild(textSpan);
+                logEl.appendChild(userLine);
+              }
+              userLine.lastChild.textContent += text;
+              maybeScrollToBottom();
+            }
+            break;
+          }
+
+          // Model output transcription & text streams
+          case "response.audio_transcript.delta":
+          case "response.output_audio_transcript.delta":
+          case "response.output_text.delta":
+          case "response.text.delta": {
+            const delta = ev.delta || ev.text || "";
+            if (delta) {
+              if (!modelLine) {
+                modelLine = document.createElement("div");
+                modelLine.className = "log-item log-model";
+                const tsSpan = document.createElement("span");
+                tsSpan.className = "log-time";
+                tsSpan.textContent = ts();
+                modelLine.appendChild(tsSpan);
+                const prefix = document.createElement("strong");
+                prefix.textContent = "GPT-Realtime: ";
+                modelLine.appendChild(prefix);
+                const textSpan = document.createElement("span");
+                modelLine.appendChild(textSpan);
+                logEl.appendChild(modelLine);
+              }
+              modelLine.lastChild.textContent += delta;
+              maybeScrollToBottom();
+            }
+            break;
+          }
+
+          case "response.audio_transcript.done":
+          case "response.output_audio_transcript.done":
+          case "response.output_text.done":
+            logEv("model.transcript.done", "", "events");
+            break;
+
+          case "response.created":
+            logEv("response.created", ev.response?.id || "", "events");
+            break;
+
+          case "response.done": {
+            const resp = ev.response;
+            if (resp?.usage) {
+              const u = resp.usage;
+              logEv(
+                "usageMetadata",
+                `input=${u.total_tokens ? u.input_tokens || 0 : 0} output=${u.output_tokens || 0} reasoning=${u.output_token_details?.reasoning_tokens || 0} total=${u.total_tokens || 0}`,
+                "usage",
+              );
+            }
+            logEv("response.done", "turn completed", "events");
+            userLine = null;
+            modelLine = null;
+            break;
+          }
+
+          case "response.output_item.added":
+            if (ev.item?.type === "function_call") {
+              logEv("toolCall.invoked", `${ev.item.name}(${ev.item.arguments || ""})`, "tools");
+            }
+            break;
+
+          case "response.function_call_arguments.delta":
+            logEv("toolCall.arguments.delta", ev.delta || "", "tools");
+            break;
+
+          case "response.function_call_arguments.done":
+            logEv("toolCall.arguments.done", ev.arguments || "", "tools");
+            break;
+
+          case "rate_limits.updated":
+            logEv("rate_limits", JSON.stringify(ev.rate_limits?.[0] || {}), "usage");
+            break;
+
+          case "error":
+            log(`[Server Error] ${ev.error?.message || JSON.stringify(ev)}`, "errors");
+            break;
+
+          default:
+            if (ev.type && !ev.type.includes("audio.delta")) {
+              logEv(ev.type, "", "events");
+            }
+            break;
+        }
+      }
+
+      // Connect via WebRTC to OpenAI Realtime
+      $("connectBtn").onclick = async () => {
+        const apiKey = $("apiKey").value.trim();
+        if (!apiKey) {
+          log("Set an OpenAI API Key first.", "errors");
+          return;
+        }
+
+        $("connectBtn").disabled = true;
+
+        try {
+          setStatus("authorizing…");
+          const ephemeralToken = await getEphemeralToken(apiKey);
+
+          if (!camStream) {
+            await startCam($("camSel").value).catch((e) => log("Webcam notice: " + e.message, "errors"));
+          }
+
+          setStatus("initiating WebRTC…");
+          pc = new RTCPeerConnection();
+
+          // Remote audio element handling
+          const remoteAudio = $("remoteAudio");
+          pc.ontrack = (e) => {
+            remoteAudio.srcObject = e.streams[0];
+            logEv("webrtc.ontrack", "remote audio stream connected", "audio");
+          };
+
+          // Capture microphone stream
+          const micDeviceId = $("micSel").value;
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: micDeviceId
+              ? {
+                  deviceId: { exact: micDeviceId },
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                }
+              : {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                },
+          });
+          const micTrack = micStream.getAudioTracks()[0];
+          pc.addTrack(micTrack, micStream);
+          logEv("mic.started", micTrack.label, "system");
+
+          // WebRTC Data Channel for Realtime control events
+          dc = pc.createDataChannel("oai-events");
+
+          dc.onopen = () => {
+            setStatus("connected · " + $("voiceSel").value);
+            $("disconnectBtn").disabled = false;
+            $("captureBtn").disabled = false;
+            logEv("dc.open", "Realtime DataChannel open", "events");
+
+            // Initial session.update configuration
+            const sessionUpdate = {
+              type: "session.update",
+              session: {
+                type: "realtime",
+                model: MODEL,
+                output_modalities: ["audio"],
+                reasoning: {
+                  effort: REASONING_EFFORT,
+                },
+                audio: {
+                  input: {
+                    format: { type: "audio/pcm", rate: 24000 },
+                    turn_detection: {
+                      type: "semantic_vad",
+                      create_response: true,
+                      interrupt_response: true,
+                    },
+                    transcription: {
+                      model: "gpt-live-transcribe",
+                    },
+                  },
+                  output: {
+                    format: { type: "audio/pcm" },
+                    voice: $("voiceSel").value,
+                  },
+                },
+              },
+            };
+
+            const si = $("sysInstr").value.trim();
+            if (si) {
+              sessionUpdate.session.instructions = si;
+            }
+
+            dc.send(JSON.stringify(sessionUpdate));
+            logEv("client.session.update", `model=${MODEL} reasoning=${REASONING_EFFORT} voice=${$("voiceSel").value}`, "events");
+          };
+
+          dc.onmessage = (e) => {
+            try {
+              const data = typeof e.data === "string" ? JSON.parse(e.data) : JSON.parse(new TextDecoder().decode(e.data));
+              handleServerEvent(data);
+            } catch (err) {
+              log("Parse error: " + err.message, "errors");
+            }
+          };
+
+          dc.onerror = (err) => log("DataChannel error: " + (err.message || err), "errors");
+
+          dc.onclose = () => {
+            logEv("dc.close", "DataChannel closed", "events");
+            teardown();
+          };
+
+          // WebRTC Offer / Answer exchange with /v1/realtime/calls
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          logEv("webrtc.sdpOffer", "sending offer to OpenAI Realtime endpoint", "events");
+          const sdpResponse = await fetch(REALTIME_CALLS_URL, {
+            method: "POST",
+            body: offer.sdp,
+            headers: {
+              Authorization: `Bearer ${ephemeralToken}`,
+              "Content-Type": "application/sdp",
+            },
+          });
+
+          if (!sdpResponse.ok) {
+            throw new Error(`WebRTC handshake failed: ${sdpResponse.status} ${await sdpResponse.text()}`);
+          }
+
+          const answerSdp = await sdpResponse.text();
+          await pc.setRemoteDescription({
+            type: "answer",
+            sdp: answerSdp,
+          });
+
+          logEv("webrtc.sdpAnswer", "remote description configured successfully", "events");
+        } catch (e) {
+          log("Connection failed: " + e.message, "errors");
+          teardown();
+        }
+      };
+
+      $("disconnectBtn").onclick = () => {
+        teardown();
+      };
+
+      function teardown() {
+        if (dc) {
+          try {
+            dc.close();
+          } catch (_) {}
+          dc = null;
+        }
+        if (pc) {
+          try {
+            pc.close();
+          } catch (_) {}
+          pc = null;
+        }
+        if (micStream) {
+          micStream.getTracks().forEach((t) => t.stop());
+          micStream = null;
+        }
+
+        const remoteAudio = $("remoteAudio");
+        if (remoteAudio.srcObject) {
+          remoteAudio.srcObject.getTracks().forEach((t) => t.stop());
+          remoteAudio.srcObject = null;
+        }
+
+        $("connectBtn").disabled = false;
+        $("disconnectBtn").disabled = true;
+        $("captureBtn").disabled = true;
+        setStatus("disconnected");
+        userLine = null;
+        modelLine = null;
+      }
+    </script>
+  </body>
+</html>
