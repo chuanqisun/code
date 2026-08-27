@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bookshelf Builder - Binary Division</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        background: #f0f0f0;
+        font-family: sans-serif;
+      }
+      #shelfCanvas {
+        background: #fff;
+        cursor: crosshair;
+      }
+      .controls {
+        margin-bottom: 10px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      button {
+        padding: 4px 8px;
+        cursor: pointer;
+      }
+      label {
+        font-size: 14px;
+        cursor: pointer;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <button id="resetBtn">Reset</button>
+      <label><input type="checkbox" id="guidesToggle" checked /> Show guides</label>
+    </div>
+
+    <canvas id="shelfCanvas" width="800" height="600"></canvas>
+
+    <script>
+      const canvas = document.getElementById("shelfCanvas");
+      const ctx = canvas.getContext("2d");
+      const resetBtn = document.getElementById("resetBtn");
+      const guidesToggle = document.getElementById("guidesToggle");
+
+      const MIN_SIZE = 20;
+      let showGuides = true;
+
+      class ShelfNode {
+        constructor(x, y, w, h) {
+          this.x = Math.round(x);
+          this.y = Math.round(y);
+          this.w = Math.round(w);
+          this.h = Math.round(h);
+          this.splitType = null;
+          this.splitPos = 0;
+          this.left = null;
+          this.right = null;
+        }
+
+        isLeaf() {
+          return this.splitType === null;
+        }
+      }
+
+      let root = new ShelfNode(0, 0, canvas.width, canvas.height);
+      let mouse = { x: -1, y: -1, leaf: null, quad: null };
+
+      function findLeaf(node, x, y) {
+        if (!node) return null;
+        if (x < node.x || x >= node.x + node.w || y < node.y || y >= node.y + node.h) return null;
+        if (node.isLeaf()) return node;
+
+        if (node.splitType === "v") {
+          return x < node.splitPos ? findLeaf(node.left, x, y) : findLeaf(node.right, x, y);
+        } else {
+          return y < node.splitPos ? findLeaf(node.left, x, y) : findLeaf(node.right, x, y);
+        }
+      }
+
+      function getQuadrant(node, px, py) {
+        const cx = node.x + node.w / 2;
+        const cy = node.y + node.h / 2;
+        const nx = (px - cx) / node.w;
+        const ny = (py - cy) / node.h;
+
+        if (Math.abs(ny) > Math.abs(nx)) {
+          return ny < 0 ? "N" : "S";
+        } else {
+          return nx > 0 ? "E" : "W";
+        }
+      }
+
+      function splitLeaf(leaf, px, py, quad) {
+        if (quad === "N" || quad === "S") {
+          let splitX = Math.round(px);
+          splitX = Math.max(leaf.x + MIN_SIZE, Math.min(leaf.x + leaf.w - MIN_SIZE, splitX));
+          leaf.splitType = "v";
+          leaf.splitPos = splitX;
+          leaf.left = new ShelfNode(leaf.x, leaf.y, splitX - leaf.x, leaf.h);
+          leaf.right = new ShelfNode(splitX, leaf.y, leaf.x + leaf.w - splitX, leaf.h);
+        } else if (quad === "E" || quad === "W") {
+          let splitY = Math.round(py);
+          splitY = Math.max(leaf.y + MIN_SIZE, Math.min(leaf.y + leaf.h - MIN_SIZE, splitY));
+          leaf.splitType = "h";
+          leaf.splitPos = splitY;
+          leaf.left = new ShelfNode(leaf.x, leaf.y, leaf.w, splitY - leaf.y);
+          leaf.right = new ShelfNode(leaf.x, splitY, leaf.w, leaf.y + leaf.h - splitY);
+        }
+      }
+
+      function getTrianglePath(node, quad) {
+        const cx = node.x + node.w / 2;
+        const cy = node.y + node.h / 2;
+        const path = new Path2D();
+
+        path.moveTo(cx, cy);
+        if (quad === "N") {
+          path.lineTo(node.x, node.y);
+          path.lineTo(node.x + node.w, node.y);
+        } else if (quad === "S") {
+          path.lineTo(node.x, node.y + node.h);
+          path.lineTo(node.x + node.w, node.y + node.h);
+        } else if (quad === "W") {
+          path.lineTo(node.x, node.y);
+          path.lineTo(node.x, node.y + node.h);
+        } else if (quad === "E") {
+          path.lineTo(node.x + node.w, node.y);
+          path.lineTo(node.x + node.w, node.y + node.h);
+        }
+        path.closePath();
+        return path;
+      }
+
+      function drawGuides(node) {
+        if (node.isLeaf()) {
+          const { x, y, w, h } = node;
+
+          if (node === mouse.leaf && mouse.quad) {
+            ctx.fillStyle = "#e8e8e8";
+            ctx.fill(getTrianglePath(node, mouse.quad));
+          }
+
+          ctx.strokeStyle = "#e0e0e0";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(x + 0.5, y + 0.5);
+          ctx.lineTo(x + w - 0.5, y + h - 0.5);
+          ctx.moveTo(x + w - 0.5, y + 0.5);
+          ctx.lineTo(x + 0.5, y + h - 0.5);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          drawGuides(node.left);
+          drawGuides(node.right);
+        }
+      }
+
+      function drawStructureLines(node) {
+        if (!node.isLeaf()) {
+          if (node.splitType === "v") {
+            const sx = node.splitPos + 0.5;
+            ctx.moveTo(sx, node.y);
+            ctx.lineTo(sx, node.y + node.h);
+          } else {
+            const sy = node.splitPos + 0.5;
+            ctx.moveTo(node.x, sy);
+            ctx.lineTo(node.x + node.w, sy);
+          }
+          drawStructureLines(node.left);
+          drawStructureLines(node.right);
+        }
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (showGuides) {
+          drawGuides(root);
+        }
+
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        // Outer 4 sides of the root rectangle
+        ctx.rect(0.5, 0.5, canvas.width - 1, canvas.height - 1);
+        // All interior split lines
+        drawStructureLines(root);
+
+        // Draft line for active split preview
+        if (mouse.leaf && mouse.quad) {
+          const leaf = mouse.leaf;
+          if (mouse.quad === "N" || mouse.quad === "S") {
+            let splitX = Math.round(mouse.x);
+            splitX = Math.max(leaf.x + MIN_SIZE, Math.min(leaf.x + leaf.w - MIN_SIZE, splitX));
+            ctx.moveTo(splitX + 0.5, leaf.y);
+            ctx.lineTo(splitX + 0.5, leaf.y + leaf.h);
+          } else {
+            let splitY = Math.round(mouse.y);
+            splitY = Math.max(leaf.y + MIN_SIZE, Math.min(leaf.y + leaf.h - MIN_SIZE, splitY));
+            ctx.moveTo(leaf.x, splitY + 0.5);
+            ctx.lineTo(leaf.x + leaf.w, splitY + 0.5);
+          }
+        }
+        ctx.stroke();
+      }
+
+      canvas.addEventListener("mousemove", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = Math.round(e.clientX - rect.left);
+        mouse.y = Math.round(e.clientY - rect.top);
+
+        mouse.leaf = findLeaf(root, mouse.x, mouse.y);
+        mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
+        render();
+      });
+
+      canvas.addEventListener("mouseleave", () => {
+        mouse.leaf = null;
+        mouse.quad = null;
+        render();
+      });
+
+      canvas.addEventListener("click", () => {
+        if (mouse.leaf && mouse.quad) {
+          splitLeaf(mouse.leaf, mouse.x, mouse.y, mouse.quad);
+          mouse.leaf = findLeaf(root, mouse.x, mouse.y);
+          mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
+          render();
+        }
+      });
+
+      resetBtn.addEventListener("click", () => {
+        root = new ShelfNode(0, 0, canvas.width, canvas.height);
+        render();
+      });
+
+      guidesToggle.addEventListener("change", (e) => {
+        showGuides = e.target.checked;
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>

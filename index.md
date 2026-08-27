@@ -59,6 +59,7 @@
 - [ASCII Box](./ascii-box/)
 - [Assembly theory](./assembly-theory/)
 - [Babel](./babel/)
+- [Binary divider](./binary-divider/)
 - [Box It](./box-it/)
 - [Braille 3D](./braille-3d/)
 - [Bubbles](./bubbles/)
