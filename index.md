@@ -99,6 +99,7 @@
 - [Media Lab Game of Life](./media-lab-game-of-life/)
 - [Metaball Surface Geometry](./metaball-surface-geometry/)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
+- [NeuroStack](./neurostack/)
 - [Odyssey](./odyssey/)
 - [OpenAI Realtime Console](./openai-realtime-console/)
 - [Paper CAD](https://chuanqisun.github.io/paper-cad/)
