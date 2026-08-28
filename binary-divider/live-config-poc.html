@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flux 2 [klein] Realtime Binary Divider Pad</title>
+    <style>
+      :root {
+        --color-text: #222;
+        --color-bg: #fafafa;
+        --color-border: #ccc;
+        --color-dark-wood: #60462c;
+        --color-light-wood: #c4a98a;
+        --color-guide-dash: rgba(212, 163, 115, 0.4);
+        --color-guide-hover: rgba(212, 163, 115, 0.22);
+        --color-canvas-bg: #d7d8d3;
+        --panel-size: 352px;
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        margin: 20px;
+        line-height: 1.4;
+        color: var(--color-text);
+        background: var(--color-bg);
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 1.5rem;
+      }
+
+      .form-group {
+        margin-bottom: 12px;
+
+        > label {
+          display: block;
+          font-weight: bold;
+          margin-bottom: 4px;
+        }
+      }
+
+      input[type="password"],
+      textarea {
+        width: 100%;
+        max-width: 600px;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        font-family: inherit;
+      }
+
+      textarea {
+        resize: vertical;
+        height: 60px;
+      }
+
+      .controls-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .mode-group {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        background: #eee;
+        padding: 6px 12px;
+        border-radius: 4px;
+
+        label {
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 0.95rem;
+        }
+      }
+
+      .inline-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .workspace {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-top: 15px;
+      }
+
+      .panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      canvas,
+      .output-frame {
+        width: var(--panel-size);
+        height: var(--panel-size);
+        border: 1px solid var(--color-border);
+        box-sizing: border-box;
+      }
+
+      #draw-canvas {
+        cursor: crosshair;
+        background: #fff;
+        touch-action: none;
+      }
+
+      .output-frame {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f0f0f0;
+        overflow: hidden;
+
+        img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: none;
+
+          &.visible {
+            display: block;
+          }
+        }
+      }
+
+      #status {
+        font-weight: bold;
+        font-family: monospace;
+
+        &.connected {
+          color: green;
+        }
+        &.disconnected {
+          color: #666;
+        }
+        &.generating {
+          color: #d97706;
+        }
+        &.error {
+          color: red;
+        }
+      }
+
+      .fps-counter {
+        font-family: monospace;
+        font-size: 0.85rem;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Flux 2 [klein] Realtime Binary Divider Pad</h1>
+
+    <div class="form-group">
+      <label for="api-key">fal.ai API Key:</label>
+      <input type="password" id="api-key" placeholder="Enter your FAL_KEY (e.g. key_id:key_secret)" autocomplete="off" />
+    </div>
+
+    <div class="controls-row">
+      <button id="connect-btn">Connect WebSocket</button>
+      <button id="disconnect-btn" disabled>Disconnect</button>
+      <span>Status: <span id="status" class="disconnected">Disconnected</span></span>
+      <span id="fps-display" class="fps-counter"></span>
+    </div>
+
+    <div class="form-group">
+      <label for="prompt">Prompt:</label>
+      <textarea id="prompt" placeholder="Describe the image you want to generate...">
+Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decorative art, architectural photography, studio lighting</textarea
+      >
+    </div>
+
+    <div class="form-group">
+      <label>Generation Mode:</label>
+      <div class="mode-group">
+        <label><input type="radio" name="mode" value="manual" checked /> 1. Manual Send</label>
+        <label><input type="radio" name="mode" value="stroke" /> 2. Send on Split End</label>
+        <label><input type="radio" name="mode" value="continuous" /> 3. Continuous (30 FPS Stream)</label>
+      </div>
+    </div>
+
+    <div class="controls-row">
+      <button id="send-btn" disabled>Generate Image (Manual)</button>
+      <button id="clear-btn">Reset Grid</button>
+      <label class="inline-checkbox"> <input type="checkbox" id="guides-toggle" checked /> Show Split Guides </label>
+    </div>
+
+    <div class="workspace">
+      <div class="panel">
+        <strong>Interactive Divider Canvas:</strong>
+        <canvas id="draw-canvas" width="352" height="352"></canvas>
+      </div>
+      <div class="panel">
+        <strong>Generated Output:</strong>
+        <div class="output-frame">
+          <span id="output-placeholder">No output yet</span>
+          <img id="output-img" alt="Generated visual" />
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { fal } from "https://esm.sh/@fal-ai/client@1?bundle";
+
+      // ── Constants ─────────────────────────────────────────────────────────────
+
+      const FAL_APP_ID = "fal-ai/flux-2/klein";
+      const CONNECTION_KEY = "flux-2-klein-pad-session";
+      const STREAM_FPS = 30;
+      const MIN_SIZE = 14;
+      const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
+      const CAPTURE_SIZE = 704;
+      const STORAGE = { apiKey: "fal_flux_klein_api_key", prompt: "fal_flux_klein_prompt", mode: "fal_flux_klein_mode" };
+
+      const THEME = {
+        darkWood: getComputedStyle(document.documentElement).getPropertyValue("--color-dark-wood").trim(),
+        lightWood: getComputedStyle(document.documentElement).getPropertyValue("--color-light-wood").trim(),
+        guideDash: getComputedStyle(document.documentElement).getPropertyValue("--color-guide-dash").trim(),
+        guideHover: getComputedStyle(document.documentElement).getPropertyValue("--color-guide-hover").trim(),
+        canvasBg: getComputedStyle(document.documentElement).getPropertyValue("--color-canvas-bg").trim(),
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const el = {
+        apiKey: $("api-key"),
+        connect: $("connect-btn"),
+        disconnect: $("disconnect-btn"),
+        status: $("status"),
+        fps: $("fps-display"),
+        prompt: $("prompt"),
+        send: $("send-btn"),
+        clear: $("clear-btn"),
+        guides: $("guides-toggle"),
+        canvas: $("draw-canvas"),
+        output: $("output-img"),
+        placeholder: $("output-placeholder"),
+      };
+      const ctx = el.canvas.getContext("2d");
+
+      const boxH = Math.round(el.canvas.height * 0.9);
+      const boxW = Math.round(boxH / GOLDEN_RATIO);
+      const boxX = Math.round((el.canvas.width - boxW) / 2);
+      const boxY = Math.round(el.canvas.height * 0.05);
+
+      // ── State ─────────────────────────────────────────────────────────────────
+
+      const createNode = (x, y, w, h) => ({
+        x: Math.round(x),
+        y: Math.round(y),
+        w: Math.round(w),
+        h: Math.round(h),
+        splitType: null,
+        splitPos: 0,
+        left: null,
+        right: null,
+      });
+      const isLeaf = (node) => node.splitType === null;
+
+      let root = createNode(boxX, boxY, boxW, boxH);
+      let mouse = { x: -1, y: -1, leaf: null, quad: null };
+      let connection = null;
+      let currentMode = "manual";
+      let showGuides = true;
+      let streamInterval = null;
+      let fpsInterval = null;
+      let framesSent = 0;
+
+      // ── Setup ─────────────────────────────────────────────────────────────────
+
+      const restorePersistedSettings = () => {
+        el.apiKey.value = localStorage.getItem(STORAGE.apiKey) ?? "";
+        el.prompt.value = localStorage.getItem(STORAGE.prompt) ?? el.prompt.value;
+
+        const savedMode = localStorage.getItem(STORAGE.mode);
+        if (savedMode) {
+          currentMode = savedMode;
+          const radio = document.querySelector(`input[name="mode"][value="${savedMode}"]`);
+          if (radio) radio.checked = true;
+        }
+      };
+
+      const bindEvents = () => {
+        el.apiKey.addEventListener("input", () => localStorage.setItem(STORAGE.apiKey, el.apiKey.value.trim()));
+        el.prompt.addEventListener("input", () => localStorage.setItem(STORAGE.prompt, el.prompt.value));
+
+        document.querySelectorAll('input[name="mode"]').forEach((radio) =>
+          radio.addEventListener("change", () => {
+            currentMode = radio.value;
+            localStorage.setItem(STORAGE.mode, currentMode);
+            applyModeState();
+          }),
+        );
+
+        el.guides.addEventListener("change", () => {
+          showGuides = el.guides.checked;
+          render();
+        });
+        el.connect.addEventListener("click", connectRealtime);
+        el.disconnect.addEventListener("click", disconnectRealtime);
+        el.send.addEventListener("click", sendFrame);
+        el.clear.addEventListener("click", resetDivider);
+
+        el.canvas.addEventListener("mousemove", (e) => updatePointer(getCanvasCoords(e)));
+        el.canvas.addEventListener("mouseleave", () => {
+          mouse.leaf = mouse.quad = null;
+          render();
+        });
+        el.canvas.addEventListener("click", (e) => {
+          updatePointer(getCanvasCoords(e));
+          commitSplit(true);
+        });
+
+        el.canvas.addEventListener(
+          "touchstart",
+          (e) => {
+            e.preventDefault();
+            updatePointer(getCanvasCoords(e));
+          },
+          { passive: false },
+        );
+        el.canvas.addEventListener(
+          "touchmove",
+          (e) => {
+            e.preventDefault();
+            updatePointer(getCanvasCoords(e));
+          },
+          { passive: false },
+        );
+        el.canvas.addEventListener("touchend", () => commitSplit(false));
+      };
+
+      restorePersistedSettings();
+      bindEvents();
+      render();
+
+      // ── Connection ────────────────────────────────────────────────────────────
+
+      function connectRealtime() {
+        const apiKey = el.apiKey.value.trim();
+        if (!apiKey) {
+          alert("Please enter your fal.ai API key.");
+          el.apiKey.focus();
+          return;
+        }
+
+        fal.config({ credentials: apiKey });
+        setStatus("Connecting...", "generating");
+
+        try {
+          connection = fal.realtime.connect(FAL_APP_ID, {
+            connectionKey: CONNECTION_KEY,
+            throttleInterval: 30,
+            onResult: handleResult,
+            onError: (err) => {
+              console.error("[fal connection error]", err);
+              setStatus("Connection Error", "error");
+            },
+          });
+
+          el.connect.disabled = true;
+          el.disconnect.disabled = false;
+          setStatus("Connected", "connected");
+          applyModeState();
+        } catch (err) {
+          console.error(err);
+          setStatus("Failed to connect", "error");
+        }
+      }
+
+      function disconnectRealtime() {
+        stopStream();
+        connection?.close?.();
+        connection = null;
+        el.connect.disabled = false;
+        el.disconnect.disabled = true;
+        el.send.disabled = true;
+        setStatus("Disconnected", "disconnected");
+      }
+
+      function handleResult(result) {
+        if (result?.error || result?.status === "error") {
+          console.warn("[fal error]", result);
+          setStatus("Result error", "error");
+          return;
+        }
+
+        const images = result?.images;
+        if (!images?.length) return;
+
+        const src = toImageSrc(images.at(-1));
+        if (src) {
+          el.output.src = src;
+          el.output.classList.add("visible");
+          el.placeholder.style.display = "none";
+          setStatus("Connected (Live)", "connected");
+        }
+      }
+
+      function sendFrame() {
+        if (!connection) return;
+        if (currentMode !== "continuous") setStatus("Generating...", "generating");
+
+        try {
+          connection.send({
+            image_url: captureCanvasJpeg(),
+            prompt: el.prompt.value || "Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decorative art",
+            image_size: "square",
+            num_inference_steps: 3,
+            seed: 35,
+            output_feedback_strength: 1.0,
+          });
+        } catch (e) {
+          console.error("[Send error]", e);
+          setStatus("Send Error", "error");
+        }
+      }
+
+      // ── Modes & Streaming ─────────────────────────────────────────────────────
+
+      function applyModeState() {
+        currentMode === "continuous" && connection ? startStream() : stopStream();
+        el.send.disabled = !connection || currentMode === "continuous";
+      }
+
+      function startStream() {
+        if (streamInterval) return;
+
+        framesSent = 0;
+        fpsInterval = setInterval(() => {
+          el.fps.textContent = `[Streaming: ~${framesSent} FPS]`;
+          framesSent = 0;
+        }, 1000);
+
+        streamInterval = setInterval(() => {
+          if (connection) {
+            sendFrame();
+            framesSent++;
+          }
+        }, 1000 / STREAM_FPS);
+      }
+
+      function stopStream() {
+        clearInterval(streamInterval);
+        clearInterval(fpsInterval);
+        streamInterval = fpsInterval = null;
+        el.fps.textContent = "";
+      }
+
+      // ── Divider Interaction ───────────────────────────────────────────────────
+
+      function updatePointer({ x, y }) {
+        mouse.x = x;
+        mouse.y = y;
+        mouse.leaf = findLeaf(root, x, y);
+        mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, x, y) : null;
+        render();
+      }
+
+      function commitSplit(keepHover) {
+        if (!mouse.leaf || !mouse.quad) return;
+
+        splitLeaf(mouse.leaf, mouse.x, mouse.y, mouse.quad);
+        mouse.leaf = keepHover ? findLeaf(root, mouse.x, mouse.y) : null;
+        mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
+        render();
+
+        if (currentMode === "stroke" && connection) sendFrame();
+      }
+
+      function splitLeaf(leaf, px, py, quad) {
+        if (quad === "N" || quad === "S") {
+          const splitX = clamp(Math.round(px), leaf.x + MIN_SIZE, leaf.x + leaf.w - MIN_SIZE);
+          Object.assign(leaf, {
+            splitType: "v",
+            splitPos: splitX,
+            left: createNode(leaf.x, leaf.y, splitX - leaf.x, leaf.h),
+            right: createNode(splitX, leaf.y, leaf.x + leaf.w - splitX, leaf.h),
+          });
+        } else {
+          const splitY = clamp(Math.round(py), leaf.y + MIN_SIZE, leaf.y + leaf.h - MIN_SIZE);
+          Object.assign(leaf, {
+            splitType: "h",
+            splitPos: splitY,
+            left: createNode(leaf.x, leaf.y, leaf.w, splitY - leaf.y),
+            right: createNode(leaf.x, splitY, leaf.w, leaf.y + leaf.h - splitY),
+          });
+        }
+      }
+
+      function resetDivider() {
+        root = createNode(boxX, boxY, boxW, boxH);
+        mouse.leaf = mouse.quad = null;
+        render();
+        el.output.classList.remove("visible");
+        el.output.removeAttribute("src");
+        el.placeholder.style.display = "block";
+        if (currentMode === "stroke" && connection) sendFrame();
+      }
+
+      // ── Rendering ─────────────────────────────────────────────────────────────
+
+      function render() {
+        ctx.fillStyle = THEME.canvasBg;
+        ctx.fillRect(0, 0, el.canvas.width, el.canvas.height);
+
+        fillLeafAreas(root);
+        if (showGuides) drawGuides(root);
+
+        ctx.strokeStyle = THEME.lightWood;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.rect(root.x + 0.5, root.y + 0.5, root.w - 1, root.h - 1);
+        traceStructureLines(root);
+        traceSplitPreview();
+        ctx.stroke();
+      }
+
+      function fillLeafAreas(node) {
+        if (isLeaf(node)) {
+          ctx.fillStyle = THEME.darkWood;
+          ctx.fillRect(node.x, node.y, node.w, node.h);
+        } else {
+          fillLeafAreas(node.left);
+          fillLeafAreas(node.right);
+        }
+      }
+
+      function drawGuides(node) {
+        if (!isLeaf(node)) {
+          drawGuides(node.left);
+          drawGuides(node.right);
+          return;
+        }
+
+        const { x, y, w, h } = node;
+
+        if (node === mouse.leaf && mouse.quad) {
+          ctx.fillStyle = THEME.guideHover;
+          ctx.fill(getTrianglePath(node, mouse.quad));
+        }
+
+        ctx.strokeStyle = THEME.guideDash;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(x + 0.5, y + 0.5);
+        ctx.lineTo(x + w - 0.5, y + h - 0.5);
+        ctx.moveTo(x + w - 0.5, y + 0.5);
+        ctx.lineTo(x + 0.5, y + h - 0.5);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      function traceStructureLines(node) {
+        if (isLeaf(node)) return;
+
+        if (node.splitType === "v") {
+          ctx.moveTo(node.splitPos + 0.5, node.y);
+          ctx.lineTo(node.splitPos + 0.5, node.y + node.h);
+        } else {
+          ctx.moveTo(node.x, node.splitPos + 0.5);
+          ctx.lineTo(node.x + node.w, node.splitPos + 0.5);
+        }
+        traceStructureLines(node.left);
+        traceStructureLines(node.right);
+      }
+
+      function traceSplitPreview() {
+        const leaf = mouse.leaf;
+        if (!leaf || !mouse.quad) return;
+
+        if (mouse.quad === "N" || mouse.quad === "S") {
+          const splitX = clamp(Math.round(mouse.x), leaf.x + MIN_SIZE, leaf.x + leaf.w - MIN_SIZE);
+          ctx.moveTo(splitX + 0.5, leaf.y);
+          ctx.lineTo(splitX + 0.5, leaf.y + leaf.h);
+        } else {
+          const splitY = clamp(Math.round(mouse.y), leaf.y + MIN_SIZE, leaf.y + leaf.h - MIN_SIZE);
+          ctx.moveTo(leaf.x, splitY + 0.5);
+          ctx.lineTo(leaf.x + leaf.w, splitY + 0.5);
+        }
+      }
+
+      // ── Pure Helpers ──────────────────────────────────────────────────────────
+
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+      function findLeaf(node, x, y) {
+        if (!node || x < node.x || x >= node.x + node.w || y < node.y || y >= node.y + node.h) return null;
+        if (isLeaf(node)) return node;
+
+        const goLeft = node.splitType === "v" ? x < node.splitPos : y < node.splitPos;
+        return findLeaf(goLeft ? node.left : node.right, x, y);
+      }
+
+      function getQuadrant(node, px, py) {
+        const nx = (px - (node.x + node.w / 2)) / node.w;
+        const ny = (py - (node.y + node.h / 2)) / node.h;
+        return Math.abs(ny) > Math.abs(nx) ? (ny < 0 ? "N" : "S") : nx > 0 ? "E" : "W";
+      }
+
+      function getTrianglePath(node, quad) {
+        const { x, y, w, h } = node;
+        const corners = {
+          N: [
+            [x, y],
+            [x + w, y],
+          ],
+          S: [
+            [x, y + h],
+            [x + w, y + h],
+          ],
+          W: [
+            [x, y],
+            [x, y + h],
+          ],
+          E: [
+            [x + w, y],
+            [x + w, y + h],
+          ],
+        };
+
+        const path = new Path2D();
+        path.moveTo(x + w / 2, y + h / 2);
+        corners[quad].forEach(([cx, cy]) => path.lineTo(cx, cy));
+        path.closePath();
+        return path;
+      }
+
+      function getCanvasCoords(e) {
+        const rect = el.canvas.getBoundingClientRect();
+        const point = e.touches?.[0] ?? e;
+        return {
+          x: Math.round(((point.clientX - rect.left) * el.canvas.width) / rect.width),
+          y: Math.round(((point.clientY - rect.top) * el.canvas.height) / rect.height),
+        };
+      }
+
+      const offscreen = Object.assign(document.createElement("canvas"), { width: CAPTURE_SIZE, height: CAPTURE_SIZE });
+      const offCtx = offscreen.getContext("2d");
+
+      function captureCanvasJpeg() {
+        offCtx.fillStyle = "#fff";
+        offCtx.fillRect(0, 0, CAPTURE_SIZE, CAPTURE_SIZE);
+        offCtx.drawImage(el.canvas, 0, 0, CAPTURE_SIZE, CAPTURE_SIZE);
+        return offscreen.toDataURL("image/jpeg", 0.5);
+      }
+
+      function toImageSrc(img) {
+        if (!img) return null;
+        const mime = img.content_type ?? "image/jpeg";
+        const { content } = img;
+
+        if (typeof content === "string") {
+          return content.startsWith("data:") ? content : `data:${mime};base64,${content}`;
+        }
+
+        if (content instanceof Uint8Array || content instanceof ArrayBuffer) {
+          const bytes = content instanceof Uint8Array ? content : new Uint8Array(content);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+          }
+          return `data:${mime};base64,${btoa(binary)}`;
+        }
+
+        return null;
+      }
+
+      function setStatus(text, type) {
+        el.status.textContent = text;
+        el.status.className = type;
+      }
+    </script>
+  </body>
+</html>

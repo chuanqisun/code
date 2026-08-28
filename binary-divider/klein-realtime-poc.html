@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Flux 2 [klein] Realtime Drawing Pad</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        margin: 20px;
+        line-height: 1.4;
+        color: #222;
+        background: #fafafa;
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 1.5rem;
+      }
+
+      .form-group {
+        margin-bottom: 12px;
+      }
+
+      .form-group label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+
+      input[type="password"],
+      input[type="text"],
+      textarea,
+      select {
+        width: 100%;
+        max-width: 600px;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        font-family: inherit;
+      }
+
+      textarea {
+        resize: vertical;
+        height: 60px;
+      }
+
+      .controls-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .mode-group {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        background: #eee;
+        padding: 6px 12px;
+        border-radius: 4px;
+      }
+
+      .mode-group label {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 0.95rem;
+      }
+
+      .workspace {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-top: 15px;
+      }
+
+      .panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      canvas,
+      .output-frame {
+        width: 352px;
+        height: 352px;
+        border: 1px solid #ccc;
+        background: #ffffff;
+        box-sizing: border-box;
+        touch-action: none;
+      }
+
+      .output-frame {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f0f0f0;
+        overflow: hidden;
+      }
+
+      .output-frame img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+
+      .output-frame img.visible {
+        display: block;
+      }
+
+      #status {
+        font-weight: bold;
+        font-family: monospace;
+      }
+
+      .status-connected {
+        color: green;
+      }
+      .status-disconnected {
+        color: #666;
+      }
+      .status-generating {
+        color: #d97706;
+      }
+      .status-error {
+        color: red;
+      }
+      .fps-counter {
+        font-family: monospace;
+        font-size: 0.85rem;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Flux 2 [klein] Realtime Drawing Pad</h1>
+
+    <!-- API Key Setup -->
+    <div class="form-group">
+      <label for="api-key">fal.ai API Key:</label>
+      <input type="password" id="api-key" placeholder="Enter your FAL_KEY (e.g. key_id:key_secret)" autocomplete="off" />
+    </div>
+
+    <!-- WebSocket Connection Controls -->
+    <div class="controls-row">
+      <button id="connect-btn">Connect WebSocket</button>
+      <button id="disconnect-btn" disabled>Disconnect</button>
+      <span>Status: <span id="status" class="status-disconnected">Disconnected</span></span>
+      <span id="fps-display" class="fps-counter"></span>
+    </div>
+
+    <!-- Prompt Input -->
+    <div class="form-group">
+      <label for="prompt">Prompt:</label>
+      <textarea id="prompt" placeholder="Describe the image you want to generate...">Turn this into a living oil painting, melting gold and sapphire</textarea>
+    </div>
+
+    <!-- Transmission Modes -->
+    <div class="form-group">
+      <label>Generation Mode:</label>
+      <div class="mode-group">
+        <label>
+          <input type="radio" name="mode" value="manual" checked />
+          1. Manual Send
+        </label>
+        <label>
+          <input type="radio" name="mode" value="stroke" />
+          2. Send on Stroke End
+        </label>
+        <label>
+          <input type="radio" name="mode" value="continuous" />
+          3. Continuous (30 FPS Stream)
+        </label>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="controls-row">
+      <button id="send-btn" disabled>Generate Image (Manual)</button>
+      <button id="clear-btn">Clear Canvas</button>
+    </div>
+
+    <!-- Workspace -->
+    <div class="workspace">
+      <!-- Canvas -->
+      <div class="panel">
+        <strong>Drawing Canvas:</strong>
+        <canvas id="draw-canvas" width="352" height="352"></canvas>
+      </div>
+
+      <!-- Output -->
+      <div class="panel">
+        <strong>Generated Output:</strong>
+        <div class="output-frame">
+          <span id="output-placeholder">No output yet</span>
+          <img id="output-img" alt="Generated visual" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script type="module">
+      import { fal } from "https://esm.sh/@fal-ai/client@1?bundle";
+
+      const FAL_APP_ID = "fal-ai/flux-2/klein";
+
+      // ── DOM References ────────────────────────────────────────────────────────
+      const apiKeyInput = document.getElementById("api-key");
+      const connectBtn = document.getElementById("connect-btn");
+      const disconnectBtn = document.getElementById("disconnect-btn");
+      const statusEl = document.getElementById("status");
+      const fpsDisplay = document.getElementById("fps-display");
+      const promptInput = document.getElementById("prompt");
+      const modeRadios = document.querySelectorAll('input[name="mode"]');
+      const sendBtn = document.getElementById("send-btn");
+      const clearBtn = document.getElementById("clear-btn");
+      const canvas = document.getElementById("draw-canvas");
+      const ctx = canvas.getContext("2d");
+      const outputImg = document.getElementById("output-img");
+      const placeholder = document.getElementById("output-placeholder");
+
+      // ── State Variables ───────────────────────────────────────────────────────
+      let connection = null;
+      let currentMode = "manual";
+      let isDrawing = false;
+      let lastX = 0;
+      let lastY = 0;
+      let continuousInterval = null;
+      let framesSentCount = 0;
+      let fpsTimer = null;
+
+      // ── Local Storage Persistence ─────────────────────────────────────────────
+      const STORAGE_KEY_API_KEY = "fal_flux_klein_api_key";
+      const STORAGE_KEY_PROMPT = "fal_flux_klein_prompt";
+      const STORAGE_KEY_MODE = "fal_flux_klein_mode";
+
+      const savedKey = localStorage.getItem(STORAGE_KEY_API_KEY);
+      if (savedKey) apiKeyInput.value = savedKey;
+
+      const savedPrompt = localStorage.getItem(STORAGE_KEY_PROMPT);
+      if (savedPrompt) promptInput.value = savedPrompt;
+
+      const savedMode = localStorage.getItem(STORAGE_KEY_MODE);
+      if (savedMode) {
+        currentMode = savedMode;
+        const radio = document.querySelector(`input[name="mode"][value="${savedMode}"]`);
+        if (radio) radio.checked = true;
+      }
+
+      apiKeyInput.addEventListener("input", (e) => {
+        localStorage.setItem(STORAGE_KEY_API_KEY, e.target.value.trim());
+      });
+
+      promptInput.addEventListener("input", (e) => {
+        localStorage.setItem(STORAGE_KEY_PROMPT, e.target.value);
+      });
+
+      modeRadios.forEach((radio) => {
+        radio.addEventListener("change", (e) => {
+          currentMode = e.target.value;
+          localStorage.setItem(STORAGE_KEY_MODE, currentMode);
+          updateModeState();
+        });
+      });
+
+      // ── Mode Controller ───────────────────────────────────────────────────────
+      function updateModeState() {
+        // Manage continuous streaming interval (30 FPS = ~33.33ms)
+        if (currentMode === "continuous" && connection) {
+          startContinuousStream();
+        } else {
+          stopContinuousStream();
+        }
+
+        sendBtn.disabled = !connection || currentMode === "continuous";
+      }
+
+      function startContinuousStream() {
+        if (continuousInterval) return;
+
+        framesSentCount = 0;
+        fpsTimer = setInterval(() => {
+          fpsDisplay.textContent = `[Streaming: ~${framesSentCount} FPS]`;
+          framesSentCount = 0;
+        }, 1000);
+
+        // 30 FPS = ~33ms
+        continuousInterval = setInterval(() => {
+          if (connection) {
+            sendFrame();
+            framesSentCount++;
+          }
+        }, 1000 / 30);
+      }
+
+      function stopContinuousStream() {
+        if (continuousInterval) {
+          clearInterval(continuousInterval);
+          continuousInterval = null;
+        }
+        if (fpsTimer) {
+          clearInterval(fpsTimer);
+          fpsTimer = null;
+        }
+        fpsDisplay.textContent = "";
+      }
+
+      // ── Canvas Setup ──────────────────────────────────────────────────────────
+      function initCanvas() {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#111111";
+        ctx.lineWidth = 4;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+      }
+      initCanvas();
+
+      function clearCanvas() {
+        initCanvas();
+        outputImg.classList.remove("visible");
+        outputImg.removeAttribute("src");
+        placeholder.style.display = "block";
+        if (currentMode === "stroke" && connection) {
+          sendFrame();
+        }
+      }
+      clearBtn.addEventListener("click", clearCanvas);
+
+      // ── Drawing Events ────────────────────────────────────────────────────────
+      function getCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        if (e.touches && e.touches.length > 0) {
+          return {
+            x: (e.touches[0].clientX - rect.left) * scaleX,
+            y: (e.touches[0].clientY - rect.top) * scaleY,
+          };
+        }
+        return {
+          x: (e.clientX - rect.left) * scaleX,
+          y: (e.clientY - rect.top) * scaleY,
+        };
+      }
+
+      function startDraw(e) {
+        isDrawing = true;
+        const { x, y } = getCoords(e);
+        lastX = x;
+        lastY = y;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+      }
+
+      function draw(e) {
+        if (!isDrawing) return;
+        if (e.cancelable) e.preventDefault();
+        const { x, y } = getCoords(e);
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        lastX = x;
+        lastY = y;
+      }
+
+      function stopDraw() {
+        if (!isDrawing) return;
+        isDrawing = false;
+
+        // Mode 2: Send on stroke completion
+        if (currentMode === "stroke" && connection) {
+          sendFrame();
+        }
+      }
+
+      canvas.addEventListener("mousedown", startDraw);
+      canvas.addEventListener("mousemove", draw);
+      canvas.addEventListener("mouseup", stopDraw);
+      canvas.addEventListener("mouseleave", stopDraw);
+
+      canvas.addEventListener("touchstart", startDraw, { passive: false });
+      canvas.addEventListener("touchmove", draw, { passive: false });
+      canvas.addEventListener("touchend", stopDraw);
+
+      // ── Image Utilities ───────────────────────────────────────────────────────
+      function toImageSrc(img) {
+        if (!img) return null;
+        const mime = img.content_type || "image/jpeg";
+        const content = img.content;
+
+        if (typeof content === "string") {
+          if (content.startsWith("data:")) return content;
+          return `data:${mime};base64,${content}`;
+        }
+
+        if (content instanceof Uint8Array || content instanceof ArrayBuffer) {
+          const bytes = content instanceof Uint8Array ? content : new Uint8Array(content);
+          let binary = "";
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+          }
+          return `data:${mime};base64,${btoa(binary)}`;
+        }
+
+        return null;
+      }
+
+      // Capture optimized 704x704 JPEG at 50% quality
+      const offscreen = document.createElement("canvas");
+      offscreen.width = 704;
+      offscreen.height = 704;
+      const offCtx = offscreen.getContext("2d");
+
+      function getCanvasBase64() {
+        offCtx.fillStyle = "#ffffff";
+        offCtx.fillRect(0, 0, 704, 704);
+        offCtx.drawImage(canvas, 0, 0, 704, 704);
+        return offscreen.toDataURL("image/jpeg", 0.5);
+      }
+
+      // ── WebSocket Realtime Management ─────────────────────────────────────────
+      function setStatus(text, type = "disconnected") {
+        statusEl.textContent = text;
+        statusEl.className = "";
+        statusEl.classList.add(`status-${type}`);
+      }
+
+      function connectRealtime() {
+        const apiKey = apiKeyInput.value.trim();
+        if (!apiKey) {
+          alert("Please enter your fal.ai API key.");
+          apiKeyInput.focus();
+          return;
+        }
+
+        fal.config({ credentials: apiKey });
+        setStatus("Connecting...", "generating");
+
+        try {
+          connection = fal.realtime.connect(FAL_APP_ID, {
+            connectionKey: "flux-2-klein-pad-session",
+            throttleInterval: 30, // Low throttle for continuous video streaming
+            onResult: (result) => {
+              if (result?.error || result?.status === "error") {
+                console.warn("[fal error]", result);
+                setStatus("Result error", "error");
+                return;
+              }
+
+              const images = result?.images;
+              if (!images || images.length === 0) return;
+
+              const latestFrame = images[images.length - 1];
+              const src = toImageSrc(latestFrame);
+              if (src) {
+                outputImg.src = src;
+                outputImg.classList.add("visible");
+                placeholder.style.display = "none";
+                setStatus("Connected (Live)", "connected");
+              }
+            },
+            onError: (err) => {
+              console.error("[fal connection error]", err);
+              setStatus("Connection Error", "error");
+            },
+          });
+
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+          setStatus("Connected", "connected");
+          updateModeState();
+        } catch (err) {
+          console.error(err);
+          setStatus("Failed to connect", "error");
+        }
+      }
+
+      function disconnectRealtime() {
+        stopContinuousStream();
+        if (connection) {
+          if (typeof connection.close === "function") {
+            connection.close();
+          }
+          connection = null;
+        }
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        sendBtn.disabled = true;
+        setStatus("Disconnected", "disconnected");
+      }
+
+      connectBtn.addEventListener("click", connectRealtime);
+      disconnectBtn.addEventListener("click", disconnectRealtime);
+
+      // ── Frame Transmission ────────────────────────────────────────────────────
+      function sendFrame() {
+        if (!connection) return;
+
+        if (currentMode !== "continuous") {
+          setStatus("Generating...", "generating");
+        }
+
+        const payload = {
+          image_url: getCanvasBase64(),
+          prompt: promptInput.value || 'Turn this into "Living oil painting, melting gold and sapphire"',
+          image_size: "square",
+          num_inference_steps: 3,
+          seed: 35,
+          output_feedback_strength: 1.0,
+        };
+
+        try {
+          connection.send(payload);
+        } catch (e) {
+          console.error("[Send error]", e);
+          setStatus("Send Error", "error");
+        }
+      }
+
+      sendBtn.addEventListener("click", () => sendFrame());
+    </script>
+  </body>
+</html>
