@@ -6,14 +6,14 @@
     <title>Flux 2 [klein] Realtime Binary Divider Pad</title>
     <style>
       :root {
-        --color-text: #222;
-        --color-bg: #fafafa;
-        --color-border: #ccc;
-        --color-dark-wood: #60462c;
-        --color-light-wood: #c4a98a;
-        --color-guide-dash: rgba(212, 163, 115, 0.4);
-        --color-guide-hover: rgba(212, 163, 115, 0.22);
-        --color-canvas-bg: #d7d8d3;
+        --text: #222;
+        --bg: #fafafa;
+        --border: #ccc;
+        --dark-wood: #60462c;
+        --light-wood: #c4a98a;
+        --guide-dash: rgba(212, 163, 115, 0.4);
+        --guide-hover: rgba(212, 163, 115, 0.22);
+        --canvas-bg: #d7d8d3;
         --panel-size: 352px;
       }
 
@@ -26,8 +26,8 @@
           sans-serif;
         margin: 20px;
         line-height: 1.4;
-        color: var(--color-text);
-        background: var(--color-bg);
+        color: var(--text);
+        background: var(--bg);
       }
 
       h1 {
@@ -99,13 +99,47 @@
         flex-wrap: wrap;
         gap: 20px;
         margin-top: 15px;
+
+        &.merged {
+          position: relative;
+          display: block;
+          width: var(--panel-size);
+          height: var(--panel-size);
+
+          > * {
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: var(--panel-size);
+            height: var(--panel-size);
+          }
+
+          .output-frame {
+            z-index: 1;
+          }
+
+          #draw-canvas {
+            z-index: 2;
+            opacity: 0;
+            background: transparent;
+          }
+
+          #draft-canvas {
+            z-index: 3;
+            background: transparent;
+            border-color: transparent;
+          }
+        }
+
+        &.show-draft #draft-canvas {
+          display: block;
+        }
       }
 
       canvas,
       .output-frame {
         width: var(--panel-size);
         height: var(--panel-size);
-        border: 1px solid var(--color-border);
+        border: 1px solid var(--border);
         box-sizing: border-box;
       }
 
@@ -162,41 +196,6 @@
         font-size: 0.85rem;
         color: #555;
       }
-
-      .workspace.merged {
-        position: relative;
-        display: block;
-        width: var(--panel-size);
-        height: var(--panel-size);
-
-        > * {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: var(--panel-size);
-          height: var(--panel-size);
-        }
-
-        .output-frame {
-          z-index: 1;
-        }
-
-        #draw-canvas {
-          z-index: 2;
-          opacity: 0;
-          background: transparent;
-        }
-
-        #draft-canvas {
-          z-index: 3;
-          background: transparent;
-          border: 1px solid transparent;
-        }
-      }
-
-      .workspace.show-draft #draft-canvas {
-        display: block;
-      }
     </style>
   </head>
   <body>
@@ -231,9 +230,9 @@
     <div class="controls-row">
       <button id="send-btn" disabled>Generate Image (Manual)</button>
       <button id="clear-btn">Reset Grid</button>
-      <label class="inline-checkbox"> <input type="checkbox" id="guides-toggle" checked /> Show Split Guides </label>
-      <label class="inline-checkbox"> <input type="checkbox" id="merge-toggle" /> Merge Output </label>
-      <label class="inline-checkbox"> <input type="checkbox" id="draft-toggle" /> Draft Line </label>
+      <label class="inline-checkbox"><input type="checkbox" id="guides-toggle" checked /> Show Split Guides</label>
+      <label class="inline-checkbox"><input type="checkbox" id="merge-toggle" /> Merge Output</label>
+      <label class="inline-checkbox"><input type="checkbox" id="draft-toggle" /> Draft Line</label>
     </div>
 
     <div class="workspace" id="workspace">
@@ -248,7 +247,7 @@
     <script type="module">
       import { fal } from "https://esm.sh/@fal-ai/client@1?bundle";
 
-      // ── Constants ─────────────────────────────────────────────────────────────
+      // ── Constants ─────────────────────────────────────────────────────────
 
       const FAL_APP_ID = "fal-ai/flux-2/klein";
       const CONNECTION_KEY = "flux-2-klein-pad-session";
@@ -256,14 +255,16 @@
       const MIN_SIZE = 14;
       const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
       const CAPTURE_SIZE = 704;
-      const STORAGE = { apiKey: "fal_flux_klein_api_key", prompt: "fal_flux_klein_prompt", mode: "fal_flux_klein_mode" };
+      const STORAGE = { apiKey: "fal_flux_klein_api_key", mode: "fal_flux_klein_mode" };
+      const FALLBACK_PROMPT = "Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decorative art";
 
+      const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       const THEME = {
-        darkWood: getComputedStyle(document.documentElement).getPropertyValue("--color-dark-wood").trim(),
-        lightWood: getComputedStyle(document.documentElement).getPropertyValue("--color-light-wood").trim(),
-        guideDash: getComputedStyle(document.documentElement).getPropertyValue("--color-guide-dash").trim(),
-        guideHover: getComputedStyle(document.documentElement).getPropertyValue("--color-guide-hover").trim(),
-        canvasBg: getComputedStyle(document.documentElement).getPropertyValue("--color-canvas-bg").trim(),
+        darkWood: cssVar("--dark-wood"),
+        lightWood: cssVar("--light-wood"),
+        guideDash: cssVar("--guide-dash"),
+        guideHover: cssVar("--guide-hover"),
+        canvasBg: cssVar("--canvas-bg"),
       };
 
       const $ = (id) => document.getElementById(id);
@@ -293,7 +294,7 @@
       const boxX = Math.round((el.canvas.width - boxW) / 2);
       const boxY = Math.round(el.canvas.height * 0.05);
 
-      // ── State ─────────────────────────────────────────────────────────────────
+      // ── State ─────────────────────────────────────────────────────────────
 
       const createNode = (x, y, w, h) => ({
         x: Math.round(x),
@@ -317,7 +318,7 @@
       let fpsInterval = null;
       let framesSent = 0;
 
-      // ── Setup ─────────────────────────────────────────────────────────────────
+      // ── Setup ─────────────────────────────────────────────────────────────
 
       const restorePersistedSettings = () => {
         el.apiKey.value = localStorage.getItem(STORAGE.apiKey) ?? "";
@@ -328,6 +329,12 @@
           const radio = document.querySelector(`input[name="mode"][value="${savedMode}"]`);
           if (radio) radio.checked = true;
         }
+      };
+
+      const refreshUI = () => {
+        updatePrompt();
+        render();
+        renderDraft();
       };
 
       const bindEvents = () => {
@@ -345,9 +352,7 @@
           showGuides = el.guides.checked;
           render();
         });
-        el.merge.addEventListener("change", () => {
-          el.workspace.classList.toggle("merged", el.merge.checked);
-        });
+        el.merge.addEventListener("change", () => el.workspace.classList.toggle("merged", el.merge.checked));
         el.draft.addEventListener("change", () => {
           showDraft = el.draft.checked;
           el.workspace.classList.toggle("show-draft", showDraft);
@@ -361,70 +366,27 @@
         el.canvas.addEventListener("mousemove", (e) => updatePointer(getCanvasCoords(e)));
         el.canvas.addEventListener("mouseleave", () => {
           mouse.leaf = mouse.quad = null;
-          updatePrompt();
-          render();
-          renderDraft();
+          refreshUI();
         });
         el.canvas.addEventListener("click", (e) => {
           updatePointer(getCanvasCoords(e));
           commitSplit(true);
         });
 
-        el.canvas.addEventListener(
-          "touchstart",
-          (e) => {
-            e.preventDefault();
-            updatePointer(getCanvasCoords(e));
-          },
-          { passive: false },
-        );
-        el.canvas.addEventListener(
-          "touchmove",
-          (e) => {
-            e.preventDefault();
-            updatePointer(getCanvasCoords(e));
-          },
-          { passive: false },
-        );
+        const onTouch = (e) => {
+          e.preventDefault();
+          updatePointer(getCanvasCoords(e));
+        };
+        el.canvas.addEventListener("touchstart", onTouch, { passive: false });
+        el.canvas.addEventListener("touchmove", onTouch, { passive: false });
         el.canvas.addEventListener("touchend", () => commitSplit(false));
       };
 
-      function countDividers(node) {
-        let horizontal = 0;
-        let vertical = 0;
-
-        function traverse(n) {
-          if (!n || isLeaf(n)) return;
-          if (n.splitType === "h") horizontal++;
-          if (n.splitType === "v") vertical++;
-          traverse(n.left);
-          traverse(n.right);
-        }
-
-        traverse(node);
-
-        if (mouse.leaf && mouse.quad) {
-          if (mouse.quad === "N" || mouse.quad === "S") {
-            vertical++;
-          } else if (mouse.quad === "E" || mouse.quad === "W") {
-            horizontal++;
-          }
-        }
-
-        return { horizontal, vertical };
-      }
-
-      function updatePrompt() {
-        const { horizontal, vertical } = countDividers(root);
-        el.prompt.value = generateShelfPrompt(horizontal, vertical);
-      }
-
       restorePersistedSettings();
       bindEvents();
-      updatePrompt();
-      render();
+      refreshUI();
 
-      // ── Connection ────────────────────────────────────────────────────────────
+      // ── Connection ────────────────────────────────────────────────────────
 
       function connectRealtime() {
         const apiKey = el.apiKey.value.trim();
@@ -475,10 +437,7 @@
           return;
         }
 
-        const images = result?.images;
-        if (!images?.length) return;
-
-        const src = toImageSrc(images.at(-1));
+        const src = toImageSrc(result?.images?.at(-1));
         if (src) {
           el.output.src = src;
           el.output.classList.add("visible");
@@ -494,7 +453,7 @@
         try {
           connection.send({
             image_url: captureCanvasJpeg(),
-            prompt: el.prompt.value || "Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decorative art",
+            prompt: el.prompt.value || FALLBACK_PROMPT,
             image_size: "square",
             num_inference_steps: 3,
             seed: 35,
@@ -506,7 +465,7 @@
         }
       }
 
-      // ── Modes & Streaming ─────────────────────────────────────────────────────
+      // ── Modes & Streaming ─────────────────────────────────────────────────
 
       function applyModeState() {
         currentMode === "continuous" && connection ? startStream() : stopStream();
@@ -523,10 +482,9 @@
         }, 1000);
 
         streamInterval = setInterval(() => {
-          if (connection) {
-            sendFrame();
-            framesSent++;
-          }
+          if (!connection) return;
+          sendFrame();
+          framesSent++;
         }, 1000 / STREAM_FPS);
       }
 
@@ -537,16 +495,14 @@
         el.fps.textContent = "";
       }
 
-      // ── Divider Interaction ───────────────────────────────────────────────────
+      // ── Divider Interaction ───────────────────────────────────────────────
 
       function updatePointer({ x, y }) {
         mouse.x = x;
         mouse.y = y;
         mouse.leaf = findLeaf(root, x, y);
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, x, y) : null;
-        updatePrompt();
-        render();
-        renderDraft();
+        refreshUI();
       }
 
       function commitSplit(keepHover) {
@@ -555,9 +511,7 @@
         splitLeaf(mouse.leaf, mouse.x, mouse.y, mouse.quad);
         mouse.leaf = keepHover ? findLeaf(root, mouse.x, mouse.y) : null;
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
-        updatePrompt();
-        render();
-        renderDraft();
+        refreshUI();
 
         if (currentMode === "stroke" && connection) sendFrame();
       }
@@ -585,16 +539,62 @@
       function resetDivider() {
         root = createNode(boxX, boxY, boxW, boxH);
         mouse.leaf = mouse.quad = null;
-        updatePrompt();
-        render();
-        renderDraft();
+        refreshUI();
         el.output.classList.remove("visible");
         el.output.removeAttribute("src");
         el.placeholder.style.display = "block";
         if (currentMode === "stroke" && connection) sendFrame();
       }
 
-      // ── Rendering ─────────────────────────────────────────────────────────────
+      // ── Prompt ────────────────────────────────────────────────────────────
+
+      function countDividers(node) {
+        let horizontal = 0;
+        let vertical = 0;
+
+        const traverse = (n) => {
+          if (!n || isLeaf(n)) return;
+          n.splitType === "h" ? horizontal++ : vertical++;
+          traverse(n.left);
+          traverse(n.right);
+        };
+        traverse(node);
+
+        if (mouse.leaf && mouse.quad) {
+          mouse.quad === "N" || mouse.quad === "S" ? vertical++ : horizontal++;
+        }
+
+        return { horizontal, vertical };
+      }
+
+      function updatePrompt() {
+        const { horizontal, vertical } = countDividers(root);
+        el.prompt.value = generateShelfPrompt(horizontal, vertical);
+      }
+
+      function generateShelfPrompt(hCount, vCount) {
+        const suffix = `constructed from light-toned natural oak/birch plywood with visible subtle wood grain. The entire unit is backed by a smooth, single continuous wood backing panel. The shelf has realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows`;
+        const ending = `Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
+        const intro = `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer.`;
+
+        if (hCount + vCount > 3) {
+          return `${intro} Transform each line into light-toned natural oak/birch plywood dividers and shelves with visible subtle wood grain. The compartments have realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows inside the cubbies. ${ending}`;
+        }
+
+        const numberWords = ["zero", "one", "two", "three"];
+        const dividerText = (count, type) =>
+          count === 0 ? `no ${type} dividers` : count === 1 ? `a single ${type} divider` : `${numberWords[count]} ${type} dividers`;
+
+        const isEmpty = hCount === 0 && vCount === 0;
+        const structure = isEmpty
+          ? "The interior is a completely hollow open-box space with no dividers or partitions"
+          : `The layout features ${dividerText(hCount, "horizontal")} and ${dividerText(vCount, "vertical")}`;
+        const shadowTarget = isEmpty ? "across the interior backing panel" : "inside the cubbies";
+
+        return `${intro} ${structure}, ${suffix} ${shadowTarget}. ${ending}`;
+      }
+
+      // ── Rendering ─────────────────────────────────────────────────────────
 
       function render() {
         ctx.fillStyle = THEME.canvasBg;
@@ -609,35 +609,37 @@
         ctx.beginPath();
         ctx.rect(root.x + 0.5, root.y + 0.5, root.w - 1, root.h - 1);
         traceStructureLines(root);
-        traceSplitPreview();
+        traceSplitLine(ctx);
         ctx.stroke();
       }
 
       function renderDraft() {
         draftCtx.clearRect(0, 0, el.draftCanvas.width, el.draftCanvas.height);
-        if (!showDraft) return;
-
-        const leaf = mouse.leaf;
-        if (!leaf || !mouse.quad) return;
+        if (!showDraft || !mouse.leaf || !mouse.quad) return;
 
         draftCtx.save();
         draftCtx.strokeStyle = "rgba(255, 255, 255, 0.7)";
         draftCtx.lineWidth = 2;
         draftCtx.setLineDash([6, 4]);
         draftCtx.beginPath();
+        traceSplitLine(draftCtx);
+        draftCtx.stroke();
+        draftCtx.restore();
+      }
+
+      function traceSplitLine(target) {
+        const leaf = mouse.leaf;
+        if (!leaf || !mouse.quad) return;
 
         if (mouse.quad === "N" || mouse.quad === "S") {
           const splitX = clamp(Math.round(mouse.x), leaf.x + MIN_SIZE, leaf.x + leaf.w - MIN_SIZE);
-          draftCtx.moveTo(splitX + 0.5, leaf.y);
-          draftCtx.lineTo(splitX + 0.5, leaf.y + leaf.h);
+          target.moveTo(splitX + 0.5, leaf.y);
+          target.lineTo(splitX + 0.5, leaf.y + leaf.h);
         } else {
           const splitY = clamp(Math.round(mouse.y), leaf.y + MIN_SIZE, leaf.y + leaf.h - MIN_SIZE);
-          draftCtx.moveTo(leaf.x, splitY + 0.5);
-          draftCtx.lineTo(leaf.x + leaf.w, splitY + 0.5);
+          target.moveTo(leaf.x, splitY + 0.5);
+          target.lineTo(leaf.x + leaf.w, splitY + 0.5);
         }
-
-        draftCtx.stroke();
-        draftCtx.restore();
       }
 
       function fillLeafAreas(node) {
@@ -690,22 +692,7 @@
         traceStructureLines(node.right);
       }
 
-      function traceSplitPreview() {
-        const leaf = mouse.leaf;
-        if (!leaf || !mouse.quad) return;
-
-        if (mouse.quad === "N" || mouse.quad === "S") {
-          const splitX = clamp(Math.round(mouse.x), leaf.x + MIN_SIZE, leaf.x + leaf.w - MIN_SIZE);
-          ctx.moveTo(splitX + 0.5, leaf.y);
-          ctx.lineTo(splitX + 0.5, leaf.y + leaf.h);
-        } else {
-          const splitY = clamp(Math.round(mouse.y), leaf.y + MIN_SIZE, leaf.y + leaf.h - MIN_SIZE);
-          ctx.moveTo(leaf.x, splitY + 0.5);
-          ctx.lineTo(leaf.x + leaf.w, splitY + 0.5);
-        }
-      }
-
-      // ── Pure Helpers ──────────────────────────────────────────────────────────
+      // ── Pure Helpers ──────────────────────────────────────────────────────
 
       const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -772,6 +759,7 @@
 
       function toImageSrc(img) {
         if (!img) return null;
+
         const mime = img.content_type ?? "image/jpeg";
         const { content } = img;
 
@@ -794,41 +782,6 @@
       function setStatus(text, type) {
         el.status.textContent = text;
         el.status.className = type;
-      }
-
-      /**
-       * Generates an image prompt for a wooden wall shelf.
-       * @param {number} M - Number of horizontal dividers.
-       * @param {number} N - Number of vertical dividers.
-       * @returns {string} The prompt string.
-       */
-      function generateShelfPrompt(M, N) {
-        // If the total divider count exceeds 3, return the generic prompt
-        if (M + N > 3) {
-          return `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer. Transform each line into light-toned natural oak/birch plywood dividers and shelves with visible subtle wood grain. The compartments have realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows inside the cubbies. Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
-        }
-
-        const numberWords = ["zero", "one", "two", "three"];
-
-        const formatDividerText = (count, type) => {
-          if (count === 0) return `no ${type} dividers`;
-          if (count === 1) return `a single ${type} divider`;
-          return `${numberWords[count]} ${type} dividers`;
-        };
-
-        // Build the layout description for M + N <= 3
-        let structureDesc = "";
-        if (M === 0 && N === 0) {
-          structureDesc = "The interior is a completely hollow open-box space with no dividers or partitions";
-        } else {
-          const hText = formatDividerText(M, "horizontal");
-          const vText = formatDividerText(N, "vertical");
-          structureDesc = `The layout features ${hText} and ${vText}`;
-        }
-
-        const shadowTarget = M === 0 && N === 0 ? "across the interior backing panel" : "inside the cubbies";
-
-        return `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer. ${structureDesc}, constructed from light-toned natural oak/birch plywood with visible subtle wood grain. The entire unit is backed by a smooth, single continuous wood backing panel. The shelf has realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows ${shadowTarget}. Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
       }
     </script>
   </body>
