@@ -100,12 +100,6 @@
         margin-top: 15px;
       }
 
-      .panel {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
       canvas,
       .output-frame {
         width: var(--panel-size);
@@ -118,6 +112,11 @@
         cursor: crosshair;
         background: #fff;
         touch-action: none;
+      }
+
+      #draft-canvas {
+        pointer-events: none;
+        display: none;
       }
 
       .output-frame {
@@ -169,31 +168,33 @@
         width: var(--panel-size);
         height: var(--panel-size);
 
-        .panel {
+        > * {
           position: absolute;
           top: 0;
           left: 0;
           width: var(--panel-size);
           height: var(--panel-size);
-          gap: 0;
-
-          > strong {
-            display: none;
-          }
         }
 
-        .panel:first-child {
-          z-index: 2;
-        }
-
-        .panel:last-child {
+        .output-frame {
           z-index: 1;
         }
 
         #draw-canvas {
+          z-index: 2;
           opacity: 0;
           background: transparent;
         }
+
+        #draft-canvas {
+          z-index: 3;
+          background: transparent;
+          border: 1px solid transparent;
+        }
+      }
+
+      .workspace.show-draft #draft-canvas {
+        display: block;
       }
     </style>
   </head>
@@ -233,19 +234,15 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
       <button id="clear-btn">Reset Grid</button>
       <label class="inline-checkbox"> <input type="checkbox" id="guides-toggle" checked /> Show Split Guides </label>
       <label class="inline-checkbox"> <input type="checkbox" id="merge-toggle" /> Merge Output </label>
+      <label class="inline-checkbox"> <input type="checkbox" id="draft-toggle" /> Draft Line </label>
     </div>
 
     <div class="workspace" id="workspace">
-      <div class="panel">
-        <strong>Interactive Divider Canvas:</strong>
-        <canvas id="draw-canvas" width="352" height="352"></canvas>
-      </div>
-      <div class="panel">
-        <strong>Generated Output:</strong>
-        <div class="output-frame">
-          <span id="output-placeholder">No output yet</span>
-          <img id="output-img" alt="Generated visual" />
-        </div>
+      <canvas id="draw-canvas" width="352" height="352"></canvas>
+      <canvas id="draft-canvas" width="352" height="352"></canvas>
+      <div class="output-frame">
+        <span id="output-placeholder">No output yet</span>
+        <img id="output-img" alt="Generated visual" />
       </div>
     </div>
 
@@ -282,12 +279,15 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         clear: $("clear-btn"),
         guides: $("guides-toggle"),
         merge: $("merge-toggle"),
+        draft: $("draft-toggle"),
         workspace: $("workspace"),
         canvas: $("draw-canvas"),
+        draftCanvas: $("draft-canvas"),
         output: $("output-img"),
         placeholder: $("output-placeholder"),
       };
       const ctx = el.canvas.getContext("2d");
+      const draftCtx = el.draftCanvas.getContext("2d");
 
       const boxH = Math.round(el.canvas.height * 0.9);
       const boxW = Math.round(boxH / GOLDEN_RATIO);
@@ -313,6 +313,7 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
       let connection = null;
       let currentMode = "manual";
       let showGuides = true;
+      let showDraft = false;
       let streamInterval = null;
       let fpsInterval = null;
       let framesSent = 0;
@@ -350,6 +351,11 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         el.merge.addEventListener("change", () => {
           el.workspace.classList.toggle("merged", el.merge.checked);
         });
+        el.draft.addEventListener("change", () => {
+          showDraft = el.draft.checked;
+          el.workspace.classList.toggle("show-draft", showDraft);
+          renderDraft();
+        });
         el.connect.addEventListener("click", connectRealtime);
         el.disconnect.addEventListener("click", disconnectRealtime);
         el.send.addEventListener("click", sendFrame);
@@ -359,6 +365,7 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         el.canvas.addEventListener("mouseleave", () => {
           mouse.leaf = mouse.quad = null;
           render();
+          renderDraft();
         });
         el.canvas.addEventListener("click", (e) => {
           updatePointer(getCanvasCoords(e));
@@ -509,6 +516,7 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         mouse.leaf = findLeaf(root, x, y);
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, x, y) : null;
         render();
+        renderDraft();
       }
 
       function commitSplit(keepHover) {
@@ -518,6 +526,7 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         mouse.leaf = keepHover ? findLeaf(root, mouse.x, mouse.y) : null;
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
         render();
+        renderDraft();
 
         if (currentMode === "stroke" && connection) sendFrame();
       }
@@ -546,6 +555,7 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         root = createNode(boxX, boxY, boxW, boxH);
         mouse.leaf = mouse.quad = null;
         render();
+        renderDraft();
         el.output.classList.remove("visible");
         el.output.removeAttribute("src");
         el.placeholder.style.display = "block";
@@ -569,6 +579,33 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         traceStructureLines(root);
         traceSplitPreview();
         ctx.stroke();
+      }
+
+      function renderDraft() {
+        draftCtx.clearRect(0, 0, el.draftCanvas.width, el.draftCanvas.height);
+        if (!showDraft) return;
+
+        const leaf = mouse.leaf;
+        if (!leaf || !mouse.quad) return;
+
+        draftCtx.save();
+        draftCtx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+        draftCtx.lineWidth = 2;
+        draftCtx.setLineDash([6, 4]);
+        draftCtx.beginPath();
+
+        if (mouse.quad === "N" || mouse.quad === "S") {
+          const splitX = clamp(Math.round(mouse.x), leaf.x + MIN_SIZE, leaf.x + leaf.w - MIN_SIZE);
+          draftCtx.moveTo(splitX + 0.5, leaf.y);
+          draftCtx.lineTo(splitX + 0.5, leaf.y + leaf.h);
+        } else {
+          const splitY = clamp(Math.round(mouse.y), leaf.y + MIN_SIZE, leaf.y + leaf.h - MIN_SIZE);
+          draftCtx.moveTo(leaf.x, splitY + 0.5);
+          draftCtx.lineTo(leaf.x + leaf.w, splitY + 0.5);
+        }
+
+        draftCtx.stroke();
+        draftCtx.restore();
       }
 
       function fillLeafAreas(node) {
