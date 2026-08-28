@@ -241,7 +241,6 @@
       <button id="clear-btn">Reset Grid</button>
       <label class="inline-checkbox"><input type="checkbox" id="guides-toggle" /> Show Split Guides</label>
       <label class="inline-checkbox"><input type="checkbox" id="merge-toggle" /> Merge Output</label>
-      <label class="inline-checkbox"><input type="checkbox" id="draft-toggle" /> Draft Line</label>
     </div>
 
     <div class="workspace" id="workspace">
@@ -481,7 +480,6 @@
         clear: $("clear-btn"),
         guides: $("guides-toggle"),
         merge: $("merge-toggle"),
-        draft: $("draft-toggle"),
         workspace: $("workspace"),
         canvas: $("draw-canvas"),
         draftCanvas: $("draft-canvas"),
@@ -582,9 +580,10 @@
           showGuides = el.guides.checked;
           render();
         });
-        el.merge.addEventListener("change", () => el.workspace.classList.toggle("merged", el.merge.checked));
-        el.draft.addEventListener("change", () => {
-          showDraft = el.draft.checked;
+        el.merge.addEventListener("change", () => {
+          const merged = el.merge.checked;
+          el.workspace.classList.toggle("merged", merged);
+          showDraft = merged;
           el.workspace.classList.toggle("show-draft", showDraft);
           renderDraft();
         });
