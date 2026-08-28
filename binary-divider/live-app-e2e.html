@@ -15,6 +15,10 @@
         --guide-hover: rgba(212, 163, 115, 0.22);
         --canvas-bg: #d7d8d3;
         --panel-size: 352px;
+        --status-connected: green;
+        --status-idle: #666;
+        --status-busy: #d97706;
+        --status-error: red;
       }
 
       body {
@@ -178,16 +182,16 @@
         font-family: monospace;
 
         &.connected {
-          color: green;
+          color: var(--status-connected);
         }
         &.disconnected {
-          color: #666;
+          color: var(--status-idle);
         }
         &.generating {
-          color: #d97706;
+          color: var(--status-busy);
         }
         &.error {
-          color: red;
+          color: var(--status-error);
         }
       }
 
@@ -255,199 +259,6 @@
     <script type="module">
       import { fal } from "https://esm.sh/@fal-ai/client@1?bundle";
 
-      // ── Audio Engine ──────────────────────────────────────────────────────
-
-      class AudioEngine {
-        constructor() {
-          this.ctx = null;
-          this.buffers = new Map();
-          this.activeStrokeSource = null;
-          this.activeStrokeGain = null;
-          this.lastStrokeStopTimer = null;
-          this.thudIndex = 0;
-          this.thudPool = ["thud-01.mp3", "thud-02.mp3", "thud-03.mp3", "thud-04.mp3"];
-          this.growIndex = 0;
-          this.growPool = ["grow-01.mp3", "grow-02.mp3", "grow-03.mp3", "grow-04.mp3", "grow-05.mp3"];
-          this.shuffleArray(this.thudPool);
-          this.shuffleArray(this.growPool);
-          this.init();
-        }
-
-        shuffleArray(arr) {
-          for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-          }
-        }
-
-        initContext() {
-          if (!this.ctx) {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            this.ctx = new AudioCtx();
-          }
-          if (this.ctx.state === "suspended") {
-            this.ctx.resume();
-          }
-        }
-
-        async fetchAudioData(filename) {
-          const path = `assets/${filename}`;
-          try {
-            if (window.readonlyFS?.getFile) {
-              const file = await window.readonlyFS.getFile(path);
-              return await file.arrayBuffer();
-            }
-          } catch (e) {
-            // fallback
-          }
-
-          try {
-            const res = await fetch(`./assets/${filename}`);
-            if (res.ok) return await res.arrayBuffer();
-          } catch (e) {
-            // fallback
-          }
-          return null;
-        }
-
-        async init() {
-          const files = [
-            "stroke.mp3",
-            "thud-01.mp3",
-            "thud-02.mp3",
-            "thud-03.mp3",
-            "thud-04.mp3",
-            "ceramic.mp3",
-            "watering.mp3",
-            "grow-01.mp3",
-            "grow-02.mp3",
-            "grow-03.mp3",
-            "grow-04.mp3",
-            "grow-05.mp3",
-          ];
-
-          for (const file of files) {
-            this.loadBuffer(file);
-          }
-        }
-
-        async loadBuffer(name) {
-          try {
-            const arrayBuf = await this.fetchAudioData(name);
-            if (!arrayBuf) return;
-            this.initContext();
-            const audioBuffer = await this.ctx.decodeAudioData(arrayBuf);
-            this.buffers.set(name, audioBuffer);
-          } catch (e) {
-            console.warn(`[Audio] Failed to load ${name}`, e);
-          }
-        }
-
-        playBuffer(name, loop = false, onEnded = null) {
-          this.initContext();
-          const buffer = this.buffers.get(name);
-          if (!buffer) return null;
-
-          const source = this.ctx.createBufferSource();
-          source.buffer = buffer;
-          source.loop = loop;
-
-          const gain = this.ctx.createGain();
-          source.connect(gain);
-          gain.connect(this.ctx.destination);
-
-          if (onEnded) {
-            source.onended = onEnded;
-          }
-
-          source.start(0);
-          return { source, gain };
-        }
-
-        startStrokeSound() {
-          this.initContext();
-          if (this.lastStrokeStopTimer) {
-            clearTimeout(this.lastStrokeStopTimer);
-            this.lastStrokeStopTimer = null;
-          }
-
-          if (this.activeStrokeSource) return;
-
-          const buffer = this.buffers.get("stroke.mp3");
-          if (!buffer) return;
-
-          const source = this.ctx.createBufferSource();
-          source.buffer = buffer;
-          source.loop = true;
-
-          const gain = this.ctx.createGain();
-          gain.gain.setValueAtTime(0.01, this.ctx.currentTime);
-          gain.gain.linearRampToValueAtTime(0.7, this.ctx.currentTime + 0.05);
-
-          source.connect(gain);
-          gain.connect(this.ctx.destination);
-          source.start(0);
-
-          this.activeStrokeSource = source;
-          this.activeStrokeGain = gain;
-        }
-
-        keepStrokeAlive() {
-          this.startStrokeSound();
-          if (this.lastStrokeStopTimer) {
-            clearTimeout(this.lastStrokeStopTimer);
-          }
-          this.lastStrokeStopTimer = setTimeout(() => {
-            this.stopStrokeSound();
-          }, 120);
-        }
-
-        stopStrokeSound() {
-          if (!this.activeStrokeSource) return;
-          const src = this.activeStrokeSource;
-          const gain = this.activeStrokeGain;
-          this.activeStrokeSource = null;
-          this.activeStrokeGain = null;
-
-          if (this.ctx && gain) {
-            gain.gain.setValueAtTime(gain.gain.value, this.ctx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
-            setTimeout(() => {
-              try {
-                src.stop();
-                src.disconnect();
-              } catch (e) {}
-            }, 90);
-          } else {
-            try {
-              src.stop();
-            } catch (e) {}
-          }
-        }
-
-        playThud() {
-          const sound = this.thudPool[this.thudIndex];
-          this.thudIndex = (this.thudIndex + 1) % this.thudPool.length;
-          if (this.thudIndex === 0) this.shuffleArray(this.thudPool);
-          this.playBuffer(sound);
-        }
-
-        playPotPlacement() {
-          this.playBuffer("ceramic.mp3", false, () => {
-            this.playBuffer("watering.mp3");
-          });
-        }
-
-        playGrow() {
-          const sound = this.growPool[this.growIndex];
-          this.growIndex = (this.growIndex + 1) % this.growPool.length;
-          if (this.growIndex === 0) this.shuffleArray(this.growPool);
-          this.playBuffer(sound);
-        }
-      }
-
-      const audio = new AudioEngine();
-
       // ── Constants ─────────────────────────────────────────────────────────
 
       const FAL_APP_ID = "fal-ai/flux-2/klein";
@@ -494,6 +305,142 @@
       const boxX = Math.round((el.canvas.width - boxW) / 2);
       const boxY = Math.round(el.canvas.height * 0.05);
 
+      // ── Audio Engine ──────────────────────────────────────────────────────
+
+      class AudioEngine {
+        constructor() {
+          this.ctx = null;
+          this.buffers = new Map();
+          this.strokeSource = null;
+          this.strokeGain = null;
+          this.strokeStopTimer = null;
+          this.pools = {
+            thud: { index: 0, files: ["thud-01.mp3", "thud-02.mp3", "thud-03.mp3", "thud-04.mp3"] },
+            grow: { index: 0, files: ["grow-01.mp3", "grow-02.mp3", "grow-03.mp3", "grow-04.mp3", "grow-05.mp3"] },
+          };
+          Object.values(this.pools).forEach((pool) => shuffle(pool.files));
+          [...this.pools.thud.files, ...this.pools.grow.files, "stroke.mp3", "ceramic.mp3", "watering.mp3"].forEach((f) => this.loadBuffer(f));
+        }
+
+        initContext() {
+          this.ctx ??= new (window.AudioContext || window.webkitAudioContext)();
+          if (this.ctx.state === "suspended") this.ctx.resume();
+        }
+
+        async fetchAudioData(filename) {
+          try {
+            if (window.readonlyFS?.getFile) {
+              const file = await window.readonlyFS.getFile(`assets/${filename}`);
+              return await file.arrayBuffer();
+            }
+          } catch {}
+
+          try {
+            const res = await fetch(`./assets/${filename}`);
+            if (res.ok) return await res.arrayBuffer();
+          } catch {}
+          return null;
+        }
+
+        async loadBuffer(name) {
+          try {
+            const arrayBuf = await this.fetchAudioData(name);
+            if (!arrayBuf) return;
+            this.initContext();
+            this.buffers.set(name, await this.ctx.decodeAudioData(arrayBuf));
+          } catch (e) {
+            console.warn(`[Audio] Failed to load ${name}`, e);
+          }
+        }
+
+        playBuffer(name, onEnded = null) {
+          this.initContext();
+          const buffer = this.buffers.get(name);
+          if (!buffer) return;
+
+          const source = this.ctx.createBufferSource();
+          source.buffer = buffer;
+          source.connect(this.ctx.destination);
+          if (onEnded) source.onended = onEnded;
+          source.start(0);
+        }
+
+        playFromPool(poolName) {
+          const pool = this.pools[poolName];
+          const sound = pool.files[pool.index];
+          pool.index = (pool.index + 1) % pool.files.length;
+          if (pool.index === 0) shuffle(pool.files);
+          this.playBuffer(sound);
+        }
+
+        startStrokeSound() {
+          this.initContext();
+          clearTimeout(this.strokeStopTimer);
+          this.strokeStopTimer = null;
+
+          if (this.strokeSource) return;
+          const buffer = this.buffers.get("stroke.mp3");
+          if (!buffer) return;
+
+          const source = this.ctx.createBufferSource();
+          source.buffer = buffer;
+          source.loop = true;
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.01, this.ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.7, this.ctx.currentTime + 0.05);
+
+          source.connect(gain);
+          gain.connect(this.ctx.destination);
+          source.start(0);
+
+          this.strokeSource = source;
+          this.strokeGain = gain;
+        }
+
+        keepStrokeAlive() {
+          this.startStrokeSound();
+          clearTimeout(this.strokeStopTimer);
+          this.strokeStopTimer = setTimeout(() => this.stopStrokeSound(), 120);
+        }
+
+        stopStrokeSound() {
+          if (!this.strokeSource) return;
+          const source = this.strokeSource;
+          const gain = this.strokeGain;
+          this.strokeSource = this.strokeGain = null;
+
+          if (this.ctx && gain) {
+            gain.gain.setValueAtTime(gain.gain.value, this.ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+            setTimeout(() => {
+              try {
+                source.stop();
+                source.disconnect();
+              } catch {}
+            }, 90);
+          } else {
+            try {
+              source.stop();
+            } catch {}
+          }
+        }
+
+        playThud() {
+          this.playFromPool("thud");
+        }
+
+        playGrow() {
+          this.playFromPool("grow");
+        }
+
+        playPotPlacement() {
+          this.playBuffer("ceramic.mp3", () => this.playBuffer("watering.mp3"));
+        }
+      }
+
+      const audio = new AudioEngine();
+
       // ── State ─────────────────────────────────────────────────────────────
 
       const createNode = (x, y, w, h) => ({
@@ -510,9 +457,7 @@
 
       let root = createNode(boxX, boxY, boxW, boxH);
       let mouse = { x: -1, y: -1, leaf: null, quad: null };
-      let lastMoveTime = 0;
-      let lastMoveX = -1;
-      let lastMoveY = -1;
+      let lastMove = { time: 0, x: -1, y: -1 };
       let connection = null;
       let currentMode = "manual";
       let currentTool = "build";
@@ -526,6 +471,18 @@
 
       // ── Setup ─────────────────────────────────────────────────────────────
 
+      const refreshUI = () => {
+        updatePrompt();
+        render();
+        renderDraft();
+      };
+
+      const clearHoverState = () => {
+        mouse.leaf = mouse.quad = null;
+        potPreview = null;
+        audio.stopStrokeSound();
+      };
+
       const restorePersistedSettings = () => {
         el.apiKey.value = localStorage.getItem(STORAGE.apiKey) ?? "";
 
@@ -537,20 +494,12 @@
         }
       };
 
-      const refreshUI = () => {
-        updatePrompt();
-        render();
-        renderDraft();
-      };
-
-      function switchTool(tool) {
+      const switchTool = (tool) => {
         currentTool = tool;
         const radio = document.querySelector(`input[name="tool"][value="${tool}"]`);
         if (radio) radio.checked = true;
-        mouse.leaf = mouse.quad = null;
-        potPreview = null;
-        audio.stopStrokeSound();
-      }
+        clearHoverState();
+      };
 
       const bindEvents = () => {
         window.addEventListener("pointerdown", () => audio.initContext(), { once: true });
@@ -569,9 +518,7 @@
         document.querySelectorAll('input[name="tool"]').forEach((radio) =>
           radio.addEventListener("change", () => {
             currentTool = radio.value;
-            mouse.leaf = mouse.quad = null;
-            potPreview = null;
-            audio.stopStrokeSound();
+            clearHoverState();
             refreshUI();
           }),
         );
@@ -580,23 +527,22 @@
           showGuides = el.guides.checked;
           render();
         });
+
         el.merge.addEventListener("change", () => {
-          const merged = el.merge.checked;
-          el.workspace.classList.toggle("merged", merged);
-          showDraft = merged;
+          el.workspace.classList.toggle("merged", el.merge.checked);
+          showDraft = el.merge.checked;
           el.workspace.classList.toggle("show-draft", showDraft);
           renderDraft();
         });
+
         el.connect.addEventListener("click", connectRealtime);
         el.disconnect.addEventListener("click", disconnectRealtime);
         el.send.addEventListener("click", sendFrame);
-        el.clear.addEventListener("click", resetDivider);
+        el.clear.addEventListener("click", resetGrid);
 
         el.canvas.addEventListener("mousemove", (e) => updatePointer(getCanvasCoords(e)));
         el.canvas.addEventListener("mouseleave", () => {
-          mouse.leaf = mouse.quad = null;
-          potPreview = null;
-          audio.stopStrokeSound();
+          clearHoverState();
           refreshUI();
         });
         el.canvas.addEventListener("click", (e) => {
@@ -702,6 +648,8 @@
         }
       }
 
+      const sendFrameOnStroke = () => currentMode === "stroke" && connection && sendFrame();
+
       // ── Modes & Streaming ─────────────────────────────────────────────────
 
       function applyModeState() {
@@ -736,25 +684,18 @@
 
       function updatePointer({ x, y }) {
         const now = performance.now();
-        const dt = now - lastMoveTime;
-        const dx = x - lastMoveX;
-        const dy = y - lastMoveY;
-        const dist = Math.hypot(dx, dy);
+        const dt = now - lastMove.time;
+        const dist = Math.hypot(x - lastMove.x, y - lastMove.y);
 
-        mouse.x = x;
-        mouse.y = y;
-        mouse.leaf = mouse.quad = null;
+        Object.assign(mouse, { x, y, leaf: null, quad: null });
         potPreview = null;
 
         if (currentTool === "build") {
           mouse.leaf = findLeaf(root, x, y);
           mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, x, y) : null;
 
-          if (mouse.leaf && mouse.quad && dt > 0 && dt < 150) {
-            const speed = dist / dt;
-            if (speed > 0.08 && dist >= 3) {
-              audio.keepStrokeAlive();
-            }
+          if (mouse.leaf && mouse.quad && dt > 0 && dt < 150 && dist / dt > 0.08 && dist >= 3) {
+            audio.keepStrokeAlive();
           }
         } else {
           audio.stopStrokeSound();
@@ -764,47 +705,15 @@
           }
         }
 
-        lastMoveTime = now;
-        lastMoveX = x;
-        lastMoveY = y;
-
+        lastMove = { time: now, x, y };
         refreshUI();
       }
 
       function commitAction(keepHover) {
         audio.stopStrokeSound();
-        if (currentTool === "build") {
-          commitSplit(keepHover);
-        } else if (currentTool === "pot") {
-          if (!potPreview) return;
-          pots.push({ ...potPreview });
-          potPreview = null;
-          audio.playPotPlacement();
-          switchTool("plant");
-          if (keepHover) {
-            mouse.leaf = findLeaf(root, mouse.x, mouse.y);
-            mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
-          }
-          refreshUI();
-          if (currentMode === "stroke" && connection) sendFrame();
-        } else if (currentTool === "plant") {
-          const pot = findPotAt(mouse.x, mouse.y);
-          if (!pot) return;
-          const rimY = pot.baseY - pot.h;
-          const maxDown = el.canvas.height - rimY + 10;
-
-          if (pot.upSteps < 3) {
-            pot.upSteps++;
-            audio.playGrow();
-          } else if (pot.downLen < maxDown) {
-            pot.downLen = Math.min(pot.downLen + 50, maxDown);
-            audio.playGrow();
-          } else {
-            return;
-          }
-          refreshUI();
-          if (currentMode === "stroke" && connection) sendFrame();
-        }
+        if (currentTool === "build") commitSplit(keepHover);
+        else if (currentTool === "pot") commitPot(keepHover);
+        else if (currentTool === "plant") commitGrow();
       }
 
       function commitSplit(keepHover) {
@@ -815,8 +724,42 @@
         mouse.leaf = keepHover ? findLeaf(root, mouse.x, mouse.y) : null;
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
         refreshUI();
+        sendFrameOnStroke();
+      }
 
-        if (currentMode === "stroke" && connection) sendFrame();
+      function commitPot(keepHover) {
+        if (!potPreview) return;
+
+        pots.push({ ...potPreview });
+        potPreview = null;
+        audio.playPotPlacement();
+        switchTool("plant");
+        if (keepHover) {
+          mouse.leaf = findLeaf(root, mouse.x, mouse.y);
+          mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
+        }
+        refreshUI();
+        sendFrameOnStroke();
+      }
+
+      function commitGrow() {
+        const pot = findPotAt(mouse.x, mouse.y);
+        if (!pot) return;
+
+        const rimY = pot.baseY - pot.h;
+        const maxDown = el.canvas.height - rimY + 10;
+
+        if (pot.upSteps < 3) {
+          pot.upSteps++;
+        } else if (pot.downLen < maxDown) {
+          pot.downLen = Math.min(pot.downLen + 50, maxDown);
+        } else {
+          return;
+        }
+
+        audio.playGrow();
+        refreshUI();
+        sendFrameOnStroke();
       }
 
       function splitLeaf(leaf, px, py, quad) {
@@ -839,7 +782,7 @@
         }
       }
 
-      function resetDivider() {
+      function resetGrid() {
         audio.stopStrokeSound();
         root = createNode(boxX, boxY, boxW, boxH);
         mouse.leaf = mouse.quad = null;
@@ -849,16 +792,15 @@
         el.output.classList.remove("visible");
         el.output.removeAttribute("src");
         el.placeholder.style.display = "block";
-        if (currentMode === "stroke" && connection) sendFrame();
+        sendFrameOnStroke();
       }
 
-      // ── Pots & Abstract Plants ────────────────────────────────────────────
+      // ── Pots & Plants ─────────────────────────────────────────────────────
 
       function computePot(leaf, x) {
         const topW = clamp(Math.round(leaf.w * 0.45), 12, 36);
-        const cx = clamp(Math.round(x), leaf.x + topW / 2 + 2, leaf.x + leaf.w - topW / 2 - 2);
         return {
-          cx,
+          cx: clamp(Math.round(x), leaf.x + topW / 2 + 2, leaf.x + leaf.w - topW / 2 - 2),
           baseY: leaf.y + leaf.h - 2,
           topW,
           botW: Math.round(topW * 0.65),
@@ -868,24 +810,17 @@
         };
       }
 
-      function findPotAt(x, y) {
-        return pots.find((p) => Math.abs(x - p.cx) <= p.topW / 2 && y >= p.baseY - p.h && y <= p.baseY) ?? null;
-      }
+      const findPotAt = (x, y) => pots.find((p) => Math.abs(x - p.cx) <= p.topW / 2 && y >= p.baseY - p.h && y <= p.baseY) ?? null;
 
-      function tracePot(target, pot) {
-        const { cx, baseY, topW, botW, h } = pot;
+      function drawPot(target, { cx, baseY, topW, botW, h }, alpha = 1) {
+        target.save();
+        target.globalAlpha = alpha;
+        target.beginPath();
         target.moveTo(cx - topW / 2, baseY - h);
         target.lineTo(cx + topW / 2, baseY - h);
         target.lineTo(cx + botW / 2, baseY);
         target.lineTo(cx - botW / 2, baseY);
         target.closePath();
-      }
-
-      function drawPot(target, pot, alpha = 1) {
-        target.save();
-        target.globalAlpha = alpha;
-        target.beginPath();
-        tracePot(target, pot);
         target.fillStyle = "#ffffff";
         target.fill();
         target.lineWidth = 1;
@@ -903,9 +838,8 @@
 
         if (pot.upSteps > 0) {
           const r = pot.upSteps * 8;
-          const centerY = rimY - r / 2;
           target.beginPath();
-          target.arc(pot.cx, centerY, r, 0, Math.PI * 2);
+          target.arc(pot.cx, rimY - r / 2, r, 0, Math.PI * 2);
           target.fill();
           target.stroke();
         }
@@ -944,41 +878,18 @@
 
       function updatePrompt() {
         const { horizontal, vertical } = countDividers(root);
-        const potCount = pots.length;
         const plantCount = pots.filter((p) => p.upSteps > 0 || p.downLen > 0).length;
         const trailingCount = pots.filter((p) => p.downLen > 0).length;
         const maxDrape = pots.reduce((m, p) => Math.max(m, p.downLen), 0);
-        const drapeRatio = maxDrape / el.canvas.height;
-        el.prompt.value = generateShelfPrompt(horizontal, vertical, potCount, plantCount, trailingCount, drapeRatio);
+        el.prompt.value = generateShelfPrompt(horizontal, vertical, pots.length, plantCount, trailingCount, maxDrape / el.canvas.height);
       }
 
-      /**
-       * Generates an image prompt for a wooden wall shelf.
-       * @param {number} M - Number of horizontal dividers.
-       * @param {number} N - Number of vertical dividers.
-       * @param {number} [potCount=0] - Number of pots.
-       * @param {number} [plantCount=0] - Number of plants inside the pots.
-       * @param {number} [trailingCount=0] - Number of plants with vines trailing downward.
-       * @param {number} [drapeRatio=0] - Longest drape length relative to canvas height (0-1).
-       * @returns {string} The prompt string.
-       */
       function generateShelfPrompt(M, N, potCount = 0, plantCount = 0, trailingCount = 0, drapeRatio = 0) {
         const pluralRules = new Intl.PluralRules("en-US");
-
         const numberWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
         const numWord = (n) => numberWords[n] ?? String(n);
-
-        /**
-         * Grammar helper: picks singular/plural word forms based on count.
-         * e.g. pluralize(1, "pot") -> "pot"; pluralize(2, "pot") -> "pots"
-         */
         const pluralize = (count, singular, plural = `${singular}s`) => (pluralRules.select(count) === "one" ? singular : plural);
-
-        /** "is" vs "are" agreement. */
         const isAre = (count) => pluralize(count, "is", "are");
-
-        /** "There is exactly one pot..." / "There are exactly two pots..." */
-        const thereExactly = (count, noun) => `There ${isAre(count)} exactly ${numWord(count)} ${pluralize(count, noun)}`;
 
         const drapeLengthText = (r, count) => {
           const vineNoun = pluralize(count, "vine");
@@ -988,7 +899,6 @@
           return `very long ${vineNoun} cascading dramatically almost to the bottom of the unit`;
         };
 
-        // Helper to format the plant/pot contents description
         const formatPlantText = (pots, plants, trailing, ratio) => {
           if (pots <= 0) return "";
 
@@ -997,17 +907,14 @@
 
           let sentence;
           if (plants === 0) {
-            // e.g. "There is exactly one empty white ceramic plant pot placed neatly within the unit."
-            sentence = ` There ${isAre(pots)} exactly ${numWord(pots)} empty ${potNoun}` + ` placed neatly within the unit.`;
+            sentence = ` There ${isAre(pots)} exactly ${numWord(pots)} empty ${potNoun} placed neatly within the unit.`;
           } else if (emptyCount > 0) {
-            // e.g. "There are exactly three white ceramic plant pots ... two contain ... one is empty."
             sentence =
               ` There ${isAre(pots)} exactly ${numWord(pots)} ${potNoun} placed neatly within the unit:` +
               ` ${numWord(plants)} of them ${pluralize(plants, "contains", "contain")} a lush green pothos plant` +
               ` with heart-shaped variegated leaves, and ${numWord(emptyCount)}` +
               ` ${isAre(emptyCount)} completely empty.`;
           } else {
-            // pots === plants
             sentence =
               ` There ${isAre(pots)} exactly ${numWord(pots)} ${potNoun} placed neatly within the unit,` +
               ` ${pluralize(pots, "and it contains", "each containing")} a lush green pothos plant` +
@@ -1016,18 +923,14 @@
 
           if (trailing > 0 && plants > 0) {
             const trailingClamped = Math.min(trailing, plants);
-            let which;
-            if (plants === 1) {
-              which = "The single pothos plant";
-            } else if (trailingClamped === plants) {
-              which = `Every one of the ${numWord(plants)} pothos plants`;
-            } else if (trailingClamped === 1) {
-              which = `Exactly one of the ${numWord(plants)} pothos plants`;
-            } else {
-              which = `Exactly ${numWord(trailingClamped)} of the ${numWord(plants)} pothos plants`;
-            }
-
-            const verb = trailingClamped === plants && plants > 1 ? "have" : pluralize(trailingClamped === plants ? plants : trailingClamped, "has", "has"); // "one of..." / "two of..." take singular subject only when 1
+            const which =
+              plants === 1
+                ? "The single pothos plant"
+                : trailingClamped === plants
+                  ? `Every one of the ${numWord(plants)} pothos plants`
+                  : trailingClamped === 1
+                    ? `Exactly one of the ${numWord(plants)} pothos plants`
+                    : `Exactly ${numWord(trailingClamped)} of the ${numWord(plants)} pothos plants`;
             const hasHave = trailingClamped === 1 || plants === 1 ? "has" : "have";
 
             sentence +=
@@ -1036,7 +939,7 @@
               ` with ${drapeLengthText(ratio, trailingClamped)},` +
               ` leaves overlapping the wooden edges and casting soft shadows.`;
 
-            const upright = Math.max(0, plants - trailingClamped);
+            const upright = plants - trailingClamped;
             if (upright > 0) {
               sentence +=
                 ` The remaining ${numWord(upright)} ${pluralize(upright, "plant grows", "plants grow")}` +
@@ -1049,24 +952,17 @@
 
         const plantDesc = formatPlantText(potCount, plantCount, trailingCount, drapeRatio);
 
-        // If the total divider count exceeds 3, return the generic prompt with plant description
         if (M + N > 3) {
           return `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer. Transform each line into light-toned natural oak/birch plywood dividers and shelves with visible subtle wood grain. The compartments have realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows inside the cubbies.${plantDesc} Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
         }
 
-        const formatDividerText = (count, type) => {
-          if (count === 0) return `no ${type} dividers`;
-          if (count === 1) return `exactly one ${type} divider`;
-          return `exactly ${numWord(count)} ${type} dividers`;
-        };
+        const formatDividerText = (count, type) =>
+          count === 0 ? `no ${type} dividers` : count === 1 ? `exactly one ${type} divider` : `exactly ${numWord(count)} ${type} dividers`;
 
-        // Build the layout description for M + N <= 3
-        let structureDesc = "";
-        if (M === 0 && N === 0) {
-          structureDesc = "The interior is a completely hollow open-box space with no dividers or partitions";
-        } else {
-          structureDesc = `The layout features ${formatDividerText(M, "horizontal")} and ${formatDividerText(N, "vertical")}`;
-        }
+        const structureDesc =
+          M === 0 && N === 0
+            ? "The interior is a completely hollow open-box space with no dividers or partitions"
+            : `The layout features ${formatDividerText(M, "horizontal")} and ${formatDividerText(N, "vertical")}`;
 
         const shadowTarget = M === 0 && N === 0 ? "across the interior backing panel" : "inside the cubbies";
 
@@ -1091,13 +987,8 @@
         if (currentTool === "build") traceSplitLine(ctx);
         ctx.stroke();
 
-        // 1. Placed pots (no hover border highlight)
         pots.forEach((p) => drawPot(ctx, p, 1));
-
-        // 2. Plants drawn on top of all pots & structure
         pots.filter((p) => p.upSteps > 0 || p.downLen > 0).forEach((p) => drawPlant(ctx, p));
-
-        // 3. Live drop-location preview
         if (currentTool === "pot" && potPreview) drawPot(ctx, potPreview, 0.5);
       }
 
@@ -1184,6 +1075,13 @@
 
       const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
+      function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+      }
+
       function findLeaf(node, x, y) {
         if (!node || x < node.x || x >= node.x + node.w || y < node.y || y >= node.y + node.h) return null;
         if (isLeaf(node)) return node;
@@ -1198,8 +1096,7 @@
         return Math.abs(ny) > Math.abs(nx) ? (ny < 0 ? "N" : "S") : nx > 0 ? "E" : "W";
       }
 
-      function getTrianglePath(node, quad) {
-        const { x, y, w, h } = node;
+      function getTrianglePath({ x, y, w, h }, quad) {
         const corners = {
           N: [
             [x, y],
