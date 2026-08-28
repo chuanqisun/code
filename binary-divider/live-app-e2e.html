@@ -963,39 +963,84 @@
        * @returns {string} The prompt string.
        */
       function generateShelfPrompt(M, N, potCount = 0, plantCount = 0, trailingCount = 0, drapeRatio = 0) {
-        const drapeLengthText = (r) => {
-          if (r < 0.15) return "the vines just beginning to spill over the pot rims";
-          if (r < 0.35) return "the vines trailing a short way down the front of the shelf";
-          if (r < 0.6) return "long vines cascading well down over the shelf fronts";
-          return "very long vines cascading dramatically almost to the bottom of the unit";
+        const pluralRules = new Intl.PluralRules("en-US");
+
+        const numberWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+        const numWord = (n) => numberWords[n] ?? String(n);
+
+        /**
+         * Grammar helper: picks singular/plural word forms based on count.
+         * e.g. pluralize(1, "pot") -> "pot"; pluralize(2, "pot") -> "pots"
+         */
+        const pluralize = (count, singular, plural = `${singular}s`) => (pluralRules.select(count) === "one" ? singular : plural);
+
+        /** "is" vs "are" agreement. */
+        const isAre = (count) => pluralize(count, "is", "are");
+
+        /** "There is exactly one pot..." / "There are exactly two pots..." */
+        const thereExactly = (count, noun) => `There ${isAre(count)} exactly ${numWord(count)} ${pluralize(count, noun)}`;
+
+        const drapeLengthText = (r, count) => {
+          const vineNoun = pluralize(count, "vine");
+          if (r < 0.15) return `the ${vineNoun} just beginning to spill over the pot ${pluralize(count, "rim")}`;
+          if (r < 0.35) return `the ${vineNoun} trailing a short way down the front of the shelf`;
+          if (r < 0.6) return `long ${vineNoun} cascading well down over the shelf ${pluralize(count, "front")}`;
+          return `very long ${vineNoun} cascading dramatically almost to the bottom of the unit`;
         };
 
         // Helper to format the plant/pot contents description
         const formatPlantText = (pots, plants, trailing, ratio) => {
           if (pots <= 0) return "";
 
-          let text = "";
+          const potNoun = pluralize(pots, "white ceramic plant pot");
+          const emptyCount = pots - plants;
+
+          let sentence;
           if (plants === 0) {
-            text = `${pots} empty white ceramic plant pots`;
-          } else if (pots > plants && plants > 0) {
-            text = `${pots} white ceramic plant pots, ${plants} with green pothos, ${pots - plants} empty`;
-          } else if (pots === plants && plants > 0) {
-            text = `${pots} white ceramic plant pots with green pothos`;
+            // e.g. "There is exactly one empty white ceramic plant pot placed neatly within the unit."
+            sentence = ` There ${isAre(pots)} exactly ${numWord(pots)} empty ${potNoun}` + ` placed neatly within the unit.`;
+          } else if (emptyCount > 0) {
+            // e.g. "There are exactly three white ceramic plant pots ... two contain ... one is empty."
+            sentence =
+              ` There ${isAre(pots)} exactly ${numWord(pots)} ${potNoun} placed neatly within the unit:` +
+              ` ${numWord(plants)} of them ${pluralize(plants, "contains", "contain")} a lush green pothos plant` +
+              ` with heart-shaped variegated leaves, and ${numWord(emptyCount)}` +
+              ` ${isAre(emptyCount)} completely empty.`;
           } else {
-            text = `${pots} white ceramic plant pots with lush green pothos`;
+            // pots === plants
+            sentence =
+              ` There ${isAre(pots)} exactly ${numWord(pots)} ${potNoun} placed neatly within the unit,` +
+              ` ${pluralize(pots, "and it contains", "each containing")} a lush green pothos plant` +
+              ` with glossy heart-shaped leaves in vibrant shades of green.`;
           }
 
-          let sentence = ` Placed neatly within the unit are ${text}.`;
+          if (trailing > 0 && plants > 0) {
+            const trailingClamped = Math.min(trailing, plants);
+            let which;
+            if (plants === 1) {
+              which = "The single pothos plant";
+            } else if (trailingClamped === plants) {
+              which = `Every one of the ${numWord(plants)} pothos plants`;
+            } else if (trailingClamped === 1) {
+              which = `Exactly one of the ${numWord(plants)} pothos plants`;
+            } else {
+              which = `Exactly ${numWord(trailingClamped)} of the ${numWord(plants)} pothos plants`;
+            }
 
-          if (trailing > 0) {
-            const which = trailing === 1 ? "One of the pothos plants" : trailing === plants ? "Every pothos plant" : `${trailing} of the pothos plants`;
+            const verb = trailingClamped === plants && plants > 1 ? "have" : pluralize(trailingClamped === plants ? plants : trailingClamped, "has", "has"); // "one of..." / "two of..." take singular subject only when 1
+            const hasHave = trailingClamped === 1 || plants === 1 ? "has" : "have";
+
             sentence +=
-              ` ${which} has trailing vines draping downward over the rim of the pot,` +
-              ` hanging freely down the face of the shelf, with ${drapeLengthText(ratio)},` +
+              ` ${which} ${hasHave} trailing vines draping downward over the ${pluralize(trailingClamped, "rim")}` +
+              ` of the ${pluralize(trailingClamped, "pot")}, hanging freely down the face of the shelf,` +
+              ` with ${drapeLengthText(ratio, trailingClamped)},` +
               ` leaves overlapping the wooden edges and casting soft shadows.`;
-            const upright = Math.max(0, plants - trailing);
+
+            const upright = Math.max(0, plants - trailingClamped);
             if (upright > 0) {
-              sentence += ` The remaining ${upright === 1 ? "plant grows" : `${upright} plants grow`} compactly upright inside ${upright === 1 ? "its" : "their"} pot${upright === 1 ? "" : "s"}.`;
+              sentence +=
+                ` The remaining ${numWord(upright)} ${pluralize(upright, "plant grows", "plants grow")}` +
+                ` compactly upright inside ${pluralize(upright, "its pot", "their pots")}.`;
             }
           }
 
@@ -1009,12 +1054,10 @@
           return `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer. Transform each line into light-toned natural oak/birch plywood dividers and shelves with visible subtle wood grain. The compartments have realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows inside the cubbies.${plantDesc} Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
         }
 
-        const numberWords = ["zero", "one", "two", "three"];
-
         const formatDividerText = (count, type) => {
           if (count === 0) return `no ${type} dividers`;
-          if (count === 1) return `a single ${type} divider`;
-          return `${numberWords[count]} ${type} dividers`;
+          if (count === 1) return `exactly one ${type} divider`;
+          return `exactly ${numWord(count)} ${type} dividers`;
         };
 
         // Build the layout description for M + N <= 3
@@ -1022,9 +1065,7 @@
         if (M === 0 && N === 0) {
           structureDesc = "The interior is a completely hollow open-box space with no dividers or partitions";
         } else {
-          const hText = formatDividerText(M, "horizontal");
-          const vText = formatDividerText(N, "vertical");
-          structureDesc = `The layout features ${hText} and ${vText}`;
+          structureDesc = `The layout features ${formatDividerText(M, "horizontal")} and ${formatDividerText(N, "vertical")}`;
         }
 
         const shadowTarget = M === 0 && N === 0 ? "across the interior backing panel" : "inside the cubbies";
