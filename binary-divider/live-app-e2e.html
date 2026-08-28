@@ -239,7 +239,7 @@
     <div class="controls-row">
       <button id="send-btn" disabled>Generate Image (Manual)</button>
       <button id="clear-btn">Reset Grid</button>
-      <label class="inline-checkbox"><input type="checkbox" id="guides-toggle" checked /> Show Split Guides</label>
+      <label class="inline-checkbox"><input type="checkbox" id="guides-toggle" /> Show Split Guides</label>
       <label class="inline-checkbox"><input type="checkbox" id="merge-toggle" /> Merge Output</label>
       <label class="inline-checkbox"><input type="checkbox" id="draft-toggle" /> Draft Line</label>
     </div>
@@ -434,7 +434,6 @@
         }
 
         playPotPlacement() {
-          // Play ceramic immediately followed by watering
           this.playBuffer("ceramic.mp3", false, () => {
             this.playBuffer("watering.mp3");
           });
@@ -519,7 +518,7 @@
       let connection = null;
       let currentMode = "manual";
       let currentTool = "build";
-      let showGuides = true;
+      let showGuides = false;
       let showDraft = false;
       let streamInterval = null;
       let fpsInterval = null;
@@ -556,7 +555,6 @@
       }
 
       const bindEvents = () => {
-        // Resume AudioContext on any interaction
         window.addEventListener("pointerdown", () => audio.initContext(), { once: true });
         window.addEventListener("keydown", () => audio.initContext(), { once: true });
 
@@ -752,9 +750,8 @@
           mouse.leaf = findLeaf(root, x, y);
           mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, x, y) : null;
 
-          // Check speed threshold (ignore tiny jitter, e.g. < 4px or dt > 150ms)
           if (mouse.leaf && mouse.quad && dt > 0 && dt < 150) {
-            const speed = dist / dt; // px/ms
+            const speed = dist / dt;
             if (speed > 0.08 && dist >= 3) {
               audio.keepStrokeAlive();
             }
@@ -796,7 +793,6 @@
           const rimY = pot.baseY - pot.h;
           const maxDown = el.canvas.height - rimY + 10;
 
-          // 3 Upward stages (8px, 16px, 24px) -> then downward trailing
           if (pot.upSteps < 3) {
             pot.upSteps++;
             audio.playGrow();
@@ -906,9 +902,7 @@
         target.lineWidth = 1;
 
         if (pot.upSteps > 0) {
-          // 0 -> 8px -> 16px -> 24px radius
           const r = pot.upSteps * 8;
-          // Center is half the radius (4px, 8px, 12px) above the pot surface
           const centerY = rimY - r / 2;
           target.beginPath();
           target.arc(pot.cx, centerY, r, 0, Math.PI * 2);
@@ -950,49 +944,92 @@
 
       function updatePrompt() {
         const { horizontal, vertical } = countDividers(root);
-        el.prompt.value = generateShelfPrompt(horizontal, vertical);
-      }
-
-      function decorSentence() {
         const potCount = pots.length;
-        if (potCount === 0) return "";
-        const sprouting = pots.filter((p) => p.upSteps > 0 && p.downLen === 0).length;
-        const trailing = pots.filter((p) => p.downLen > 0).length;
-
-        const potText =
-          potCount === 1
-            ? "a single small white ceramic plant pot with a tapered trapezoid silhouette sits on a shelf"
-            : `${potCount} small white ceramic plant pots with tapered trapezoid silhouettes sit on the shelves`;
-
-        const parts = [];
-        if (sprouting > 0) parts.push(`${sprouting === 1 ? "one holds" : `${sprouting} hold`} a rounded cluster of green foliage`);
-        if (trailing > 0)
-          parts.push(`${trailing === 1 ? "one holds" : `${trailing} hold`} lush trailing ivy with leafy vines cascading straight down past the shelf edges`);
-
-        return ` ${potText}${parts.length ? ", of which " + parts.join(" and ") : ""}.`;
+        const plantCount = pots.filter((p) => p.upSteps > 0 || p.downLen > 0).length;
+        const trailingCount = pots.filter((p) => p.downLen > 0).length;
+        const maxDrape = pots.reduce((m, p) => Math.max(m, p.downLen), 0);
+        const drapeRatio = maxDrape / el.canvas.height;
+        el.prompt.value = generateShelfPrompt(horizontal, vertical, potCount, plantCount, trailingCount, drapeRatio);
       }
 
-      function generateShelfPrompt(hCount, vCount) {
-        const suffix = `constructed from light-toned natural oak/birch plywood with visible subtle wood grain. The entire unit is backed by a smooth, single continuous wood backing panel. The shelf has realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows`;
-        const ending = `Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
-        const intro = `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer.`;
-        const decor = decorSentence();
+      /**
+       * Generates an image prompt for a wooden wall shelf.
+       * @param {number} M - Number of horizontal dividers.
+       * @param {number} N - Number of vertical dividers.
+       * @param {number} [potCount=0] - Number of pots.
+       * @param {number} [plantCount=0] - Number of plants inside the pots.
+       * @param {number} [trailingCount=0] - Number of plants with vines trailing downward.
+       * @param {number} [drapeRatio=0] - Longest drape length relative to canvas height (0-1).
+       * @returns {string} The prompt string.
+       */
+      function generateShelfPrompt(M, N, potCount = 0, plantCount = 0, trailingCount = 0, drapeRatio = 0) {
+        const drapeLengthText = (r) => {
+          if (r < 0.15) return "the vines just beginning to spill over the pot rims";
+          if (r < 0.35) return "the vines trailing a short way down the front of the shelf";
+          if (r < 0.6) return "long vines cascading well down over the shelf fronts";
+          return "very long vines cascading dramatically almost to the bottom of the unit";
+        };
 
-        if (hCount + vCount > 3) {
-          return `${intro} Transform each line into light-toned natural oak/birch plywood dividers and shelves with visible subtle wood grain. The compartments have realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows inside the cubbies.${decor} ${ending}`;
+        // Helper to format the plant/pot contents description
+        const formatPlantText = (pots, plants, trailing, ratio) => {
+          if (pots <= 0) return "";
+
+          let text = "";
+          if (plants === 0) {
+            text = `${pots} empty white ceramic plant pots`;
+          } else if (pots > plants && plants > 0) {
+            text = `${pots} white ceramic plant pots, ${plants} with green pothos, ${pots - plants} empty`;
+          } else if (pots === plants && plants > 0) {
+            text = `${pots} white ceramic plant pots with green pothos`;
+          } else {
+            text = `${pots} white ceramic plant pots with lush green pothos`;
+          }
+
+          let sentence = ` Placed neatly within the unit are ${text}.`;
+
+          if (trailing > 0) {
+            const which = trailing === 1 ? "One of the pothos plants" : trailing === plants ? "Every pothos plant" : `${trailing} of the pothos plants`;
+            sentence +=
+              ` ${which} has trailing vines draping downward over the rim of the pot,` +
+              ` hanging freely down the face of the shelf, with ${drapeLengthText(ratio)},` +
+              ` leaves overlapping the wooden edges and casting soft shadows.`;
+            const upright = Math.max(0, plants - trailing);
+            if (upright > 0) {
+              sentence += ` The remaining ${upright === 1 ? "plant grows" : `${upright} plants grow`} compactly upright inside ${upright === 1 ? "its" : "their"} pot${upright === 1 ? "" : "s"}.`;
+            }
+          }
+
+          return sentence;
+        };
+
+        const plantDesc = formatPlantText(potCount, plantCount, trailingCount, drapeRatio);
+
+        // If the total divider count exceeds 3, return the generic prompt with plant description
+        if (M + N > 3) {
+          return `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer. Transform each line into light-toned natural oak/birch plywood dividers and shelves with visible subtle wood grain. The compartments have realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows inside the cubbies.${plantDesc} Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
         }
 
         const numberWords = ["zero", "one", "two", "three"];
-        const dividerText = (count, type) =>
-          count === 0 ? `no ${type} dividers` : count === 1 ? `a single ${type} divider` : `${numberWords[count]} ${type} dividers`;
 
-        const isEmpty = hCount === 0 && vCount === 0;
-        const structure = isEmpty
-          ? "The interior is a completely hollow open-box space with no dividers or partitions"
-          : `The layout features ${dividerText(hCount, "horizontal")} and ${dividerText(vCount, "vertical")}`;
-        const shadowTarget = isEmpty ? "across the interior backing panel" : "inside the cubbies";
+        const formatDividerText = (count, type) => {
+          if (count === 0) return `no ${type} dividers`;
+          if (count === 1) return `a single ${type} divider`;
+          return `${numberWords[count]} ${type} dividers`;
+        };
 
-        return `${intro} ${structure}, ${suffix} ${shadowTarget}.${decor} ${ending}`;
+        // Build the layout description for M + N <= 3
+        let structureDesc = "";
+        if (M === 0 && N === 0) {
+          structureDesc = "The interior is a completely hollow open-box space with no dividers or partitions";
+        } else {
+          const hText = formatDividerText(M, "horizontal");
+          const vText = formatDividerText(N, "vertical");
+          structureDesc = `The layout features ${hText} and ${vText}`;
+        }
+
+        const shadowTarget = M === 0 && N === 0 ? "across the interior backing panel" : "inside the cubbies";
+
+        return `A direct front-facing product photograph of a modern minimalist wooden wall shelf and organizer. ${structureDesc}, constructed from light-toned natural oak/birch plywood with visible subtle wood grain. The entire unit is backed by a smooth, single continuous wood backing panel. The shelf has realistic 3D depth, with soft natural sunlight coming from the upper right, casting gentle directional shadows ${shadowTarget}.${plantDesc} Clean Scandinavian aesthetic, straight-on orthographic view, ultra-realistic, neutral studio lighting against a soft off-white wall.`;
       }
 
       // ── Rendering ─────────────────────────────────────────────────────────
