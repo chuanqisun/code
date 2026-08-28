@@ -162,6 +162,39 @@
         font-size: 0.85rem;
         color: #555;
       }
+
+      .workspace.merged {
+        position: relative;
+        display: block;
+        width: var(--panel-size);
+        height: var(--panel-size);
+
+        .panel {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: var(--panel-size);
+          height: var(--panel-size);
+          gap: 0;
+
+          > strong {
+            display: none;
+          }
+        }
+
+        .panel:first-child {
+          z-index: 2;
+        }
+
+        .panel:last-child {
+          z-index: 1;
+        }
+
+        #draw-canvas {
+          opacity: 0;
+          background: transparent;
+        }
+      }
     </style>
   </head>
   <body>
@@ -199,9 +232,10 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
       <button id="send-btn" disabled>Generate Image (Manual)</button>
       <button id="clear-btn">Reset Grid</button>
       <label class="inline-checkbox"> <input type="checkbox" id="guides-toggle" checked /> Show Split Guides </label>
+      <label class="inline-checkbox"> <input type="checkbox" id="merge-toggle" /> Merge Output </label>
     </div>
 
-    <div class="workspace">
+    <div class="workspace" id="workspace">
       <div class="panel">
         <strong>Interactive Divider Canvas:</strong>
         <canvas id="draw-canvas" width="352" height="352"></canvas>
@@ -247,6 +281,8 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         send: $("send-btn"),
         clear: $("clear-btn"),
         guides: $("guides-toggle"),
+        merge: $("merge-toggle"),
+        workspace: $("workspace"),
         canvas: $("draw-canvas"),
         output: $("output-img"),
         placeholder: $("output-placeholder"),
@@ -310,6 +346,9 @@ Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decor
         el.guides.addEventListener("change", () => {
           showGuides = el.guides.checked;
           render();
+        });
+        el.merge.addEventListener("change", () => {
+          el.workspace.classList.toggle("merged", el.merge.checked);
         });
         el.connect.addEventListener("click", connectRealtime);
         el.disconnect.addEventListener("click", disconnectRealtime);
