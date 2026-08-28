@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Flux 2 [klein] Realtime Binary Divider Pad</title>
+    <title>DIY Shelf</title>
     <style>
       :root {
         --text: #222;
@@ -56,7 +56,7 @@
 
       textarea {
         resize: none;
-        height: 60px;
+        height: 160px;
         overflow: auto;
       }
 
@@ -199,7 +199,7 @@
     </style>
   </head>
   <body>
-    <h1>Flux 2 [klein] Realtime Binary Divider Pad</h1>
+    <h1>DIY Shelf</h1>
 
     <div class="form-group">
       <label for="api-key">fal.ai API Key:</label>
@@ -693,6 +693,7 @@
             prompt: el.prompt.value || FALLBACK_PROMPT,
             image_size: "square",
             num_inference_steps: 3,
+            enable_interpolation: true,
             seed: 35,
             output_feedback_strength: 1.0,
           });
