@@ -256,6 +256,200 @@
     <script type="module">
       import { fal } from "https://esm.sh/@fal-ai/client@1?bundle";
 
+      // ── Audio Engine ──────────────────────────────────────────────────────
+
+      class AudioEngine {
+        constructor() {
+          this.ctx = null;
+          this.buffers = new Map();
+          this.activeStrokeSource = null;
+          this.activeStrokeGain = null;
+          this.lastStrokeStopTimer = null;
+          this.thudIndex = 0;
+          this.thudPool = ["thud-01.mp3", "thud-02.mp3", "thud-03.mp3", "thud-04.mp3"];
+          this.growIndex = 0;
+          this.growPool = ["grow-01.mp3", "grow-02.mp3", "grow-03.mp3", "grow-04.mp3", "grow-05.mp3"];
+          this.shuffleArray(this.thudPool);
+          this.shuffleArray(this.growPool);
+          this.init();
+        }
+
+        shuffleArray(arr) {
+          for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+          }
+        }
+
+        initContext() {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+          }
+          if (this.ctx.state === "suspended") {
+            this.ctx.resume();
+          }
+        }
+
+        async fetchAudioData(filename) {
+          const path = `assets/${filename}`;
+          try {
+            if (window.readonlyFS?.getFile) {
+              const file = await window.readonlyFS.getFile(path);
+              return await file.arrayBuffer();
+            }
+          } catch (e) {
+            // fallback
+          }
+
+          try {
+            const res = await fetch(`./assets/${filename}`);
+            if (res.ok) return await res.arrayBuffer();
+          } catch (e) {
+            // fallback
+          }
+          return null;
+        }
+
+        async init() {
+          const files = [
+            "stroke.mp3",
+            "thud-01.mp3",
+            "thud-02.mp3",
+            "thud-03.mp3",
+            "thud-04.mp3",
+            "ceramic.mp3",
+            "watering.mp3",
+            "grow-01.mp3",
+            "grow-02.mp3",
+            "grow-03.mp3",
+            "grow-04.mp3",
+            "grow-05.mp3",
+          ];
+
+          for (const file of files) {
+            this.loadBuffer(file);
+          }
+        }
+
+        async loadBuffer(name) {
+          try {
+            const arrayBuf = await this.fetchAudioData(name);
+            if (!arrayBuf) return;
+            this.initContext();
+            const audioBuffer = await this.ctx.decodeAudioData(arrayBuf);
+            this.buffers.set(name, audioBuffer);
+          } catch (e) {
+            console.warn(`[Audio] Failed to load ${name}`, e);
+          }
+        }
+
+        playBuffer(name, loop = false, onEnded = null) {
+          this.initContext();
+          const buffer = this.buffers.get(name);
+          if (!buffer) return null;
+
+          const source = this.ctx.createBufferSource();
+          source.buffer = buffer;
+          source.loop = loop;
+
+          const gain = this.ctx.createGain();
+          source.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          if (onEnded) {
+            source.onended = onEnded;
+          }
+
+          source.start(0);
+          return { source, gain };
+        }
+
+        startStrokeSound() {
+          this.initContext();
+          if (this.lastStrokeStopTimer) {
+            clearTimeout(this.lastStrokeStopTimer);
+            this.lastStrokeStopTimer = null;
+          }
+
+          if (this.activeStrokeSource) return;
+
+          const buffer = this.buffers.get("stroke.mp3");
+          if (!buffer) return;
+
+          const source = this.ctx.createBufferSource();
+          source.buffer = buffer;
+          source.loop = true;
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.01, this.ctx.currentTime);
+          gain.gain.linearRampToValueAtTime(0.7, this.ctx.currentTime + 0.05);
+
+          source.connect(gain);
+          gain.connect(this.ctx.destination);
+          source.start(0);
+
+          this.activeStrokeSource = source;
+          this.activeStrokeGain = gain;
+        }
+
+        keepStrokeAlive() {
+          this.startStrokeSound();
+          if (this.lastStrokeStopTimer) {
+            clearTimeout(this.lastStrokeStopTimer);
+          }
+          this.lastStrokeStopTimer = setTimeout(() => {
+            this.stopStrokeSound();
+          }, 120);
+        }
+
+        stopStrokeSound() {
+          if (!this.activeStrokeSource) return;
+          const src = this.activeStrokeSource;
+          const gain = this.activeStrokeGain;
+          this.activeStrokeSource = null;
+          this.activeStrokeGain = null;
+
+          if (this.ctx && gain) {
+            gain.gain.setValueAtTime(gain.gain.value, this.ctx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.001, this.ctx.currentTime + 0.08);
+            setTimeout(() => {
+              try {
+                src.stop();
+                src.disconnect();
+              } catch (e) {}
+            }, 90);
+          } else {
+            try {
+              src.stop();
+            } catch (e) {}
+          }
+        }
+
+        playThud() {
+          const sound = this.thudPool[this.thudIndex];
+          this.thudIndex = (this.thudIndex + 1) % this.thudPool.length;
+          if (this.thudIndex === 0) this.shuffleArray(this.thudPool);
+          this.playBuffer(sound);
+        }
+
+        playPotPlacement() {
+          // Play ceramic immediately followed by watering
+          this.playBuffer("ceramic.mp3", false, () => {
+            this.playBuffer("watering.mp3");
+          });
+        }
+
+        playGrow() {
+          const sound = this.growPool[this.growIndex];
+          this.growIndex = (this.growIndex + 1) % this.growPool.length;
+          if (this.growIndex === 0) this.shuffleArray(this.growPool);
+          this.playBuffer(sound);
+        }
+      }
+
+      const audio = new AudioEngine();
+
       // ── Constants ─────────────────────────────────────────────────────────
 
       const FAL_APP_ID = "fal-ai/flux-2/klein";
@@ -319,6 +513,9 @@
 
       let root = createNode(boxX, boxY, boxW, boxH);
       let mouse = { x: -1, y: -1, leaf: null, quad: null };
+      let lastMoveTime = 0;
+      let lastMoveX = -1;
+      let lastMoveY = -1;
       let connection = null;
       let currentMode = "manual";
       let currentTool = "build";
@@ -355,9 +552,14 @@
         if (radio) radio.checked = true;
         mouse.leaf = mouse.quad = null;
         potPreview = null;
+        audio.stopStrokeSound();
       }
 
       const bindEvents = () => {
+        // Resume AudioContext on any interaction
+        window.addEventListener("pointerdown", () => audio.initContext(), { once: true });
+        window.addEventListener("keydown", () => audio.initContext(), { once: true });
+
         el.apiKey.addEventListener("input", () => localStorage.setItem(STORAGE.apiKey, el.apiKey.value.trim()));
 
         document.querySelectorAll('input[name="mode"]').forEach((radio) =>
@@ -373,6 +575,7 @@
             currentTool = radio.value;
             mouse.leaf = mouse.quad = null;
             potPreview = null;
+            audio.stopStrokeSound();
             refreshUI();
           }),
         );
@@ -396,20 +599,26 @@
         el.canvas.addEventListener("mouseleave", () => {
           mouse.leaf = mouse.quad = null;
           potPreview = null;
+          audio.stopStrokeSound();
           refreshUI();
         });
         el.canvas.addEventListener("click", (e) => {
+          audio.initContext();
           updatePointer(getCanvasCoords(e));
           commitAction(true);
         });
 
         const onTouch = (e) => {
           e.preventDefault();
+          audio.initContext();
           updatePointer(getCanvasCoords(e));
         };
         el.canvas.addEventListener("touchstart", onTouch, { passive: false });
         el.canvas.addEventListener("touchmove", onTouch, { passive: false });
-        el.canvas.addEventListener("touchend", () => commitAction(false));
+        el.canvas.addEventListener("touchend", () => {
+          audio.stopStrokeSound();
+          commitAction(false);
+        });
       };
 
       restorePersistedSettings();
@@ -528,6 +737,12 @@
       // ── Pointer & Tool Interaction ────────────────────────────────────────
 
       function updatePointer({ x, y }) {
+        const now = performance.now();
+        const dt = now - lastMoveTime;
+        const dx = x - lastMoveX;
+        const dy = y - lastMoveY;
+        const dist = Math.hypot(dx, dy);
+
         mouse.x = x;
         mouse.y = y;
         mouse.leaf = mouse.quad = null;
@@ -536,22 +751,39 @@
         if (currentTool === "build") {
           mouse.leaf = findLeaf(root, x, y);
           mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, x, y) : null;
-        } else if (currentTool === "pot") {
-          const leaf = findLeaf(root, x, y);
-          if (leaf) potPreview = computePot(leaf, x);
+
+          // Check speed threshold (ignore tiny jitter, e.g. < 4px or dt > 150ms)
+          if (mouse.leaf && mouse.quad && dt > 0 && dt < 150) {
+            const speed = dist / dt; // px/ms
+            if (speed > 0.08 && dist >= 3) {
+              audio.keepStrokeAlive();
+            }
+          }
+        } else {
+          audio.stopStrokeSound();
+          if (currentTool === "pot") {
+            const leaf = findLeaf(root, x, y);
+            if (leaf) potPreview = computePot(leaf, x);
+          }
         }
+
+        lastMoveTime = now;
+        lastMoveX = x;
+        lastMoveY = y;
 
         refreshUI();
       }
 
       function commitAction(keepHover) {
+        audio.stopStrokeSound();
         if (currentTool === "build") {
           commitSplit(keepHover);
         } else if (currentTool === "pot") {
           if (!potPreview) return;
           pots.push({ ...potPreview });
           potPreview = null;
-          switchTool("build");
+          audio.playPotPlacement();
+          switchTool("plant");
           if (keepHover) {
             mouse.leaf = findLeaf(root, mouse.x, mouse.y);
             mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
@@ -567,8 +799,10 @@
           // 3 Upward stages (8px, 16px, 24px) -> then downward trailing
           if (pot.upSteps < 3) {
             pot.upSteps++;
+            audio.playGrow();
           } else if (pot.downLen < maxDown) {
             pot.downLen = Math.min(pot.downLen + 50, maxDown);
+            audio.playGrow();
           } else {
             return;
           }
@@ -581,6 +815,7 @@
         if (!mouse.leaf || !mouse.quad) return;
 
         splitLeaf(mouse.leaf, mouse.x, mouse.y, mouse.quad);
+        audio.playThud();
         mouse.leaf = keepHover ? findLeaf(root, mouse.x, mouse.y) : null;
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
         refreshUI();
@@ -609,6 +844,7 @@
       }
 
       function resetDivider() {
+        audio.stopStrokeSound();
         root = createNode(boxX, boxY, boxW, boxH);
         mouse.leaf = mouse.quad = null;
         pots = [];
