@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>NeuroStack NS2</title>
+    <style>
+      :root {
+        --ink: #000;
+        --paper: #fff;
+        --mute: #bbb;
+        --hover: #e0e0e0;
+        --hair: #ccc;
+        --panel-w: 282px;
+        --gap: 8px;
+        --font-s: 11px;
+        --font-xs: 10px;
+        --line: 1px solid var(--ink);
+        --dash: 1px dashed var(--ink);
+        --bar-w: 60px;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: monospace;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--gap);
+        -webkit-text-size-adjust: 100%;
+      }
+      #topbar {
+        width: min(calc(var(--panel-w) * 2 + var(--gap)), 100%);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--gap);
+        & h1 {
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+      }
+      #layout {
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+        gap: var(--gap);
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: var(--gap);
+        width: min(var(--panel-w), 100%);
+      }
+      .grow {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+      button {
+        border: var(--line);
+        padding: 4px 6px;
+        cursor: pointer;
+        font-size: var(--font-s);
+        text-transform: uppercase;
+        font-weight: bold;
+        touch-action: manipulation;
+      }
+      .chip {
+        border: var(--line);
+        color: var(--ink);
+        font-size: 9px;
+        font-weight: normal;
+        letter-spacing: 0.5px;
+        padding: 0 4px;
+        line-height: 13px;
+        min-width: 46px;
+        text-align: center;
+        text-transform: uppercase;
+      }
+      @media (hover: hover) {
+        button:hover {
+          background: var(--hover);
+        }
+        .chip:hover {
+          font-weight: bold;
+          background: var(--paper);
+        }
+      }
+      .panel {
+        border: var(--line);
+        padding: 6px 8px;
+        font-size: var(--font-s);
+        & .panel-title {
+          font-weight: bold;
+          text-transform: uppercase;
+          border-bottom: var(--line);
+          padding-bottom: 2px;
+          margin-bottom: 3px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 6px;
+          & .sub {
+            font-weight: normal;
+            text-transform: none;
+          }
+        }
+      }
+      [title].tip {
+        cursor: help;
+      }
+      @media (hover: hover) {
+        [title].tip:hover {
+          text-decoration: underline dashed;
+          text-underline-offset: 2px;
+        }
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        border: var(--line);
+        & .cell {
+          aspect-ratio: 1;
+          border-right: var(--line);
+          border-bottom: var(--line);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 19px;
+          line-height: 1;
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+          &:nth-child(8n) {
+            border-right: 0;
+          }
+          &:nth-last-child(-n + 8) {
+            border-bottom: 0;
+          }
+          &.agent {
+            box-shadow: inset 0 0 0 1px var(--ink);
+          }
+        }
+        & .mouse {
+          display: inline-block;
+          &.bump {
+            animation: nudge 0.12s linear;
+          }
+        }
+      }
+      @media (hover: hover) {
+        #grid .cell:hover {
+          box-shadow: inset 0 0 0 1px var(--ink);
+        }
+      }
+      @keyframes nudge {
+        0%,
+        100% {
+          translate: 0 0;
+        }
+        50% {
+          translate: 0 -3px;
+        }
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      .stats-table td {
+        padding: 1px 0;
+        vertical-align: middle;
+        &:first-child {
+          font-weight: bold;
+          width: 52%;
+        }
+        &:last-child {
+          text-align: right;
+        }
+      }
+      .meter-val {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+        & .bar {
+          display: inline-block;
+          height: 6px;
+          background: var(--ink);
+        }
+      }
+      .num-table {
+        table-layout: fixed;
+        text-align: right;
+        font-size: var(--font-xs);
+        & th,
+        & td {
+          padding: 1px;
+          &:first-child {
+            text-align: left;
+          }
+        }
+        & th {
+          border-bottom: var(--dash);
+          font-weight: bold;
+          padding-bottom: 4px;
+        }
+        & tbody tr:first-child td {
+          padding-top: 4px;
+        }
+        & tr.pick td {
+          font-weight: bold;
+        }
+        & .w-pos {
+          font-weight: bold;
+        }
+        & .w-zero {
+          color: var(--mute);
+        }
+      }
+      #ekg-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: var(--font-xs);
+        & .ekg-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+        }
+        & .ekg-label {
+          width: 52px;
+          font-weight: bold;
+        }
+        & .sep {
+          border-top: var(--dash);
+          margin: 2px 0;
+        }
+        & canvas {
+          border: 1px solid var(--hair);
+          display: block;
+          max-width: 100%;
+        }
+      }
+      .slider-container {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: var(--font-s);
+        border: var(--line);
+        padding: 4px 8px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        & .slider-header {
+          display: flex;
+          justify-content: space-between;
+        }
+      }
+      input[type="range"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        height: 16px;
+        background: transparent;
+        cursor: pointer;
+        touch-action: none;
+        &::-webkit-slider-runnable-track {
+          height: 6px;
+          background: var(--paper);
+          border: var(--line);
+        }
+        &::-moz-range-track {
+          height: 6px;
+          background: var(--paper);
+          border: var(--line);
+        }
+        &::-webkit-slider-thumb {
+          appearance: none;
+          -webkit-appearance: none;
+          width: 12px;
+          height: 16px;
+          margin-top: -6px;
+          background: var(--ink);
+          border: var(--line);
+          border-radius: 0;
+        }
+        &::-moz-range-thumb {
+          width: 12px;
+          height: 16px;
+          background: var(--ink);
+          border: var(--line);
+          border-radius: 0;
+        }
+      }
+      #glossary {
+        display: none;
+        width: min(var(--panel-w), 100%);
+        border: var(--line);
+        padding: 6px 8px;
+        font-size: var(--font-xs);
+        & .panel-title {
+          font-weight: bold;
+          font-size: var(--font-s);
+          text-transform: uppercase;
+          border-bottom: var(--line);
+          padding-bottom: 2px;
+          margin-bottom: 3px;
+        }
+        & table {
+          table-layout: fixed;
+        }
+        & td {
+          padding: 2px 1px;
+          vertical-align: top;
+          border-bottom: var(--dash);
+          &:first-child {
+            font-weight: bold;
+            width: 38%;
+            padding-right: 6px;
+          }
+        }
+        & tr:last-child td {
+          border-bottom: 0;
+        }
+      }
+      @media (max-width: 600px) {
+        body {
+          padding: 8px 6px;
+        }
+        #topbar {
+          width: min(var(--panel-w), 100%);
+        }
+        #layout {
+          flex-direction: column;
+          align-items: center;
+          width: 100%;
+        }
+        .grow {
+          flex: none;
+        }
+        #glossary {
+          display: block;
+        }
+        [title].tip {
+          cursor: default;
+          text-decoration: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header id="topbar">
+      <h1>NeuroStack NS2</h1>
+      <button id="btn-sfx" class="chip" title="Toggle sound effects">SFX: OFF</button>
+    </header>
+
+    <main id="layout">
+      <section class="col">
+        <div class="slider-container">
+          <div class="slider-header"><span>SPEED</span><span id="val-speed">1.00×</span></div>
+          <input type="range" id="speed-slider" min="-110" max="200" value="0" step="10" />
+        </div>
+
+        <div id="grid"></div>
+
+        <div class="panel grow">
+          <table class="stats-table">
+            <tr>
+              <td class="tip" title="Number of moves since reset">STEP</td>
+              <td id="val-step">0</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Total cheese eaten so far">CONSUMED</td>
+              <td id="val-hits">0</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Times the chosen move was blocked by the walls">WALL BUMPS</td>
+              <td id="val-bumps">0</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Average steps spent per cheese, lower is better">STEPS / CHEESE</td>
+              <td id="val-eff">—</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Average wall bumps per cheese; lower is better">BUMPS / CHEESE</td>
+              <td id="val-bpc">—</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Direction emitted by the motor neuron that spiked first">ACTION</td>
+              <td id="val-action">NONE</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Current state of the mouse">STATE</td>
+              <td id="val-feedback">INITIALIZING</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Rises by moving, drops by eating">HUNGER</td>
+              <td>
+                <div class="meter-val"><span id="bar-hunger" class="bar"></span><span id="val-hunger">0.00</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td class="tip" title="How wrong the sensory model currently is">SURPRISE</td>
+              <td>
+                <div class="meter-val"><span id="bar-err" class="bar"></span><span id="val-err">0.00</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td class="tip" title="Odour intensity at the mouse's current cell">SCENT</td>
+              <td>
+                <div class="meter-val"><span id="bar-scent" class="bar"></span><span id="val-scent">0.00</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td class="tip" title="Tendency for motor neurons to fire erratically">TEMPERATURE</td>
+              <td>
+                <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="panel">
+          <div class="panel-title"><span>Behavior</span><span class="sub" id="val-engine">—</span></div>
+          <table class="num-table">
+            <thead>
+              <tr>
+                <th class="tip" title="Candidate move direction">ACT</th>
+                <th class="tip" title="Expected mismatch between predicted and preferred sensations">RISK</th>
+                <th class="tip" title="Expected uncertainty of this action's outcome">AMB</th>
+                <th class="tip" title="Pull toward rarely-visited cells by curiosity">NOV</th>
+                <th class="tip" title="Recent-action bias that decays each step">HAB</th>
+                <th class="tip" title="Expected free energy, the lowest value is chosen">G</th>
+              </tr>
+            </thead>
+            <tbody id="efe-body"></tbody>
+          </table>
+        </div>
+
+        <div id="ekg-panel" class="panel">
+          <div class="panel-title"><span>EEG Monitor</span><span class="sub" id="val-window">—</span></div>
+        </div>
+
+        <div class="panel grow">
+          <div class="panel-title">
+            <span>Connectivity</span>
+            <button id="btn-reset" class="chip" title="Reset brain state only (world unchanged)">Reset</button>
+          </div>
+          <table class="num-table">
+            <thead>
+              <tr>
+                <th>SENSOR</th>
+                <th>z0</th>
+                <th>z1</th>
+                <th>z2</th>
+                <th>z3</th>
+              </tr>
+            </thead>
+            <tbody id="weights-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="glossary">
+        <div class="panel-title">Glossary</div>
+        <table>
+          <tbody id="glossary-body"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      (async () => {
+        /* ============================ CONFIG ============================ */
+        const CFG = {
+          grid: 8,
+          spawn: 4,
+          substeps: 12,
+          ekg: 120,
+          placeDecay: 0.985,
+          bumpErr: 0.35,
+          lif: { tau: 3.5, refrac: 2, rateTau: 9, thrMin: 0.55, thrMax: 1.8 },
+          eta: { z: 0.4, leak: 0.18, A: 0.06, B: 0.14, thr: 0.008, target: 0.18 },
+          efe: {
+            beta: 2.4,
+            noise: 0.22,
+            flat: 12,
+            trust: 1.7,
+            arouse: 0.9,
+            tempMax: 2.4,
+            amb: 0.6,
+            nov: 0.9,
+            hab: 0.22,
+            wall: 1.2,
+            stuckGain: 1.4,
+            stuckRise: 0.55,
+            stuckDecay: 0.7,
+            escapeAfter: 2,
+          },
+          meta: { rise: 0.03, moveCost: 0.006, bumpCost: 0.014, bite: 0.32, tasteDecay: 0.45 },
+          habit: { decay: 0.6, gain: 1, bump: -0.5 },
+          sfx: { kinds: ["bite", "squeak", "drop"], variants: 4, minIntervals: { bite: 20, squeak: 0, drop: 0 } },
+        };
+
+        const SENSORS = ["smell·X", "smell·Y", "smell·0", "whisk·X", "whisk·Y"];
+        const LATENTS = ["z0", "z1", "z2", "z3"];
+        const ACTIONS = ["NORTH", "EAST", "SOUTH", "WEST"];
+        const LABELS = [...SENSORS, ...LATENTS, ...ACTIONS.map((a) => `mot:${a[0]}`)];
+        const EEG_TIPS = {
+          "smell·X": "Horizontal scent gradient between adjacent cells",
+          "smell·Y": "Vertical scent gradient between adjacent cells",
+          "smell·0": "Odour intensity at the mouse's current cell",
+          "whisk·X": "Whisker deflection detecting east and west boundaries",
+          "whisk·Y": "Whisker deflection detecting south and north boundaries",
+          z0: "Latent state neuron 0 in the generative model",
+          z1: "Latent state neuron 1 in the generative model",
+          z2: "Latent state neuron 2 in the generative model",
+          z3: "Latent state neuron 3 in the generative model",
+          "mot:N": "Motor neuron driving movement North",
+          "mot:E": "Motor neuron driving movement East",
+          "mot:S": "Motor neuron driving movement South",
+          "mot:W": "Motor neuron driving movement West",
+        };
+        const [NS, NZ, NA] = [SENSORS.length, LATENTS.length, ACTIONS.length];
+        const N = NS + NZ + NA;
+
+        const DIRS = [
+          { dx: 0, dy: -1, rot: 0 },
+          { dx: 1, dy: 0, rot: 90 },
+          { dx: 0, dy: 1, rot: 180 },
+          { dx: -1, dy: 0, rot: 270 },
+        ];
+
+        const DMAX = (CFG.grid - 1) * Math.SQRT2;
+        const GAIN = DMAX / 2;
+        const PREF = { C: [0, 0, 1, 0, 0], W: [0.3, 0.3, 1.6, 0.7, 0.7] };
+
+        const UI_DT = 1000 / 30;
+        const MAX_SUB_PER_FRAME = 4000;
+        const EASE_TAU = 130;
+        const STATE_HOLD = 120;
+        const SPIKE_V = 1.7;
+        const PAUSE_V = -110;
+
+        const { abs, exp, min, max, hypot, random: rnd, round } = Math;
+        const $ = (id) => document.getElementById(id);
+        const clamp = (x, lo, hi) => min(hi, max(lo, x));
+
+        /* ==================== WASM SIMD CORE (zero-copy) ==================== */
+        const OFF = {
+          A: 0,
+          B: 96,
+          Z: 352,
+          ZU: 368,
+          PZ: 384,
+          ERR: 400,
+          PRED: 432,
+          TE: 464,
+          HAB: 480,
+          G: 496,
+          RISK: 512,
+          AMB: 528,
+          NOV: 544,
+          S: 560,
+          P: 1184,
+          PC: 1312,
+          PW: 1344,
+          DX: 1376,
+          DY: 1392,
+          SC: 1408,
+          CTL: 1440,
+          EEG: 1536,
+        };
+        const EEG_LEN = 128;
+
+        const W = await (async () => {
+          const src = await WebAssembly.instantiateStreaming(fetch("assets/brain.wasm"), {}).catch(async () =>
+            WebAssembly.instantiate(await (await fetch("assets/brain.wasm")).arrayBuffer(), {}),
+          );
+          const ex = src.instance.exports;
+          const buf = ex.mem.buffer; /* 1 page, never grown -> views never detach */
+          const f = (o, n) => new Float32Array(buf, o, n);
+          const core = {
+            ex,
+            buf,
+            A: f(OFF.A, 20),
+            B: f(OFF.B, 64),
+            z: f(OFF.Z, 4),
+            err: f(OFF.ERR, 5),
+            pred: f(OFF.PRED, 5),
+            transErr: f(OFF.TE, 4),
+            habit: f(OFF.HAB, 4),
+            G: f(OFF.G, 4),
+            risk: f(OFF.RISK, 4),
+            amb: f(OFF.AMB, 4),
+            nov: f(OFF.NOV, 4),
+            S: f(OFF.S, 5),
+            params: f(OFF.P, 32),
+            prefC: f(OFF.PC, 5),
+            prefW: f(OFF.PW, 5),
+            dirX: f(OFF.DX, 4),
+            dirY: f(OFF.DY, 4),
+            scal: f(OFF.SC, 8),
+            ctl: new Int32Array(buf, OFF.CTL, 4),
+            eeg: f(OFF.EEG, N * EEG_LEN),
+          };
+          /* one-time config upload — never touched again in the hot loop */
+          core.prefC.set(PREF.C);
+          core.prefW.set(PREF.W);
+          DIRS.forEach((d, i) => {
+            core.dirX[i] = d.dx;
+            core.dirY[i] = d.dy;
+          });
+          const { eta, lif, efe } = CFG;
+          core.params.set([
+            eta.z,
+            eta.leak,
+            eta.A,
+            eta.B,
+            eta.thr,
+            eta.target,
+            lif.tau,
+            lif.refrac,
+            lif.rateTau,
+            lif.thrMin,
+            lif.thrMax,
+            efe.beta,
+            efe.noise,
+            efe.flat,
+            efe.trust,
+            efe.arouse,
+            efe.tempMax,
+            efe.amb,
+            efe.nov,
+            efe.hab,
+            efe.wall,
+            efe.stuckGain,
+          ]);
+          return core;
+        })();
+
+        /* ============================= STATE ============================ */
+        const world = {};
+        const brain = { stuck: 0 };
+        const targets = {};
+        const shown = {};
+
+        let cells = [];
+        let traces = [];
+        let efeCells = [];
+        let wCells = [];
+
+        let speed = 1;
+        let timestep = 100;
+        let paused = false;
+        let lastAction = "NONE";
+        let state = "INITIALIZING";
+
+        let sub = 0;
+        let simAcc = 0;
+        let eegPhase = 0;
+        let uiAcc = 0;
+        let lastT = performance.now();
+
+        let gridDirty = true;
+        let shownState = "INITIALIZING";
+        let shownAction = "NONE";
+        let stateHold = 0;
+
+        /* ============================== SFX ============================= */
+        const sfx = {
+          on: false,
+          pool: {},
+          lastPlayed: {},
+          load() {
+            for (const kind of CFG.sfx.kinds)
+              this.pool[kind] = Array.from({ length: CFG.sfx.variants }, (_, i) => {
+                const a = new Audio(`assets/${kind}-0${i + 1}.mp3`);
+                a.preload = "auto";
+                a.load();
+                return a;
+              });
+          },
+          play(kind) {
+            if (!this.on) return;
+            const now = performance.now();
+            const minInterval = CFG.sfx.minIntervals[kind] ?? 0;
+            if (minInterval > 0 && now - (this.lastPlayed[kind] ?? 0) < minInterval) return;
+            this.lastPlayed[kind] = now;
+            const bank = this.pool[kind];
+            bank[(rnd() * bank.length) | 0]
+              .cloneNode()
+              .play()
+              .catch(() => {});
+          },
+          toggle() {
+            this.on = !this.on;
+            if (this.on) this.play("squeak");
+            return this.on;
+          },
+        };
+
+        /* =========================== MAIN LOOP ========================== */
+        function frame(now) {
+          requestAnimationFrame(frame);
+          let dt = now - lastT;
+          lastT = now;
+          dt = min(max(dt, 0), 100);
+          if (!paused) stepSim(dt);
+          drawEEG();
+          uiAcc += dt;
+          if (uiAcc >= UI_DT) {
+            updateUI(uiAcc);
+            uiAcc = 0;
+          }
+        }
+
+        /* batches many substeps into ONE wasm call — the SIMD kernels stay hot */
+        function stepSim(dt) {
+          const subDur = timestep / CFG.substeps;
+          simAcc += dt;
+          let budget = MAX_SUB_PER_FRAME;
+          while (simAcc >= subDur && budget > 0) {
+            if (sub === 0 && !beginTick()) {
+              simAcc = 0;
+              eegPhase = 0;
+              return;
+            }
+            const want = (simAcc / subDur) | 0;
+            const k = max(1, min(CFG.substeps - sub, budget, want));
+            W.ex.run(k);
+            sub += k;
+            budget -= k;
+            simAcc -= k * subDur;
+            if (sub >= CFG.substeps) {
+              endTick();
+              sub = 0;
+            }
+          }
+          if (budget <= 0) simAcc = 0;
+          eegPhase = clamp(simAcc / subDur, 0, 1);
+        }
+
+        function beginTick() {
+          if (!world.targets.length) {
+            state = "AWAITING TARGET";
+            return false;
+          }
+          /* sensors written straight into wasm heap — no allocation, no copy step */
+          const { x, y } = world;
+          W.S[0] = clamp((odorEdge(x + 1, y) - odorEdge(x - 1, y)) * GAIN, -1, 1);
+          W.S[1] = clamp((odorEdge(x, y + 1) - odorEdge(x, y - 1)) * GAIN, -1, 1);
+          W.S[2] = odorAt(x, y);
+          W.S[3] = (outside(x + 1, y) ? 1 : 0) - (outside(x - 1, y) ? 1 : 0);
+          W.S[4] = (outside(x, y + 1) ? 1 : 0) - (outside(x, y - 1) ? 1 : 0);
+          for (let a = 0; a < NA; a++) {
+            const nx = x + DIRS[a].dx,
+              ny = y + DIRS[a].dy;
+            W.nov[a] = outside(nx, ny) ? 0 : 1 / (1 + world.place[idxOf(nx, ny)]);
+          }
+          W.scal[0] = driveOf();
+          W.scal[1] = brain.stuck;
+          W.ex.beginTick();
+          return true;
+        }
+
+        function endTick() {
+          const fired = W.ctl[0];
+          let action = fired >= 0 ? fired : argmin(W.G);
+          let reflex = false;
+
+          if (world.stuckRun >= CFG.efe.escapeAfter && outside(world.x + DIRS[action].dx, world.y + DIRS[action].dy)) {
+            const legal = legalActions();
+            if (legal.length) {
+              action = legal.reduce((b, a) => (W.G[a] < W.G[b] ? a : b));
+              reflex = true;
+            }
+          }
+
+          W.ex.endTick(action); /* transErr decay + learnA + normA + learnB + latch prev */
+
+          const { dx, dy } = DIRS[action];
+          const [nx, ny] = [world.x + dx, world.y + dy];
+          const blocked = outside(nx, ny);
+          const moved = !blocked;
+          world.dir = action;
+          world.bumped = blocked;
+
+          if (blocked) {
+            world.bumps++;
+            world.bumpSeq++;
+            world.stuckRun++;
+            W.transErr[action] += CFG.bumpErr * (1 - W.transErr[action]);
+          } else {
+            world.stuckRun = 0;
+            [world.x, world.y] = [nx, ny];
+          }
+
+          brain.stuck = blocked ? brain.stuck + CFG.efe.stuckRise * (1 - brain.stuck) : brain.stuck * CFG.efe.stuckDecay;
+
+          for (let a = 0; a < NA; a++) W.habit[a] *= CFG.habit.decay;
+          W.habit[action] += blocked ? CFG.habit.bump : CFG.habit.gain;
+
+          metabolise(moved, blocked);
+
+          const mealIdx = moved ? world.targets.findIndex((t) => t.x === world.x && t.y === world.y) : -1;
+          const ate = mealIdx >= 0;
+          if (ate) eat(mealIdx);
+
+          lastAction = ACTIONS[action];
+          state = ate
+            ? "CHEESE CONSUMED"
+            : reflex
+              ? "ESCAPE REFLEX"
+              : blocked
+                ? "WHISKER BLOCK"
+                : world.hunger > 0.85
+                  ? "STARVING"
+                  : W.scal[3] > 0.9
+                    ? "TUMBLING"
+                    : meanAbs(W.err) > 0.2
+                      ? "SURPRISED"
+                      : "MODEL STABLE";
+
+          gridDirty = true;
+        }
+
+        /* ============================= WORLD ============================ */
+        function resetWorld() {
+          Object.assign(world, {
+            x: (CFG.grid / 2) | 0,
+            y: (CFG.grid / 2) | 0,
+            dir: 1,
+            targets: [],
+            hunger: 0.55,
+            taste: 0,
+            steps: 0,
+            consumed: 0,
+            bumps: 0,
+            bumpSeq: 0,
+            stuckRun: 0,
+            sinceMeal: 0,
+            history: [],
+            place: new Float32Array(CFG.grid ** 2),
+            bumped: false,
+          });
+          refill();
+          gridDirty = true;
+        }
+
+        function refill() {
+          while (world.targets.length < CFG.spawn) {
+            const busy = new Set([{ x: world.x, y: world.y }, ...world.targets].map(key));
+            const free = [];
+            for (let y = 0; y < CFG.grid; y++) for (let x = 0; x < CFG.grid; x++) if (!busy.has(key({ x, y }))) free.push({ x, y });
+            if (!free.length) return;
+            world.targets.push(free[(rnd() * free.length) | 0]);
+          }
+        }
+
+        function metabolise(moved, blocked) {
+          const { rise, moveCost, bumpCost, tasteDecay } = CFG.meta;
+          world.hunger = clamp(world.hunger + rise + (moved ? moveCost : 0) + (blocked ? bumpCost : 0), 0, 1);
+          world.taste *= tasteDecay;
+          world.steps++;
+          world.sinceMeal++;
+          for (let i = 0; i < world.place.length; i++) world.place[i] *= CFG.placeDecay;
+          world.place[idxOf(world.x, world.y)] += 1;
+        }
+
+        function eat(idx) {
+          world.targets.splice(idx, 1);
+          world.consumed++;
+          world.hunger = clamp(world.hunger - CFG.meta.bite, 0, 1);
+          world.taste = 1;
+          world.history = [...world.history, world.sinceMeal].slice(-8);
+          world.sinceMeal = 0;
+          sfx.play("bite");
+          refill();
+        }
+
+        function legalActions() {
+          const out = [];
+          for (let a = 0; a < NA; a++) if (!outside(world.x + DIRS[a].dx, world.y + DIRS[a].dy)) out.push(a);
+          return out;
+        }
+
+        /* ============================ RENDER ============================ */
+        function drawEEG() {
+          const head = W.ctl[2];
+          const eeg = W.eeg;
+          const first = head - CFG.ekg;
+          traces.forEach(({ ctx }, row) => {
+            const { width, height } = ctx.canvas;
+            const dx = width / (CFG.ekg - 1);
+            const base = row * EEG_LEN;
+            ctx.clearRect(0, 0, width, height);
+            ctx.beginPath();
+            for (let i = 0; i <= CFG.ekg; i++) {
+              const s = eeg[base + ((first + i) & (EEG_LEN - 1))]; /* read in place */
+              const px = (i - 1 - eegPhase) * dx;
+              const py = clamp(height - 2 - (s * (height - 4)) / SPIKE_V, 1, height - 1);
+              i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+            }
+            ctx.stroke();
+          });
+        }
+
+        function collectTargets() {
+          Object.assign(targets, {
+            hunger: world.hunger,
+            err: meanAbs(W.err),
+            scent: odorAt(world.x, world.y),
+            temp: W.scal[3],
+            steps: world.steps,
+            hits: world.consumed,
+            bumps: world.bumps,
+            eff: world.consumed ? world.steps / world.consumed : 0,
+            bpc: world.consumed ? world.bumps / world.consumed : 0,
+          });
+          for (let a = 0; a < NA; a++) {
+            targets[`risk${a}`] = W.risk[a];
+            targets[`amb${a}`] = W.amb[a];
+            targets[`nov${a}`] = W.nov[a];
+            targets[`hab${a}`] = W.habit[a];
+            targets[`G${a}`] = W.G[a];
+          }
+          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) targets[`A${i}_${j}`] = W.A[i * NZ + j];
+        }
+
+        function ease(dt) {
+          const k = 1 - exp(-dt / EASE_TAU);
+          for (const key in targets) shown[key] = shown[key] === undefined ? targets[key] : shown[key] + (targets[key] - shown[key]) * k;
+        }
+
+        function snapShown() {
+          collectTargets();
+          for (const key in targets) shown[key] = targets[key];
+        }
+
+        function setText(el, txt) {
+          if (el._t !== txt) {
+            el._t = txt;
+            el.textContent = txt;
+          }
+        }
+        function setClass(el, cls) {
+          if (el._c !== cls) {
+            el._c = cls;
+            el.className = cls;
+          }
+        }
+
+        function updateUI(dt) {
+          collectTargets();
+          ease(dt);
+
+          if (gridDirty) {
+            drawGrid();
+            gridDirty = false;
+          }
+
+          stateHold -= dt;
+          if (stateHold <= 0) {
+            shownState = state;
+            shownAction = lastAction;
+            stateHold = STATE_HOLD;
+          }
+
+          const set = (id, text) => setText($(id), text);
+          const bar = (id, px) => {
+            const w = `${min(60, max(0, px)).toFixed(1)}px`;
+            const el = $(id);
+            if (el._w !== w) {
+              el._w = w;
+              el.style.width = w;
+            }
+          };
+
+          set("val-step", `${round(shown.steps)}`);
+          set("val-hits", `${round(shown.hits)}`);
+          set("val-eff", world.consumed ? shown.eff.toFixed(1) : "—");
+          set("val-bpc", world.consumed ? shown.bpc.toFixed(1) : "—");
+          set("val-bumps", `${round(shown.bumps)}`);
+          set("val-action", shownAction);
+          set("val-feedback", paused ? "PAUSED" : shownState);
+          set("val-hunger", shown.hunger.toFixed(2));
+          set("val-err", shown.err.toFixed(2));
+          set("val-scent", shown.scent.toFixed(2));
+          set("val-temp", shown.temp.toFixed(2));
+          bar("bar-hunger", shown.hunger * 60);
+          bar("bar-err", shown.err * 200);
+          bar("bar-scent", shown.scent * 60);
+          bar("bar-temp", (shown.temp / CFG.efe.tempMax) * 60);
+
+          set("val-window", windowLabel());
+          drawTables();
+        }
+
+        function windowLabel() {
+          const ms = CFG.ekg * (timestep / CFG.substeps);
+          return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${round(ms)} ms` : `${ms.toFixed(1)} ms`;
+        }
+
+        function drawGrid() {
+          const targetSet = new Set(world.targets.map(key));
+          const { rot } = DIRS[world.dir];
+          cells.forEach((cell, i) => {
+            const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
+            const here = world.x === x && world.y === y;
+            setClass(cell, `cell${here ? " agent" : ""}`);
+            const html = here
+              ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">🐭</span>`
+              : targetSet.has(key({ x, y }))
+                ? "🧀"
+                : "";
+            const stamp = here && world.bumped ? `#${world.bumpSeq}` : "";
+            if (cell._h !== html + stamp) {
+              cell._h = html + stamp;
+              cell.innerHTML = html;
+            }
+          });
+        }
+
+        function drawTables() {
+          const best = argmin(W.G);
+          efeCells.forEach(({ tr, tds }, a) => {
+            setClass(tr, a === best ? "pick" : "");
+            [shown[`risk${a}`], shown[`amb${a}`], shown[`nov${a}`], shown[`hab${a}`], shown[`G${a}`]].forEach((v, c) => setText(tds[c], v.toFixed(2)));
+          });
+          for (let i = 0; i < NS; i++)
+            for (let j = 0; j < NZ; j++) {
+              const w = shown[`A${i}_${j}`];
+              const td = wCells[i][j];
+              setText(td, w.toFixed(2));
+              setClass(td, abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : "");
+            }
+        }
+
+        /* ============================ HELPERS =========================== */
+        const meanAbs = (a) => {
+          let s = 0;
+          for (let i = 0; i < a.length; i++) s += abs(a[i]);
+          return s / a.length;
+        };
+        const argmin = (a) => {
+          let b = 0;
+          for (let i = 1; i < a.length; i++) if (a[i] < a[b]) b = i;
+          return b;
+        };
+        const key = ({ x, y }) => `${x},${y}`;
+        const idxOf = (x, y) => y * CFG.grid + x;
+        const outside = (x, y) => x < 0 || x >= CFG.grid || y < 0 || y >= CFG.grid;
+        const driveOf = () => clamp(world.hunger - world.taste, 0, 1);
+        const odorAt = (x, y) => world.targets.reduce((m, t) => max(m, 1 - hypot(x - t.x, y - t.y) / DMAX), 0);
+        const odorEdge = (x, y) => odorAt(clamp(x, 0, CFG.grid - 1), clamp(y, 0, CFG.grid - 1));
+
+        /* ============================== INIT ============================ */
+        cells = Array.from({ length: CFG.grid ** 2 }, (_, i) => {
+          const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            const idx = world.targets.findIndex((t) => t.x === x && t.y === y);
+            if (idx >= 0) world.targets.splice(idx, 1);
+            else if (world.x !== x || world.y !== y) {
+              world.targets.push({ x, y });
+              sfx.play("drop");
+            }
+            gridDirty = true;
+            updateUI(UI_DT);
+          });
+          $("grid").append(cell);
+          return cell;
+        });
+
+        efeCells = ACTIONS.map((a) => {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          name.textContent = a;
+          tr.append(name);
+          const tds = Array.from({ length: 5 }, () => {
+            const td = document.createElement("td");
+            td.textContent = "0.00";
+            tr.append(td);
+            return td;
+          });
+          $("efe-body").append(tr);
+          return { tr, tds };
+        });
+
+        wCells = SENSORS.map((s) => {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          name.textContent = s;
+          tr.append(name);
+          const tds = Array.from({ length: NZ }, () => {
+            const td = document.createElement("td");
+            td.textContent = "0.00";
+            tr.append(td);
+            return td;
+          });
+          $("weights-body").append(tr);
+          return tds;
+        });
+
+        traces = LABELS.map((label, i) => {
+          if (i === NS || i === NS + NZ) $("ekg-panel").insertAdjacentHTML("beforeend", `<div class="sep"></div>`);
+          const row = document.createElement("div");
+          row.className = "ekg-row";
+          row.innerHTML = `<span class="ekg-label tip" title="${EEG_TIPS[label] ?? ""}">${label}</span><canvas width="196" height="14"></canvas>`;
+          $("ekg-panel").append(row);
+          const ctx = row.querySelector("canvas").getContext("2d");
+          ctx.strokeStyle = "#000";
+          ctx.lineWidth = 1;
+          return { ctx };
+        });
+
+        (() => {
+          const seen = new Set();
+          const rows = [];
+          document.querySelectorAll("[title].tip").forEach((el) => {
+            const term = el.textContent.trim();
+            if (!term || seen.has(term)) return;
+            seen.add(term);
+            rows.push(`<tr><td>${term}</td><td>${el.getAttribute("title")}</td></tr>`);
+          });
+          $("glossary-body").innerHTML = rows.join("");
+        })();
+
+        const speedOf = (v) => 10 ** (v / 100);
+        const fmtSpeed = (s) => (paused ? "PAUSED" : `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)}×`);
+
+        function applySpeed(v) {
+          paused = v <= PAUSE_V;
+          if (!paused) {
+            speed = speedOf(v);
+            timestep = 100 / speed;
+          }
+          $("val-speed").textContent = fmtSpeed(speed);
+        }
+
+        function doReset() {
+          W.ex.reset((rnd() * 2 ** 31) | 0);
+          sub = 0;
+          simAcc = 0;
+          eegPhase = 0;
+          brain.stuck = 0;
+          world.bumped = false;
+          world.stuckRun = 0;
+          lastAction = "RESET";
+          state = "BRAIN RESET";
+          shownAction = lastAction;
+          shownState = state;
+          stateHold = STATE_HOLD;
+          sfx.play("squeak");
+          snapShown();
+          drawGrid();
+          gridDirty = false;
+          updateUI(UI_DT);
+        }
+
+        const onActivate = (el, fn) => {
+          el.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            fn();
+          });
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              fn();
+            }
+          });
+        };
+
+        const speedSlider = $("speed-slider");
+        function updateSpeedFromPointer(e) {
+          const rect = speedSlider.getBoundingClientRect();
+          if (rect.width <= 0) return;
+          const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+          const minVal = +speedSlider.min,
+            maxVal = +speedSlider.max,
+            step = +speedSlider.step || 1;
+          let val = minVal + ratio * (maxVal - minVal);
+          val = round((val - minVal) / step) * step + minVal;
+          val = clamp(val, minVal, maxVal);
+          if (+speedSlider.value !== val) {
+            speedSlider.value = val;
+            applySpeed(val);
+          }
+        }
+
+        speedSlider.addEventListener("pointerdown", (e) => {
+          speedSlider.setPointerCapture(e.pointerId);
+          updateSpeedFromPointer(e);
+        });
+        speedSlider.addEventListener("pointermove", (e) => {
+          if (speedSlider.hasPointerCapture(e.pointerId) || e.buttons > 0) updateSpeedFromPointer(e);
+        });
+        speedSlider.addEventListener("input", ({ target }) => applySpeed(+target.value));
+        onActivate($("btn-reset"), doReset);
+        onActivate($("btn-sfx"), () => setText($("btn-sfx"), `SFX: ${sfx.toggle() ? "ON" : "OFF"}`));
+
+        document.addEventListener("visibilitychange", () => {
+          lastT = performance.now();
+        });
+
+        sfx.load();
+        W.ex.reset((rnd() * 2 ** 31) | 0);
+        resetWorld();
+        snapShown();
+        drawGrid();
+        gridDirty = false;
+        setText($("val-engine"), "wasm·simd");
+        applySpeed(+$("speed-slider").value);
+        updateUI(UI_DT);
+        requestAnimationFrame(frame);
+      })();
+    </script>
+  </body>
+</html>
