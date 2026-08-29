@@ -887,7 +887,7 @@
         const rimY = pot.baseY - pot.h;
         const maxDown = el.canvas.height - rimY + 10;
 
-        if (pot.upSteps < 3) {
+        if (pot.upSteps < 2) {
           pot.upSteps++;
         } else if (pot.downLen < maxDown) {
           pot.downLen = Math.min(pot.downLen + 100, maxDown);
@@ -956,22 +956,30 @@
       function drawPlant(target, pot) {
         const rimY = pot.baseY - pot.h;
         target.save();
-        target.fillStyle = "rgba(85, 165, 75, 0.85)";
-        target.strokeStyle = "rgba(45, 120, 50, 0.9)";
+        target.fillStyle = "rgba(85, 165, 75, 0.45)";
+        target.strokeStyle = "rgba(45, 120, 50, 0.5)";
         target.lineWidth = 2;
 
         if (pot.upSteps > 0) {
-          const r = pot.upSteps * 17;
+          // Dome-shaped canopy: a wide half-ellipse resting on the pot rim,
+          // slightly wider than tall, like a natural pothos mound.
+          const domeW = pot.topW * 0.7 + pot.upSteps * 66;
+          const domeH = pot.upSteps * 60;
           target.beginPath();
-          target.arc(pot.cx, rimY - r / 2, r, 0, Math.PI * 2);
+          target.ellipse(pot.cx, rimY, domeW / 2, domeH, 0, Math.PI, 0, false);
+          target.closePath();
           target.fill();
           target.stroke();
         }
 
         if (pot.downLen > 0) {
-          const w = Math.max(16, pot.topW * 0.5);
+          // Downward-pointing triangle: grows in width as it grows in length.
+          const w = Math.max(20, pot.topW * 0.5) + pot.downLen * 0.25;
           target.beginPath();
-          target.rect(pot.cx - w / 2, rimY, w, pot.downLen);
+          target.moveTo(pot.cx - w / 2, rimY);
+          target.lineTo(pot.cx + w / 2, rimY);
+          target.lineTo(pot.cx, rimY + pot.downLen);
+          target.closePath();
           target.fill();
           target.stroke();
         }
