@@ -46,7 +46,6 @@
 
       #layout {
         display: flex;
-        flex-wrap: wrap;
         align-items: stretch;
         justify-content: center;
         gap: 8px;
@@ -252,9 +251,6 @@
         & .w-zero {
           color: var(--mute);
         }
-        & .neg {
-          text-decoration: underline;
-        }
       }
 
       #ekg-panel {
@@ -377,11 +373,13 @@
         }
       }
 
-      @media (max-width: 620px) {
+      @media (max-width: 600px) {
         body {
           padding: 8px 6px;
         }
         #layout {
+          flex-direction: column;
+          align-items: center;
           width: 100%;
         }
         .grow {
@@ -524,7 +522,7 @@
           grid: 8,
           spawn: 4,
           substeps: 12,
-          ekg: 60,
+          ekg: 120,
           placeDecay: 0.985,
           bumpErr: 0.35,
           lif: { tau: 3.5, refrac: 2, rateTau: 9, thrMin: 0.55, thrMax: 1.8 },
@@ -559,10 +557,10 @@
           "smell·0": "Odour intensity at the mouse's current cell",
           "whisk·X": "Whisker deflection detecting east and west boundaries",
           "whisk·Y": "Whisker deflection detecting south and north boundaries",
-          "z0": "Latent state neuron 0 in the generative model",
-          "z1": "Latent state neuron 1 in the generative model",
-          "z2": "Latent state neuron 2 in the generative model",
-          "z3": "Latent state neuron 3 in the generative model",
+          z0: "Latent state neuron 0 in the generative model",
+          z1: "Latent state neuron 1 in the generative model",
+          z2: "Latent state neuron 2 in the generative model",
+          z3: "Latent state neuron 3 in the generative model",
           "mot:N": "Motor neuron driving movement North",
           "mot:E": "Motor neuron driving movement East",
           "mot:S": "Motor neuron driving movement South",
@@ -1076,7 +1074,7 @@
           set("val-action", shownAction);
           set("val-feedback", paused ? "PAUSED" : shownState);
           set("val-hunger", shown.hunger.toFixed(2));
-          set("val-err", shown.err.toFixed(3));
+          set("val-err", shown.err.toFixed(2));
           set("val-scent", shown.scent.toFixed(2));
           set("val-temp", shown.temp.toFixed(2));
           bar("bar-hunger", shown.hunger * 60);
@@ -1091,7 +1089,7 @@
         function windowLabel() {
           const ms = CFG.ekg * (timestep / CFG.substeps);
           const t = ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${round(ms)} ms` : `${ms.toFixed(1)} ms`;
-          return `${t} window`;
+          return t;
         }
 
         function drawGrid() {
@@ -1123,7 +1121,6 @@
             vals.forEach((v, c) => {
               const td = row.tds[c];
               setText(td, v.toFixed(2));
-              setClass(td, v < 0 ? "neg" : "");
             });
           }
 
