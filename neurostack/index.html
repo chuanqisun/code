@@ -296,6 +296,9 @@
         font-size: var(--font-s);
         border: var(--line);
         padding: 4px 8px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
 
         & .slider-header {
           display: flex;
@@ -1285,7 +1288,35 @@
           });
         };
 
-        $("speed-slider").addEventListener("input", ({ target }) => applySpeed(+target.value));
+        const speedSlider = $("speed-slider");
+        function updateSpeedFromPointer(e) {
+          const rect = speedSlider.getBoundingClientRect();
+          if (rect.width <= 0) return;
+          const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+          const minVal = +speedSlider.min;
+          const maxVal = +speedSlider.max;
+          const step = +speedSlider.step || 1;
+          let val = minVal + ratio * (maxVal - minVal);
+          val = round((val - minVal) / step) * step + minVal;
+          val = clamp(val, minVal, maxVal);
+          if (+speedSlider.value !== val) {
+            speedSlider.value = val;
+            applySpeed(val);
+          }
+        }
+
+        speedSlider.addEventListener("pointerdown", (e) => {
+          speedSlider.setPointerCapture(e.pointerId);
+          updateSpeedFromPointer(e);
+        });
+
+        speedSlider.addEventListener("pointermove", (e) => {
+          if (speedSlider.hasPointerCapture(e.pointerId) || e.buttons > 0) {
+            updateSpeedFromPointer(e);
+          }
+        });
+
+        speedSlider.addEventListener("input", ({ target }) => applySpeed(+target.value));
         onActivate($("btn-reset"), doReset);
         onActivate($("btn-sfx"), () => setText($("btn-sfx"), `SFX: ${sfx.toggle() ? "ON" : "OFF"}`));
 
