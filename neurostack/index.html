@@ -231,11 +231,6 @@
         text-align: right;
         font-size: var(--font-xs);
 
-        & th {
-          border-bottom: var(--dash);
-          font-weight: bold;
-        }
-
         & th,
         & td {
           padding: 1px;
@@ -243,6 +238,16 @@
           &:first-child {
             text-align: left;
           }
+        }
+
+        & th {
+          border-bottom: var(--dash);
+          font-weight: bold;
+          padding-bottom: 4px;
+        }
+
+        & tbody tr:first-child td {
+          padding-top: 4px;
         }
 
         & tr.pick td {
@@ -553,7 +558,7 @@
           },
           meta: { rise: 0.03, moveCost: 0.006, bumpCost: 0.014, bite: 0.32, tasteDecay: 0.45 },
           habit: { decay: 0.6, gain: 1, bump: -0.5 },
-          sfx: { kinds: ["bite", "squeak", "drop"], variants: 4, maxVoices: 10 },
+          sfx: { kinds: ["bite", "squeak", "drop"], variants: 4, minIntervals: { bite: 20, squeak: 0, drop: 0 } },
         };
 
         const SENSORS = ["smell·X", "smell·Y", "smell·0", "whisk·X", "whisk·Y"];
@@ -636,8 +641,8 @@
         /* ============================== SFX ============================= */
         const sfx = {
           on: false,
-          voices: 0,
           pool: {},
+          lastPlayed: {},
           load() {
             for (const kind of CFG.sfx.kinds)
               this.pool[kind] = Array.from({ length: CFG.sfx.variants }, (_, i) => {
@@ -648,13 +653,14 @@
               });
           },
           play(kind) {
-            if (!this.on || this.voices >= CFG.sfx.maxVoices) return;
+            if (!this.on) return;
+            const now = performance.now();
+            const minInterval = CFG.sfx.minIntervals[kind] ?? 0;
+            if (minInterval > 0 && now - (this.lastPlayed[kind] ?? 0) < minInterval) return;
+            this.lastPlayed[kind] = now;
             const bank = this.pool[kind];
             const node = bank[(rnd() * bank.length) | 0].cloneNode();
-            this.voices++;
-            const release = () => this.voices--;
-            node.addEventListener("ended", release, { once: true });
-            node.play().catch(release);
+            node.play().catch(() => {});
           },
           toggle() {
             this.on = !this.on;
