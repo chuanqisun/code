@@ -553,6 +553,21 @@
         const LATENTS = ["z0", "z1", "z2", "z3"];
         const ACTIONS = ["NORTH", "EAST", "SOUTH", "WEST"];
         const LABELS = [...SENSORS, ...LATENTS, ...ACTIONS.map((a) => `mot:${a[0]}`)];
+        const EEG_TIPS = {
+          "smell·X": "Horizontal scent gradient between adjacent cells",
+          "smell·Y": "Vertical scent gradient between adjacent cells",
+          "smell·0": "Odour intensity at the mouse's current cell",
+          "whisk·X": "Whisker deflection detecting east and west boundaries",
+          "whisk·Y": "Whisker deflection detecting south and north boundaries",
+          "z0": "Latent state neuron 0 in the generative model",
+          "z1": "Latent state neuron 1 in the generative model",
+          "z2": "Latent state neuron 2 in the generative model",
+          "z3": "Latent state neuron 3 in the generative model",
+          "mot:N": "Motor neuron driving movement North",
+          "mot:E": "Motor neuron driving movement East",
+          "mot:S": "Motor neuron driving movement South",
+          "mot:W": "Motor neuron driving movement West",
+        };
         const [NS, NZ, NA] = [SENSORS.length, LATENTS.length, ACTIONS.length];
         const N = NS + NZ + NA;
 
@@ -1214,7 +1229,8 @@
           if (i === NS || i === NS + NZ) $("ekg-panel").insertAdjacentHTML("beforeend", `<div class="sep"></div>`);
           const row = document.createElement("div");
           row.className = "ekg-row";
-          row.innerHTML = `<span class="ekg-label">${label}</span><canvas width="196" height="14"></canvas>`;
+          const tip = EEG_TIPS[label] || "";
+          row.innerHTML = `<span class="ekg-label tip" title="${tip}">${label}</span><canvas width="196" height="14"></canvas>`;
           $("ekg-panel").append(row);
           const ctx = row.querySelector("canvas").getContext("2d");
           ctx.strokeStyle = "#000";
