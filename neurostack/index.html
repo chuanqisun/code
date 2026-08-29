@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐭</text></svg>" />
     <title>NeuroStack NS2</title>
     <style>
       :root {
@@ -17,8 +18,10 @@
         --font-xs: 10px;
         --line: 1px solid var(--ink);
         --dash: 1px dashed var(--ink);
-        --bar-w: 60px;
+        --bar-max: 60px;
+        --pad: 6px 8px;
       }
+
       * {
         box-sizing: border-box;
         margin: 0;
@@ -28,6 +31,7 @@
         font-family: monospace;
         -webkit-tap-highlight-color: transparent;
       }
+
       body {
         padding: 14px;
         display: flex;
@@ -36,35 +40,49 @@
         gap: var(--gap);
         -webkit-text-size-adjust: 100%;
       }
+
+      /* ---------- layout ---------- */
       #topbar {
         width: min(calc(var(--panel-w) * 2 + var(--gap)), 100%);
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: var(--gap);
+
         & h1 {
           font-size: 14px;
           text-transform: uppercase;
           letter-spacing: 1px;
         }
+
+        & .actions {
+          display: flex;
+          align-items: center;
+          gap: var(--gap);
+        }
       }
+
       #layout {
         display: flex;
         align-items: stretch;
         justify-content: center;
         gap: var(--gap);
       }
+
       .col {
         display: flex;
         flex-direction: column;
         gap: var(--gap);
         width: min(var(--panel-w), 100%);
       }
+
       .grow {
         flex: 1;
         display: flex;
         flex-direction: column;
       }
+
+      /* ---------- controls ---------- */
       button {
         border: var(--line);
         padding: 4px 6px;
@@ -74,9 +92,9 @@
         font-weight: bold;
         touch-action: manipulation;
       }
+
       .chip {
         border: var(--line);
-        color: var(--ink);
         font-size: 9px;
         font-weight: normal;
         letter-spacing: 0.5px;
@@ -86,6 +104,7 @@
         text-align: center;
         text-transform: uppercase;
       }
+
       @media (hover: hover) {
         button:hover {
           background: var(--hover);
@@ -94,164 +113,19 @@
           font-weight: bold;
           background: var(--paper);
         }
-      }
-      .panel {
-        border: var(--line);
-        padding: 6px 8px;
-        font-size: var(--font-s);
-        & .panel-title {
-          font-weight: bold;
-          text-transform: uppercase;
-          border-bottom: var(--line);
-          padding-bottom: 2px;
-          margin-bottom: 3px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 6px;
-          & .sub {
-            font-weight: normal;
-            text-transform: none;
-          }
-        }
-      }
-      [title].tip {
-        cursor: help;
-      }
-      @media (hover: hover) {
         [title].tip:hover {
           text-decoration: underline dashed;
           text-underline-offset: 2px;
         }
-      }
-      #grid {
-        display: grid;
-        grid-template-columns: repeat(8, 1fr);
-        border: var(--line);
-        & .cell {
-          aspect-ratio: 1;
-          border-right: var(--line);
-          border-bottom: var(--line);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 19px;
-          line-height: 1;
-          cursor: pointer;
-          user-select: none;
-          -webkit-user-select: none;
-          touch-action: manipulation;
-          &:nth-child(8n) {
-            border-right: 0;
-          }
-          &:nth-last-child(-n + 8) {
-            border-bottom: 0;
-          }
-          &.agent {
-            box-shadow: inset 0 0 0 1px var(--ink);
-          }
-        }
-        & .mouse {
-          display: inline-block;
-          &.bump {
-            animation: nudge 0.12s linear;
-          }
-        }
-      }
-      @media (hover: hover) {
         #grid .cell:hover {
           box-shadow: inset 0 0 0 1px var(--ink);
         }
       }
-      @keyframes nudge {
-        0%,
-        100% {
-          translate: 0 0;
-        }
-        50% {
-          translate: 0 -3px;
-        }
+
+      [title].tip {
+        cursor: help;
       }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      .stats-table td {
-        padding: 1px 0;
-        vertical-align: middle;
-        &:first-child {
-          font-weight: bold;
-          width: 52%;
-        }
-        &:last-child {
-          text-align: right;
-        }
-      }
-      .meter-val {
-        display: inline-flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 4px;
-        & .bar {
-          display: inline-block;
-          height: 6px;
-          background: var(--ink);
-        }
-      }
-      .num-table {
-        table-layout: fixed;
-        text-align: right;
-        font-size: var(--font-xs);
-        & th,
-        & td {
-          padding: 1px;
-          &:first-child {
-            text-align: left;
-          }
-        }
-        & th {
-          border-bottom: var(--dash);
-          font-weight: bold;
-          padding-bottom: 4px;
-        }
-        & tbody tr:first-child td {
-          padding-top: 4px;
-        }
-        & tr.pick td {
-          font-weight: bold;
-        }
-        & .w-pos {
-          font-weight: bold;
-        }
-        & .w-zero {
-          color: var(--mute);
-        }
-      }
-      #ekg-panel {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        font-size: var(--font-xs);
-        & .ekg-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 6px;
-        }
-        & .ekg-label {
-          width: 52px;
-          font-weight: bold;
-        }
-        & .sep {
-          border-top: var(--dash);
-          margin: 2px 0;
-        }
-        & canvas {
-          border: 1px solid var(--hair);
-          display: block;
-          max-width: 100%;
-        }
-      }
+
       .slider-container {
         display: flex;
         flex-direction: column;
@@ -262,11 +136,13 @@
         touch-action: none;
         user-select: none;
         -webkit-user-select: none;
+
         & .slider-header {
           display: flex;
           justify-content: space-between;
         }
       }
+
       input[type="range"] {
         appearance: none;
         -webkit-appearance: none;
@@ -275,6 +151,7 @@
         background: transparent;
         cursor: pointer;
         touch-action: none;
+
         &::-webkit-slider-runnable-track {
           height: 6px;
           background: var(--paper);
@@ -303,12 +180,189 @@
           border-radius: 0;
         }
       }
+
+      /* ---------- panels ---------- */
+      .panel {
+        border: var(--line);
+        padding: var(--pad);
+        font-size: var(--font-s);
+
+        & .panel-title {
+          font-weight: bold;
+          text-transform: uppercase;
+          border-bottom: var(--line);
+          padding-bottom: 2px;
+          margin-bottom: 3px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 6px;
+
+          & .sub {
+            font-weight: normal;
+            text-transform: none;
+          }
+        }
+      }
+
+      /* ---------- grid ---------- */
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        border: var(--line);
+
+        & .cell {
+          aspect-ratio: 1;
+          border-right: var(--line);
+          border-bottom: var(--line);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 19px;
+          line-height: 1;
+          cursor: pointer;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
+
+          &:nth-child(8n) {
+            border-right: 0;
+          }
+          &:nth-last-child(-n + 8) {
+            border-bottom: 0;
+          }
+          &.agent {
+            box-shadow: inset 0 0 0 1px var(--ink);
+          }
+        }
+
+        & .mouse {
+          display: inline-block;
+
+          &.bump {
+            animation: nudge 0.12s linear;
+          }
+        }
+      }
+
+      @keyframes nudge {
+        0%,
+        100% {
+          translate: 0 0;
+        }
+        50% {
+          translate: 0 -3px;
+        }
+      }
+
+      /* ---------- tables ---------- */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .stats-table td {
+        padding: 1px 0;
+        vertical-align: middle;
+
+        &:first-child {
+          font-weight: bold;
+          width: 52%;
+        }
+        &:last-child {
+          text-align: right;
+        }
+      }
+
+      .meter-val {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+
+        & .bar {
+          display: inline-block;
+          height: 6px;
+          background: var(--ink);
+        }
+      }
+
+      .num-table {
+        table-layout: fixed;
+        text-align: right;
+        font-size: var(--font-xs);
+
+        & th,
+        & td {
+          padding: 1px;
+
+          &:first-child {
+            text-align: left;
+          }
+        }
+
+        & th {
+          border-bottom: var(--dash);
+          font-weight: bold;
+          padding-bottom: 4px;
+        }
+
+        & tbody tr:first-child td {
+          padding-top: 4px;
+        }
+
+        & tr.pick td {
+          font-weight: bold;
+        }
+
+        & .w-pos {
+          font-weight: bold;
+        }
+
+        & .w-zero {
+          color: var(--mute);
+        }
+      }
+
+      /* ---------- eeg ---------- */
+      #ekg-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: var(--font-xs);
+
+        & .ekg-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+        }
+
+        & .ekg-label {
+          width: 52px;
+          font-weight: bold;
+        }
+
+        & .sep {
+          border-top: var(--dash);
+          margin: 2px 0;
+        }
+
+        & canvas {
+          border: 1px solid var(--hair);
+          display: block;
+          max-width: 100%;
+        }
+      }
+
+      /* ---------- glossary (mobile only) ---------- */
       #glossary {
         display: none;
         width: min(var(--panel-w), 100%);
         border: var(--line);
-        padding: 6px 8px;
+        padding: var(--pad);
         font-size: var(--font-xs);
+
         & .panel-title {
           font-weight: bold;
           font-size: var(--font-s);
@@ -317,23 +371,28 @@
           padding-bottom: 2px;
           margin-bottom: 3px;
         }
+
         & table {
           table-layout: fixed;
         }
+
         & td {
           padding: 2px 1px;
           vertical-align: top;
           border-bottom: var(--dash);
+
           &:first-child {
             font-weight: bold;
             width: 38%;
             padding-right: 6px;
           }
         }
+
         & tr:last-child td {
           border-bottom: 0;
         }
       }
+
       @media (max-width: 600px) {
         body {
           padding: 8px 6px;
@@ -362,7 +421,10 @@
   <body>
     <header id="topbar">
       <h1>NeuroStack NS2</h1>
-      <button id="btn-sfx" class="chip" title="Toggle sound effects">SFX: OFF</button>
+      <div class="actions">
+        <button id="btn-sfx" class="chip" title="Toggle sound effects">SFX: OFF</button>
+        <button id="btn-reset" class="chip" title="Reset brain state and statistics">Reset</button>
+      </div>
     </header>
 
     <main id="layout">
@@ -455,10 +517,7 @@
         </div>
 
         <div class="panel grow">
-          <div class="panel-title">
-            <span>Connectivity</span>
-            <button id="btn-reset" class="chip" title="Reset brain state only (world unchanged)">Reset</button>
-          </div>
+          <div class="panel-title"><span>Connectivity</span></div>
           <table class="num-table">
             <thead>
               <tr>
@@ -484,7 +543,7 @@
 
     <script>
       (async () => {
-        /* ============================ CONFIG ============================ */
+        /* ========================= CONSTANTS ========================= */
         const CFG = {
           grid: 8,
           spawn: 4,
@@ -519,6 +578,9 @@
         const LATENTS = ["z0", "z1", "z2", "z3"];
         const ACTIONS = ["NORTH", "EAST", "SOUTH", "WEST"];
         const LABELS = [...SENSORS, ...LATENTS, ...ACTIONS.map((a) => `mot:${a[0]}`)];
+        const [NS, NZ, NA] = [SENSORS.length, LATENTS.length, ACTIONS.length];
+        const N = NS + NZ + NA;
+
         const EEG_TIPS = {
           "smell·X": "Horizontal scent gradient between adjacent cells",
           "smell·Y": "Vertical scent gradient between adjacent cells",
@@ -534,8 +596,6 @@
           "mot:S": "Motor neuron driving movement South",
           "mot:W": "Motor neuron driving movement West",
         };
-        const [NS, NZ, NA] = [SENSORS.length, LATENTS.length, ACTIONS.length];
-        const N = NS + NZ + NA;
 
         const DIRS = [
           { dx: 0, dy: -1, rot: 0 },
@@ -554,12 +614,9 @@
         const STATE_HOLD = 120;
         const SPIKE_V = 1.7;
         const PAUSE_V = -110;
+        const BAR_MAX = 60;
+        const EEG_LEN = 128;
 
-        const { abs, exp, min, max, hypot, random: rnd, round } = Math;
-        const $ = (id) => document.getElementById(id);
-        const clamp = (x, lo, hi) => min(hi, max(lo, x));
-
-        /* ==================== WASM SIMD CORE (zero-copy) ==================== */
         const OFF = {
           A: 0,
           B: 96,
@@ -584,18 +641,22 @@
           CTL: 1440,
           EEG: 1536,
         };
-        const EEG_LEN = 128;
 
+        const { abs, exp, min, max, hypot, random: rnd, round } = Math;
+        const $ = (id) => document.getElementById(id);
+        const clamp = (x, lo, hi) => min(hi, max(lo, x));
+
+        /* ==================== WASM SIMD CORE (zero-copy) ==================== */
         const W = await (async () => {
-          const src = await WebAssembly.instantiateStreaming(fetch("assets/brain.wasm"), {}).catch(async () =>
+          const mod = await WebAssembly.instantiateStreaming(fetch("assets/brain.wasm"), {}).catch(async () =>
             WebAssembly.instantiate(await (await fetch("assets/brain.wasm")).arrayBuffer(), {}),
           );
-          const ex = src.instance.exports;
-          const buf = ex.mem.buffer; /* 1 page, never grown -> views never detach */
-          const f = (o, n) => new Float32Array(buf, o, n);
+          const ex = mod.instance.exports;
+          const buf = ex.mem.buffer;
+          const f = (offset, len) => new Float32Array(buf, offset, len);
+
           const core = {
             ex,
-            buf,
             A: f(OFF.A, 20),
             B: f(OFF.B, 64),
             z: f(OFF.Z, 4),
@@ -617,13 +678,14 @@
             ctl: new Int32Array(buf, OFF.CTL, 4),
             eeg: f(OFF.EEG, N * EEG_LEN),
           };
-          /* one-time config upload — never touched again in the hot loop */
+
           core.prefC.set(PREF.C);
           core.prefW.set(PREF.W);
-          DIRS.forEach((d, i) => {
-            core.dirX[i] = d.dx;
-            core.dirY[i] = d.dy;
+          DIRS.forEach(({ dx, dy }, i) => {
+            core.dirX[i] = dx;
+            core.dirY[i] = dy;
           });
+
           const { eta, lif, efe } = CFG;
           core.params.set([
             eta.z,
@@ -652,7 +714,7 @@
           return core;
         })();
 
-        /* ============================= STATE ============================ */
+        /* =========================== STATE =========================== */
         const world = {};
         const brain = { stuck: 0 };
         const targets = {};
@@ -660,8 +722,8 @@
 
         let cells = [];
         let traces = [];
-        let efeCells = [];
-        let wCells = [];
+        let efeRows = [];
+        let weightCells = [];
 
         let speed = 1;
         let timestep = 100;
@@ -681,7 +743,7 @@
         let shownAction = "NONE";
         let stateHold = 0;
 
-        /* ============================== SFX ============================= */
+        /* ============================ SFX ============================ */
         const sfx = {
           on: false,
           pool: {},
@@ -689,17 +751,17 @@
           load() {
             for (const kind of CFG.sfx.kinds)
               this.pool[kind] = Array.from({ length: CFG.sfx.variants }, (_, i) => {
-                const a = new Audio(`assets/${kind}-0${i + 1}.mp3`);
-                a.preload = "auto";
-                a.load();
-                return a;
+                const audio = new Audio(`assets/${kind}-0${i + 1}.mp3`);
+                audio.preload = "auto";
+                audio.load();
+                return audio;
               });
           },
           play(kind) {
             if (!this.on) return;
             const now = performance.now();
-            const minInterval = CFG.sfx.minIntervals[kind] ?? 0;
-            if (minInterval > 0 && now - (this.lastPlayed[kind] ?? 0) < minInterval) return;
+            const gap = CFG.sfx.minIntervals[kind] ?? 0;
+            if (gap > 0 && now - (this.lastPlayed[kind] ?? 0) < gap) return;
             this.lastPlayed[kind] = now;
             const bank = this.pool[kind];
             bank[(rnd() * bank.length) | 0]
@@ -714,20 +776,20 @@
           },
         };
 
-        /* =========================== MAIN LOOP ========================== */
+        /* ========================= MAIN LOOP ========================= */
         function frame(now) {
           requestAnimationFrame(frame);
-          let dt = now - lastT;
+          const dt = clamp(now - lastT, 0, 100);
           lastT = now;
-          dt = min(max(dt, 0), 100);
+
           if (resetTimer > 0) {
-            resetTimer -= dt;
-            if (resetTimer <= 0) {
-              resetTimer = 0;
-              gridDirty = true;
-            }
+            resetTimer = max(0, resetTimer - dt);
+            if (resetTimer === 0) gridDirty = true;
+            if (!paused) stepFlatEEG(dt);
+          } else if (!paused) {
+            stepSim(dt);
           }
-          if (!paused && resetTimer <= 0) stepSim(dt);
+
           drawEEG();
           uiAcc += dt;
           if (uiAcc >= UI_DT) {
@@ -736,19 +798,35 @@
           }
         }
 
-        /* batches many substeps into ONE wasm call — the SIMD kernels stay hot */
+        function stepFlatEEG(dt) {
+          const subDur = timestep / CFG.substeps;
+          simAcc += dt;
+          const k = max(1, min(MAX_SUB_PER_FRAME, (simAcc / subDur) | 0));
+          const head = W.ctl[2];
+
+          for (let step = 0; step < k; step++) {
+            const slot = (head + step) & (EEG_LEN - 1);
+            for (let row = 0; row < N; row++) W.eeg[row * EEG_LEN + slot] = 0;
+          }
+          W.ctl[2] = (head + k) & 0x3fffffff;
+          simAcc -= k * subDur;
+          if (k >= MAX_SUB_PER_FRAME) simAcc = 0;
+
+          eegPhase = clamp(simAcc / subDur, 0, 1);
+        }
+
         function stepSim(dt) {
           const subDur = timestep / CFG.substeps;
           simAcc += dt;
           let budget = MAX_SUB_PER_FRAME;
+
           while (simAcc >= subDur && budget > 0) {
             if (sub === 0 && !beginTick()) {
               simAcc = 0;
               eegPhase = 0;
               return;
             }
-            const want = (simAcc / subDur) | 0;
-            const k = max(1, min(CFG.substeps - sub, budget, want));
+            const k = max(1, min(CFG.substeps - sub, budget, (simAcc / subDur) | 0));
             W.ex.run(k);
             sub += k;
             budget -= k;
@@ -767,18 +845,20 @@
             state = "AWAITING TARGET";
             return false;
           }
-          /* sensors written straight into wasm heap — no allocation, no copy step */
           const { x, y } = world;
+
           W.S[0] = clamp((odorEdge(x + 1, y) - odorEdge(x - 1, y)) * GAIN, -1, 1);
           W.S[1] = clamp((odorEdge(x, y + 1) - odorEdge(x, y - 1)) * GAIN, -1, 1);
           W.S[2] = odorAt(x, y);
           W.S[3] = (outside(x + 1, y) ? 1 : 0) - (outside(x - 1, y) ? 1 : 0);
           W.S[4] = (outside(x, y + 1) ? 1 : 0) - (outside(x, y - 1) ? 1 : 0);
+
           for (let a = 0; a < NA; a++) {
-            const nx = x + DIRS[a].dx,
-              ny = y + DIRS[a].dy;
+            const nx = x + DIRS[a].dx;
+            const ny = y + DIRS[a].dy;
             W.nov[a] = outside(nx, ny) ? 0 : 1 / (1 + world.place[idxOf(nx, ny)]);
           }
+
           W.scal[0] = driveOf();
           W.scal[1] = brain.stuck;
           W.ex.beginTick();
@@ -793,17 +873,17 @@
           if (world.stuckRun >= CFG.efe.escapeAfter && outside(world.x + DIRS[action].dx, world.y + DIRS[action].dy)) {
             const legal = legalActions();
             if (legal.length) {
-              action = legal.reduce((b, a) => (W.G[a] < W.G[b] ? a : b));
+              action = legal.reduce((best, a) => (W.G[a] < W.G[best] ? a : best));
               reflex = true;
             }
           }
 
-          W.ex.endTick(action); /* transErr decay + learnA + normA + learnB + latch prev */
+          W.ex.endTick(action);
 
           const { dx, dy } = DIRS[action];
           const [nx, ny] = [world.x + dx, world.y + dy];
           const blocked = outside(nx, ny);
-          const moved = !blocked;
+
           world.dir = action;
           world.bumped = blocked;
 
@@ -822,9 +902,9 @@
           for (let a = 0; a < NA; a++) W.habit[a] *= CFG.habit.decay;
           W.habit[action] += blocked ? CFG.habit.bump : CFG.habit.gain;
 
-          metabolise(moved, blocked);
+          metabolise(!blocked, blocked);
 
-          const mealIdx = moved ? world.targets.findIndex((t) => t.x === world.x && t.y === world.y) : -1;
+          const mealIdx = blocked ? -1 : world.targets.findIndex(({ x, y }) => x === world.x && y === world.y);
           const ate = mealIdx >= 0;
           if (ate) eat(mealIdx);
 
@@ -846,7 +926,7 @@
           gridDirty = true;
         }
 
-        /* ============================= WORLD ============================ */
+        /* =========================== WORLD =========================== */
         function resetWorld() {
           Object.assign(world, {
             x: (CFG.grid / 2) | 0,
@@ -900,17 +980,46 @@
           refill();
         }
 
-        function legalActions() {
-          const out = [];
-          for (let a = 0; a < NA; a++) if (!outside(world.x + DIRS[a].dx, world.y + DIRS[a].dy)) out.push(a);
-          return out;
+        function doReset() {
+          const prevEeg = new Float32Array(W.eeg);
+          const prevHead = W.ctl[2];
+          W.ex.reset((rnd() * 2 ** 31) | 0);
+          W.eeg.set(prevEeg);
+          W.ctl[2] = prevHead;
+
+          sub = 0;
+          simAcc = 0;
+          brain.stuck = 0;
+          Object.assign(world, {
+            steps: 0,
+            consumed: 0,
+            bumps: 0,
+            bumpSeq: 0,
+            stuckRun: 0,
+            sinceMeal: 0,
+            history: [],
+            hunger: 0.55,
+            taste: 0,
+            bumped: false,
+          });
+          world.place.fill(0);
+
+          lastAction = shownAction = "RESET";
+          state = shownState = "BRAIN RESET";
+          stateHold = STATE_HOLD;
+          resetTimer = 250;
+
+          sfx.play("squeak");
+          snapShown();
+          drawGrid();
+          gridDirty = false;
+          updateUI(UI_DT);
         }
 
-        /* ============================ RENDER ============================ */
+        /* =========================== RENDER ========================== */
         function drawEEG() {
-          const head = W.ctl[2];
-          const eeg = W.eeg;
-          const first = head - CFG.ekg;
+          const first = W.ctl[2] - CFG.ekg;
+
           traces.forEach(({ ctx }, row) => {
             const { width, height } = ctx.canvas;
             const dx = width / (CFG.ekg - 1);
@@ -918,58 +1027,53 @@
             ctx.clearRect(0, 0, width, height);
             ctx.beginPath();
             for (let i = 0; i <= CFG.ekg; i++) {
-              const s = eeg[base + ((first + i) & (EEG_LEN - 1))]; /* read in place */
+              const v = W.eeg[base + ((first + i) & (EEG_LEN - 1))];
               const px = (i - 1 - eegPhase) * dx;
-              const py = clamp(height - 2 - (s * (height - 4)) / SPIKE_V, 1, height - 1);
+              const py = clamp(height - 2 - (v * (height - 4)) / SPIKE_V, 1, height - 1);
               i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
             }
             ctx.stroke();
           });
         }
 
-        function collectTargets() {
-          Object.assign(targets, {
-            hunger: world.hunger,
-            err: meanAbs(W.err),
-            scent: odorAt(world.x, world.y),
-            temp: W.scal[3],
-            steps: world.steps,
-            hits: world.consumed,
-            bumps: world.bumps,
-            eff: world.consumed ? world.steps / world.consumed : 0,
-            bpc: world.consumed ? world.bumps / world.consumed : 0,
+        function drawGrid() {
+          const targetSet = new Set(world.targets.map(key));
+          const { rot } = DIRS[world.dir];
+          const mouse = resetTimer > 0 ? "☠️" : "🐭";
+
+          cells.forEach((cell, i) => {
+            const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
+            const here = world.x === x && world.y === y;
+            setClass(cell, `cell${here ? " agent" : ""}`);
+
+            const html = here
+              ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">${mouse}</span>`
+              : targetSet.has(key({ x, y }))
+                ? "🧀"
+                : "";
+            const stamp = here && world.bumped ? `#${world.bumpSeq}` : "";
+            if (cell._h !== html + stamp) {
+              cell._h = html + stamp;
+              cell.innerHTML = html;
+            }
           });
-          for (let a = 0; a < NA; a++) {
-            targets[`risk${a}`] = W.risk[a];
-            targets[`amb${a}`] = W.amb[a];
-            targets[`nov${a}`] = W.nov[a];
-            targets[`hab${a}`] = W.habit[a];
-            targets[`G${a}`] = W.G[a];
-          }
-          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) targets[`A${i}_${j}`] = W.A[i * NZ + j];
         }
 
-        function ease(dt) {
-          const k = 1 - exp(-dt / EASE_TAU);
-          for (const key in targets) shown[key] = shown[key] === undefined ? targets[key] : shown[key] + (targets[key] - shown[key]) * k;
-        }
+        function drawTables() {
+          const best = argmin(W.G);
 
-        function snapShown() {
-          collectTargets();
-          for (const key in targets) shown[key] = targets[key];
-        }
+          efeRows.forEach(({ tr, tds }, a) => {
+            setClass(tr, a === best ? "pick" : "");
+            [shown[`risk${a}`], shown[`amb${a}`], shown[`nov${a}`], shown[`hab${a}`], shown[`G${a}`]].forEach((v, c) => setText(tds[c], v.toFixed(2)));
+          });
 
-        function setText(el, txt) {
-          if (el._t !== txt) {
-            el._t = txt;
-            el.textContent = txt;
-          }
-        }
-        function setClass(el, cls) {
-          if (el._c !== cls) {
-            el._c = cls;
-            el.className = cls;
-          }
+          for (let i = 0; i < NS; i++)
+            for (let j = 0; j < NZ; j++) {
+              const w = shown[`A${i}_${j}`];
+              const td = weightCells[i][j];
+              setText(td, w.toFixed(2));
+              setClass(td, abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : "");
+            }
         }
 
         function updateUI(dt) {
@@ -990,86 +1094,95 @@
 
           const set = (id, text) => setText($(id), text);
           const bar = (id, px) => {
-            const w = `${min(60, max(0, px)).toFixed(1)}px`;
+            const width = `${clamp(px, 0, BAR_MAX).toFixed(1)}px`;
             const el = $(id);
-            if (el._w !== w) {
-              el._w = w;
-              el.style.width = w;
+            if (el._w !== width) {
+              el._w = width;
+              el.style.width = width;
             }
           };
 
           set("val-step", `${round(shown.steps)}`);
           set("val-hits", `${round(shown.hits)}`);
+          set("val-bumps", `${round(shown.bumps)}`);
           set("val-eff", world.consumed ? shown.eff.toFixed(1) : "—");
           set("val-bpc", world.consumed ? shown.bpc.toFixed(1) : "—");
-          set("val-bumps", `${round(shown.bumps)}`);
           set("val-action", shownAction);
           set("val-feedback", paused ? "PAUSED" : shownState);
           set("val-hunger", shown.hunger.toFixed(2));
           set("val-err", shown.err.toFixed(2));
           set("val-scent", shown.scent.toFixed(2));
           set("val-temp", shown.temp.toFixed(2));
-          bar("bar-hunger", shown.hunger * 60);
+
+          bar("bar-hunger", shown.hunger * BAR_MAX);
           bar("bar-err", shown.err * 200);
-          bar("bar-scent", shown.scent * 60);
-          bar("bar-temp", (shown.temp / CFG.efe.tempMax) * 60);
+          bar("bar-scent", shown.scent * BAR_MAX);
+          bar("bar-temp", (shown.temp / CFG.efe.tempMax) * BAR_MAX);
 
           set("val-window", windowLabel());
           drawTables();
         }
 
-        function windowLabel() {
-          const ms = CFG.ekg * (timestep / CFG.substeps);
-          return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${round(ms)} ms` : `${ms.toFixed(1)} ms`;
-        }
-
-        function drawGrid() {
-          const targetSet = new Set(world.targets.map(key));
-          const { rot } = DIRS[world.dir];
-          const mouseEmoji = resetTimer > 0 ? "☠️" : "🐭";
-          cells.forEach((cell, i) => {
-            const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
-            const here = world.x === x && world.y === y;
-            setClass(cell, `cell${here ? " agent" : ""}`);
-            const html = here
-              ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">${mouseEmoji}</span>`
-              : targetSet.has(key({ x, y }))
-                ? "🧀"
-                : "";
-            const stamp = here && world.bumped ? `#${world.bumpSeq}` : "";
-            if (cell._h !== html + stamp) {
-              cell._h = html + stamp;
-              cell.innerHTML = html;
-            }
+        function collectTargets() {
+          Object.assign(targets, {
+            hunger: world.hunger,
+            err: meanAbs(W.err),
+            scent: odorAt(world.x, world.y),
+            temp: W.scal[3],
+            steps: world.steps,
+            hits: world.consumed,
+            bumps: world.bumps,
+            eff: world.consumed ? world.steps / world.consumed : 0,
+            bpc: world.consumed ? world.bumps / world.consumed : 0,
           });
+
+          for (let a = 0; a < NA; a++) {
+            targets[`risk${a}`] = W.risk[a];
+            targets[`amb${a}`] = W.amb[a];
+            targets[`nov${a}`] = W.nov[a];
+            targets[`hab${a}`] = W.habit[a];
+            targets[`G${a}`] = W.G[a];
+          }
+          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) targets[`A${i}_${j}`] = W.A[i * NZ + j];
         }
 
-        function drawTables() {
-          const best = argmin(W.G);
-          efeCells.forEach(({ tr, tds }, a) => {
-            setClass(tr, a === best ? "pick" : "");
-            [shown[`risk${a}`], shown[`amb${a}`], shown[`nov${a}`], shown[`hab${a}`], shown[`G${a}`]].forEach((v, c) => setText(tds[c], v.toFixed(2)));
-          });
-          for (let i = 0; i < NS; i++)
-            for (let j = 0; j < NZ; j++) {
-              const w = shown[`A${i}_${j}`];
-              const td = wCells[i][j];
-              setText(td, w.toFixed(2));
-              setClass(td, abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : "");
-            }
+        function ease(dt) {
+          const k = 1 - exp(-dt / EASE_TAU);
+          for (const id in targets) shown[id] = shown[id] === undefined ? targets[id] : shown[id] + (targets[id] - shown[id]) * k;
         }
 
-        /* ============================ HELPERS =========================== */
-        const meanAbs = (a) => {
-          let s = 0;
-          for (let i = 0; i < a.length; i++) s += abs(a[i]);
-          return s / a.length;
+        function snapShown() {
+          collectTargets();
+          Object.assign(shown, targets);
+        }
+
+        /* ========================== HELPERS ========================== */
+        const setText = (el, txt) => {
+          if (el._t !== txt) {
+            el._t = txt;
+            el.textContent = txt;
+          }
         };
-        const argmin = (a) => {
-          let b = 0;
-          for (let i = 1; i < a.length; i++) if (a[i] < a[b]) b = i;
-          return b;
+
+        const setClass = (el, cls) => {
+          if (el._c !== cls) {
+            el._c = cls;
+            el.className = cls;
+          }
         };
+
+        const meanAbs = (arr) => {
+          let sum = 0;
+          for (let i = 0; i < arr.length; i++) sum += abs(arr[i]);
+          return sum / arr.length;
+        };
+
+        const argmin = (arr) => {
+          let best = 0;
+          for (let i = 1; i < arr.length; i++) if (arr[i] < arr[best]) best = i;
+          return best;
+        };
+
         const key = ({ x, y }) => `${x},${y}`;
         const idxOf = (x, y) => y * CFG.grid + x;
         const outside = (x, y) => x < 0 || x >= CFG.grid || y < 0 || y >= CFG.grid;
@@ -1077,7 +1190,41 @@
         const odorAt = (x, y) => world.targets.reduce((m, t) => max(m, 1 - hypot(x - t.x, y - t.y) / DMAX), 0);
         const odorEdge = (x, y) => odorAt(clamp(x, 0, CFG.grid - 1), clamp(y, 0, CFG.grid - 1));
 
-        /* ============================== INIT ============================ */
+        const legalActions = () => DIRS.map((_, a) => a).filter((a) => !outside(world.x + DIRS[a].dx, world.y + DIRS[a].dy));
+
+        const speedOf = (v) => 10 ** (v / 100);
+        const fmtSpeed = (s) => (paused ? "PAUSED" : `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)}×`);
+
+        function windowLabel() {
+          const ms = CFG.ekg * (timestep / CFG.substeps);
+          return ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${round(ms)} ms` : `${ms.toFixed(1)} ms`;
+        }
+
+        function applySpeed(v) {
+          paused = v <= PAUSE_V;
+          if (!paused) {
+            speed = speedOf(v);
+            timestep = 100 / speed;
+          }
+          $("val-speed").textContent = fmtSpeed(speed);
+        }
+
+        /* ============================ INIT =========================== */
+        const buildRow = (parentId, label, count) => {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          name.textContent = label;
+          tr.append(name);
+          const tds = Array.from({ length: count }, () => {
+            const td = document.createElement("td");
+            td.textContent = "0.00";
+            tr.append(td);
+            return td;
+          });
+          $(parentId).append(tr);
+          return { tr, tds };
+        };
+
         cells = Array.from({ length: CFG.grid ** 2 }, (_, i) => {
           const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
           const cell = document.createElement("div");
@@ -1097,35 +1244,8 @@
           return cell;
         });
 
-        efeCells = ACTIONS.map((a) => {
-          const tr = document.createElement("tr");
-          const name = document.createElement("td");
-          name.textContent = a;
-          tr.append(name);
-          const tds = Array.from({ length: 5 }, () => {
-            const td = document.createElement("td");
-            td.textContent = "0.00";
-            tr.append(td);
-            return td;
-          });
-          $("efe-body").append(tr);
-          return { tr, tds };
-        });
-
-        wCells = SENSORS.map((s) => {
-          const tr = document.createElement("tr");
-          const name = document.createElement("td");
-          name.textContent = s;
-          tr.append(name);
-          const tds = Array.from({ length: NZ }, () => {
-            const td = document.createElement("td");
-            td.textContent = "0.00";
-            tr.append(td);
-            return td;
-          });
-          $("weights-body").append(tr);
-          return tds;
-        });
+        efeRows = ACTIONS.map((a) => buildRow("efe-body", a, 5));
+        weightCells = SENSORS.map((s) => buildRow("weights-body", s, NZ).tds);
 
         traces = LABELS.map((label, i) => {
           if (i === NS || i === NS + NZ) $("ekg-panel").insertAdjacentHTML("beforeend", `<div class="sep"></div>`);
@@ -1151,39 +1271,6 @@
           $("glossary-body").innerHTML = rows.join("");
         })();
 
-        const speedOf = (v) => 10 ** (v / 100);
-        const fmtSpeed = (s) => (paused ? "PAUSED" : `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)}×`);
-
-        function applySpeed(v) {
-          paused = v <= PAUSE_V;
-          if (!paused) {
-            speed = speedOf(v);
-            timestep = 100 / speed;
-          }
-          $("val-speed").textContent = fmtSpeed(speed);
-        }
-
-        function doReset() {
-          W.ex.reset((rnd() * 2 ** 31) | 0);
-          sub = 0;
-          simAcc = 0;
-          eegPhase = 0;
-          brain.stuck = 0;
-          world.bumped = false;
-          world.stuckRun = 0;
-          lastAction = "RESET";
-          state = "BRAIN RESET";
-          shownAction = lastAction;
-          shownState = state;
-          stateHold = STATE_HOLD;
-          resetTimer = 250;
-          sfx.play("squeak");
-          snapShown();
-          drawGrid();
-          gridDirty = false;
-          updateUI(UI_DT);
-        }
-
         const onActivate = (el, fn) => {
           el.addEventListener("pointerdown", (e) => {
             e.preventDefault();
@@ -1197,37 +1284,31 @@
           });
         };
 
-        const speedSlider = $("speed-slider");
-        function updateSpeedFromPointer(e) {
-          const rect = speedSlider.getBoundingClientRect();
+        const slider = $("speed-slider");
+        const updateSpeedFromPointer = (e) => {
+          const rect = slider.getBoundingClientRect();
           if (rect.width <= 0) return;
           const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
-          const minVal = +speedSlider.min,
-            maxVal = +speedSlider.max,
-            step = +speedSlider.step || 1;
-          let val = minVal + ratio * (maxVal - minVal);
-          val = round((val - minVal) / step) * step + minVal;
-          val = clamp(val, minVal, maxVal);
-          if (+speedSlider.value !== val) {
-            speedSlider.value = val;
+          const [lo, hi, step] = [+slider.min, +slider.max, +slider.step || 1];
+          const val = clamp(round((lo + ratio * (hi - lo) - lo) / step) * step + lo, lo, hi);
+          if (+slider.value !== val) {
+            slider.value = val;
             applySpeed(val);
           }
-        }
+        };
 
-        speedSlider.addEventListener("pointerdown", (e) => {
-          speedSlider.setPointerCapture(e.pointerId);
+        slider.addEventListener("pointerdown", (e) => {
+          slider.setPointerCapture(e.pointerId);
           updateSpeedFromPointer(e);
         });
-        speedSlider.addEventListener("pointermove", (e) => {
-          if (speedSlider.hasPointerCapture(e.pointerId) || e.buttons > 0) updateSpeedFromPointer(e);
+        slider.addEventListener("pointermove", (e) => {
+          if (slider.hasPointerCapture(e.pointerId) || e.buttons > 0) updateSpeedFromPointer(e);
         });
-        speedSlider.addEventListener("input", ({ target }) => applySpeed(+target.value));
+        slider.addEventListener("input", ({ target }) => applySpeed(+target.value));
+
         onActivate($("btn-reset"), doReset);
         onActivate($("btn-sfx"), () => setText($("btn-sfx"), `SFX: ${sfx.toggle() ? "ON" : "OFF"}`));
-
-        document.addEventListener("visibilitychange", () => {
-          lastT = performance.now();
-        });
+        document.addEventListener("visibilitychange", () => (lastT = performance.now()));
 
         sfx.load();
         W.ex.reset((rnd() * 2 ** 31) | 0);
@@ -1236,7 +1317,7 @@
         drawGrid();
         gridDirty = false;
         setText($("val-engine"), "wasm·simd");
-        applySpeed(+$("speed-slider").value);
+        applySpeed(+slider.value);
         updateUI(UI_DT);
         requestAnimationFrame(frame);
       })();
