@@ -325,8 +325,8 @@
       </div>
 
       <div class="workspace merged show-draft" id="workspace">
-        <canvas id="draw-canvas" width="352" height="352"></canvas>
-        <canvas id="draft-canvas" width="352" height="352"></canvas>
+        <canvas id="draw-canvas" width="768" height="768"></canvas>
+        <canvas id="draft-canvas" width="768" height="768"></canvas>
         <div class="output-frame">
           <span id="output-placeholder">No output</span>
           <img id="output-img" alt="Generated visual" />
@@ -362,7 +362,7 @@
       const FAL_APP_ID = "fal-ai/flux-2/klein";
       const CONNECTION_KEY = "flux-2-klein-pad-session";
       const STREAM_FPS = 30;
-      const MIN_SIZE = 14;
+      const MIN_SIZE = 30;
       const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
       const CAPTURE_SIZE = 768;
       const STORAGE = { apiKey: "fal_flux_klein_api_key", mode: "fal_flux_klein_mode_v2" };
@@ -436,8 +436,9 @@
           } catch {}
 
           try {
-            const res = await fetch(`./assets/${filename}`);
-            if (res.ok) return await res.arrayBuffer();
+            const res = fetch(`./assets/${filename}`);
+            const response = await res;
+            if (response.ok) return await response.arrayBuffer();
           } catch {}
           return null;
         }
@@ -571,6 +572,16 @@
 
       // ── Setup ─────────────────────────────────────────────────────────────
 
+      const resetCanvasAndOutput = () => {
+        root = createNode(boxX, boxY, boxW, boxH);
+        pots = [];
+        potPreview = null;
+        mouse = { x: -1, y: -1, leaf: null, quad: null };
+        el.output.src = "";
+        el.output.classList.remove("visible");
+        el.placeholder.style.display = "block";
+      };
+
       const updateToolButtonsUI = () => {
         el.toolBuild.classList.toggle("active-toggle", currentTool === "build");
         el.toolPot.classList.toggle("active-toggle", currentTool === "pot");
@@ -687,6 +698,7 @@
 
       restorePersistedSettings();
       bindEvents();
+      applyModeState();
       refreshUI();
 
       // ── Connection ────────────────────────────────────────────────────────
@@ -699,6 +711,9 @@
           el.apiKey.focus();
           return;
         }
+
+        resetCanvasAndOutput();
+        switchTool("build");
 
         fal.config({ credentials: apiKey });
         setStatus("Connecting...", "generating");
@@ -773,6 +788,7 @@
       // ── Modes & Streaming ─────────────────────────────────────────────────
 
       function applyModeState() {
+        el.manualSend.style.display = isContinuousMode ? "none" : "";
         if (isContinuousMode && connection) {
           startStream();
         } else {
@@ -874,7 +890,7 @@
         if (pot.upSteps < 3) {
           pot.upSteps++;
         } else if (pot.downLen < maxDown) {
-          pot.downLen = Math.min(pot.downLen + 50, maxDown);
+          pot.downLen = Math.min(pot.downLen + 100, maxDown);
         } else {
           return;
         }
@@ -906,7 +922,7 @@
       // ── Pots & Plants ─────────────────────────────────────────────────────
 
       function computePot(leaf, x) {
-        const topW = clamp(Math.round(leaf.w * 0.45), 12, 36);
+        const topW = clamp(Math.round(leaf.w * 0.45), 26, 78);
         return {
           cx: clamp(Math.round(x), leaf.x + topW / 2 + 2, leaf.x + leaf.w - topW / 2 - 2),
           baseY: leaf.y + leaf.h - 2,
@@ -931,7 +947,7 @@
         target.closePath();
         target.fillStyle = "#ffffff";
         target.fill();
-        target.lineWidth = 1;
+        target.lineWidth = 2;
         target.strokeStyle = "rgba(0,0,0,0.35)";
         target.stroke();
         target.restore();
@@ -942,10 +958,10 @@
         target.save();
         target.fillStyle = "rgba(85, 165, 75, 0.85)";
         target.strokeStyle = "rgba(45, 120, 50, 0.9)";
-        target.lineWidth = 1;
+        target.lineWidth = 2;
 
         if (pot.upSteps > 0) {
-          const r = pot.upSteps * 8;
+          const r = pot.upSteps * 17;
           target.beginPath();
           target.arc(pot.cx, rimY - r / 2, r, 0, Math.PI * 2);
           target.fill();
@@ -953,7 +969,7 @@
         }
 
         if (pot.downLen > 0) {
-          const w = Math.max(8, pot.topW * 0.5);
+          const w = Math.max(16, pot.topW * 0.5);
           target.beginPath();
           target.rect(pot.cx - w / 2, rimY, w, pot.downLen);
           target.fill();
@@ -1087,7 +1103,7 @@
         if (showGuides && currentTool === "build") drawGuides(root);
 
         ctx.strokeStyle = THEME.lightWood;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 6;
         ctx.setLineDash([]);
         ctx.beginPath();
         ctx.rect(root.x + 0.5, root.y + 0.5, root.w - 1, root.h - 1);
@@ -1106,8 +1122,8 @@
 
         draftCtx.save();
         draftCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-        draftCtx.lineWidth = 2;
-        draftCtx.setLineDash([6, 4]);
+        draftCtx.lineWidth = 4;
+        draftCtx.setLineDash([12, 8]);
 
         if (currentTool === "build" && mouse.leaf && mouse.quad) {
           draftCtx.beginPath();
