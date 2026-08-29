@@ -8,7 +8,6 @@
         --ink: #000;
         --paper: #fff;
         --panel-w: 282px;
-        --cell: 44px;
         --font-s: 11px;
         --font-xs: 10px;
       }
@@ -37,12 +36,6 @@
           font-size: 14px;
           text-transform: uppercase;
           letter-spacing: 1px;
-        }
-        & > .sub {
-          width: auto;
-          font-size: var(--font-xs);
-          color: #555;
-          text-align: center;
         }
       }
 
@@ -86,55 +79,52 @@
 
       #grid {
         display: grid;
-        grid-template-columns: repeat(6, var(--cell));
-        grid-template-rows: repeat(6, var(--cell));
+        grid-template-columns: repeat(8, 1fr);
         border: 1px solid var(--ink);
-        width: auto;
-        align-self: center;
+        width: var(--panel-w);
 
         & .cell {
+          aspect-ratio: 1;
           border-right: 1px solid var(--ink);
           border-bottom: 1px solid var(--ink);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 18px;
+          font-size: 19px;
           cursor: pointer;
           user-select: none;
           line-height: 1;
-          position: relative;
 
-          &:nth-child(6n) {
+          &:nth-child(8n) {
             border-right: 0;
           }
-          &:nth-last-child(-n + 6) {
+          &:nth-last-child(-n + 8) {
             border-bottom: 0;
           }
           &:hover {
-            outline: 1px dashed var(--ink);
-            outline-offset: -3px;
+            box-shadow: inset 0 0 0 1px var(--ink);
           }
           &.agent {
-            outline: 3px solid var(--ink);
-            outline-offset: -3px;
+            box-shadow: inset 0 0 0 1px var(--ink);
           }
         }
 
-        & .hd {
-          position: absolute;
-          top: 0;
-          right: 2px;
-          font-size: 9px;
-          font-weight: bold;
-          background: transparent;
+        & .mouse {
+          display: inline-block;
+          transition: transform 0.12s linear;
         }
-        & .nose {
-          position: absolute;
-          bottom: 0;
-          left: 2px;
-          font-size: 8px;
-          color: #444;
-          background: transparent;
+        & .mouse.bump {
+          animation: nudge 0.12s linear;
+        }
+      }
+
+      @keyframes nudge {
+        0%,
+        100% {
+          translate: 0 0;
+        }
+        50% {
+          translate: 0 -3px;
         }
       }
 
@@ -196,6 +186,7 @@
       }
 
       .num-table {
+        table-layout: fixed;
         text-align: right;
         font-size: var(--font-xs);
 
@@ -205,7 +196,7 @@
         }
         & th,
         & td {
-          padding: 1px 2px;
+          padding: 1px 1px;
           &:first-child {
             text-align: left;
           }
@@ -213,14 +204,14 @@
         & tr.pick td {
           font-weight: bold;
         }
-        & tr.pick td:first-child::before {
-          content: "\25B8 ";
-        }
         & .w-pos {
           font-weight: bold;
         }
         & .w-zero {
           color: #bbb;
+        }
+        & .neg {
+          text-decoration: underline;
         }
       }
 
@@ -278,12 +269,11 @@
     </style>
   </head>
   <body>
-    <h1>NeuroStack NS1</h1>
-    <div class="sub">5 sensory · 4 latent · 3 motor — continuous active inference<br />no reward · no backprop · click cells to place 🧀</div>
+    <h1>NeuroStack NS3</h1>
 
     <div class="slider-container">
-      <div class="slider-header"><span>TIMESTEP</span><span id="val-speed">120 ms</span></div>
-      <input type="range" id="speed-slider" min="16" max="400" value="120" />
+      <div class="slider-header"><span>TIMESTEP</span><span id="val-speed">100 ms</span></div>
+      <input type="range" id="speed-slider" min="1" max="400" value="100" />
     </div>
 
     <div class="slider-container">
@@ -308,6 +298,10 @@
           <td id="val-eff">—</td>
         </tr>
         <tr>
+          <td>WALL BUMPS</td>
+          <td id="val-bumps">0</td>
+        </tr>
+        <tr>
           <td>ACTION</td>
           <td id="val-action">NONE</td>
         </tr>
@@ -327,11 +321,21 @@
             <div class="meter-val"><span id="bar-err" class="bar"></span><span id="val-err">0.00</span></div>
           </td>
         </tr>
+        <tr>
+          <td>POLICY PRECISION</td>
+          <td id="val-prec">0.00</td>
+        </tr>
+        <tr>
+          <td>MOTOR TEMP</td>
+          <td>
+            <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
+          </td>
+        </tr>
       </table>
     </div>
 
     <div class="panel">
-      <div class="panel-title">Expected Free Energy</div>
+      <div class="panel-title">Behavior</div>
       <table class="num-table">
         <thead>
           <tr>
@@ -339,6 +343,7 @@
             <th>RISK</th>
             <th>AMB</th>
             <th>NOV</th>
+            <th>HAB</th>
             <th>G</th>
           </tr>
         </thead>
@@ -347,11 +352,11 @@
     </div>
 
     <div id="ekg-panel" class="panel">
-      <div class="panel-title">Neuron Potentials (LIF)</div>
+      <div class="panel-title">EEG Monitor</div>
     </div>
 
     <div class="panel">
-      <div class="panel-title">Generative Weights A</div>
+      <div class="panel-title">Connectivity</div>
       <table class="num-table">
         <thead>
           <tr>
@@ -377,34 +382,53 @@
            1 · CONFIG
            ================================================================ */
         const CFG = {
-          grid: 6,
-          spawn: 3,
-          substeps: 12, // LIF + inference iterations / env tick
+          grid: 8,
+          spawn: 4,
+          substeps: 12,
           ekg: 60,
-          odorSigma: 1.3,
           lif: { tau: 3.5, refrac: 2, rateTau: 9, thrMin: 0.55, thrMax: 1.8 },
           eta: { z: 0.4, leak: 0.18, A: 0.06, B: 0.14, thr: 0.008, target: 0.18 },
-          efe: { beta: 2.4, noise: 0.28, amb: 0.6, nov: 0.9 },
-          meta: { rise: 0.025, moveCost: 0.008, bite: 0.32, tasteDecay: 0.45 },
+          efe: {
+            beta: 2.4, // motor gain on -ΔG
+            noise: 0.22, // base motor temperature
+            flat: 12, // sensitivity of temp to policy precision
+            trust: 1.7, // F3 · temp gain from model surprise ⟨|ε|⟩
+            arouse: 0.9, // F4 · temp gain from drive (hunger − taste)
+            tempMax: 2.2,
+            amb: 0.6,
+            nov: 0.9,
+            hab: 0.22,
+          },
+          meta: { rise: 0.03, moveCost: 0.006, bumpCost: 0.014, bite: 0.32, tasteDecay: 0.45 },
+          habit: { decay: 0.6, gain: 1, bump: -0.5 }, // F1 · reafference-gated
+          bumpErr: 0.35, // F2 · collision → transErr
+          placeDecay: 0.985,
         };
 
-        const SENSORS = ["smell·L", "smell·R", "whisk·L", "whisk·R", "drive"];
+        // drive is GONE from the sensor bank (Option F): it only ever contributed a
+        // common-mode offset to every G[a], so it could never change argmin, precision,
+        // or the motor drive. Hunger still acts — as a modulator, below.
+        const SENSORS = ["smell·X", "smell·Y", "smell·0", "whisk·X", "whisk·Y"];
         const LATENTS = ["z0", "z1", "z2", "z3"];
-        const ACTIONS = ["TURN·L", "FWD", "TURN·R"];
-        const LABELS = [...SENSORS, ...LATENTS, ...ACTIONS.map((a) => `mot:${a.replace("·", "")}`)];
+        const ACTIONS = ["NORTH", "EAST", "SOUTH", "WEST"];
+        const LABELS = [...SENSORS, ...LATENTS, ...ACTIONS.map((a) => `mot:${a[0]}`)];
         const [NS, NZ, NA] = [SENSORS.length, LATENTS.length, ACTIONS.length];
-        const N = NS + NZ + NA; // 12 neurons
+        const N = NS + NZ + NA; // 13 neurons
 
-        // heading 0=N 1=E 2=S 3=W : forward vector + rightward vector
-        const HEAD = [
-          { fx: 0, fy: -1, rx: 1, ry: 0, glyph: "\u2191" },
-          { fx: 1, fy: 0, rx: 0, ry: 1, glyph: "\u2192" },
-          { fx: 0, fy: 1, rx: -1, ry: 0, glyph: "\u2193" },
-          { fx: -1, fy: 0, rx: 0, ry: -1, glyph: "\u2190" },
+        const DIRS = [
+          { dx: 0, dy: -1, rot: 0 },
+          { dx: 1, dy: 0, rot: 90 },
+          { dx: 0, dy: 1, rot: 180 },
+          { dx: -1, dy: 0, rot: 270 },
         ];
 
-        // prior preference over sensations C, and its base precision W
-        const PREF = { C: [1, 1, 0, 0, 0], W: [1.0, 1.0, 0.8, 0.8, 1.0] };
+        const DMAX = (CFG.grid - 1) * Math.SQRT2;
+        const GAIN = DMAX / 2;
+
+        // prior preference over the 5 sensations, and base precision W
+        // [gradX, gradY, intensity, wallX, wallY]
+        const PREF = { C: [0, 0, 1, 0, 0], W: [0.3, 0.3, 1.6, 0.7, 0.7] };
+        const PREC_CH = 2; // only smell·0 is drive-scaled now
 
         /* ================================================================
            2 · UTILS
@@ -416,25 +440,28 @@
         const matrix = (r, c, fn) => Array.from({ length: r }, () => Array.from({ length: c }, fn));
         const matVec = (M, x) => M.map((row) => row.reduce((s, w, k) => s + w * x[k], 0));
         const matTVec = (M, e, cols) => Array.from({ length: cols }, (_, j) => M.reduce((s, row, i) => s + row[j] * e[i], 0));
-        const meanAbs = (a) => a.reduce((s, x) => s + abs(x), 0) / a.length;
+        const meanAbs = (a) => [...a].reduce((s, x) => s + abs(x), 0) / a.length;
 
         /* ================================================================
-           3 · WORLD — grid, unbiased radial scent, egocentric body, metabolism
+           3 · WORLD
            ================================================================ */
         const world = {};
 
         const resetWorld = () => {
           Object.assign(world, {
-            x: 0,
-            y: 0,
-            h: 1,
+            x: (CFG.grid / 2) | 0,
+            y: (CFG.grid / 2) | 0,
+            dir: 1,
             targets: [],
             hunger: 0.55,
             taste: 0,
             steps: 0,
             consumed: 0,
+            bumps: 0,
             sinceMeal: 0,
             history: [],
+            place: vec(CFG.grid ** 2),
+            bumped: false,
           });
           while (world.targets.length < CFG.spawn) spawn();
         };
@@ -446,60 +473,58 @@
           if (free.length) world.targets.push(free[(rnd() * free.length) | 0]);
         };
 
-        // radial, wind-free odor field (wind term drops in here later)
-        const odorAt = (x, y) =>
-          clamp(
-            world.targets.reduce((s, t) => s + exp(-(hypot(x - t.x, y - t.y) ** 2) / (2 * CFG.odorSigma ** 2)), 0),
-            0,
-            1,
-          );
+        // linear cone, MAX-combined: non-vanishing gradient from every cell,
+        // no additive plateaus, unique stationary points at the sources.
+        const odorAt = (x, y) => world.targets.reduce((m, t) => max(m, 1 - hypot(x - t.x, y - t.y) / DMAX), 0);
 
         const outside = (x, y) => x < 0 || x >= CFG.grid || y < 0 || y >= CFG.grid;
+        const edge = (v) => clamp(v, 0, CFG.grid - 1);
+        const odorClamped = (x, y) => odorAt(edge(x), edge(y));
+        const idxOf = (x, y) => y * CFG.grid + x;
 
-        // 5 sensations. smell/whisk are LEFT-RIGHT opponent pairs:
-        // both high  -> the thing is straight AHEAD
-        // one high   -> the thing is to that side
+        // F4 · interoceptive drive — an INTERNAL modulator, never a neuron.
+        const driveOf = () => clamp(world.hunger - world.taste, 0, 1);
+
+        // 5 sensations, all exteroceptive.
         const sense = () => {
-          const { fx, fy, rx, ry } = HEAD[world.h];
-          const nL = { x: world.x + fx - rx, y: world.y + fy - ry };
-          const nR = { x: world.x + fx + rx, y: world.y + fy + ry };
+          const { x, y } = world;
           return Float32Array.from([
-            odorAt(nL.x, nL.y),
-            odorAt(nR.x, nR.y),
-            outside(nL.x, nL.y) ? 1 : 0,
-            outside(nR.x, nR.y) ? 1 : 0,
-            clamp(world.hunger - world.taste, 0, 1), // interoceptive drive: hunger minus taste transient
+            clamp((odorClamped(x + 1, y) - odorClamped(x - 1, y)) * GAIN, -1, 1),
+            clamp((odorClamped(x, y + 1) - odorClamped(x, y - 1)) * GAIN, -1, 1),
+            odorAt(x, y),
+            (outside(x + 1, y) ? 1 : 0) - (outside(x - 1, y) ? 1 : 0),
+            (outside(x, y + 1) ? 1 : 0) - (outside(x, y - 1) ? 1 : 0),
           ]);
         };
 
-        // metabolism: hunger always climbs, one cheese only buys a short reprieve,
-        // so the "sated" prior C[drive]=0 is chronically violated -> no resting state.
-        const metabolise = (moved) => {
-          world.hunger = clamp(world.hunger + CFG.meta.rise + (moved ? CFG.meta.moveCost : 0), 0, 1);
+        const metabolise = (moved, blocked) => {
+          world.hunger = clamp(world.hunger + CFG.meta.rise + (moved ? CFG.meta.moveCost : 0) + (blocked ? CFG.meta.bumpCost : 0), 0, 1);
           world.taste *= CFG.meta.tasteDecay;
           world.steps++;
           world.sinceMeal++;
+          // occupancy decays in TIME, so standing still makes your own cell stale
+          for (let i = 0; i < world.place.length; i++) world.place[i] *= CFG.placeDecay;
+          world.place[idxOf(world.x, world.y)] += 1;
         };
 
         const eat = (idx) => {
           world.targets.splice(idx, 1);
           world.consumed++;
           world.hunger = clamp(world.hunger - CFG.meta.bite, 0, 1);
-          world.taste = 1; // sharp downward transient on the drive neuron
+          world.taste = 1;
           world.history = [...world.history, world.sinceMeal].slice(-8);
           world.sinceMeal = 0;
           while (world.targets.length < CFG.spawn) spawn();
         };
 
         /* ================================================================
-           4 · BRAIN — predictive-coding inference, EFE policy, local plasticity
+           4 · BRAIN
            ================================================================ */
         const brain = {};
         let etaScale = 1;
 
         const normaliseA = () => {
           for (let j = 0; j < NZ; j++) {
-            // synaptic scaling: unit-norm dictionary per latent
             let n = 0;
             for (let i = 0; i < NS; i++) n += brain.A[i][j] ** 2;
             n = sqrt(n) || 1;
@@ -509,17 +534,19 @@
 
         const resetBrain = () => {
           Object.assign(brain, {
-            A: matrix(NS, NZ, () => rnd() * 0.5 + 0.05), // non-negative generative dictionary
+            A: matrix(NS, NZ, () => rnd() - 0.5),
             B: Array.from({ length: NA }, () => matrix(NZ, NZ, () => rnd() * 0.4)),
             z: vec(NZ).fill(0.2),
             err: vec(NS),
             pred: vec(NS),
             transErr: new Float32Array(NA).fill(0.4),
-            visits: vec(NA),
+            habit: vec(NA),
             G: vec(NA),
             risk: vec(NA),
             amb: vec(NA),
             nov: vec(NA),
+            prec: 0,
+            temp: CFG.efe.noise,
             v: vec(N),
             thr: new Float32Array(N).fill(1),
             rate: vec(N),
@@ -529,36 +556,48 @@
           normaliseA();
         };
 
-        // --- perception: iterative free-energy descent on the latent belief z ---
         const inferStep = (s) => {
-          brain.pred = matVec(brain.A, brain.z).map((x) => clamp(x, 0, 1));
-          brain.err = s.map((x, i) => x - brain.pred[i]);
+          brain.pred = matVec(brain.A, brain.z).map((x) => clamp(x, -1, 1));
+          brain.err = [...s].map((x, i) => x - brain.pred[i]);
           const drive = matTVec(brain.A, brain.err, NZ);
-          brain.z = brain.z.map((zj, j) => clamp(zj + CFG.eta.z * (drive[j] - CFG.eta.leak * zj), 0, 1));
+          brain.z = [...brain.z].map((zj, j) => clamp(zj + CFG.eta.z * (drive[j] - CFG.eta.leak * zj), 0, 1));
         };
 
-        // --- policy: expected free energy = risk + ambiguity − novelty ---
+        // G = risk + ambiguity − epistemic(place novelty) − habit(reafferent momentum)
         const evaluate = () => {
-          const prec = 0.4 + 2.2 * world.hunger; // hunger sharpens the preference prior
+          const prec = 0.4 + 2.2 * driveOf(); // F4 · hunger sharpens PREFERENCE
           brain.B.forEach((Ba, a) => {
             const zNext = matVec(Ba, brain.z).map((x) => clamp(x, 0, 1));
-            const oNext = matVec(brain.A, zNext).map((x) => clamp(x, 0, 1));
-            brain.risk[a] = oNext.reduce((s, o, i) => s + PREF.W[i] * (i === 4 ? prec : 1) * (o - PREF.C[i]) ** 2, 0);
+            const oNext = matVec(brain.A, zNext).map((x) => clamp(x, -1, 1));
+            brain.risk[a] = oNext.reduce((s, o, i) => s + PREF.W[i] * (i === PREC_CH ? prec : 1) * (o - PREF.C[i]) ** 2, 0);
             brain.amb[a] = brain.transErr[a];
-            brain.nov[a] = 1 / (1 + brain.visits[a]);
-            brain.G[a] = brain.risk[a] + CFG.efe.amb * brain.amb[a] - CFG.efe.nov * brain.nov[a];
+
+            const nx = world.x + DIRS[a].dx,
+              ny = world.y + DIRS[a].dy;
+            brain.nov[a] = outside(nx, ny) ? 0 : 1 / (1 + world.place[idxOf(nx, ny)]);
+
+            brain.G[a] = brain.risk[a] + CFG.efe.amb * brain.amb[a] - CFG.efe.nov * brain.nov[a] - CFG.efe.hab * brain.habit[a];
           });
+          brain.prec = max(...brain.G) - min(...brain.G);
         };
 
-        // --- spiking readout + motor competition ---
+        // F3 · motor temperature = flat-landscape term × model-distrust × arousal
+        const motorTemp = () => {
+          const flat = 1 + 3 / (1 + CFG.efe.flat * brain.prec);
+          const distrust = 1 + CFG.efe.trust * meanAbs(brain.err);
+          const arousal = 1 + CFG.efe.arouse * driveOf();
+          return min(CFG.efe.tempMax, CFG.efe.noise * flat * distrust * arousal);
+        };
+
         const lifStep = () => {
           const gMin = min(...brain.G);
+          const noise = (brain.temp = motorTemp());
           const I = vec(N),
             spikes = [];
-          const s = brain.pred.map((p, i) => clamp(p + brain.err[i], 0, 1));
-          for (let i = 0; i < NS; i++) I[i] = 0.55 + 2.6 * s[i] + rnd() * 0.12;
+          const s = brain.pred.map((p, i) => p + brain.err[i]);
+          for (let i = 0; i < NS; i++) I[i] = 0.55 + 2.6 * clamp(abs(s[i]), 0, 1) + rnd() * 0.12;
           for (let j = 0; j < NZ; j++) I[NS + j] = 0.9 + 3.0 * brain.z[j] + rnd() * 0.12;
-          for (let a = 0; a < NA; a++) I[NS + NZ + a] = 1.75 - CFG.efe.beta * (brain.G[a] - gMin) + rnd() * CFG.efe.noise;
+          for (let a = 0; a < NA; a++) I[NS + NZ + a] = 1.75 - CFG.efe.beta * (brain.G[a] - gMin) + rnd() * noise;
 
           for (let i = 0; i < N; i++) {
             if (brain.ref[i] > 0) {
@@ -570,21 +609,18 @@
                 spikes.push(i);
                 brain.v[i] = 0;
                 brain.ref[i] = CFG.lif.refrac;
-                if (i >= NS + NZ)
-                  // lateral inhibition between motor neurons
-                  for (let k = NS + NZ; k < N; k++) if (k !== i) brain.v[k] *= 0.12;
+                if (i >= NS + NZ) for (let k = NS + NZ; k < N; k++) if (k !== i) brain.v[k] *= 0.12;
               }
             }
             brain.rate[i] += ((spikes.includes(i) ? 1 : 0) - brain.rate[i]) / CFG.lif.rateTau;
             brain.thr[i] = clamp(brain.thr[i] + CFG.eta.thr * (brain.rate[i] - CFG.eta.target), CFG.lif.thrMin, CFG.lif.thrMax);
           }
-          return spikes.find((i) => i >= NS + NZ);
+          return spikes.find((i) => i >= NS + NZ); // motor index or undefined
         };
 
-        // --- plasticity: strictly local, always on, no reward, no backward pass ---
         const learnA = () => {
           const eA = CFG.eta.A * etaScale;
-          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) brain.A[i][j] = clamp(brain.A[i][j] + eA * brain.err[i] * brain.z[j], 0, 2);
+          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) brain.A[i][j] = clamp(brain.A[i][j] + eA * brain.err[i] * brain.z[j], -2, 2);
           normaliseA();
         };
 
@@ -592,24 +628,23 @@
           if (!brain.prev) return;
           const { a, z: zPrev } = brain.prev;
           const zHat = matVec(brain.B[a], zPrev).map((x) => clamp(x, 0, 1));
-          const d = brain.z.map((x, j) => x - zHat[j]);
+          const d = [...brain.z].map((x, j) => x - zHat[j]);
           const eB = CFG.eta.B * etaScale;
           for (let j = 0; j < NZ; j++) for (let k = 0; k < NZ; k++) brain.B[a][j][k] = clamp(brain.B[a][j][k] + eB * d[j] * zPrev[k], -1.5, 1.5);
           brain.transErr[a] += 0.15 * (meanAbs(d) - brain.transErr[a]);
         };
 
         /* ================================================================
-           5 · LOOP — perceive → infer → evaluate → spike → act → learn
+           5 · LOOP
            ================================================================ */
         let paused = false,
-          timestep = 120,
+          timestep = 100,
           timer,
           lastAction = "NONE",
           state = "INITIALIZING";
 
         const tick = () => {
           if (paused) return;
-
           if (!world.targets.length) {
             state = "AWAITING TARGET";
             render();
@@ -617,41 +652,57 @@
           }
 
           const s = sense();
-          brain.z = brain.prev
-            ? matVec(brain.B[brain.prev.a], brain.prev.z).map((x) => clamp(x, 0, 1)) // warm start = prediction
-            : brain.z;
+          brain.z = brain.prev ? matVec(brain.B[brain.prev.a], brain.prev.z).map((x) => clamp(x, 0, 1)) : brain.z;
 
+          // FIX 0 · `action ??= lifStep() - 10` wrote NaN on the first silent substep
+          // and, because NaN is not nullish, permanently blocked every later substep.
+          // The policy was therefore always deterministic argmin(G) and no amount of
+          // motor noise could ever break a self-reinforcing wall-banging attractor.
           let action;
           for (let k = 0; k < CFG.substeps; k++) {
             inferStep(s);
             evaluate();
-            action ??= lifStep() - (NS + NZ);
+            if (action === undefined) {
+              const fired = lifStep();
+              if (fired !== undefined) action = fired - (NS + NZ);
+            } else {
+              lifStep();
+            }
             pushEKG();
           }
-          if (!Number.isFinite(action)) action = brain.G.indexOf(min(...brain.G));
+          if (action === undefined) action = brain.G.indexOf(min(...brain.G));
 
           learnA();
           learnB();
           brain.prev = { a: action, z: [...brain.z] };
-          brain.visits = brain.visits.map((v) => v * 0.97);
-          brain.visits[action] += 1;
 
+          const { dx, dy } = DIRS[action];
+          const [nx, ny] = [world.x + dx, world.y + dy];
           let moved = false,
             blocked = false,
             ate = false;
-          if (action === 0) world.h = (world.h + 3) % 4;
-          else if (action === 2) world.h = (world.h + 1) % 4;
-          else {
-            const { fx, fy } = HEAD[world.h];
-            const [nx, ny] = [world.x + fx, world.y + fy];
-            if (outside(nx, ny)) blocked = true;
-            else {
-              world.x = nx;
-              world.y = ny;
-              moved = true;
-            }
+          world.dir = action;
+          if (outside(nx, ny)) {
+            blocked = true;
+            world.bumps++;
+          } else {
+            world.x = nx;
+            world.y = ny;
+            moved = true;
           }
-          metabolise(moved);
+          world.bumped = blocked;
+
+          // F1 · REAFFERENCE-GATED HABIT — the trace records what the body did,
+          // not what the brain ordered. A collision lays a NEGATIVE trace, so the
+          // wall-banging fixed point (+2.5) inverts to a repeller (−1.25).
+          brain.habit = brain.habit.map((h) => h * CFG.habit.decay);
+          brain.habit[action] += blocked ? CFG.habit.bump : CFG.habit.gain;
+
+          // F2 · a blocked action maximally violated B[a]'s predicted displacement;
+          // that is exactly what transErr means, so the ambiguity term avoids it.
+          if (blocked) brain.transErr[action] = clamp(brain.transErr[action] + CFG.bumpErr * (1 - brain.transErr[action]), 0, 1);
+
+          metabolise(moved, blocked);
 
           if (moved) {
             const idx = world.targets.findIndex((t) => t.x === world.x && t.y === world.y);
@@ -668,9 +719,11 @@
               ? "WHISKER BLOCK"
               : world.hunger > 0.85
                 ? "STARVING"
-                : meanAbs(brain.err) > 0.2
-                  ? "SURPRISED"
-                  : "MODEL STABLE";
+                : brain.temp > 0.9
+                  ? "TUMBLING"
+                  : meanAbs(brain.err) > 0.2
+                    ? "SURPRISED"
+                    : "MODEL STABLE";
           render();
         };
 
@@ -703,7 +756,7 @@
         const pushEKG = () =>
           traces.forEach((t, i) => {
             t.data.shift();
-            t.data.push(brain.ref[i] > 0 ? 1.7 : brain.v[i]); // refractory drawn as a full-height spike
+            t.data.push(brain.ref[i] > 0 ? 1.7 : brain.v[i]);
           });
 
         const drawEKG = () =>
@@ -722,20 +775,16 @@
 
         const drawGrid = () => {
           const targetSet = new Set(world.targets.map(({ x, y }) => `${x},${y}`));
-          const { fx, fy, rx, ry, glyph } = HEAD[world.h];
-          const noses = new Map([
-            [`${world.x + fx - rx},${world.y + fy - ry}`, "L"],
-            [`${world.x + fx + rx},${world.y + fy + ry}`, "R"],
-          ]);
-
+          const rot = DIRS[world.dir].rot;
           cells.forEach((cell, i) => {
             const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
             const here = world.x === x && world.y === y;
             cell.className = `cell${here ? " agent" : ""}`;
-            cell.style.background = `rgba(0,0,0,${(odorAt(x, y) * 0.3).toFixed(3)})`;
-            cell.innerHTML =
-              (here ? `🐭<span class="hd">${glyph}</span>` : targetSet.has(`${x},${y}`) ? "🧀" : "") +
-              (noses.has(`${x},${y}`) ? `<span class="nose">${noses.get(`${x},${y}`)}</span>` : "");
+            cell.innerHTML = here
+              ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">🐭</span>`
+              : targetSet.has(`${x},${y}`)
+                ? "🧀"
+                : "";
           });
         };
 
@@ -744,14 +793,16 @@
           $("efe-body").innerHTML = ACTIONS.map(
             (a, i) =>
               `<tr class="${i === best ? "pick" : ""}"><td>${a}</td>` +
-              [brain.risk[i], brain.amb[i], brain.nov[i], brain.G[i]].map((v) => `<td>${v.toFixed(2)}</td>`).join("") +
+              [brain.risk[i], brain.amb[i], brain.nov[i], brain.habit[i], brain.G[i]]
+                .map((v) => `<td class="${v < 0 ? "neg" : ""}">${v.toFixed(2)}</td>`)
+                .join("") +
               `</tr>`,
           ).join("");
 
           $("weights-body").innerHTML = SENSORS.map(
             (s, i) =>
               `<tr><td>${s}</td>` +
-              brain.A[i].map((w) => `<td class="${w > 0.35 ? "w-pos" : w < 0.08 ? "w-zero" : ""}">${w.toFixed(2)}</td>`).join("") +
+              brain.A[i].map((w) => `<td class="${abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : ""}">${w.toFixed(2)}</td>`).join("") +
               `</tr>`,
           ).join("");
         };
@@ -762,17 +813,21 @@
           drawEKG();
 
           const err = meanAbs(brain.err);
-          const eff = world.history.length ? (world.history.reduce((a, b) => a + b, 0) / world.history.length).toFixed(1) : "—";
+          const eff = world.consumed ? (world.steps / world.consumed).toFixed(1) : "—";
 
           $("val-step").textContent = world.steps;
           $("val-hits").textContent = world.consumed;
           $("val-eff").textContent = eff;
+          $("val-bumps").textContent = world.bumps;
           $("val-action").textContent = lastAction;
           $("val-feedback").textContent = state;
           $("val-hunger").textContent = world.hunger.toFixed(2);
           $("val-err").textContent = err.toFixed(3);
+          $("val-prec").textContent = brain.prec.toFixed(3);
+          $("val-temp").textContent = brain.temp.toFixed(2);
           $("bar-hunger").style.width = `${(world.hunger * 60).toFixed(0)}px`;
           $("bar-err").style.width = `${min(60, err * 200).toFixed(0)}px`;
+          $("bar-temp").style.width = `${min(60, (brain.temp / CFG.efe.tempMax) * 60).toFixed(0)}px`;
         };
 
         /* ================================================================
