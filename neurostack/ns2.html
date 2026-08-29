@@ -45,7 +45,7 @@
       #layout {
         display: flex;
         flex-wrap: wrap;
-        align-items: flex-start;
+        align-items: stretch;
         justify-content: center;
         gap: 8px;
       }
@@ -58,6 +58,18 @@
         max-width: 100%;
       }
 
+      /* the last panel of each column absorbs leftover height so both
+         columns end flush at the bottom of the layout row */
+      .grow {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+
+        & > table {
+          height: 100%;
+        }
+      }
+
       button {
         border: var(--line);
         padding: 4px 6px;
@@ -68,15 +80,6 @@
 
         &:hover {
           background: var(--hover);
-        }
-      }
-
-      .btn-row {
-        display: flex;
-        gap: 6px;
-
-        & button {
-          flex: 1;
         }
       }
 
@@ -93,6 +96,7 @@
           margin-bottom: 3px;
           display: flex;
           justify-content: space-between;
+          align-items: center;
           gap: 6px;
 
           & .sub {
@@ -100,6 +104,33 @@
             text-transform: none;
             color: var(--ink);
           }
+
+          & button {
+            border: var(--line);
+            color: var(--ink);
+            font-size: 9px;
+            font-weight: normal;
+            letter-spacing: 0.5px;
+            padding: 0 4px;
+            line-height: 13px;
+            min-width: 46px;
+            text-align: center;
+
+            &:hover {
+              font-weight: bold;
+              background: var(--paper);
+            }
+          }
+        }
+      }
+
+      /* hoverable glossary terms */
+      [title].tip {
+        cursor: help;
+
+        &:hover {
+          text-decoration: underline dashed;
+          text-underline-offset: 2px;
         }
       }
 
@@ -301,66 +332,61 @@
     </style>
   </head>
   <body>
-    <h1>NeuroStack NS3</h1>
+    <h1>NeuroStack NS2</h1>
 
     <main id="layout">
       <section class="col">
-        <div class="btn-row">
-          <button id="btn-reset">Reset Brain</button>
-          <button id="btn-toggle">Pause</button>
-        </div>
-
         <div class="slider-container">
-          <div class="slider-header"><span>SPEED</span><span id="val-speed">1.00 × (100 ms)</span></div>
-          <input type="range" id="speed-slider" min="-100" max="200" value="0" step="1" />
+          <div class="slider-header"><span>SPEED</span><span id="val-speed">1.00×</span></div>
+          <input type="range" id="speed-slider" min="-110" max="200" value="0" step="10" />
         </div>
 
         <div id="grid"></div>
 
-        <div class="panel">
+        <div class="panel grow">
           <table class="stats-table">
             <tr>
-              <td>STEP</td>
+              <td class="tip" title="Number of decisions (moves) taken since reset">STEP</td>
               <td id="val-step">0</td>
             </tr>
             <tr>
-              <td>CONSUMED</td>
+              <td class="tip" title="Total cheese eaten so far">CONSUMED</td>
               <td id="val-hits">0</td>
             </tr>
             <tr>
-              <td>STEPS / CHEESE</td>
+              <td class="tip" title="Average steps spent per cheese — lower means better foraging">STEPS / CHEESE</td>
               <td id="val-eff">—</td>
             </tr>
             <tr>
-              <td>WALL BUMPS</td>
+              <td class="tip" title="Times the chosen move was blocked by the arena boundary">WALL BUMPS</td>
               <td id="val-bumps">0</td>
             </tr>
             <tr>
-              <td>ACTION</td>
+              <td class="tip" title="Direction emitted by the motor neuron that spiked first this tick">ACTION</td>
               <td id="val-action">NONE</td>
             </tr>
             <tr>
-              <td>STATE</td>
+              <td class="tip" title="Plain-language summary of what just happened to the agent">STATE</td>
               <td id="val-feedback">INITIALIZING</td>
             </tr>
             <tr>
-              <td>HUNGER</td>
+              <td class="tip" title="Internal need signal: rises every step, drops when cheese is eaten">HUNGER</td>
               <td>
                 <div class="meter-val"><span id="bar-hunger" class="bar"></span><span id="val-hunger">0.00</span></div>
               </td>
             </tr>
             <tr>
-              <td>SURPRISE &lang;|&epsilon;|&rang;</td>
+              <td class="tip" title="Mean absolute prediction error: how wrong the sensory model currently is">SURPRISE &lang;|&epsilon;|&rang;</td>
               <td>
                 <div class="meter-val"><span id="bar-err" class="bar"></span><span id="val-err">0.00</span></div>
               </td>
             </tr>
             <tr>
-              <td>POLICY PRECISION</td>
+              <td class="tip" title="Spread between the best and worst action scores — how decisive the choice is">POLICY PRECISION</td>
               <td id="val-prec">0.00</td>
             </tr>
             <tr>
-              <td>MOTOR TEMP</td>
+              <td class="tip" title="Exploration noise injected into motor neurons; high means random tumbling">MOTOR TEMP</td>
               <td>
                 <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
               </td>
@@ -375,12 +401,12 @@
           <table class="num-table">
             <thead>
               <tr>
-                <th>ACT</th>
-                <th>RISK</th>
-                <th>AMB</th>
-                <th>NOV</th>
-                <th>HAB</th>
-                <th>G</th>
+                <th class="tip" title="Candidate move direction">ACT</th>
+                <th class="tip" title="Expected mismatch between predicted and preferred sensations">RISK</th>
+                <th class="tip" title="Expected uncertainty of this action's outcome">AMB</th>
+                <th class="tip" title="Pull toward rarely-visited cells — the drive to explore">NOV</th>
+                <th class="tip" title="Recent-action bias that decays each step">HAB</th>
+                <th class="tip" title="Expected free energy; the lowest-G action is chosen">G</th>
               </tr>
             </thead>
             <tbody id="efe-body"></tbody>
@@ -391,8 +417,11 @@
           <div class="panel-title"><span>EEG Monitor</span><span class="sub" id="val-window">—</span></div>
         </div>
 
-        <div class="panel">
-          <div class="panel-title"><span>Connectivity</span></div>
+        <div class="panel grow">
+          <div class="panel-title">
+            <span>Connectivity</span>
+            <button id="btn-reset" title="Reset brain state only (world unchanged)">Reset</button>
+          </div>
           <table class="num-table">
             <thead>
               <tr>
@@ -467,6 +496,9 @@
         const EASE_TAU = 130;
         const STATE_HOLD = 120;
         const SPIKE_V = 1.7;
+
+        /* leftmost slider notch === pause stop; next notch (-100) === 0.1× / 1000 ms */
+        const PAUSE_V = -110;
 
         const { abs, exp, min, max, hypot, random: rnd, sqrt, round } = Math;
         const $ = (id) => document.getElementById(id);
@@ -906,7 +938,7 @@
           set("val-eff", world.consumed ? shown.eff.toFixed(1) : "—");
           set("val-bumps", `${round(shown.bumps)}`);
           set("val-action", shownAction);
-          set("val-feedback", shownState);
+          set("val-feedback", paused ? "PAUSED" : shownState);
           set("val-hunger", shown.hunger.toFixed(2));
           set("val-err", shown.err.toFixed(3));
           set("val-prec", shown.prec.toFixed(3));
@@ -1066,22 +1098,28 @@
           return { ctx, data: Array(CFG.ekg + 1).fill(0) };
         });
 
-        /* exponential speed: slider value is the decade exponent (×100) */
+        /* exponential speed: slider value is the decade exponent (×100),
+           quantized to 0.1-decade notches; PAUSE_V is the extra pause stop. */
         const speedOf = (v) => 10 ** (v / 100);
-        const fmtSpeed = (s) =>
-          `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)} × (${timestep >= 10 ? round(timestep) : timestep.toFixed(1)} ms)`;
+        const fmtSpeed = (s) => (paused ? "PAUSED" : `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)}×`);
 
-        $("speed-slider").addEventListener("input", ({ target }) => {
-          speed = speedOf(+target.value);
-          timestep = 100 / speed;
+        function applySpeed(v) {
+          paused = v <= PAUSE_V;
+          if (!paused) {
+            speed = speedOf(v);
+            timestep = 100 / speed;
+          }
           $("val-speed").textContent = fmtSpeed(speed);
-        });
+        }
 
+        $("speed-slider").addEventListener("input", ({ target }) => applySpeed(+target.value));
+
+        /* Reset touches the brain only — world, mouse, cheese and counters persist. */
         $("btn-reset").addEventListener("click", () => {
           resetBrain();
-          resetWorld();
+          world.bumped = false;
           lastAction = "RESET";
-          state = "INITIALIZING";
+          state = "BRAIN RESET";
           shownAction = lastAction;
           shownState = state;
           stateHold = STATE_HOLD;
@@ -1089,11 +1127,6 @@
           drawGrid();
           gridDirty = false;
           updateUI(UI_DT);
-        });
-
-        $("btn-toggle").addEventListener("click", ({ target }) => {
-          paused = !paused;
-          target.textContent = paused ? "Resume" : "Pause";
         });
 
         document.addEventListener("visibilitychange", () => {
@@ -1105,7 +1138,7 @@
         snapShown();
         drawGrid();
         gridDirty = false;
-        $("val-speed").textContent = fmtSpeed(speed);
+        applySpeed(+$("speed-slider").value);
         updateUI(UI_DT);
         requestAnimationFrame(frame);
       })();
