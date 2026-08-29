@@ -7,9 +7,15 @@
       :root {
         --ink: #000;
         --paper: #fff;
+        --mute: #bbb;
+        --hover: #e0e0e0;
+        --hair: #ccc;
         --panel-w: 282px;
         --font-s: 11px;
         --font-xs: 10px;
+        --line: 1px solid var(--ink);
+        --dash: 1px dashed var(--ink);
+        --bar-w: 60px;
       }
 
       * {
@@ -31,6 +37,7 @@
         & > * {
           width: var(--panel-w);
         }
+
         & > h1 {
           width: auto;
           font-size: 14px;
@@ -39,61 +46,58 @@
         }
       }
 
-      .btn-row {
-        display: flex;
-        gap: 6px;
-        & button {
-          flex: 1;
-        }
-      }
-
       button {
-        border: 1px solid var(--ink);
+        border: var(--line);
         padding: 4px 6px;
         cursor: pointer;
         font-size: var(--font-s);
         text-transform: uppercase;
         font-weight: bold;
-        &.active {
-          background: var(--ink);
-          color: var(--paper);
+
+        &:hover {
+          background: var(--hover);
         }
-        &:hover:not(.active) {
-          background: #e0e0e0;
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 6px;
+
+        & button {
+          flex: 1;
         }
       }
 
       .panel {
-        border: 1px solid var(--ink);
+        border: var(--line);
         padding: 6px 8px;
         font-size: var(--font-s);
-      }
 
-      .panel-title {
-        font-weight: bold;
-        text-transform: uppercase;
-        border-bottom: 1px solid var(--ink);
-        padding-bottom: 2px;
-        margin-bottom: 3px;
+        & .panel-title {
+          font-weight: bold;
+          text-transform: uppercase;
+          border-bottom: var(--line);
+          padding-bottom: 2px;
+          margin-bottom: 3px;
+        }
       }
 
       #grid {
         display: grid;
         grid-template-columns: repeat(8, 1fr);
-        border: 1px solid var(--ink);
-        width: var(--panel-w);
+        border: var(--line);
 
         & .cell {
           aspect-ratio: 1;
-          border-right: 1px solid var(--ink);
-          border-bottom: 1px solid var(--ink);
+          border-right: var(--line);
+          border-bottom: var(--line);
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 19px;
+          line-height: 1;
           cursor: pointer;
           user-select: none;
-          line-height: 1;
 
           &:nth-child(8n) {
             border-right: 0;
@@ -101,9 +105,7 @@
           &:nth-last-child(-n + 8) {
             border-bottom: 0;
           }
-          &:hover {
-            box-shadow: inset 0 0 0 1px var(--ink);
-          }
+          &:hover,
           &.agent {
             box-shadow: inset 0 0 0 1px var(--ink);
           }
@@ -112,9 +114,10 @@
         & .mouse {
           display: inline-block;
           transition: transform 0.12s linear;
-        }
-        & .mouse.bump {
-          animation: nudge 0.12s linear;
+
+          &.bump {
+            animation: nudge 0.12s linear;
+          }
         }
       }
 
@@ -133,17 +136,16 @@
         border-collapse: collapse;
       }
 
-      .stats-table {
-        & td {
-          padding: 1px 0;
-          vertical-align: middle;
-          &:first-child {
-            font-weight: bold;
-            width: 52%;
-          }
-          &:last-child {
-            text-align: right;
-          }
+      .stats-table td {
+        padding: 1px 0;
+        vertical-align: middle;
+
+        &:first-child {
+          font-weight: bold;
+          width: 52%;
+        }
+        &:last-child {
+          text-align: right;
         }
       }
 
@@ -152,10 +154,44 @@
         align-items: center;
         justify-content: flex-end;
         gap: 4px;
+
         & .bar {
           display: inline-block;
           height: 6px;
           background: var(--ink);
+        }
+      }
+
+      .num-table {
+        table-layout: fixed;
+        text-align: right;
+        font-size: var(--font-xs);
+
+        & th {
+          border-bottom: var(--dash);
+          font-weight: bold;
+        }
+
+        & th,
+        & td {
+          padding: 1px;
+
+          &:first-child {
+            text-align: left;
+          }
+        }
+
+        & tr.pick td {
+          font-weight: bold;
+        }
+        & .w-pos {
+          font-weight: bold;
+        }
+        & .w-zero {
+          color: var(--mute);
+        }
+        & .neg {
+          text-decoration: underline;
         }
       }
 
@@ -171,47 +207,18 @@
           justify-content: space-between;
           gap: 6px;
         }
+
         & .ekg-label {
           width: 52px;
           font-weight: bold;
         }
         & .sep {
-          border-top: 1px dashed var(--ink);
+          border-top: var(--dash);
           margin: 2px 0;
         }
         & canvas {
-          border: 1px solid #ccc;
+          border: 1px solid var(--hair);
           display: block;
-        }
-      }
-
-      .num-table {
-        table-layout: fixed;
-        text-align: right;
-        font-size: var(--font-xs);
-
-        & th {
-          border-bottom: 1px dashed var(--ink);
-          font-weight: bold;
-        }
-        & th,
-        & td {
-          padding: 1px 1px;
-          &:first-child {
-            text-align: left;
-          }
-        }
-        & tr.pick td {
-          font-weight: bold;
-        }
-        & .w-pos {
-          font-weight: bold;
-        }
-        & .w-zero {
-          color: #bbb;
-        }
-        & .neg {
-          text-decoration: underline;
         }
       }
 
@@ -220,8 +227,9 @@
         flex-direction: column;
         gap: 2px;
         font-size: var(--font-s);
-        border: 1px solid var(--ink);
+        border: var(--line);
         padding: 4px 8px;
+
         & .slider-header {
           display: flex;
           justify-content: space-between;
@@ -238,29 +246,32 @@
         &::-webkit-slider-runnable-track {
           height: 6px;
           background: var(--paper);
-          border: 1px solid var(--ink);
+          border: var(--line);
         }
         &::-moz-range-track {
           height: 6px;
           background: var(--paper);
-          border: 1px solid var(--ink);
+          border: var(--line);
         }
+
         &::-webkit-slider-thumb {
           appearance: none;
           width: 12px;
           height: 16px;
           margin-top: -6px;
           background: var(--ink);
-          border: 1px solid var(--ink);
+          border: var(--line);
           border-radius: 0;
         }
+
         &::-moz-range-thumb {
           width: 12px;
           height: 16px;
           background: var(--ink);
-          border: 1px solid var(--ink);
+          border: var(--line);
           border-radius: 0;
         }
+
         &:focus {
           outline: 1px dashed var(--ink);
           outline-offset: 2px;
@@ -378,42 +389,37 @@
 
     <script>
       (() => {
-        /* ================================================================
-           1 · CONFIG
-           ================================================================ */
+        /* ============================ CONFIG ============================ */
         const CFG = {
           grid: 8,
           spawn: 4,
           substeps: 12,
           ekg: 60,
+          placeDecay: 0.985,
+          bumpErr: 0.35,
           lif: { tau: 3.5, refrac: 2, rateTau: 9, thrMin: 0.55, thrMax: 1.8 },
           eta: { z: 0.4, leak: 0.18, A: 0.06, B: 0.14, thr: 0.008, target: 0.18 },
           efe: {
-            beta: 2.4, // motor gain on -ΔG
-            noise: 0.22, // base motor temperature
-            flat: 12, // sensitivity of temp to policy precision
-            trust: 1.7, // F3 · temp gain from model surprise ⟨|ε|⟩
-            arouse: 0.9, // F4 · temp gain from drive (hunger − taste)
+            beta: 2.4,
+            noise: 0.22,
+            flat: 12,
+            trust: 1.7,
+            arouse: 0.9,
             tempMax: 2.2,
             amb: 0.6,
             nov: 0.9,
             hab: 0.22,
           },
           meta: { rise: 0.03, moveCost: 0.006, bumpCost: 0.014, bite: 0.32, tasteDecay: 0.45 },
-          habit: { decay: 0.6, gain: 1, bump: -0.5 }, // F1 · reafference-gated
-          bumpErr: 0.35, // F2 · collision → transErr
-          placeDecay: 0.985,
+          habit: { decay: 0.6, gain: 1, bump: -0.5 },
         };
 
-        // drive is GONE from the sensor bank (Option F): it only ever contributed a
-        // common-mode offset to every G[a], so it could never change argmin, precision,
-        // or the motor drive. Hunger still acts — as a modulator, below.
         const SENSORS = ["smell·X", "smell·Y", "smell·0", "whisk·X", "whisk·Y"];
         const LATENTS = ["z0", "z1", "z2", "z3"];
         const ACTIONS = ["NORTH", "EAST", "SOUTH", "WEST"];
         const LABELS = [...SENSORS, ...LATENTS, ...ACTIONS.map((a) => `mot:${a[0]}`)];
         const [NS, NZ, NA] = [SENSORS.length, LATENTS.length, ACTIONS.length];
-        const N = NS + NZ + NA; // 13 neurons
+        const N = NS + NZ + NA;
 
         const DIRS = [
           { dx: 0, dy: -1, rot: 0 },
@@ -424,253 +430,45 @@
 
         const DMAX = (CFG.grid - 1) * Math.SQRT2;
         const GAIN = DMAX / 2;
-
-        // prior preference over the 5 sensations, and base precision W
-        // [gradX, gradY, intensity, wallX, wallY]
         const PREF = { C: [0, 0, 1, 0, 0], W: [0.3, 0.3, 1.6, 0.7, 0.7] };
-        const PREC_CH = 2; // only smell·0 is drive-scaled now
+        const PREF_DRIVEN_CH = 2;
 
-        /* ================================================================
-           2 · UTILS
-           ================================================================ */
-        const $ = (id) => document.getElementById(id);
         const { abs, exp, min, max, hypot, random: rnd, sqrt } = Math;
-        const clamp = (x, a, b) => min(b, max(a, x));
-        const vec = (n) => new Float32Array(n);
-        const matrix = (r, c, fn) => Array.from({ length: r }, () => Array.from({ length: c }, fn));
-        const matVec = (M, x) => M.map((row) => row.reduce((s, w, k) => s + w * x[k], 0));
-        const matTVec = (M, e, cols) => Array.from({ length: cols }, (_, j) => M.reduce((s, row, i) => s + row[j] * e[i], 0));
-        const meanAbs = (a) => [...a].reduce((s, x) => s + abs(x), 0) / a.length;
+        const $ = (id) => document.getElementById(id);
 
-        /* ================================================================
-           3 · WORLD
-           ================================================================ */
+        /* ============================= STATE ============================ */
         const world = {};
-
-        const resetWorld = () => {
-          Object.assign(world, {
-            x: (CFG.grid / 2) | 0,
-            y: (CFG.grid / 2) | 0,
-            dir: 1,
-            targets: [],
-            hunger: 0.55,
-            taste: 0,
-            steps: 0,
-            consumed: 0,
-            bumps: 0,
-            sinceMeal: 0,
-            history: [],
-            place: vec(CFG.grid ** 2),
-            bumped: false,
-          });
-          while (world.targets.length < CFG.spawn) spawn();
-        };
-
-        const spawn = () => {
-          const busy = new Set([{ x: world.x, y: world.y }, ...world.targets].map(({ x, y }) => `${x},${y}`));
-          const free = [];
-          for (let y = 0; y < CFG.grid; y++) for (let x = 0; x < CFG.grid; x++) if (!busy.has(`${x},${y}`)) free.push({ x, y });
-          if (free.length) world.targets.push(free[(rnd() * free.length) | 0]);
-        };
-
-        // linear cone, MAX-combined: non-vanishing gradient from every cell,
-        // no additive plateaus, unique stationary points at the sources.
-        const odorAt = (x, y) => world.targets.reduce((m, t) => max(m, 1 - hypot(x - t.x, y - t.y) / DMAX), 0);
-
-        const outside = (x, y) => x < 0 || x >= CFG.grid || y < 0 || y >= CFG.grid;
-        const edge = (v) => clamp(v, 0, CFG.grid - 1);
-        const odorClamped = (x, y) => odorAt(edge(x), edge(y));
-        const idxOf = (x, y) => y * CFG.grid + x;
-
-        // F4 · interoceptive drive — an INTERNAL modulator, never a neuron.
-        const driveOf = () => clamp(world.hunger - world.taste, 0, 1);
-
-        // 5 sensations, all exteroceptive.
-        const sense = () => {
-          const { x, y } = world;
-          return Float32Array.from([
-            clamp((odorClamped(x + 1, y) - odorClamped(x - 1, y)) * GAIN, -1, 1),
-            clamp((odorClamped(x, y + 1) - odorClamped(x, y - 1)) * GAIN, -1, 1),
-            odorAt(x, y),
-            (outside(x + 1, y) ? 1 : 0) - (outside(x - 1, y) ? 1 : 0),
-            (outside(x, y + 1) ? 1 : 0) - (outside(x, y - 1) ? 1 : 0),
-          ]);
-        };
-
-        const metabolise = (moved, blocked) => {
-          world.hunger = clamp(world.hunger + CFG.meta.rise + (moved ? CFG.meta.moveCost : 0) + (blocked ? CFG.meta.bumpCost : 0), 0, 1);
-          world.taste *= CFG.meta.tasteDecay;
-          world.steps++;
-          world.sinceMeal++;
-          // occupancy decays in TIME, so standing still makes your own cell stale
-          for (let i = 0; i < world.place.length; i++) world.place[i] *= CFG.placeDecay;
-          world.place[idxOf(world.x, world.y)] += 1;
-        };
-
-        const eat = (idx) => {
-          world.targets.splice(idx, 1);
-          world.consumed++;
-          world.hunger = clamp(world.hunger - CFG.meta.bite, 0, 1);
-          world.taste = 1;
-          world.history = [...world.history, world.sinceMeal].slice(-8);
-          world.sinceMeal = 0;
-          while (world.targets.length < CFG.spawn) spawn();
-        };
-
-        /* ================================================================
-           4 · BRAIN
-           ================================================================ */
         const brain = {};
+
+        let cells = [];
+        let traces = [];
         let etaScale = 1;
+        let timestep = 100;
+        let timer;
+        let paused = false;
+        let lastAction = "NONE";
+        let state = "INITIALIZING";
 
-        const normaliseA = () => {
-          for (let j = 0; j < NZ; j++) {
-            let n = 0;
-            for (let i = 0; i < NS; i++) n += brain.A[i][j] ** 2;
-            n = sqrt(n) || 1;
-            for (let i = 0; i < NS; i++) brain.A[i][j] /= n;
-          }
-        };
-
-        const resetBrain = () => {
-          Object.assign(brain, {
-            A: matrix(NS, NZ, () => rnd() - 0.5),
-            B: Array.from({ length: NA }, () => matrix(NZ, NZ, () => rnd() * 0.4)),
-            z: vec(NZ).fill(0.2),
-            err: vec(NS),
-            pred: vec(NS),
-            transErr: new Float32Array(NA).fill(0.4),
-            habit: vec(NA),
-            G: vec(NA),
-            risk: vec(NA),
-            amb: vec(NA),
-            nov: vec(NA),
-            prec: 0,
-            temp: CFG.efe.noise,
-            v: vec(N),
-            thr: new Float32Array(N).fill(1),
-            rate: vec(N),
-            ref: vec(N),
-            prev: null,
-          });
-          normaliseA();
-        };
-
-        const inferStep = (s) => {
-          brain.pred = matVec(brain.A, brain.z).map((x) => clamp(x, -1, 1));
-          brain.err = [...s].map((x, i) => x - brain.pred[i]);
-          const drive = matTVec(brain.A, brain.err, NZ);
-          brain.z = [...brain.z].map((zj, j) => clamp(zj + CFG.eta.z * (drive[j] - CFG.eta.leak * zj), 0, 1));
-        };
-
-        // G = risk + ambiguity − epistemic(place novelty) − habit(reafferent momentum)
-        const evaluate = () => {
-          const prec = 0.4 + 2.2 * driveOf(); // F4 · hunger sharpens PREFERENCE
-          brain.B.forEach((Ba, a) => {
-            const zNext = matVec(Ba, brain.z).map((x) => clamp(x, 0, 1));
-            const oNext = matVec(brain.A, zNext).map((x) => clamp(x, -1, 1));
-            brain.risk[a] = oNext.reduce((s, o, i) => s + PREF.W[i] * (i === PREC_CH ? prec : 1) * (o - PREF.C[i]) ** 2, 0);
-            brain.amb[a] = brain.transErr[a];
-
-            const nx = world.x + DIRS[a].dx,
-              ny = world.y + DIRS[a].dy;
-            brain.nov[a] = outside(nx, ny) ? 0 : 1 / (1 + world.place[idxOf(nx, ny)]);
-
-            brain.G[a] = brain.risk[a] + CFG.efe.amb * brain.amb[a] - CFG.efe.nov * brain.nov[a] - CFG.efe.hab * brain.habit[a];
-          });
-          brain.prec = max(...brain.G) - min(...brain.G);
-        };
-
-        // F3 · motor temperature = flat-landscape term × model-distrust × arousal
-        const motorTemp = () => {
-          const flat = 1 + 3 / (1 + CFG.efe.flat * brain.prec);
-          const distrust = 1 + CFG.efe.trust * meanAbs(brain.err);
-          const arousal = 1 + CFG.efe.arouse * driveOf();
-          return min(CFG.efe.tempMax, CFG.efe.noise * flat * distrust * arousal);
-        };
-
-        const lifStep = () => {
-          const gMin = min(...brain.G);
-          const noise = (brain.temp = motorTemp());
-          const I = vec(N),
-            spikes = [];
-          const s = brain.pred.map((p, i) => p + brain.err[i]);
-          for (let i = 0; i < NS; i++) I[i] = 0.55 + 2.6 * clamp(abs(s[i]), 0, 1) + rnd() * 0.12;
-          for (let j = 0; j < NZ; j++) I[NS + j] = 0.9 + 3.0 * brain.z[j] + rnd() * 0.12;
-          for (let a = 0; a < NA; a++) I[NS + NZ + a] = 1.75 - CFG.efe.beta * (brain.G[a] - gMin) + rnd() * noise;
-
-          for (let i = 0; i < N; i++) {
-            if (brain.ref[i] > 0) {
-              brain.ref[i]--;
-              brain.v[i] = 0;
-            } else {
-              brain.v[i] += (I[i] - brain.v[i]) / CFG.lif.tau;
-              if (brain.v[i] > brain.thr[i]) {
-                spikes.push(i);
-                brain.v[i] = 0;
-                brain.ref[i] = CFG.lif.refrac;
-                if (i >= NS + NZ) for (let k = NS + NZ; k < N; k++) if (k !== i) brain.v[k] *= 0.12;
-              }
-            }
-            brain.rate[i] += ((spikes.includes(i) ? 1 : 0) - brain.rate[i]) / CFG.lif.rateTau;
-            brain.thr[i] = clamp(brain.thr[i] + CFG.eta.thr * (brain.rate[i] - CFG.eta.target), CFG.lif.thrMin, CFG.lif.thrMax);
-          }
-          return spikes.find((i) => i >= NS + NZ); // motor index or undefined
-        };
-
-        const learnA = () => {
-          const eA = CFG.eta.A * etaScale;
-          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) brain.A[i][j] = clamp(brain.A[i][j] + eA * brain.err[i] * brain.z[j], -2, 2);
-          normaliseA();
-        };
-
-        const learnB = () => {
-          if (!brain.prev) return;
-          const { a, z: zPrev } = brain.prev;
-          const zHat = matVec(brain.B[a], zPrev).map((x) => clamp(x, 0, 1));
-          const d = [...brain.z].map((x, j) => x - zHat[j]);
-          const eB = CFG.eta.B * etaScale;
-          for (let j = 0; j < NZ; j++) for (let k = 0; k < NZ; k++) brain.B[a][j][k] = clamp(brain.B[a][j][k] + eB * d[j] * zPrev[k], -1.5, 1.5);
-          brain.transErr[a] += 0.15 * (meanAbs(d) - brain.transErr[a]);
-        };
-
-        /* ================================================================
-           5 · LOOP
-           ================================================================ */
-        let paused = false,
-          timestep = 100,
-          timer,
-          lastAction = "NONE",
-          state = "INITIALIZING";
-
+        /* =========================== MAIN LOOP ========================== */
         const tick = () => {
           if (paused) return;
           if (!world.targets.length) {
             state = "AWAITING TARGET";
-            render();
-            return;
+            return render();
           }
 
           const s = sense();
-          brain.z = brain.prev ? matVec(brain.B[brain.prev.a], brain.prev.z).map((x) => clamp(x, 0, 1)) : brain.z;
+          if (brain.prev) brain.z = clampAll(matVec(brain.B[brain.prev.a], brain.prev.z), 0, 1);
 
-          // FIX 0 · `action ??= lifStep() - 10` wrote NaN on the first silent substep
-          // and, because NaN is not nullish, permanently blocked every later substep.
-          // The policy was therefore always deterministic argmin(G) and no amount of
-          // motor noise could ever break a self-reinforcing wall-banging attractor.
           let action;
           for (let k = 0; k < CFG.substeps; k++) {
             inferStep(s);
             evaluate();
-            if (action === undefined) {
-              const fired = lifStep();
-              if (fired !== undefined) action = fired - (NS + NZ);
-            } else {
-              lifStep();
-            }
+            const fired = lifStep();
+            if (action === undefined && fired !== undefined) action = fired - NS - NZ;
             pushEKG();
           }
-          if (action === undefined) action = brain.G.indexOf(min(...brain.G));
+          action ??= argmin(brain.G);
 
           learnA();
           learnB();
@@ -678,39 +476,26 @@
 
           const { dx, dy } = DIRS[action];
           const [nx, ny] = [world.x + dx, world.y + dy];
-          let moved = false,
-            blocked = false,
-            ate = false;
+          const blocked = outside(nx, ny);
+          const moved = !blocked;
           world.dir = action;
-          if (outside(nx, ny)) {
-            blocked = true;
-            world.bumps++;
-          } else {
-            world.x = nx;
-            world.y = ny;
-            moved = true;
-          }
           world.bumped = blocked;
 
-          // F1 · REAFFERENCE-GATED HABIT — the trace records what the body did,
-          // not what the brain ordered. A collision lays a NEGATIVE trace, so the
-          // wall-banging fixed point (+2.5) inverts to a repeller (−1.25).
+          if (blocked) {
+            world.bumps++;
+            brain.transErr[action] += CFG.bumpErr * (1 - brain.transErr[action]);
+          } else {
+            [world.x, world.y] = [nx, ny];
+          }
+
           brain.habit = brain.habit.map((h) => h * CFG.habit.decay);
           brain.habit[action] += blocked ? CFG.habit.bump : CFG.habit.gain;
 
-          // F2 · a blocked action maximally violated B[a]'s predicted displacement;
-          // that is exactly what transErr means, so the ambiguity term avoids it.
-          if (blocked) brain.transErr[action] = clamp(brain.transErr[action] + CFG.bumpErr * (1 - brain.transErr[action]), 0, 1);
-
           metabolise(moved, blocked);
 
-          if (moved) {
-            const idx = world.targets.findIndex((t) => t.x === world.x && t.y === world.y);
-            if (idx >= 0) {
-              eat(idx);
-              ate = true;
-            }
-          }
+          const mealIdx = moved ? world.targets.findIndex((t) => t.x === world.x && t.y === world.y) : -1;
+          const ate = mealIdx >= 0;
+          if (ate) eat(mealIdx);
 
           lastAction = ACTIONS[action];
           state = ate
@@ -724,72 +509,226 @@
                   : meanAbs(brain.err) > 0.2
                     ? "SURPRISED"
                     : "MODEL STABLE";
+
           render();
         };
 
-        /* ================================================================
-           6 · UI
-           ================================================================ */
-        const cells = Array.from({ length: CFG.grid ** 2 }, (_, i) => {
-          const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
-          const cell = document.createElement("div");
-          cell.className = "cell";
-          cell.addEventListener("click", () => {
-            const idx = world.targets.findIndex((t) => t.x === x && t.y === y);
-            if (idx >= 0) world.targets.splice(idx, 1);
-            else if (world.x !== x || world.y !== y) world.targets.push({ x, y });
-            render();
+        /* ============================= WORLD ============================ */
+        function resetWorld() {
+          Object.assign(world, {
+            x: (CFG.grid / 2) | 0,
+            y: (CFG.grid / 2) | 0,
+            dir: 1,
+            targets: [],
+            hunger: 0.55,
+            taste: 0,
+            steps: 0,
+            consumed: 0,
+            bumps: 0,
+            sinceMeal: 0,
+            history: [],
+            place: new Float32Array(CFG.grid ** 2),
+            bumped: false,
           });
-          $("grid").append(cell);
-          return cell;
-        });
+          refill();
+        }
 
-        const traces = LABELS.map((label, i) => {
-          if (i === NS || i === NS + NZ) $("ekg-panel").insertAdjacentHTML("beforeend", `<div class="sep"></div>`);
-          const row = document.createElement("div");
-          row.className = "ekg-row";
-          row.innerHTML = `<span class="ekg-label">${label}</span><canvas width="196" height="14"></canvas>`;
-          $("ekg-panel").append(row);
-          return { ctx: row.querySelector("canvas").getContext("2d"), data: Array(CFG.ekg).fill(0) };
-        });
+        function refill() {
+          while (world.targets.length < CFG.spawn) {
+            const busy = new Set([{ x: world.x, y: world.y }, ...world.targets].map(key));
+            const free = [];
+            for (let y = 0; y < CFG.grid; y++) for (let x = 0; x < CFG.grid; x++) if (!busy.has(key({ x, y }))) free.push({ x, y });
+            if (!free.length) return;
+            world.targets.push(free[(rnd() * free.length) | 0]);
+          }
+        }
 
-        const pushEKG = () =>
-          traces.forEach((t, i) => {
-            t.data.shift();
-            t.data.push(brain.ref[i] > 0 ? 1.7 : brain.v[i]);
+        function sense() {
+          const { x, y } = world;
+          return [
+            clamp((odorEdge(x + 1, y) - odorEdge(x - 1, y)) * GAIN, -1, 1),
+            clamp((odorEdge(x, y + 1) - odorEdge(x, y - 1)) * GAIN, -1, 1),
+            odorAt(x, y),
+            (outside(x + 1, y) ? 1 : 0) - (outside(x - 1, y) ? 1 : 0),
+            (outside(x, y + 1) ? 1 : 0) - (outside(x, y - 1) ? 1 : 0),
+          ];
+        }
+
+        function metabolise(moved, blocked) {
+          const { rise, moveCost, bumpCost, tasteDecay } = CFG.meta;
+          world.hunger = clamp(world.hunger + rise + (moved ? moveCost : 0) + (blocked ? bumpCost : 0), 0, 1);
+          world.taste *= tasteDecay;
+          world.steps++;
+          world.sinceMeal++;
+          for (let i = 0; i < world.place.length; i++) world.place[i] *= CFG.placeDecay;
+          world.place[idxOf(world.x, world.y)] += 1;
+        }
+
+        function eat(idx) {
+          world.targets.splice(idx, 1);
+          world.consumed++;
+          world.hunger = clamp(world.hunger - CFG.meta.bite, 0, 1);
+          world.taste = 1;
+          world.history = [...world.history, world.sinceMeal].slice(-8);
+          world.sinceMeal = 0;
+          refill();
+        }
+
+        /* ============================= BRAIN ============================ */
+        function resetBrain() {
+          Object.assign(brain, {
+            A: matrix(NS, NZ, () => rnd() - 0.5),
+            B: Array.from({ length: NA }, () => matrix(NZ, NZ, () => rnd() * 0.4)),
+            z: Array(NZ).fill(0.2),
+            err: Array(NS).fill(0),
+            pred: Array(NS).fill(0),
+            transErr: Array(NA).fill(0.4),
+            habit: Array(NA).fill(0),
+            G: Array(NA).fill(0),
+            risk: Array(NA).fill(0),
+            amb: Array(NA).fill(0),
+            nov: Array(NA).fill(0),
+            prec: 0,
+            temp: CFG.efe.noise,
+            v: new Float32Array(N),
+            thr: new Float32Array(N).fill(1),
+            rate: new Float32Array(N),
+            ref: new Float32Array(N),
+            prev: null,
           });
+          normaliseA();
+        }
 
-        const drawEKG = () =>
-          traces.forEach(({ ctx, data }) => {
-            const { width, height } = ctx.canvas;
-            ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = "#000";
-            ctx.beginPath();
-            data.forEach((v, i) => {
-              const px = i * (width / (CFG.ekg - 1));
-              const py = clamp(height - 2 - (v * (height - 4)) / 1.7, 1, height - 1);
-              i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
-            });
-            ctx.stroke();
+        function normaliseA() {
+          for (let j = 0; j < NZ; j++) {
+            let n = 0;
+            for (let i = 0; i < NS; i++) n += brain.A[i][j] ** 2;
+            n = sqrt(n) || 1;
+            for (let i = 0; i < NS; i++) brain.A[i][j] /= n;
+          }
+        }
+
+        function inferStep(s) {
+          brain.pred = clampAll(matVec(brain.A, brain.z), -1, 1);
+          brain.err = s.map((x, i) => x - brain.pred[i]);
+          const grad = matTVec(brain.A, brain.err, NZ);
+          brain.z = brain.z.map((zj, j) => clamp(zj + CFG.eta.z * (grad[j] - CFG.eta.leak * zj), 0, 1));
+        }
+
+        function evaluate() {
+          const prec = 0.4 + 2.2 * driveOf();
+          brain.B.forEach((Ba, a) => {
+            const oNext = clampAll(matVec(brain.A, clampAll(matVec(Ba, brain.z), 0, 1)), -1, 1);
+            brain.risk[a] = oNext.reduce((sum, o, i) => sum + PREF.W[i] * (i === PREF_DRIVEN_CH ? prec : 1) * (o - PREF.C[i]) ** 2, 0);
+            brain.amb[a] = brain.transErr[a];
+
+            const { dx, dy } = DIRS[a];
+            const [nx, ny] = [world.x + dx, world.y + dy];
+            brain.nov[a] = outside(nx, ny) ? 0 : 1 / (1 + world.place[idxOf(nx, ny)]);
+
+            brain.G[a] = brain.risk[a] + CFG.efe.amb * brain.amb[a] - CFG.efe.nov * brain.nov[a] - CFG.efe.hab * brain.habit[a];
           });
+          brain.prec = max(...brain.G) - min(...brain.G);
+        }
 
-        const drawGrid = () => {
-          const targetSet = new Set(world.targets.map(({ x, y }) => `${x},${y}`));
-          const rot = DIRS[world.dir].rot;
+        function motorTemp() {
+          const flat = 1 + 3 / (1 + CFG.efe.flat * brain.prec);
+          const distrust = 1 + CFG.efe.trust * meanAbs(brain.err);
+          const arousal = 1 + CFG.efe.arouse * driveOf();
+          return min(CFG.efe.tempMax, CFG.efe.noise * flat * distrust * arousal);
+        }
+
+        function lifStep() {
+          const gMin = min(...brain.G);
+          const noise = (brain.temp = motorTemp());
+          const I = new Float32Array(N);
+
+          for (let i = 0; i < NS; i++) I[i] = 0.55 + 2.6 * clamp(abs(brain.pred[i] + brain.err[i]), 0, 1) + rnd() * 0.12;
+          for (let j = 0; j < NZ; j++) I[NS + j] = 0.9 + 3.0 * brain.z[j] + rnd() * 0.12;
+          for (let a = 0; a < NA; a++) I[NS + NZ + a] = 1.75 - CFG.efe.beta * (brain.G[a] - gMin) + rnd() * noise;
+
+          let motor;
+          for (let i = 0; i < N; i++) {
+            let spiked = false;
+            if (brain.ref[i] > 0) {
+              brain.ref[i]--;
+              brain.v[i] = 0;
+            } else {
+              brain.v[i] += (I[i] - brain.v[i]) / CFG.lif.tau;
+              if (brain.v[i] > brain.thr[i]) {
+                spiked = true;
+                brain.v[i] = 0;
+                brain.ref[i] = CFG.lif.refrac;
+                if (i >= NS + NZ) {
+                  motor ??= i;
+                  for (let k = NS + NZ; k < N; k++) if (k !== i) brain.v[k] *= 0.12;
+                }
+              }
+            }
+            brain.rate[i] += ((spiked ? 1 : 0) - brain.rate[i]) / CFG.lif.rateTau;
+            brain.thr[i] = clamp(brain.thr[i] + CFG.eta.thr * (brain.rate[i] - CFG.eta.target), CFG.lif.thrMin, CFG.lif.thrMax);
+          }
+          return motor;
+        }
+
+        function learnA() {
+          const rate = CFG.eta.A * etaScale;
+          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) brain.A[i][j] = clamp(brain.A[i][j] + rate * brain.err[i] * brain.z[j], -2, 2);
+          normaliseA();
+        }
+
+        function learnB() {
+          if (!brain.prev) return;
+          const { a, z: zPrev } = brain.prev;
+          const zHat = clampAll(matVec(brain.B[a], zPrev), 0, 1);
+          const d = brain.z.map((x, j) => x - zHat[j]);
+          const rate = CFG.eta.B * etaScale;
+          for (let j = 0; j < NZ; j++) for (let k = 0; k < NZ; k++) brain.B[a][j][k] = clamp(brain.B[a][j][k] + rate * d[j] * zPrev[k], -1.5, 1.5);
+          brain.transErr[a] += 0.15 * (meanAbs(d) - brain.transErr[a]);
+        }
+
+        /* ============================ RENDER ============================ */
+        function render() {
+          drawGrid();
+          drawTables();
+          drawEKG();
+
+          const err = meanAbs(brain.err);
+          const set = (id, text) => ($(id).textContent = text);
+          const bar = (id, px) => ($(id).style.width = `${min(60, px).toFixed(0)}px`);
+
+          set("val-step", world.steps);
+          set("val-hits", world.consumed);
+          set("val-eff", world.consumed ? (world.steps / world.consumed).toFixed(1) : "—");
+          set("val-bumps", world.bumps);
+          set("val-action", lastAction);
+          set("val-feedback", state);
+          set("val-hunger", world.hunger.toFixed(2));
+          set("val-err", err.toFixed(3));
+          set("val-prec", brain.prec.toFixed(3));
+          set("val-temp", brain.temp.toFixed(2));
+          bar("bar-hunger", world.hunger * 60);
+          bar("bar-err", err * 200);
+          bar("bar-temp", (brain.temp / CFG.efe.tempMax) * 60);
+        }
+
+        function drawGrid() {
+          const targets = new Set(world.targets.map(key));
+          const { rot } = DIRS[world.dir];
           cells.forEach((cell, i) => {
             const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
             const here = world.x === x && world.y === y;
             cell.className = `cell${here ? " agent" : ""}`;
             cell.innerHTML = here
               ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">🐭</span>`
-              : targetSet.has(`${x},${y}`)
+              : targets.has(key({ x, y }))
                 ? "🧀"
                 : "";
           });
-        };
+        }
 
-        const drawTables = () => {
-          const best = brain.G.indexOf(min(...brain.G));
+        function drawTables() {
+          const best = argmin(brain.G);
           $("efe-body").innerHTML = ACTIONS.map(
             (a, i) =>
               `<tr class="${i === best ? "pick" : ""}"><td>${a}</td>` +
@@ -805,35 +744,96 @@
               brain.A[i].map((w) => `<td class="${abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : ""}">${w.toFixed(2)}</td>`).join("") +
               `</tr>`,
           ).join("");
-        };
+        }
 
-        const render = () => {
-          drawGrid();
-          drawTables();
-          drawEKG();
+        function pushEKG() {
+          traces.forEach((t, i) => {
+            t.data.shift();
+            t.data.push(brain.ref[i] > 0 ? 1.7 : brain.v[i]);
+          });
+        }
 
-          const err = meanAbs(brain.err);
-          const eff = world.consumed ? (world.steps / world.consumed).toFixed(1) : "—";
+        function drawEKG() {
+          traces.forEach(({ ctx, data }) => {
+            const { width, height } = ctx.canvas;
+            ctx.clearRect(0, 0, width, height);
+            ctx.strokeStyle = "#000";
+            ctx.beginPath();
+            data.forEach((v, i) => {
+              const px = i * (width / (CFG.ekg - 1));
+              const py = clamp(height - 2 - (v * (height - 4)) / 1.7, 1, height - 1);
+              i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+            });
+            ctx.stroke();
+          });
+        }
 
-          $("val-step").textContent = world.steps;
-          $("val-hits").textContent = world.consumed;
-          $("val-eff").textContent = eff;
-          $("val-bumps").textContent = world.bumps;
-          $("val-action").textContent = lastAction;
-          $("val-feedback").textContent = state;
-          $("val-hunger").textContent = world.hunger.toFixed(2);
-          $("val-err").textContent = err.toFixed(3);
-          $("val-prec").textContent = brain.prec.toFixed(3);
-          $("val-temp").textContent = brain.temp.toFixed(2);
-          $("bar-hunger").style.width = `${(world.hunger * 60).toFixed(0)}px`;
-          $("bar-err").style.width = `${min(60, err * 200).toFixed(0)}px`;
-          $("bar-temp").style.width = `${min(60, (brain.temp / CFG.efe.tempMax) * 60).toFixed(0)}px`;
-        };
+        /* ============================ HELPERS =========================== */
+        function clamp(x, lo, hi) {
+          return min(hi, max(lo, x));
+        }
+        function clampAll(a, lo, hi) {
+          return Array.from(a, (x) => clamp(x, lo, hi));
+        }
+        function matrix(rows, cols, fn) {
+          return Array.from({ length: rows }, () => Array.from({ length: cols }, fn));
+        }
+        function matVec(M, x) {
+          return M.map((row) => row.reduce((s, w, k) => s + w * x[k], 0));
+        }
+        function matTVec(M, e, cols) {
+          return Array.from({ length: cols }, (_, j) => M.reduce((s, row, i) => s + row[j] * e[i], 0));
+        }
+        function meanAbs(a) {
+          return Array.from(a, abs).reduce((s, x) => s + x, 0) / a.length;
+        }
+        function argmin(a) {
+          return a.indexOf(min(...a));
+        }
+        function key({ x, y }) {
+          return `${x},${y}`;
+        }
+        function idxOf(x, y) {
+          return y * CFG.grid + x;
+        }
+        function outside(x, y) {
+          return x < 0 || x >= CFG.grid || y < 0 || y >= CFG.grid;
+        }
+        function driveOf() {
+          return clamp(world.hunger - world.taste, 0, 1);
+        }
+        function odorAt(x, y) {
+          return world.targets.reduce((m, t) => max(m, 1 - hypot(x - t.x, y - t.y) / DMAX), 0);
+        }
+        function odorEdge(x, y) {
+          return odorAt(clamp(x, 0, CFG.grid - 1), clamp(y, 0, CFG.grid - 1));
+        }
 
-        /* ================================================================
-           7 · CONTROLS
-           ================================================================ */
-        const resetTimer = () => {
+        /* ============================== INIT ============================ */
+        cells = Array.from({ length: CFG.grid ** 2 }, (_, i) => {
+          const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          cell.addEventListener("click", () => {
+            const idx = world.targets.findIndex((t) => t.x === x && t.y === y);
+            if (idx >= 0) world.targets.splice(idx, 1);
+            else if (world.x !== x || world.y !== y) world.targets.push({ x, y });
+            render();
+          });
+          $("grid").append(cell);
+          return cell;
+        });
+
+        traces = LABELS.map((label, i) => {
+          if (i === NS || i === NS + NZ) $("ekg-panel").insertAdjacentHTML("beforeend", `<div class="sep"></div>`);
+          const row = document.createElement("div");
+          row.className = "ekg-row";
+          row.innerHTML = `<span class="ekg-label">${label}</span><canvas width="196" height="14"></canvas>`;
+          $("ekg-panel").append(row);
+          return { ctx: row.querySelector("canvas").getContext("2d"), data: Array(CFG.ekg).fill(0) };
+        });
+
+        const restartTimer = () => {
           clearInterval(timer);
           timer = setInterval(tick, timestep);
         };
@@ -841,7 +841,7 @@
         $("speed-slider").addEventListener("input", ({ target }) => {
           timestep = +target.value;
           $("val-speed").textContent = `${timestep} ms`;
-          resetTimer();
+          restartTimer();
         });
 
         $("eta-slider").addEventListener("input", ({ target }) => {
@@ -865,7 +865,7 @@
         resetBrain();
         resetWorld();
         render();
-        resetTimer();
+        restartTimer();
       })();
     </script>
   </body>
