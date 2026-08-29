@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>NeuroStack NS2</title>
     <style>
       :root {
@@ -34,16 +35,27 @@
         align-items: center;
         gap: 8px;
 
-        & > * {
-          width: var(--panel-w);
-        }
-
         & > h1 {
-          width: auto;
           font-size: 14px;
           text-transform: uppercase;
           letter-spacing: 1px;
         }
+      }
+
+      #layout {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: var(--panel-w);
+        max-width: 100%;
       }
 
       button {
@@ -79,6 +91,15 @@
           border-bottom: var(--line);
           padding-bottom: 2px;
           margin-bottom: 3px;
+          display: flex;
+          justify-content: space-between;
+          gap: 6px;
+
+          & .sub {
+            font-weight: normal;
+            text-transform: none;
+            color: var(--ink);
+          }
         }
       }
 
@@ -218,6 +239,7 @@
         & canvas {
           border: 1px solid var(--hair);
           display: block;
+          max-width: 100%;
         }
       }
 
@@ -281,110 +303,111 @@
   <body>
     <h1>NeuroStack NS3</h1>
 
-    <div class="slider-container">
-      <div class="slider-header"><span>SPEED</span><span id="val-speed">1.00 × (100 ms)</span></div>
-      <input type="range" id="speed-slider" min="0" max="300" value="100" step="1" />
-    </div>
+    <main id="layout">
+      <section class="col">
+        <div class="btn-row">
+          <button id="btn-reset">Reset Brain</button>
+          <button id="btn-toggle">Pause</button>
+        </div>
 
-    <div class="slider-container">
-      <div class="slider-header"><span>PLASTICITY</span><span id="val-eta">1.00 ×</span></div>
-      <input type="range" id="eta-slider" min="0" max="300" value="100" />
-    </div>
+        <div class="slider-container">
+          <div class="slider-header"><span>SPEED</span><span id="val-speed">1.00 × (100 ms)</span></div>
+          <input type="range" id="speed-slider" min="-100" max="200" value="0" step="1" />
+        </div>
 
-    <div id="grid"></div>
+        <div id="grid"></div>
 
-    <div class="panel">
-      <table class="stats-table">
-        <tr>
-          <td>STEP</td>
-          <td id="val-step">0</td>
-        </tr>
-        <tr>
-          <td>CONSUMED</td>
-          <td id="val-hits">0</td>
-        </tr>
-        <tr>
-          <td>STEPS / CHEESE</td>
-          <td id="val-eff">—</td>
-        </tr>
-        <tr>
-          <td>WALL BUMPS</td>
-          <td id="val-bumps">0</td>
-        </tr>
-        <tr>
-          <td>ACTION</td>
-          <td id="val-action">NONE</td>
-        </tr>
-        <tr>
-          <td>STATE</td>
-          <td id="val-feedback">INITIALIZING</td>
-        </tr>
-        <tr>
-          <td>HUNGER</td>
-          <td>
-            <div class="meter-val"><span id="bar-hunger" class="bar"></span><span id="val-hunger">0.00</span></div>
-          </td>
-        </tr>
-        <tr>
-          <td>SURPRISE &lang;|&epsilon;|&rang;</td>
-          <td>
-            <div class="meter-val"><span id="bar-err" class="bar"></span><span id="val-err">0.00</span></div>
-          </td>
-        </tr>
-        <tr>
-          <td>POLICY PRECISION</td>
-          <td id="val-prec">0.00</td>
-        </tr>
-        <tr>
-          <td>MOTOR TEMP</td>
-          <td>
-            <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
-          </td>
-        </tr>
-      </table>
-    </div>
+        <div class="panel">
+          <table class="stats-table">
+            <tr>
+              <td>STEP</td>
+              <td id="val-step">0</td>
+            </tr>
+            <tr>
+              <td>CONSUMED</td>
+              <td id="val-hits">0</td>
+            </tr>
+            <tr>
+              <td>STEPS / CHEESE</td>
+              <td id="val-eff">—</td>
+            </tr>
+            <tr>
+              <td>WALL BUMPS</td>
+              <td id="val-bumps">0</td>
+            </tr>
+            <tr>
+              <td>ACTION</td>
+              <td id="val-action">NONE</td>
+            </tr>
+            <tr>
+              <td>STATE</td>
+              <td id="val-feedback">INITIALIZING</td>
+            </tr>
+            <tr>
+              <td>HUNGER</td>
+              <td>
+                <div class="meter-val"><span id="bar-hunger" class="bar"></span><span id="val-hunger">0.00</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td>SURPRISE &lang;|&epsilon;|&rang;</td>
+              <td>
+                <div class="meter-val"><span id="bar-err" class="bar"></span><span id="val-err">0.00</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td>POLICY PRECISION</td>
+              <td id="val-prec">0.00</td>
+            </tr>
+            <tr>
+              <td>MOTOR TEMP</td>
+              <td>
+                <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </section>
 
-    <div class="panel">
-      <div class="panel-title">Behavior</div>
-      <table class="num-table">
-        <thead>
-          <tr>
-            <th>ACT</th>
-            <th>RISK</th>
-            <th>AMB</th>
-            <th>NOV</th>
-            <th>HAB</th>
-            <th>G</th>
-          </tr>
-        </thead>
-        <tbody id="efe-body"></tbody>
-      </table>
-    </div>
+      <section class="col">
+        <div class="panel">
+          <div class="panel-title"><span>Behavior</span></div>
+          <table class="num-table">
+            <thead>
+              <tr>
+                <th>ACT</th>
+                <th>RISK</th>
+                <th>AMB</th>
+                <th>NOV</th>
+                <th>HAB</th>
+                <th>G</th>
+              </tr>
+            </thead>
+            <tbody id="efe-body"></tbody>
+          </table>
+        </div>
 
-    <div id="ekg-panel" class="panel">
-      <div class="panel-title">EEG Monitor</div>
-    </div>
+        <div id="ekg-panel" class="panel">
+          <div class="panel-title"><span>EEG Monitor</span><span class="sub" id="val-window">—</span></div>
+        </div>
 
-    <div class="panel">
-      <div class="panel-title">Connectivity</div>
-      <table class="num-table">
-        <thead>
-          <tr>
-            <th>SENSOR</th>
-            <th>z0</th>
-            <th>z1</th>
-            <th>z2</th>
-            <th>z3</th>
-          </tr>
-        </thead>
-        <tbody id="weights-body"></tbody>
-      </table>
-    </div>
-
-    <div class="btn-row">
-      <button id="btn-reset">Reset Brain</button>
-      <button id="btn-toggle">Pause</button>
-    </div>
+        <div class="panel">
+          <div class="panel-title"><span>Connectivity</span></div>
+          <table class="num-table">
+            <thead>
+              <tr>
+                <th>SENSOR</th>
+                <th>z0</th>
+                <th>z1</th>
+                <th>z2</th>
+                <th>z3</th>
+              </tr>
+            </thead>
+            <tbody id="weights-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
 
     <script>
       (() => {
@@ -408,7 +431,6 @@
             amb: 0.6,
             nov: 0.9,
             hab: 0.22,
-            /* whisker-predicted collision cost + collision-driven arousal */
             wall: 1.8,
             stuckGain: 1.4,
             stuckRise: 0.55,
@@ -440,12 +462,11 @@
         const WHISK_Y = 4;
 
         /* --------------------------- CLOCKS ---------------------------- */
-        const EEG_HZ = 60;
-        const EEG_DT = 1000 / EEG_HZ;
         const UI_DT = 1000 / 30;
         const MAX_SUB_PER_FRAME = 2000;
         const EASE_TAU = 130;
         const STATE_HOLD = 120;
+        const SPIKE_V = 1.7;
 
         const { abs, exp, min, max, hypot, random: rnd, sqrt, round } = Math;
         const $ = (id) => document.getElementById(id);
@@ -456,7 +477,7 @@
 
         let cells = [];
         let traces = [];
-        let etaScale = 1;
+        const etaScale = 1;
         let speed = 1;
         let timestep = 100;
         let paused = false;
@@ -467,11 +488,9 @@
         let curS = null;
         let curAction;
         let simAcc = 0;
-        let eegAcc = 0;
         let eegPhase = 0;
         let uiAcc = 0;
         let lastT = performance.now();
-        let peak = new Float32Array(N);
 
         let gridDirty = true;
         let shownState = "INITIALIZING";
@@ -492,7 +511,6 @@
           dt = min(max(dt, 0), 100);
 
           if (!paused) stepSim(dt);
-          sampleEEG(dt);
           drawEEG();
 
           uiAcc += dt;
@@ -510,6 +528,7 @@
             simAcc -= subDur;
             if (sub === 0 && !beginTick()) {
               simAcc = 0;
+              eegPhase = 0;
               return;
             }
             microStep();
@@ -519,6 +538,8 @@
             }
           }
           if (budget <= 0) simAcc = 0;
+          /* fractional position between EEG columns → smooth scroll when slow */
+          eegPhase = clamp(simAcc / subDur, 0, 1);
         }
 
         /* --------------------------- SIM STEPS -------------------------- */
@@ -538,7 +559,7 @@
           evaluate();
           const fired = lifStep();
           if (curAction === undefined && fired !== undefined) curAction = fired - NS - NZ;
-          noteEEG();
+          pushEEG();
         }
 
         function endTick() {
@@ -563,7 +584,6 @@
             [world.x, world.y] = [nx, ny];
           }
 
-          /* collision surprise → drops policy precision (raises motor temp) */
           brain.stuck = blocked ? brain.stuck + CFG.efe.stuckRise * (1 - brain.stuck) : brain.stuck * CFG.efe.stuckDecay;
 
           brain.habit = brain.habit.map((h) => h * CFG.habit.decay);
@@ -681,7 +701,8 @@
           sub = 0;
           curAction = undefined;
           simAcc = 0;
-          peak = new Float32Array(N);
+          eegPhase = 0;
+          traces.forEach((t) => t.data.fill(0));
         }
 
         function normaliseA() {
@@ -702,7 +723,6 @@
 
         function evaluate() {
           const prec = 0.4 + 2.2 * driveOf();
-          /* posterior belief about touch, from likelihood A·z corrected by residual */
           const wX = clamp(brain.pred[WHISK_X] + brain.err[WHISK_X], -1, 1);
           const wY = clamp(brain.pred[WHISK_Y] + brain.err[WHISK_Y], -1, 1);
 
@@ -713,7 +733,6 @@
 
             const { dx, dy } = DIRS[a];
 
-            /* expected whisker contact if this policy is enacted: violates C(whisk)=0 */
             const contact = clamp(dx * wX + dy * wY, 0, 1);
             brain.risk[a] += CFG.efe.wall * (1 + brain.stuck) * contact;
 
@@ -781,26 +800,17 @@
           brain.transErr[a] += 0.15 * (meanAbs(d) - brain.transErr[a]);
         }
 
-        /* ============================== EEG ============================= */
-        function noteEEG() {
+        /* ============================== EEG =============================
+           One trace column === one integration sub-step, so the window is a
+           dynamic slice of SIMULATION time (CFG.ekg sub-steps, i.e.
+           CFG.ekg / CFG.substeps ticks). Spike density is therefore
+           invariant to `timestep`; only the scroll speed changes.        */
+        function pushEEG() {
           for (let i = 0; i < N; i++) {
-            const v = brain.ref[i] > 0 ? 1.7 : brain.v[i];
-            if (v > peak[i]) peak[i] = v;
+            const t = traces[i];
+            t.data.shift();
+            t.data.push(brain.ref[i] > 0 ? SPIKE_V : brain.v[i]);
           }
-        }
-
-        function sampleEEG(dt) {
-          eegAcc += dt;
-          while (eegAcc >= EEG_DT) {
-            eegAcc -= EEG_DT;
-            for (let i = 0; i < N; i++) {
-              const t = traces[i];
-              t.data.shift();
-              t.data.push(peak[i]);
-              peak[i] = brain.ref[i] > 0 ? 1.7 : brain.v[i];
-            }
-          }
-          eegPhase = eegAcc / EEG_DT;
         }
 
         function drawEEG() {
@@ -811,7 +821,7 @@
             ctx.beginPath();
             for (let i = 0; i < data.length; i++) {
               const px = (i - 1 - eegPhase) * dx;
-              const py = clamp(height - 2 - (data[i] * (height - 4)) / 1.7, 1, height - 1);
+              const py = clamp(height - 2 - (data[i] * (height - 4)) / SPIKE_V, 1, height - 1);
               i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
             }
             ctx.stroke();
@@ -905,7 +915,15 @@
           bar("bar-err", shown.err * 200);
           bar("bar-temp", (shown.temp / CFG.efe.tempMax) * 60);
 
+          set("val-window", windowLabel());
           drawTables();
+        }
+
+        function windowLabel() {
+          const ticks = CFG.ekg / CFG.substeps;
+          const ms = CFG.ekg * (timestep / CFG.substeps);
+          const t = ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${round(ms)} ms` : `${ms.toFixed(1)} ms`;
+          return `${ticks.toFixed(0)} steps / ${t}`;
         }
 
         function drawGrid() {
@@ -1048,7 +1066,8 @@
           return { ctx, data: Array(CFG.ekg + 1).fill(0) };
         });
 
-        const speedOf = (v) => 10 ** (v / 100 - 1);
+        /* exponential speed: slider value is the decade exponent (×100) */
+        const speedOf = (v) => 10 ** (v / 100);
         const fmtSpeed = (s) =>
           `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)} × (${timestep >= 10 ? round(timestep) : timestep.toFixed(1)} ms)`;
 
@@ -1056,11 +1075,6 @@
           speed = speedOf(+target.value);
           timestep = 100 / speed;
           $("val-speed").textContent = fmtSpeed(speed);
-        });
-
-        $("eta-slider").addEventListener("input", ({ target }) => {
-          etaScale = +target.value / 100;
-          $("val-eta").textContent = `${etaScale.toFixed(2)} ×`;
         });
 
         $("btn-reset").addEventListener("click", () => {
@@ -1091,6 +1105,7 @@
         snapShown();
         drawGrid();
         gridDirty = false;
+        $("val-speed").textContent = fmtSpeed(speed);
         updateUI(UI_DT);
         requestAnimationFrame(frame);
       })();
