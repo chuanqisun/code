@@ -6,145 +6,186 @@
     <title>DIY Shelf</title>
     <style>
       :root {
-        --text: #222;
-        --bg: #fafafa;
-        --border: #ccc;
-        --dark-wood: #60462c;
-        --light-wood: #c4a98a;
-        --guide-dash: rgba(212, 163, 115, 0.4);
-        --guide-hover: rgba(212, 163, 115, 0.22);
-        --canvas-bg: #d7d8d3;
-        --panel-size: 352px;
-        --status-connected: green;
-        --status-idle: #666;
-        --status-busy: #d97706;
-        --status-error: red;
+        --text: #111111;
+        --bg: #ffffff;
+        --border: #111111;
+        --dark-wood: #2a1f18;
+        --light-wood: #d5b895;
+        --guide-dash: rgba(180, 140, 100, 0.45);
+        --guide-hover: rgba(180, 140, 100, 0.25);
+        --canvas-bg: #e8e8e4;
+        --max-width: 768px;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
-        font-family:
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          Roboto,
-          sans-serif;
-        margin: 20px;
-        line-height: 1.4;
+        font-family: ui-monospace, "SF Mono", "Cascadia Code", "Courier New", monospace;
+        margin: 0;
+        padding: 20px 16px 40px;
         color: var(--text);
         background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .app-container {
+        width: 100%;
+        max-width: var(--max-width);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-bottom: 2px solid var(--border);
+        padding-bottom: 8px;
+        width: 100%;
       }
 
       h1 {
-        margin-top: 0;
-        font-size: 1.5rem;
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
       }
 
-      .form-group {
-        margin-bottom: 12px;
-
-        > label {
-          display: block;
-          font-weight: bold;
-          margin-bottom: 4px;
-        }
+      .status-pill {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+      }
+      .status-pill.connected {
+        color: #000;
+        font-weight: bold;
+      }
+      .status-pill.disconnected {
+        color: #888;
+      }
+      .status-pill.generating {
+        color: #555;
+        text-decoration: underline;
+      }
+      .status-pill.error {
+        color: #d00;
+        font-weight: bold;
       }
 
-      input[type="password"],
-      textarea {
-        width: 100%;
-        max-width: 600px;
-        box-sizing: border-box;
-        padding: 6px 8px;
-        font-family: inherit;
-      }
-
-      textarea {
-        resize: none;
-        height: 160px;
-        overflow: auto;
-      }
-
-      .controls-row {
+      .compact-bar {
         display: flex;
-        gap: 12px;
-        align-items: center;
-        margin-bottom: 12px;
         flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        background: #f7f7f7;
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        width: 100%;
       }
 
-      .mode-group {
+      .bar-group {
         display: flex;
-        gap: 12px;
         align-items: center;
-        background: #eee;
+        gap: 8px;
+      }
+
+      button {
+        font-family: inherit;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        background: #fff;
+        color: #000;
+        border: 1px solid var(--border);
         padding: 6px 12px;
-        border-radius: 4px;
-
-        label {
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          font-size: 0.95rem;
-        }
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button:hover:not(:disabled) {
+        background: #000;
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      button.active-toggle {
+        background: #000;
+        color: #fff;
       }
 
-      .inline-checkbox {
+      .tool-btn-group {
         display: flex;
-        align-items: center;
-        gap: 5px;
-        font-size: 0.9rem;
-        cursor: pointer;
-        user-select: none;
+        border: 1px solid var(--border);
+        background: #fff;
+      }
+      .tool-btn-group button {
+        border: none;
+        border-right: 1px solid var(--border);
+        padding: 6px 10px;
+        font-size: 0.8rem;
+      }
+      .tool-btn-group button:last-child {
+        border-right: none;
       }
 
       .workspace {
         display: flex;
-        flex-wrap: wrap;
-        gap: 20px;
-        margin-top: 15px;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        width: 100%;
+        margin: 4px 0;
+      }
 
-        &.merged {
-          position: relative;
-          display: block;
-          width: var(--panel-size);
-          height: var(--panel-size);
+      .workspace.merged {
+        position: relative;
+        width: 100%;
+        max-width: var(--max-width);
+        aspect-ratio: 1 / 1;
 
-          > * {
-            position: absolute;
-            inset: 0 auto auto 0;
-            width: var(--panel-size);
-            height: var(--panel-size);
-          }
-
-          .output-frame {
-            z-index: 1;
-          }
-
-          #draw-canvas {
-            z-index: 2;
-            opacity: 0;
-            background: transparent;
-          }
-
-          #draft-canvas {
-            z-index: 3;
-            background: transparent;
-            border-color: transparent;
-          }
+        > * {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
         }
 
-        &.show-draft #draft-canvas {
-          display: block;
+        .output-frame {
+          z-index: 1;
         }
+
+        #draw-canvas {
+          z-index: 2;
+          opacity: 0;
+          background: transparent;
+        }
+
+        #draft-canvas {
+          z-index: 3;
+          background: transparent;
+          border-color: transparent;
+        }
+      }
+
+      .workspace.show-draft #draft-canvas {
+        display: block;
       }
 
       canvas,
       .output-frame {
-        width: var(--panel-size);
-        height: var(--panel-size);
+        width: 100%;
+        max-width: var(--max-width);
+        aspect-ratio: 1 / 1;
+        height: auto;
         border: 1px solid var(--border);
-        box-sizing: border-box;
+        display: block;
       }
 
       #draw-canvas {
@@ -162,98 +203,157 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #f0f0f0;
+        background: #fbfbfb;
+        position: relative;
         overflow: hidden;
-
-        img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: none;
-
-          &.visible {
-            display: block;
-          }
-        }
       }
 
-      #status {
-        font-weight: bold;
-        font-family: monospace;
-
-        &.connected {
-          color: var(--status-connected);
-        }
-        &.disconnected {
-          color: var(--status-idle);
-        }
-        &.generating {
-          color: var(--status-busy);
-        }
-        &.error {
-          color: var(--status-error);
-        }
+      .output-frame img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: none;
+      }
+      .output-frame img.visible {
+        display: block;
       }
 
-      .fps-counter {
-        font-family: monospace;
-        font-size: 0.85rem;
-        color: #555;
+      #output-placeholder {
+        font-size: 0.8rem;
+        color: #999;
+        text-transform: uppercase;
+      }
+
+      details.settings-menu {
+        border: 1px solid var(--border);
+        background: #fff;
+        font-size: 0.8rem;
+        width: 100%;
+      }
+
+      details.settings-menu summary {
+        padding: 8px 12px;
+        cursor: pointer;
+        font-weight: 600;
+        user-select: none;
+        background: #fafafa;
+        list-style: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      details.settings-menu summary::-webkit-details-marker {
+        display: none;
+      }
+      details.settings-menu summary::after {
+        content: "+";
+      }
+      details.settings-menu[open] summary::after {
+        content: "-";
+      }
+
+      .menu-body {
+        padding: 14px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .form-group label {
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+      }
+      input[type="password"],
+      textarea {
+        width: 100%;
+        font-family: inherit;
+        font-size: 0.8rem;
+        padding: 8px;
+        border: 1px solid var(--border);
+        background: #fff;
+        color: #000;
+      }
+      textarea {
+        height: 80px;
+        resize: vertical;
+      }
+
+      .checkbox-row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        user-select: none;
       }
     </style>
   </head>
   <body>
-    <h1>DIY Shelf</h1>
+    <div class="app-container">
+      <header>
+        <h1>DIY Shelf</h1>
+        <div>
+          <span id="status" class="status-pill disconnected">Disconnected</span>
+          <span id="fps-display" style="font-size: 0.75rem; color: #777; margin-left: 6px"></span>
+        </div>
+      </header>
 
-    <div class="form-group">
-      <label for="api-key">fal.ai API Key:</label>
-      <input type="password" id="api-key" placeholder="Enter your FAL_KEY (e.g. key_id:key_secret)" autocomplete="off" />
-    </div>
+      <div class="compact-bar">
+        <div class="bar-group">
+          <button id="toggle-connect-btn">Start</button>
+          <button id="mode-toggle-btn">Mode: Manual</button>
+          <button id="manual-send-btn" disabled>Send</button>
+        </div>
 
-    <div class="controls-row">
-      <button id="connect-btn">Connect WebSocket</button>
-      <button id="disconnect-btn" disabled>Disconnect</button>
-      <span>Status: <span id="status" class="disconnected">Disconnected</span></span>
-      <span id="fps-display" class="fps-counter"></span>
-    </div>
-
-    <div class="form-group">
-      <label for="prompt">Prompt:</label>
-      <textarea id="prompt" readonly placeholder="Describe the image you want to generate..."></textarea>
-    </div>
-
-    <div class="form-group">
-      <label>Generation Mode:</label>
-      <div class="mode-group">
-        <label><input type="radio" name="mode" value="manual" checked /> 1. Manual Send</label>
-        <label><input type="radio" name="mode" value="stroke" /> 2. Send on Split End</label>
-        <label><input type="radio" name="mode" value="continuous" /> 3. Continuous (30 FPS Stream)</label>
+        <div class="bar-group">
+          <div class="tool-btn-group">
+            <button id="tool-build" class="active-toggle" title="Build Shelves">🔨 Build</button>
+            <button id="tool-pot" title="Place Pots (Shortcut: P)">🪴 Pot</button>
+            <button id="tool-plant" title="Water & Grow">💦 Plant</button>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="form-group">
-      <label>Tool:</label>
-      <div class="mode-group">
-        <label><input type="radio" name="tool" value="build" checked /> 🔨 Build (split dividers)</label>
-        <label><input type="radio" name="tool" value="pot" /> 🏺 Pot (place pots)</label>
-        <label><input type="radio" name="tool" value="plant" /> 🌿 Plant (click pot to grow)</label>
+      <div class="workspace merged show-draft" id="workspace">
+        <canvas id="draw-canvas" width="352" height="352"></canvas>
+        <canvas id="draft-canvas" width="352" height="352"></canvas>
+        <div class="output-frame">
+          <span id="output-placeholder">No output</span>
+          <img id="output-img" alt="Generated visual" />
+        </div>
       </div>
-    </div>
 
-    <div class="controls-row">
-      <button id="send-btn" disabled>Generate Image (Manual)</button>
-      <button id="clear-btn">Reset Grid</button>
-      <label class="inline-checkbox"><input type="checkbox" id="guides-toggle" /> Show Split Guides</label>
-      <label class="inline-checkbox"><input type="checkbox" id="merge-toggle" /> Merge Output</label>
-    </div>
+      <details class="settings-menu">
+        <summary>Menu</summary>
+        <div class="menu-body">
+          <div class="form-group">
+            <label for="api-key">fal.ai API Key</label>
+            <input type="password" id="api-key" placeholder="key_id:key_secret" autocomplete="off" />
+          </div>
 
-    <div class="workspace" id="workspace">
-      <canvas id="draw-canvas" width="352" height="352"></canvas>
-      <canvas id="draft-canvas" width="352" height="352"></canvas>
-      <div class="output-frame">
-        <span id="output-placeholder">No output yet</span>
-        <img id="output-img" alt="Generated visual" />
-      </div>
+          <div class="form-group">
+            <label for="prompt">Prompt (Auto-generated)</label>
+            <textarea id="prompt" readonly></textarea>
+          </div>
+
+          <div class="checkbox-row">
+            <label class="checkbox-label"> <input type="checkbox" id="guides-toggle" /> Split Guides </label>
+            <label class="checkbox-label"> <input type="checkbox" id="merge-toggle" checked /> Merge Output View </label>
+          </div>
+        </div>
+      </details>
     </div>
 
     <script type="module">
@@ -266,29 +366,31 @@
       const STREAM_FPS = 30;
       const MIN_SIZE = 14;
       const GOLDEN_RATIO = (1 + Math.sqrt(5)) / 2;
-      const CAPTURE_SIZE = 704;
-      const STORAGE = { apiKey: "fal_flux_klein_api_key", mode: "fal_flux_klein_mode" };
+      const CAPTURE_SIZE = 768;
+      const STORAGE = { apiKey: "fal_flux_klein_api_key", mode: "fal_flux_klein_mode_v2" };
       const FALLBACK_PROMPT = "Modern minimalist wooden bookshelf with books, indoor plants, ceramics and decorative art";
 
       const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
       const THEME = {
-        darkWood: cssVar("--dark-wood"),
-        lightWood: cssVar("--light-wood"),
-        guideDash: cssVar("--guide-dash"),
-        guideHover: cssVar("--guide-hover"),
-        canvasBg: cssVar("--canvas-bg"),
+        darkWood: cssVar("--dark-wood") || "#2a1f18",
+        lightWood: cssVar("--light-wood") || "#d5b895",
+        guideDash: cssVar("--guide-dash") || "rgba(180, 140, 100, 0.45)",
+        guideHover: cssVar("--guide-hover") || "rgba(180, 140, 100, 0.25)",
+        canvasBg: cssVar("--canvas-bg") || "#e8e8e4",
       };
 
       const $ = (id) => document.getElementById(id);
       const el = {
         apiKey: $("api-key"),
-        connect: $("connect-btn"),
-        disconnect: $("disconnect-btn"),
+        toggleConnect: $("toggle-connect-btn"),
+        modeToggle: $("mode-toggle-btn"),
+        manualSend: $("manual-send-btn"),
+        toolBuild: $("tool-build"),
+        toolPot: $("tool-pot"),
+        toolPlant: $("tool-plant"),
         status: $("status"),
         fps: $("fps-display"),
         prompt: $("prompt"),
-        send: $("send-btn"),
-        clear: $("clear-btn"),
         guides: $("guides-toggle"),
         merge: $("merge-toggle"),
         workspace: $("workspace"),
@@ -459,10 +561,10 @@
       let mouse = { x: -1, y: -1, leaf: null, quad: null };
       let lastMove = { time: 0, x: -1, y: -1 };
       let connection = null;
-      let currentMode = "manual";
+      let isContinuousMode = false;
       let currentTool = "build";
       let showGuides = false;
-      let showDraft = false;
+      let showDraft = true;
       let streamInterval = null;
       let fpsInterval = null;
       let framesSent = 0;
@@ -471,10 +573,27 @@
 
       // ── Setup ─────────────────────────────────────────────────────────────
 
+      const updateToolButtonsUI = () => {
+        el.toolBuild.classList.toggle("active-toggle", currentTool === "build");
+        el.toolPot.classList.toggle("active-toggle", currentTool === "pot");
+        el.toolPlant.classList.toggle("active-toggle", currentTool === "plant");
+        updateCursorStyle();
+      };
+
+      const updateCursorStyle = () => {
+        if (currentTool === "build" || currentTool === "pot") {
+          el.canvas.style.cursor = "crosshair";
+        } else if (currentTool === "plant") {
+          const potUnderCursor = mouse.x >= 0 && findPotAt(mouse.x, mouse.y);
+          el.canvas.style.cursor = potUnderCursor ? "pointer" : "default";
+        }
+      };
+
       const refreshUI = () => {
         updatePrompt();
         render();
         renderDraft();
+        updateCursorStyle();
       };
 
       const clearHoverState = () => {
@@ -483,45 +602,47 @@
         audio.stopStrokeSound();
       };
 
-      const restorePersistedSettings = () => {
-        el.apiKey.value = localStorage.getItem(STORAGE.apiKey) ?? "";
-
-        const savedMode = localStorage.getItem(STORAGE.mode);
-        if (savedMode) {
-          currentMode = savedMode;
-          const radio = document.querySelector(`input[name="mode"][value="${savedMode}"]`);
-          if (radio) radio.checked = true;
-        }
-      };
-
       const switchTool = (tool) => {
         currentTool = tool;
-        const radio = document.querySelector(`input[name="tool"][value="${tool}"]`);
-        if (radio) radio.checked = true;
+        updateToolButtonsUI();
         clearHoverState();
+        refreshUI();
+      };
+
+      const restorePersistedSettings = () => {
+        el.apiKey.value = localStorage.getItem(STORAGE.apiKey) ?? "";
+        const savedMode = localStorage.getItem(STORAGE.mode);
+        if (savedMode === "continuous") {
+          isContinuousMode = true;
+          el.modeToggle.textContent = "Mode: Auto";
+        } else {
+          isContinuousMode = false;
+          el.modeToggle.textContent = "Mode: Manual";
+        }
       };
 
       const bindEvents = () => {
         window.addEventListener("pointerdown", () => audio.initContext(), { once: true });
-        window.addEventListener("keydown", () => audio.initContext(), { once: true });
+        window.addEventListener("keydown", (e) => {
+          audio.initContext();
+          if (e.key === "p" || e.key === "P") {
+            if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return;
+            switchTool("pot");
+          }
+        });
 
         el.apiKey.addEventListener("input", () => localStorage.setItem(STORAGE.apiKey, el.apiKey.value.trim()));
 
-        document.querySelectorAll('input[name="mode"]').forEach((radio) =>
-          radio.addEventListener("change", () => {
-            currentMode = radio.value;
-            localStorage.setItem(STORAGE.mode, currentMode);
-            applyModeState();
-          }),
-        );
+        el.toolBuild.addEventListener("click", () => switchTool("build"));
+        el.toolPot.addEventListener("click", () => switchTool("pot"));
+        el.toolPlant.addEventListener("click", () => switchTool("plant"));
 
-        document.querySelectorAll('input[name="tool"]').forEach((radio) =>
-          radio.addEventListener("change", () => {
-            currentTool = radio.value;
-            clearHoverState();
-            refreshUI();
-          }),
-        );
+        el.modeToggle.addEventListener("click", () => {
+          isContinuousMode = !isContinuousMode;
+          el.modeToggle.textContent = isContinuousMode ? "Mode: Auto" : "Mode: Manual";
+          localStorage.setItem(STORAGE.mode, isContinuousMode ? "continuous" : "manual");
+          applyModeState();
+        });
 
         el.guides.addEventListener("change", () => {
           showGuides = el.guides.checked;
@@ -535,10 +656,12 @@
           renderDraft();
         });
 
-        el.connect.addEventListener("click", connectRealtime);
-        el.disconnect.addEventListener("click", disconnectRealtime);
-        el.send.addEventListener("click", sendFrame);
-        el.clear.addEventListener("click", resetGrid);
+        el.toggleConnect.addEventListener("click", () => {
+          if (connection) disconnectRealtime();
+          else connectRealtime();
+        });
+
+        el.manualSend.addEventListener("click", sendFrame);
 
         el.canvas.addEventListener("mousemove", (e) => updatePointer(getCanvasCoords(e)));
         el.canvas.addEventListener("mouseleave", () => {
@@ -573,7 +696,8 @@
       function connectRealtime() {
         const apiKey = el.apiKey.value.trim();
         if (!apiKey) {
-          alert("Please enter your fal.ai API key.");
+          alert("Please enter your fal.ai API key in Settings.");
+          document.querySelector("details.settings-menu")?.setAttribute("open", "");
           el.apiKey.focus();
           return;
         }
@@ -588,17 +712,17 @@
             onResult: handleResult,
             onError: (err) => {
               console.error("[fal connection error]", err);
-              setStatus("Connection Error", "error");
+              setStatus("Error", "error");
             },
           });
 
-          el.connect.disabled = true;
-          el.disconnect.disabled = false;
+          el.toggleConnect.textContent = "Stop";
+          el.toggleConnect.classList.add("active-toggle");
           setStatus("Connected", "connected");
           applyModeState();
         } catch (err) {
           console.error(err);
-          setStatus("Failed to connect", "error");
+          setStatus("Failed", "error");
         }
       }
 
@@ -606,16 +730,16 @@
         stopStream();
         connection?.close?.();
         connection = null;
-        el.connect.disabled = false;
-        el.disconnect.disabled = true;
-        el.send.disabled = true;
+        el.toggleConnect.textContent = "Start";
+        el.toggleConnect.classList.remove("active-toggle");
+        el.manualSend.disabled = true;
         setStatus("Disconnected", "disconnected");
       }
 
       function handleResult(result) {
         if (result?.error || result?.status === "error") {
           console.warn("[fal error]", result);
-          setStatus("Result error", "error");
+          setStatus("Result Error", "error");
           return;
         }
 
@@ -624,13 +748,13 @@
           el.output.src = src;
           el.output.classList.add("visible");
           el.placeholder.style.display = "none";
-          setStatus("Connected (Live)", "connected");
+          setStatus("Live", "connected");
         }
       }
 
       function sendFrame() {
         if (!connection) return;
-        if (currentMode !== "continuous") setStatus("Generating...", "generating");
+        if (!isContinuousMode) setStatus("Generating...", "generating");
 
         try {
           connection.send({
@@ -648,13 +772,15 @@
         }
       }
 
-      const sendFrameOnStroke = () => currentMode === "stroke" && connection && sendFrame();
-
       // ── Modes & Streaming ─────────────────────────────────────────────────
 
       function applyModeState() {
-        currentMode === "continuous" && connection ? startStream() : stopStream();
-        el.send.disabled = !connection || currentMode === "continuous";
+        if (isContinuousMode && connection) {
+          startStream();
+        } else {
+          stopStream();
+        }
+        el.manualSend.disabled = !connection || isContinuousMode;
       }
 
       function startStream() {
@@ -662,7 +788,7 @@
 
         framesSent = 0;
         fpsInterval = setInterval(() => {
-          el.fps.textContent = `[Streaming: ~${framesSent} FPS]`;
+          el.fps.textContent = `(${framesSent} fps)`;
           framesSent = 0;
         }, 1000);
 
@@ -724,7 +850,6 @@
         mouse.leaf = keepHover ? findLeaf(root, mouse.x, mouse.y) : null;
         mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
         refreshUI();
-        sendFrameOnStroke();
       }
 
       function commitPot(keepHover) {
@@ -739,7 +864,6 @@
           mouse.quad = mouse.leaf ? getQuadrant(mouse.leaf, mouse.x, mouse.y) : null;
         }
         refreshUI();
-        sendFrameOnStroke();
       }
 
       function commitGrow() {
@@ -759,7 +883,6 @@
 
         audio.playGrow();
         refreshUI();
-        sendFrameOnStroke();
       }
 
       function splitLeaf(leaf, px, py, quad) {
@@ -780,19 +903,6 @@
             right: createNode(leaf.x, splitY, leaf.w, leaf.y + leaf.h - splitY),
           });
         }
-      }
-
-      function resetGrid() {
-        audio.stopStrokeSound();
-        root = createNode(boxX, boxY, boxW, boxH);
-        mouse.leaf = mouse.quad = null;
-        pots = [];
-        potPreview = null;
-        refreshUI();
-        el.output.classList.remove("visible");
-        el.output.removeAttribute("src");
-        el.placeholder.style.display = "block";
-        sendFrameOnStroke();
       }
 
       // ── Pots & Plants ─────────────────────────────────────────────────────
@@ -824,7 +934,7 @@
         target.fillStyle = "#ffffff";
         target.fill();
         target.lineWidth = 1;
-        target.strokeStyle = "rgba(0,0,0,0.25)";
+        target.strokeStyle = "rgba(0,0,0,0.35)";
         target.stroke();
         target.restore();
       }
@@ -994,15 +1104,24 @@
 
       function renderDraft() {
         draftCtx.clearRect(0, 0, el.draftCanvas.width, el.draftCanvas.height);
-        if (!showDraft || currentTool !== "build" || !mouse.leaf || !mouse.quad) return;
+        if (!showDraft) return;
 
         draftCtx.save();
-        draftCtx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+        draftCtx.strokeStyle = "rgba(255, 255, 255, 0.8)";
         draftCtx.lineWidth = 2;
         draftCtx.setLineDash([6, 4]);
-        draftCtx.beginPath();
-        traceSplitLine(draftCtx);
-        draftCtx.stroke();
+
+        if (currentTool === "build" && mouse.leaf && mouse.quad) {
+          draftCtx.beginPath();
+          traceSplitLine(draftCtx);
+          draftCtx.stroke();
+        } else if (currentTool === "pot" && potPreview) {
+          const { cx, baseY, topW, h } = potPreview;
+          draftCtx.beginPath();
+          draftCtx.rect(Math.round(cx - topW / 2) + 0.5, Math.round(baseY - h) + 0.5, topW, h);
+          draftCtx.stroke();
+        }
+
         draftCtx.restore();
       }
 
@@ -1166,7 +1285,7 @@
 
       function setStatus(text, type) {
         el.status.textContent = text;
-        el.status.className = type;
+        el.status.className = `status-pill ${type}`;
       }
     </script>
   </body>
