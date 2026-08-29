@@ -412,12 +412,16 @@
         <div class="panel grow">
           <table class="stats-table">
             <tr>
-              <td class="tip" title="Number of decisions (moves) taken since reset">STEP</td>
+              <td class="tip" title="Number of moves since reset">STEP</td>
               <td id="val-step">0</td>
             </tr>
             <tr>
               <td class="tip" title="Total cheese eaten so far">CONSUMED</td>
               <td id="val-hits">0</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Times the chosen move was blocked by the walls">WALL BUMPS</td>
+              <td id="val-bumps">0</td>
             </tr>
             <tr>
               <td class="tip" title="Average steps spent per cheese, lower is better">STEPS / CHEESE</td>
@@ -428,11 +432,7 @@
               <td id="val-bpc">—</td>
             </tr>
             <tr>
-              <td class="tip" title="Times the chosen move was blocked by the walls">WALL BUMPS</td>
-              <td id="val-bumps">0</td>
-            </tr>
-            <tr>
-              <td class="tip" title="Direction emitted by the motor neuron that spiked first this tick">ACTION</td>
+              <td class="tip" title="Direction emitted by the motor neuron that spiked first">ACTION</td>
               <td id="val-action">NONE</td>
             </tr>
             <tr>
@@ -440,7 +440,7 @@
               <td id="val-feedback">INITIALIZING</td>
             </tr>
             <tr>
-              <td class="tip" title="Intrinsic motivation, rises every step, drops when cheese is eaten">HUNGER</td>
+              <td class="tip" title="Rises by moving, drops by eating">HUNGER</td>
               <td>
                 <div class="meter-val"><span id="bar-hunger" class="bar"></span><span id="val-hunger">0.00</span></div>
               </td>
@@ -452,13 +452,13 @@
               </td>
             </tr>
             <tr>
-              <td class="tip" title="Odour intensity at the mouse's current cell — rises as it closes on cheese">SCENT</td>
+              <td class="tip" title="Odour intensity at the mouse's current cell">SCENT</td>
               <td>
                 <div class="meter-val"><span id="bar-scent" class="bar"></span><span id="val-scent">0.00</span></div>
               </td>
             </tr>
             <tr>
-              <td class="tip" title="Tendency for motor neurons to twitch">MOTOR TEMP</td>
+              <td class="tip" title="Tendency for motor neurons to fire erratically">TEMPERATURE</td>
               <td>
                 <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
               </td>
@@ -476,9 +476,9 @@
                 <th class="tip" title="Candidate move direction">ACT</th>
                 <th class="tip" title="Expected mismatch between predicted and preferred sensations">RISK</th>
                 <th class="tip" title="Expected uncertainty of this action's outcome">AMB</th>
-                <th class="tip" title="Pull toward rarely-visited cells — the drive to explore">NOV</th>
+                <th class="tip" title="Pull toward rarely-visited cells by curiosity">NOV</th>
                 <th class="tip" title="Recent-action bias that decays each step">HAB</th>
-                <th class="tip" title="Expected free energy; the lowest-G action is chosen">G</th>
+                <th class="tip" title="Expected free energy, the lowest value is chosen">G</th>
               </tr>
             </thead>
             <tbody id="efe-body"></tbody>
