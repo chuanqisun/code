@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>NeuroStack NS1</title>
+    <style>
+      :root {
+        --ink: #000;
+        --paper: #fff;
+        --panel-w: 274px;
+        --cell: 34px;
+        --font-s: 11px;
+        --font-xs: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: monospace;
+      }
+
+      body {
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+
+        & > * {
+          width: var(--panel-w);
+        }
+
+        & > h1 {
+          width: auto;
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+      }
+
+      .btn-row {
+        display: flex;
+        gap: 6px;
+
+        & button {
+          flex: 1;
+        }
+      }
+
+      button {
+        border: 1px solid var(--ink);
+        padding: 4px 6px;
+        cursor: pointer;
+        font-size: var(--font-s);
+        text-transform: uppercase;
+        font-weight: bold;
+
+        &.active {
+          background: var(--ink);
+          color: var(--paper);
+        }
+
+        &:hover:not(.active) {
+          background: #e0e0e0;
+        }
+      }
+
+      .panel {
+        border: 1px solid var(--ink);
+        padding: 6px 8px;
+        font-size: var(--font-s);
+      }
+
+      .panel-title {
+        font-weight: bold;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--ink);
+        padding-bottom: 2px;
+      }
+
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(8, var(--cell));
+        grid-template-rows: repeat(8, var(--cell));
+        border: 1px solid var(--ink);
+
+        & .cell {
+          border-right: 1px solid var(--ink);
+          border-bottom: 1px solid var(--ink);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          cursor: pointer;
+          user-select: none;
+          line-height: 1;
+
+          &:nth-child(8n) {
+            border-right: 0;
+          }
+          &:nth-last-child(-n + 8) {
+            border-bottom: 0;
+          }
+          &:hover {
+            background: #eee;
+          }
+
+          &.agent {
+            outline: 3px solid var(--ink);
+            outline-offset: -3px;
+          }
+        }
+      }
+
+      .stats-table {
+        width: 100%;
+        border-collapse: collapse;
+
+        & td {
+          padding: 1px 0;
+          vertical-align: middle;
+
+          &:first-child {
+            font-weight: bold;
+            width: 40%;
+          }
+
+          &:last-child {
+            text-align: right;
+          }
+        }
+      }
+
+      .meter-val {
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 4px;
+
+        & .bar {
+          display: inline-block;
+          height: 6px;
+          background: var(--ink);
+        }
+      }
+
+      #ekg-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: var(--font-xs);
+
+        & .ekg-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 6px;
+        }
+
+        & .ekg-label {
+          width: 24px;
+          font-weight: bold;
+        }
+
+        & canvas {
+          border: 1px solid #ccc;
+          display: block;
+        }
+      }
+
+      #weights-panel .panel-title {
+        margin-bottom: 4px;
+      }
+
+      .weight-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: right;
+        font-size: var(--font-xs);
+
+        & th {
+          border-bottom: 1px dashed var(--ink);
+        }
+
+        & th,
+        & td {
+          padding: 1px 2px;
+
+          &:first-child {
+            text-align: left;
+          }
+        }
+
+        & .w-pos {
+          font-weight: bold;
+        }
+        & .w-neg {
+          color: #555;
+        }
+      }
+
+      .slider-container {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: var(--font-s);
+        border: 1px solid var(--ink);
+        padding: 4px 8px;
+
+        & .slider-header {
+          display: flex;
+          justify-content: space-between;
+        }
+      }
+
+      input[type="range"] {
+        appearance: none;
+        width: 100%;
+        height: 16px;
+        background: transparent;
+        cursor: pointer;
+
+        &::-webkit-slider-runnable-track {
+          height: 6px;
+          background: var(--paper);
+          border: 1px solid var(--ink);
+        }
+
+        &::-moz-range-track {
+          height: 6px;
+          background: var(--paper);
+          border: 1px solid var(--ink);
+        }
+
+        &::-webkit-slider-thumb {
+          appearance: none;
+          width: 12px;
+          height: 16px;
+          margin-top: -6px;
+          background: var(--ink);
+          border: 1px solid var(--ink);
+          border-radius: 0;
+        }
+
+        &::-moz-range-thumb {
+          width: 12px;
+          height: 16px;
+          background: var(--ink);
+          border: 1px solid var(--ink);
+          border-radius: 0;
+        }
+
+        &:focus {
+          outline: 1px dashed var(--ink);
+          outline-offset: 2px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>NeuroStack NS1</h1>
+
+    <div class="btn-row">
+      <button id="btn-mode-train" class="active">Train Mode</button>
+      <button id="btn-mode-test">Test Mode</button>
+    </div>
+
+    <div class="slider-container">
+      <div class="slider-header">
+        <span>TIMESTEP:</span>
+        <span id="val-speed">100 ms</span>
+      </div>
+      <input type="range" id="speed-slider" min="1" max="200" value="100" />
+    </div>
+
+    <div id="grid"></div>
+
+    <div class="panel">
+      <table class="stats-table">
+        <tr>
+          <td>MODE</td>
+          <td id="val-mode">TRAIN</td>
+        </tr>
+        <tr>
+          <td>STEP</td>
+          <td id="val-step">0</td>
+        </tr>
+        <tr>
+          <td>CONSUMED</td>
+          <td id="val-hits">0</td>
+        </tr>
+        <tr>
+          <td>ACTION</td>
+          <td id="val-action">NONE</td>
+        </tr>
+        <tr>
+          <td>FEEDBACK</td>
+          <td id="val-feedback">STABLE</td>
+        </tr>
+        <tr>
+          <td>ENTROPY</td>
+          <td>
+            <div class="meter-val"><span id="bar-entropy" class="bar"></span><span id="val-entropy">0.00</span></div>
+          </td>
+        </tr>
+        <tr>
+          <td>SYNAPSE</td>
+          <td>
+            <div class="meter-val"><span id="bar-synapse" class="bar"></span><span id="val-synapse">0.00</span></div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div id="ekg-panel" class="panel">
+      <div class="panel-title">Motor Neuron Potential</div>
+    </div>
+
+    <div id="weights-panel" class="panel">
+      <div class="panel-title">Synaptic Weights</div>
+      <table class="weight-table">
+        <thead>
+          <tr>
+            <th>FEATURE</th>
+            <th>UP</th>
+            <th>RT</th>
+            <th>DN</th>
+            <th>LT</th>
+          </tr>
+        </thead>
+        <tbody id="weights-body"></tbody>
+      </table>
+    </div>
+
+    <div class="btn-row">
+      <button id="btn-reset">Reset Brain</button>
+      <button id="btn-toggle">Pause</button>
+    </div>
+
+    <script>
+      (() => {
+        const GRID_SIZE = 8;
+        const TRAIN_TARGETS = 4;
+        const LEARNING_RATE = 0.02;
+        const EKG_LENGTH = 55;
+        const ACTIONS = ["UP", "RT", "DN", "LT"];
+        const FEATURES = ["Bias", "Tgt: North", "Tgt: East", "Tgt: South", "Tgt: West", "Can: Up", "Can: Right", "Can: Down", "Can: Left"];
+
+        const $ = (id) => document.getElementById(id);
+
+        let mode = "TRAIN";
+        let agent = { x: 0, y: 0 };
+        let targets = [];
+        let weights = [];
+        let potentials = [];
+        let steps = 0;
+        let consumed = 0;
+        let paused = false;
+        let timestep = 100;
+        let interval;
+        let entropy = 1;
+        let feedback = "INITIALIZING";
+        let baseline = 0;
+
+        // --- Setup: grid and EKG canvases ---
+
+        const cells = Array.from({ length: GRID_SIZE * GRID_SIZE }, (_, i) => {
+          const x = i % GRID_SIZE;
+          const y = Math.floor(i / GRID_SIZE);
+          const cell = document.createElement("div");
+          cell.className = "cell";
+
+          cell.addEventListener("click", () => {
+            const index = targets.findIndex((t) => t.x === x && t.y === y);
+
+            if (index >= 0) targets.splice(index, 1);
+            else if (agent.x !== x || agent.y !== y) targets.push({ x, y });
+
+            render(mode);
+          });
+
+          $("grid").appendChild(cell);
+          return cell;
+        });
+
+        const ekgContexts = ACTIONS.map((label) => {
+          const row = document.createElement("div");
+          row.className = "ekg-row";
+          row.innerHTML = `<span class="ekg-label">${label}</span><canvas width="226" height="16"></canvas>`;
+          $("ekg-panel").appendChild(row);
+          return row.querySelector("canvas").getContext("2d");
+        });
+
+        // --- Main loop ---
+
+        const tick = () => {
+          if (paused) return;
+
+          steps++;
+
+          const before = nearestTarget();
+
+          if (!before) {
+            feedback = "AWAITING TARGET";
+            render("IDLE");
+            return;
+          }
+
+          const features = getFeatures(before.target);
+          const { action, probabilities } = decide(features);
+          const old = { ...agent };
+
+          if (action === 0 && agent.y > 0) agent.y--;
+          if (action === 1 && agent.x < GRID_SIZE - 1) agent.x++;
+          if (action === 2 && agent.y < GRID_SIZE - 1) agent.y++;
+          if (action === 3 && agent.x > 0) agent.x--;
+
+          const hitIndex = targets.findIndex((t) => t.x === agent.x && t.y === agent.y);
+          const hit = hitIndex >= 0;
+          const blocked = old.x === agent.x && old.y === agent.y;
+          const after = nearestTarget();
+
+          const reward = before.distance - (hit ? 0 : (after?.distance ?? 0)) + (blocked ? -0.5 : 0) + (hit ? 4 : 0);
+
+          learn(features, action, probabilities, reward);
+
+          if (hit) {
+            consumed++;
+            targets.splice(hitIndex, 1);
+
+            if (mode === "TRAIN" && targets.length < TRAIN_TARGETS) {
+              const target = randomTarget();
+              if (target) targets.push(target);
+            }
+          }
+
+          feedback = hit ? "TARGET CONSUMED" : blocked ? "BLOCKED" : reward > 0 ? "IMPROVEMENT" : "SURPRISE";
+
+          render(ACTIONS[action]);
+        };
+
+        // --- Brain ---
+
+        const resetBrain = () => {
+          weights = ACTIONS.map(() => FEATURES.map(() => (Math.random() - 0.5) * 0.1));
+          potentials = ACTIONS.map(() => Array(EKG_LENGTH).fill(0));
+          baseline = 0;
+          entropy = 1;
+          feedback = "INITIALIZING";
+        };
+
+        const getFeatures = (target) => {
+          const dx = target.x - agent.x;
+          const dy = target.y - agent.y;
+
+          return [
+            1,
+            dy < 0 ? 1 : 0,
+            dx > 0 ? 1 : 0,
+            dy > 0 ? 1 : 0,
+            dx < 0 ? 1 : 0,
+            agent.y > 0 ? 1 : 0,
+            agent.x < GRID_SIZE - 1 ? 1 : 0,
+            agent.y < GRID_SIZE - 1 ? 1 : 0,
+            agent.x > 0 ? 1 : 0,
+          ];
+        };
+
+        const decide = (features) => {
+          const logits = weights.map((row) => row.reduce((sum, weight, i) => sum + weight * features[i], 0));
+
+          logits.forEach((logit, i) => {
+            potentials[i].shift();
+            potentials[i].push(logit);
+          });
+
+          const temperature = Math.max(0.18, 1 / Math.sqrt(1 + steps / 80));
+          const max = Math.max(...logits);
+          const values = logits.map((v) => Math.exp((v - max) / temperature));
+          const total = values.reduce((a, b) => a + b, 0);
+          const probabilities = values.map((v) => v / total);
+
+          entropy = -probabilities.reduce((sum, p) => sum + (p ? p * Math.log(p) : 0), 0) / Math.log(ACTIONS.length);
+
+          let roll = Math.random();
+          let action = ACTIONS.length - 1;
+
+          for (let i = 0; i < ACTIONS.length; i++) {
+            roll -= probabilities[i];
+
+            if (roll <= 0) {
+              action = i;
+              break;
+            }
+          }
+
+          return { action, probabilities };
+        };
+
+        const learn = (features, action, probabilities, reward) => {
+          baseline = baseline * 0.95 + reward * 0.05;
+          const advantage = reward - baseline;
+
+          weights.forEach((row, a) => {
+            const gradient = (a === action ? 1 : 0) - probabilities[a];
+
+            row.forEach((_, i) => {
+              row[i] += LEARNING_RATE * advantage * gradient * features[i];
+              row[i] = Math.max(-4, Math.min(4, row[i] * 0.9995));
+            });
+          });
+        };
+
+        // --- World helpers ---
+
+        const nearestTarget = () => {
+          if (!targets.length) return null;
+
+          return targets.reduce(
+            (best, target) => {
+              const distance = Math.abs(agent.x - target.x) + Math.abs(agent.y - target.y);
+              return distance < best.distance ? { target, distance } : best;
+            },
+            { target: targets[0], distance: Infinity },
+          );
+        };
+
+        const randomTarget = () => {
+          const occupied = new Set([agent, ...targets].map(({ x, y }) => `${x},${y}`));
+
+          const choices = cells.map((_, i) => ({ x: i % GRID_SIZE, y: Math.floor(i / GRID_SIZE) })).filter(({ x, y }) => !occupied.has(`${x},${y}`));
+
+          return choices.length ? choices[Math.floor(Math.random() * choices.length)] : null;
+        };
+
+        const resetTargets = () => {
+          targets = [];
+
+          if (mode === "TRAIN") {
+            while (targets.length < TRAIN_TARGETS) {
+              const target = randomTarget();
+              if (target) targets.push(target);
+            }
+          }
+        };
+
+        // --- Rendering ---
+
+        const render = (action) => {
+          const targetSet = new Set(targets.map(({ x, y }) => `${x},${y}`));
+
+          cells.forEach((cell, i) => {
+            const x = i % GRID_SIZE;
+            const y = Math.floor(i / GRID_SIZE);
+            const agentHere = agent.x === x && agent.y === y;
+            const targetHere = targetSet.has(`${x},${y}`);
+
+            cell.className = `cell${agentHere ? " agent" : ""}${targetHere ? " target" : ""}`;
+            cell.textContent = agentHere ? "🐭" : targetHere ? "🧀" : "";
+          });
+
+          const synapse = weights.flat().reduce((sum, w) => sum + Math.abs(w), 0) / (ACTIONS.length * FEATURES.length);
+
+          $("val-mode").textContent = mode;
+          $("val-step").textContent = steps;
+          $("val-hits").textContent = consumed;
+          $("val-action").textContent = action;
+          $("val-feedback").textContent = feedback;
+          $("val-entropy").textContent = entropy.toFixed(2);
+          $("val-synapse").textContent = synapse.toFixed(2);
+          $("bar-entropy").style.width = `${entropy * 60}px`;
+          $("bar-synapse").style.width = `${Math.min(60, synapse * 70)}px`;
+
+          renderWeights();
+          drawEKG();
+        };
+
+        const renderWeights = () => {
+          $("weights-body").innerHTML = FEATURES.map((feature, i) => {
+            const columns = weights
+              .map((row) => {
+                const value = row[i];
+                const cls = value > 0.05 ? "w-pos" : value < -0.05 ? "w-neg" : "";
+
+                return `<td class="${cls}">${value >= 0 ? "+" : ""}${value.toFixed(2)}</td>`;
+              })
+              .join("");
+
+            return `<tr><td>${feature}</td>${columns}</tr>`;
+          }).join("");
+        };
+
+        const drawEKG = () => {
+          ekgContexts.forEach((ctx, a) => {
+            const { width, height } = ctx.canvas;
+            const mid = height / 2;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            potentials[a].forEach((value, i) => {
+              const x = i * (width / (EKG_LENGTH - 1));
+              const y = Math.max(1, Math.min(height - 1, mid - value * (height / 7)));
+
+              i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            });
+
+            ctx.stroke();
+          });
+        };
+
+        // --- Controls ---
+
+        const resetTimer = () => {
+          clearInterval(interval);
+          interval = setInterval(tick, timestep);
+        };
+
+        const setMode = (newMode) => {
+          mode = newMode;
+          $("btn-mode-train").classList.toggle("active", mode === "TRAIN");
+          $("btn-mode-test").classList.toggle("active", mode === "TEST");
+
+          while (mode === "TRAIN" && targets.length < TRAIN_TARGETS) {
+            const target = randomTarget();
+            if (!target) break;
+            targets.push(target);
+          }
+
+          render(mode);
+        };
+
+        $("btn-mode-train").addEventListener("click", () => setMode("TRAIN"));
+        $("btn-mode-test").addEventListener("click", () => setMode("TEST"));
+
+        $("speed-slider").addEventListener("input", ({ target }) => {
+          timestep = Number(target.value);
+          $("val-speed").textContent = `${timestep} ms`;
+          resetTimer();
+        });
+
+        $("btn-reset").addEventListener("click", () => {
+          agent = { x: 0, y: 0 };
+          steps = 0;
+          consumed = 0;
+          resetBrain();
+          resetTargets();
+          render("RESET");
+        });
+
+        $("btn-toggle").addEventListener("click", ({ target }) => {
+          paused = !paused;
+          target.textContent = paused ? "Resume" : "Pause";
+        });
+
+        resetBrain();
+        resetTargets();
+        render("INIT");
+        resetTimer();
+      })();
+    </script>
+  </body>
+</html>
