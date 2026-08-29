@@ -821,7 +821,11 @@
         function resetBrain() {
           Object.assign(brain, {
             A: matrix(NS, NZ, () => rnd() - 0.5),
-            B: Array.from({ length: NA }, () => matrix(NZ, NZ, () => rnd() * 0.4)),
+            B: Array.from({ length: NA }, () => {
+              const Ba = matrix(NZ, NZ, () => (rnd() - 0.5) * 0.1);
+              for (let j = 0; j < NZ; j++) Ba[j][j] += 0.9;
+              return Ba;
+            }),
             z: Array(NZ).fill(0.2),
             zUsed: Array(NZ).fill(0.2),
             err: Array(NS).fill(0),
