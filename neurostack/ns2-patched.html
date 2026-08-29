@@ -853,8 +853,8 @@
           for (let j = 0; j < NZ; j++) {
             let n = 0;
             for (let i = 0; i < NS; i++) n += brain.A[i][j] ** 2;
-            n = sqrt(n) || 1;
-            for (let i = 0; i < NS; i++) brain.A[i][j] /= n;
+            n = sqrt(n);
+            if (n > 1.5) for (let i = 0; i < NS; i++) brain.A[i][j] *= 1.5 / n;
           }
         }
 
