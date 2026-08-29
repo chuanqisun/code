@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>NeuroStack NS2</title>
     <style>
       :root {
@@ -26,6 +26,7 @@
         background: var(--paper);
         color: var(--ink);
         font-family: monospace;
+        -webkit-tap-highlight-color: transparent;
       }
 
       body {
@@ -34,6 +35,7 @@
         flex-direction: column;
         align-items: center;
         gap: 8px;
+        -webkit-text-size-adjust: 100%;
 
         & > h1 {
           font-size: 14px;
@@ -54,8 +56,7 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
-        width: var(--panel-w);
-        max-width: 100%;
+        width: min(var(--panel-w), 100%);
       }
 
       /* the last panel of each column absorbs leftover height so both
@@ -77,8 +78,11 @@
         font-size: var(--font-s);
         text-transform: uppercase;
         font-weight: bold;
+        touch-action: manipulation;
+      }
 
-        &:hover {
+      @media (hover: hover) {
+        button:hover {
           background: var(--hover);
         }
       }
@@ -115,20 +119,24 @@
             line-height: 13px;
             min-width: 46px;
             text-align: center;
-
-            &:hover {
-              font-weight: bold;
-              background: var(--paper);
-            }
           }
+        }
+      }
+
+      @media (hover: hover) {
+        .panel .panel-title button:hover {
+          font-weight: bold;
+          background: var(--paper);
         }
       }
 
       /* hoverable glossary terms */
       [title].tip {
         cursor: help;
+      }
 
-        &:hover {
+      @media (hover: hover) {
+        [title].tip:hover {
           text-decoration: underline dashed;
           text-underline-offset: 2px;
         }
@@ -150,6 +158,8 @@
           line-height: 1;
           cursor: pointer;
           user-select: none;
+          -webkit-user-select: none;
+          touch-action: manipulation;
 
           &:nth-child(8n) {
             border-right: 0;
@@ -157,7 +167,6 @@
           &:nth-last-child(-n + 8) {
             border-bottom: 0;
           }
-          &:hover,
           &.agent {
             box-shadow: inset 0 0 0 1px var(--ink);
           }
@@ -169,6 +178,12 @@
           &.bump {
             animation: nudge 0.12s linear;
           }
+        }
+      }
+
+      @media (hover: hover) {
+        #grid .cell:hover {
+          box-shadow: inset 0 0 0 1px var(--ink);
         }
       }
 
@@ -290,10 +305,12 @@
 
       input[type="range"] {
         appearance: none;
+        -webkit-appearance: none;
         width: 100%;
         height: 16px;
         background: transparent;
         cursor: pointer;
+        touch-action: none;
 
         &::-webkit-slider-runnable-track {
           height: 6px;
@@ -308,6 +325,7 @@
 
         &::-webkit-slider-thumb {
           appearance: none;
+          -webkit-appearance: none;
           width: 12px;
           height: 16px;
           margin-top: -6px;
@@ -323,10 +341,62 @@
           border: var(--line);
           border-radius: 0;
         }
+      }
 
-        &:focus {
-          outline: 1px dashed var(--ink);
-          outline-offset: 2px;
+      /* ---------------------- mobile glossary ---------------------- */
+      #glossary {
+        display: none;
+        width: min(var(--panel-w), 100%);
+        border: var(--line);
+        padding: 6px 8px;
+        font-size: var(--font-xs);
+
+        & .panel-title {
+          font-weight: bold;
+          font-size: var(--font-s);
+          text-transform: uppercase;
+          border-bottom: var(--line);
+          padding-bottom: 2px;
+          margin-bottom: 3px;
+        }
+
+        & table {
+          table-layout: fixed;
+        }
+
+        & td {
+          padding: 2px 1px;
+          vertical-align: top;
+          border-bottom: var(--dash);
+
+          &:first-child {
+            font-weight: bold;
+            width: 38%;
+            padding-right: 6px;
+          }
+        }
+
+        & tr:last-child td {
+          border-bottom: 0;
+        }
+      }
+
+      @media (max-width: 620px) {
+        body {
+          padding: 8px 6px;
+        }
+        #layout {
+          width: 100%;
+        }
+        .grow {
+          flex: none;
+        }
+        #glossary {
+          display: block;
+        }
+        [title].tip {
+          cursor: default;
+          text-decoration: none;
         }
       }
     </style>
@@ -354,11 +424,15 @@
               <td id="val-hits">0</td>
             </tr>
             <tr>
-              <td class="tip" title="Average steps spent per cheese — lower means better foraging">STEPS / CHEESE</td>
+              <td class="tip" title="Average steps spent per cheese, lower is better">STEPS / CHEESE</td>
               <td id="val-eff">—</td>
             </tr>
             <tr>
-              <td class="tip" title="Times the chosen move was blocked by the arena boundary">WALL BUMPS</td>
+              <td class="tip" title="Average wall bumps per cheese; lower is better">BUMPS / CHEESE</td>
+              <td id="val-bpc">—</td>
+            </tr>
+            <tr>
+              <td class="tip" title="Times the chosen move was blocked by the walls">WALL BUMPS</td>
               <td id="val-bumps">0</td>
             </tr>
             <tr>
@@ -366,27 +440,29 @@
               <td id="val-action">NONE</td>
             </tr>
             <tr>
-              <td class="tip" title="Plain-language summary of what just happened to the agent">STATE</td>
+              <td class="tip" title="Current state of the mouse">STATE</td>
               <td id="val-feedback">INITIALIZING</td>
             </tr>
             <tr>
-              <td class="tip" title="Internal need signal: rises every step, drops when cheese is eaten">HUNGER</td>
+              <td class="tip" title="Intrinsic motivation, rises every step, drops when cheese is eaten">HUNGER</td>
               <td>
                 <div class="meter-val"><span id="bar-hunger" class="bar"></span><span id="val-hunger">0.00</span></div>
               </td>
             </tr>
             <tr>
-              <td class="tip" title="Mean absolute prediction error: how wrong the sensory model currently is">SURPRISE &lang;|&epsilon;|&rang;</td>
+              <td class="tip" title="How wrong the sensory model currently is">SURPRISE</td>
               <td>
                 <div class="meter-val"><span id="bar-err" class="bar"></span><span id="val-err">0.00</span></div>
               </td>
             </tr>
             <tr>
-              <td class="tip" title="Spread between the best and worst action scores — how decisive the choice is">POLICY PRECISION</td>
-              <td id="val-prec">0.00</td>
+              <td class="tip" title="Odour intensity at the mouse's current cell — rises as it closes on cheese">SCENT</td>
+              <td>
+                <div class="meter-val"><span id="bar-scent" class="bar"></span><span id="val-scent">0.00</span></div>
+              </td>
             </tr>
             <tr>
-              <td class="tip" title="Exploration noise injected into motor neurons; high means random tumbling">MOTOR TEMP</td>
+              <td class="tip" title="Tendency for motor neurons to twitch">MOTOR TEMP</td>
               <td>
                 <div class="meter-val"><span id="bar-temp" class="bar"></span><span id="val-temp">0.00</span></div>
               </td>
@@ -436,6 +512,13 @@
           </table>
         </div>
       </section>
+
+      <section id="glossary">
+        <div class="panel-title">Glossary</div>
+        <table>
+          <tbody id="glossary-body"></tbody>
+        </table>
+      </section>
     </main>
 
     <script>
@@ -460,10 +543,11 @@
             amb: 0.6,
             nov: 0.9,
             hab: 0.22,
-            wall: 1.8,
+            wall: 1.2,
             stuckGain: 1.4,
             stuckRise: 0.55,
             stuckDecay: 0.7,
+            escapeAfter: 2,
           },
           meta: { rise: 0.03, moveCost: 0.006, bumpCost: 0.014, bite: 0.32, tasteDecay: 0.45 },
           habit: { decay: 0.6, gain: 1, bump: -0.5 },
@@ -594,8 +678,28 @@
           pushEEG();
         }
 
+        /* legal (in-bounds) actions from the current cell — never empty */
+        function legalActions() {
+          const out = [];
+          for (let a = 0; a < NA; a++) if (!outside(world.x + DIRS[a].dx, world.y + DIRS[a].dy)) out.push(a);
+          return out;
+        }
+
         function endTick() {
-          const action = curAction ?? argmin(brain.G);
+          let action = curAction ?? argmin(brain.G);
+          let reflex = false;
+
+          /* ---- escape reflex: hard bound on consecutive bumps ----
+             After `escapeAfter` blocked ticks in a row, the action set is
+             masked to legal moves and the lowest-G survivor is taken. A
+             corner always leaves 2 legal moves, so this can never fail. */
+          if (world.stuckRun >= CFG.efe.escapeAfter && outside(world.x + DIRS[action].dx, world.y + DIRS[action].dy)) {
+            const legal = legalActions();
+            if (legal.length) {
+              action = legal.reduce((b, a) => (brain.G[a] < brain.G[b] ? a : b));
+              reflex = true;
+            }
+          }
 
           learnA();
           learnB();
@@ -611,8 +715,10 @@
           if (blocked) {
             world.bumps++;
             world.bumpSeq++;
+            world.stuckRun++;
             brain.transErr[action] += CFG.bumpErr * (1 - brain.transErr[action]);
           } else {
+            world.stuckRun = 0;
             [world.x, world.y] = [nx, ny];
           }
 
@@ -630,15 +736,17 @@
           lastAction = ACTIONS[action];
           state = ate
             ? "CHEESE CONSUMED"
-            : blocked
-              ? "WHISKER BLOCK"
-              : world.hunger > 0.85
-                ? "STARVING"
-                : brain.temp > 0.9
-                  ? "TUMBLING"
-                  : meanAbs(brain.err) > 0.2
-                    ? "SURPRISED"
-                    : "MODEL STABLE";
+            : reflex
+              ? "ESCAPE REFLEX"
+              : blocked
+                ? "WHISKER BLOCK"
+                : world.hunger > 0.85
+                  ? "STARVING"
+                  : brain.temp > 0.9
+                    ? "TUMBLING"
+                    : meanAbs(brain.err) > 0.2
+                      ? "SURPRISED"
+                      : "MODEL STABLE";
 
           gridDirty = true;
         }
@@ -656,6 +764,7 @@
             consumed: 0,
             bumps: 0,
             bumpSeq: 0,
+            stuckRun: 0,
             sinceMeal: 0,
             history: [],
             place: new Float32Array(CFG.grid ** 2),
@@ -755,8 +864,11 @@
 
         function evaluate() {
           const prec = 0.4 + 2.2 * driveOf();
-          const wX = clamp(brain.pred[WHISK_X] + brain.err[WHISK_X], -1, 1);
-          const wY = clamp(brain.pred[WHISK_Y] + brain.err[WHISK_Y], -1, 1);
+          /* whisker expectation comes from the generative model ALONE —
+             adding `err` back would reconstruct ground truth and make wall
+             avoidance an oracle rather than something the agent learns. */
+          const wX = clamp(brain.pred[WHISK_X], -1, 1);
+          const wY = clamp(brain.pred[WHISK_Y], -1, 1);
 
           brain.B.forEach((Ba, a) => {
             const oNext = clampAll(matVec(brain.A, clampAll(matVec(Ba, brain.z), 0, 1)), -1, 1);
@@ -834,9 +946,8 @@
 
         /* ============================== EEG =============================
            One trace column === one integration sub-step, so the window is a
-           dynamic slice of SIMULATION time (CFG.ekg sub-steps, i.e.
-           CFG.ekg / CFG.substeps ticks). Spike density is therefore
-           invariant to `timestep`; only the scroll speed changes.        */
+           dynamic slice of SIMULATION time (CFG.ekg sub-steps). Spike
+           density is invariant to `timestep`; only scroll speed changes. */
         function pushEEG() {
           for (let i = 0; i < N; i++) {
             const t = traces[i];
@@ -864,12 +975,13 @@
         function collectTargets() {
           targets.hunger = world.hunger;
           targets.err = meanAbs(brain.err);
-          targets.prec = brain.prec;
+          targets.scent = odorAt(world.x, world.y);
           targets.temp = brain.temp;
           targets.steps = world.steps;
           targets.hits = world.consumed;
           targets.bumps = world.bumps;
           targets.eff = world.consumed ? world.steps / world.consumed : 0;
+          targets.bpc = world.consumed ? world.bumps / world.consumed : 0;
           for (let a = 0; a < NA; a++) {
             targets[`risk${a}`] = brain.risk[a];
             targets[`amb${a}`] = brain.amb[a];
@@ -936,15 +1048,17 @@
           set("val-step", `${round(shown.steps)}`);
           set("val-hits", `${round(shown.hits)}`);
           set("val-eff", world.consumed ? shown.eff.toFixed(1) : "—");
+          set("val-bpc", world.consumed ? shown.bpc.toFixed(1) : "—");
           set("val-bumps", `${round(shown.bumps)}`);
           set("val-action", shownAction);
           set("val-feedback", paused ? "PAUSED" : shownState);
           set("val-hunger", shown.hunger.toFixed(2));
           set("val-err", shown.err.toFixed(3));
-          set("val-prec", shown.prec.toFixed(3));
+          set("val-scent", shown.scent.toFixed(2));
           set("val-temp", shown.temp.toFixed(2));
           bar("bar-hunger", shown.hunger * 60);
           bar("bar-err", shown.err * 200);
+          bar("bar-scent", shown.scent * 60);
           bar("bar-temp", (shown.temp / CFG.efe.tempMax) * 60);
 
           set("val-window", windowLabel());
@@ -952,10 +1066,9 @@
         }
 
         function windowLabel() {
-          const ticks = CFG.ekg / CFG.substeps;
           const ms = CFG.ekg * (timestep / CFG.substeps);
           const t = ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${round(ms)} ms` : `${ms.toFixed(1)} ms`;
-          return `${ticks.toFixed(0)} steps / ${t}`;
+          return `${t} window`;
         }
 
         function drawGrid() {
@@ -1046,11 +1159,14 @@
           const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
           const cell = document.createElement("div");
           cell.className = "cell";
-          cell.addEventListener("click", () => {
+          /* pointerdown, not click → fires on touch-down with no 300 ms wait */
+          cell.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
             const idx = world.targets.findIndex((t) => t.x === x && t.y === y);
             if (idx >= 0) world.targets.splice(idx, 1);
             else if (world.x !== x || world.y !== y) world.targets.push({ x, y });
             gridDirty = true;
+            updateUI(UI_DT);
           });
           $("grid").append(cell);
           return cell;
@@ -1098,6 +1214,21 @@
           return { ctx, data: Array(CFG.ekg + 1).fill(0) };
         });
 
+        /* glossary is generated from the same `title` attributes that power
+           the desktop tooltips — one source of truth, no duplication. */
+        (() => {
+          const seen = new Set();
+          const rows = [];
+          document.querySelectorAll("[title].tip").forEach((el) => {
+            const term = el.textContent.trim();
+            const def = el.getAttribute("title");
+            if (!term || seen.has(term)) return;
+            seen.add(term);
+            rows.push(`<tr><td>${term}</td><td>${def}</td></tr>`);
+          });
+          $("glossary-body").innerHTML = rows.join("");
+        })();
+
         /* exponential speed: slider value is the decade exponent (×100),
            quantized to 0.1-decade notches; PAUSE_V is the extra pause stop. */
         const speedOf = (v) => 10 ** (v / 100);
@@ -1115,9 +1246,10 @@
         $("speed-slider").addEventListener("input", ({ target }) => applySpeed(+target.value));
 
         /* Reset touches the brain only — world, mouse, cheese and counters persist. */
-        $("btn-reset").addEventListener("click", () => {
+        function doReset() {
           resetBrain();
           world.bumped = false;
+          world.stuckRun = 0;
           lastAction = "RESET";
           state = "BRAIN RESET";
           shownAction = lastAction;
@@ -1127,6 +1259,17 @@
           drawGrid();
           gridDirty = false;
           updateUI(UI_DT);
+        }
+
+        $("btn-reset").addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          doReset();
+        });
+        $("btn-reset").addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            doReset();
+          }
         });
 
         document.addEventListener("visibilitychange", () => {
