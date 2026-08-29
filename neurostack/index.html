@@ -668,6 +668,7 @@
         let paused = false;
         let lastAction = "NONE";
         let state = "INITIALIZING";
+        let resetTimer = 0;
 
         let sub = 0;
         let simAcc = 0;
@@ -719,7 +720,14 @@
           let dt = now - lastT;
           lastT = now;
           dt = min(max(dt, 0), 100);
-          if (!paused) stepSim(dt);
+          if (resetTimer > 0) {
+            resetTimer -= dt;
+            if (resetTimer <= 0) {
+              resetTimer = 0;
+              gridDirty = true;
+            }
+          }
+          if (!paused && resetTimer <= 0) stepSim(dt);
           drawEEG();
           uiAcc += dt;
           if (uiAcc >= UI_DT) {
@@ -1018,12 +1026,13 @@
         function drawGrid() {
           const targetSet = new Set(world.targets.map(key));
           const { rot } = DIRS[world.dir];
+          const mouseEmoji = resetTimer > 0 ? "☠️" : "🐭";
           cells.forEach((cell, i) => {
             const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
             const here = world.x === x && world.y === y;
             setClass(cell, `cell${here ? " agent" : ""}`);
             const html = here
-              ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">🐭</span>`
+              ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">${mouseEmoji}</span>`
               : targetSet.has(key({ x, y }))
                 ? "🧀"
                 : "";
@@ -1167,6 +1176,7 @@
           shownAction = lastAction;
           shownState = state;
           stateHold = STATE_HOLD;
+          resetTimer = 250;
           sfx.play("squeak");
           snapShown();
           drawGrid();
