@@ -113,7 +113,6 @@
 
         & .mouse {
           display: inline-block;
-          transition: transform 0.12s linear;
 
           &.bump {
             animation: nudge 0.12s linear;
@@ -283,8 +282,8 @@
     <h1>NeuroStack NS3</h1>
 
     <div class="slider-container">
-      <div class="slider-header"><span>TIMESTEP</span><span id="val-speed">100 ms</span></div>
-      <input type="range" id="speed-slider" min="1" max="400" value="100" />
+      <div class="slider-header"><span>SPEED</span><span id="val-speed">1.00 × (100 ms)</span></div>
+      <input type="range" id="speed-slider" min="0" max="300" value="100" step="1" />
     </div>
 
     <div class="slider-container">
@@ -405,10 +404,15 @@
             flat: 12,
             trust: 1.7,
             arouse: 0.9,
-            tempMax: 2.2,
+            tempMax: 2.4,
             amb: 0.6,
             nov: 0.9,
             hab: 0.22,
+            /* whisker-predicted collision cost + collision-driven arousal */
+            wall: 1.8,
+            stuckGain: 1.4,
+            stuckRise: 0.55,
+            stuckDecay: 0.7,
           },
           meta: { rise: 0.03, moveCost: 0.006, bumpCost: 0.014, bite: 0.32, tasteDecay: 0.45 },
           habit: { decay: 0.6, gain: 1, bump: -0.5 },
@@ -432,8 +436,18 @@
         const GAIN = DMAX / 2;
         const PREF = { C: [0, 0, 1, 0, 0], W: [0.3, 0.3, 1.6, 0.7, 0.7] };
         const PREF_DRIVEN_CH = 2;
+        const WHISK_X = 3;
+        const WHISK_Y = 4;
 
-        const { abs, exp, min, max, hypot, random: rnd, sqrt } = Math;
+        /* --------------------------- CLOCKS ---------------------------- */
+        const EEG_HZ = 60;
+        const EEG_DT = 1000 / EEG_HZ;
+        const UI_DT = 1000 / 30;
+        const MAX_SUB_PER_FRAME = 2000;
+        const EASE_TAU = 130;
+        const STATE_HOLD = 120;
+
+        const { abs, exp, min, max, hypot, random: rnd, sqrt, round } = Math;
         const $ = (id) => document.getElementById(id);
 
         /* ============================= STATE ============================ */
@@ -443,32 +457,92 @@
         let cells = [];
         let traces = [];
         let etaScale = 1;
+        let speed = 1;
         let timestep = 100;
-        let timer;
         let paused = false;
         let lastAction = "NONE";
         let state = "INITIALIZING";
 
+        let sub = 0;
+        let curS = null;
+        let curAction;
+        let simAcc = 0;
+        let eegAcc = 0;
+        let eegPhase = 0;
+        let uiAcc = 0;
+        let lastT = performance.now();
+        let peak = new Float32Array(N);
+
+        let gridDirty = true;
+        let shownState = "INITIALIZING";
+        let shownAction = "NONE";
+        let stateHold = 0;
+
+        const targets = {};
+        const shown = {};
+
+        let efeCells = [];
+        let wCells = [];
+
         /* =========================== MAIN LOOP ========================== */
-        const tick = () => {
-          if (paused) return;
+        function frame(now) {
+          requestAnimationFrame(frame);
+          let dt = now - lastT;
+          lastT = now;
+          dt = min(max(dt, 0), 100);
+
+          if (!paused) stepSim(dt);
+          sampleEEG(dt);
+          drawEEG();
+
+          uiAcc += dt;
+          if (uiAcc >= UI_DT) {
+            updateUI(uiAcc);
+            uiAcc = 0;
+          }
+        }
+
+        function stepSim(dt) {
+          const subDur = timestep / CFG.substeps;
+          simAcc += dt;
+          let budget = MAX_SUB_PER_FRAME;
+          while (simAcc >= subDur && budget-- > 0) {
+            simAcc -= subDur;
+            if (sub === 0 && !beginTick()) {
+              simAcc = 0;
+              return;
+            }
+            microStep();
+            if (++sub >= CFG.substeps) {
+              endTick();
+              sub = 0;
+            }
+          }
+          if (budget <= 0) simAcc = 0;
+        }
+
+        /* --------------------------- SIM STEPS -------------------------- */
+        function beginTick() {
           if (!world.targets.length) {
             state = "AWAITING TARGET";
-            return render();
+            return false;
           }
-
-          const s = sense();
+          curS = sense();
           if (brain.prev) brain.z = clampAll(matVec(brain.B[brain.prev.a], brain.prev.z), 0, 1);
+          curAction = undefined;
+          return true;
+        }
 
-          let action;
-          for (let k = 0; k < CFG.substeps; k++) {
-            inferStep(s);
-            evaluate();
-            const fired = lifStep();
-            if (action === undefined && fired !== undefined) action = fired - NS - NZ;
-            pushEKG();
-          }
-          action ??= argmin(brain.G);
+        function microStep() {
+          inferStep(curS);
+          evaluate();
+          const fired = lifStep();
+          if (curAction === undefined && fired !== undefined) curAction = fired - NS - NZ;
+          noteEEG();
+        }
+
+        function endTick() {
+          const action = curAction ?? argmin(brain.G);
 
           learnA();
           learnB();
@@ -483,10 +557,14 @@
 
           if (blocked) {
             world.bumps++;
+            world.bumpSeq++;
             brain.transErr[action] += CFG.bumpErr * (1 - brain.transErr[action]);
           } else {
             [world.x, world.y] = [nx, ny];
           }
+
+          /* collision surprise → drops policy precision (raises motor temp) */
+          brain.stuck = blocked ? brain.stuck + CFG.efe.stuckRise * (1 - brain.stuck) : brain.stuck * CFG.efe.stuckDecay;
 
           brain.habit = brain.habit.map((h) => h * CFG.habit.decay);
           brain.habit[action] += blocked ? CFG.habit.bump : CFG.habit.gain;
@@ -510,8 +588,8 @@
                     ? "SURPRISED"
                     : "MODEL STABLE";
 
-          render();
-        };
+          gridDirty = true;
+        }
 
         /* ============================= WORLD ============================ */
         function resetWorld() {
@@ -525,12 +603,14 @@
             steps: 0,
             consumed: 0,
             bumps: 0,
+            bumpSeq: 0,
             sinceMeal: 0,
             history: [],
             place: new Float32Array(CFG.grid ** 2),
             bumped: false,
           });
           refill();
+          gridDirty = true;
         }
 
         function refill() {
@@ -590,6 +670,7 @@
             nov: Array(NA).fill(0),
             prec: 0,
             temp: CFG.efe.noise,
+            stuck: 0,
             v: new Float32Array(N),
             thr: new Float32Array(N).fill(1),
             rate: new Float32Array(N),
@@ -597,6 +678,10 @@
             prev: null,
           });
           normaliseA();
+          sub = 0;
+          curAction = undefined;
+          simAcc = 0;
+          peak = new Float32Array(N);
         }
 
         function normaliseA() {
@@ -617,12 +702,21 @@
 
         function evaluate() {
           const prec = 0.4 + 2.2 * driveOf();
+          /* posterior belief about touch, from likelihood A·z corrected by residual */
+          const wX = clamp(brain.pred[WHISK_X] + brain.err[WHISK_X], -1, 1);
+          const wY = clamp(brain.pred[WHISK_Y] + brain.err[WHISK_Y], -1, 1);
+
           brain.B.forEach((Ba, a) => {
             const oNext = clampAll(matVec(brain.A, clampAll(matVec(Ba, brain.z), 0, 1)), -1, 1);
             brain.risk[a] = oNext.reduce((sum, o, i) => sum + PREF.W[i] * (i === PREF_DRIVEN_CH ? prec : 1) * (o - PREF.C[i]) ** 2, 0);
             brain.amb[a] = brain.transErr[a];
 
             const { dx, dy } = DIRS[a];
+
+            /* expected whisker contact if this policy is enacted: violates C(whisk)=0 */
+            const contact = clamp(dx * wX + dy * wY, 0, 1);
+            brain.risk[a] += CFG.efe.wall * (1 + brain.stuck) * contact;
+
             const [nx, ny] = [world.x + dx, world.y + dy];
             brain.nov[a] = outside(nx, ny) ? 0 : 1 / (1 + world.place[idxOf(nx, ny)]);
 
@@ -634,7 +728,7 @@
         function motorTemp() {
           const flat = 1 + 3 / (1 + CFG.efe.flat * brain.prec);
           const distrust = 1 + CFG.efe.trust * meanAbs(brain.err);
-          const arousal = 1 + CFG.efe.arouse * driveOf();
+          const arousal = 1 + CFG.efe.arouse * driveOf() + CFG.efe.stuckGain * brain.stuck;
           return min(CFG.efe.tempMax, CFG.efe.noise * flat * distrust * arousal);
         }
 
@@ -687,85 +781,173 @@
           brain.transErr[a] += 0.15 * (meanAbs(d) - brain.transErr[a]);
         }
 
+        /* ============================== EEG ============================= */
+        function noteEEG() {
+          for (let i = 0; i < N; i++) {
+            const v = brain.ref[i] > 0 ? 1.7 : brain.v[i];
+            if (v > peak[i]) peak[i] = v;
+          }
+        }
+
+        function sampleEEG(dt) {
+          eegAcc += dt;
+          while (eegAcc >= EEG_DT) {
+            eegAcc -= EEG_DT;
+            for (let i = 0; i < N; i++) {
+              const t = traces[i];
+              t.data.shift();
+              t.data.push(peak[i]);
+              peak[i] = brain.ref[i] > 0 ? 1.7 : brain.v[i];
+            }
+          }
+          eegPhase = eegAcc / EEG_DT;
+        }
+
+        function drawEEG() {
+          traces.forEach(({ ctx, data }) => {
+            const { width, height } = ctx.canvas;
+            const dx = width / (CFG.ekg - 1);
+            ctx.clearRect(0, 0, width, height);
+            ctx.beginPath();
+            for (let i = 0; i < data.length; i++) {
+              const px = (i - 1 - eegPhase) * dx;
+              const py = clamp(height - 2 - (data[i] * (height - 4)) / 1.7, 1, height - 1);
+              i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+            }
+            ctx.stroke();
+          });
+        }
+
         /* ============================ RENDER ============================ */
-        function render() {
-          drawGrid();
+        function collectTargets() {
+          targets.hunger = world.hunger;
+          targets.err = meanAbs(brain.err);
+          targets.prec = brain.prec;
+          targets.temp = brain.temp;
+          targets.steps = world.steps;
+          targets.hits = world.consumed;
+          targets.bumps = world.bumps;
+          targets.eff = world.consumed ? world.steps / world.consumed : 0;
+          for (let a = 0; a < NA; a++) {
+            targets[`risk${a}`] = brain.risk[a];
+            targets[`amb${a}`] = brain.amb[a];
+            targets[`nov${a}`] = brain.nov[a];
+            targets[`hab${a}`] = brain.habit[a];
+            targets[`G${a}`] = brain.G[a];
+          }
+          for (let i = 0; i < NS; i++) for (let j = 0; j < NZ; j++) targets[`A${i}_${j}`] = brain.A[i][j];
+        }
+
+        function ease(dt) {
+          const k = 1 - exp(-dt / EASE_TAU);
+          for (const key in targets) {
+            if (shown[key] === undefined) shown[key] = targets[key];
+            else shown[key] += (targets[key] - shown[key]) * k;
+          }
+        }
+
+        function snapShown() {
+          collectTargets();
+          for (const key in targets) shown[key] = targets[key];
+        }
+
+        function setText(el, txt) {
+          if (el._t !== txt) {
+            el._t = txt;
+            el.textContent = txt;
+          }
+        }
+
+        function setClass(el, cls) {
+          if (el._c !== cls) {
+            el._c = cls;
+            el.className = cls;
+          }
+        }
+
+        function updateUI(dt) {
+          collectTargets();
+          ease(dt);
+
+          if (gridDirty) {
+            drawGrid();
+            gridDirty = false;
+          }
+
+          stateHold -= dt;
+          if (stateHold <= 0) {
+            shownState = state;
+            shownAction = lastAction;
+            stateHold = STATE_HOLD;
+          }
+
+          const set = (id, text) => setText($(id), text);
+          const bar = (id, px) => {
+            const w = `${min(60, max(0, px)).toFixed(1)}px`;
+            const el = $(id);
+            if (el._w !== w) {
+              el._w = w;
+              el.style.width = w;
+            }
+          };
+
+          set("val-step", `${round(shown.steps)}`);
+          set("val-hits", `${round(shown.hits)}`);
+          set("val-eff", world.consumed ? shown.eff.toFixed(1) : "—");
+          set("val-bumps", `${round(shown.bumps)}`);
+          set("val-action", shownAction);
+          set("val-feedback", shownState);
+          set("val-hunger", shown.hunger.toFixed(2));
+          set("val-err", shown.err.toFixed(3));
+          set("val-prec", shown.prec.toFixed(3));
+          set("val-temp", shown.temp.toFixed(2));
+          bar("bar-hunger", shown.hunger * 60);
+          bar("bar-err", shown.err * 200);
+          bar("bar-temp", (shown.temp / CFG.efe.tempMax) * 60);
+
           drawTables();
-          drawEKG();
-
-          const err = meanAbs(brain.err);
-          const set = (id, text) => ($(id).textContent = text);
-          const bar = (id, px) => ($(id).style.width = `${min(60, px).toFixed(0)}px`);
-
-          set("val-step", world.steps);
-          set("val-hits", world.consumed);
-          set("val-eff", world.consumed ? (world.steps / world.consumed).toFixed(1) : "—");
-          set("val-bumps", world.bumps);
-          set("val-action", lastAction);
-          set("val-feedback", state);
-          set("val-hunger", world.hunger.toFixed(2));
-          set("val-err", err.toFixed(3));
-          set("val-prec", brain.prec.toFixed(3));
-          set("val-temp", brain.temp.toFixed(2));
-          bar("bar-hunger", world.hunger * 60);
-          bar("bar-err", err * 200);
-          bar("bar-temp", (brain.temp / CFG.efe.tempMax) * 60);
         }
 
         function drawGrid() {
-          const targets = new Set(world.targets.map(key));
+          const targetSet = new Set(world.targets.map(key));
           const { rot } = DIRS[world.dir];
           cells.forEach((cell, i) => {
             const [x, y] = [i % CFG.grid, (i / CFG.grid) | 0];
             const here = world.x === x && world.y === y;
-            cell.className = `cell${here ? " agent" : ""}`;
-            cell.innerHTML = here
+            setClass(cell, `cell${here ? " agent" : ""}`);
+            const html = here
               ? `<span class="mouse${world.bumped ? " bump" : ""}" style="transform:rotate(${rot}deg)">🐭</span>`
-              : targets.has(key({ x, y }))
+              : targetSet.has(key({ x, y }))
                 ? "🧀"
                 : "";
+            const stamp = here && world.bumped ? `#${world.bumpSeq}` : "";
+            if (cell._h !== html + stamp) {
+              cell._h = html + stamp;
+              cell.innerHTML = html;
+            }
           });
         }
 
         function drawTables() {
           const best = argmin(brain.G);
-          $("efe-body").innerHTML = ACTIONS.map(
-            (a, i) =>
-              `<tr class="${i === best ? "pick" : ""}"><td>${a}</td>` +
-              [brain.risk[i], brain.amb[i], brain.nov[i], brain.habit[i], brain.G[i]]
-                .map((v) => `<td class="${v < 0 ? "neg" : ""}">${v.toFixed(2)}</td>`)
-                .join("") +
-              `</tr>`,
-          ).join("");
-
-          $("weights-body").innerHTML = SENSORS.map(
-            (s, i) =>
-              `<tr><td>${s}</td>` +
-              brain.A[i].map((w) => `<td class="${abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : ""}">${w.toFixed(2)}</td>`).join("") +
-              `</tr>`,
-          ).join("");
-        }
-
-        function pushEKG() {
-          traces.forEach((t, i) => {
-            t.data.shift();
-            t.data.push(brain.ref[i] > 0 ? 1.7 : brain.v[i]);
-          });
-        }
-
-        function drawEKG() {
-          traces.forEach(({ ctx, data }) => {
-            const { width, height } = ctx.canvas;
-            ctx.clearRect(0, 0, width, height);
-            ctx.strokeStyle = "#000";
-            ctx.beginPath();
-            data.forEach((v, i) => {
-              const px = i * (width / (CFG.ekg - 1));
-              const py = clamp(height - 2 - (v * (height - 4)) / 1.7, 1, height - 1);
-              i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+          for (let a = 0; a < NA; a++) {
+            const row = efeCells[a];
+            setClass(row.tr, a === best ? "pick" : "");
+            const vals = [shown[`risk${a}`], shown[`amb${a}`], shown[`nov${a}`], shown[`hab${a}`], shown[`G${a}`]];
+            vals.forEach((v, c) => {
+              const td = row.tds[c];
+              setText(td, v.toFixed(2));
+              setClass(td, v < 0 ? "neg" : "");
             });
-            ctx.stroke();
-          });
+          }
+
+          for (let i = 0; i < NS; i++)
+            for (let j = 0; j < NZ; j++) {
+              const w = shown[`A${i}_${j}`];
+              const td = wCells[i][j];
+              setText(td, w.toFixed(2));
+              setClass(td, abs(w) > 0.35 ? "w-pos" : abs(w) < 0.08 ? "w-zero" : "");
+            }
         }
 
         /* ============================ HELPERS =========================== */
@@ -818,10 +1000,40 @@
             const idx = world.targets.findIndex((t) => t.x === x && t.y === y);
             if (idx >= 0) world.targets.splice(idx, 1);
             else if (world.x !== x || world.y !== y) world.targets.push({ x, y });
-            render();
+            gridDirty = true;
           });
           $("grid").append(cell);
           return cell;
+        });
+
+        efeCells = ACTIONS.map((a) => {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          name.textContent = a;
+          tr.append(name);
+          const tds = Array.from({ length: 5 }, () => {
+            const td = document.createElement("td");
+            td.textContent = "0.00";
+            tr.append(td);
+            return td;
+          });
+          $("efe-body").append(tr);
+          return { tr, tds };
+        });
+
+        wCells = SENSORS.map((s) => {
+          const tr = document.createElement("tr");
+          const name = document.createElement("td");
+          name.textContent = s;
+          tr.append(name);
+          const tds = Array.from({ length: NZ }, () => {
+            const td = document.createElement("td");
+            td.textContent = "0.00";
+            tr.append(td);
+            return td;
+          });
+          $("weights-body").append(tr);
+          return tds;
         });
 
         traces = LABELS.map((label, i) => {
@@ -830,18 +1042,20 @@
           row.className = "ekg-row";
           row.innerHTML = `<span class="ekg-label">${label}</span><canvas width="196" height="14"></canvas>`;
           $("ekg-panel").append(row);
-          return { ctx: row.querySelector("canvas").getContext("2d"), data: Array(CFG.ekg).fill(0) };
+          const ctx = row.querySelector("canvas").getContext("2d");
+          ctx.strokeStyle = "#000";
+          ctx.lineWidth = 1;
+          return { ctx, data: Array(CFG.ekg + 1).fill(0) };
         });
 
-        const restartTimer = () => {
-          clearInterval(timer);
-          timer = setInterval(tick, timestep);
-        };
+        const speedOf = (v) => 10 ** (v / 100 - 1);
+        const fmtSpeed = (s) =>
+          `${s < 1 ? s.toFixed(2) : s < 10 ? s.toFixed(1) : s.toFixed(0)} × (${timestep >= 10 ? round(timestep) : timestep.toFixed(1)} ms)`;
 
         $("speed-slider").addEventListener("input", ({ target }) => {
-          timestep = +target.value;
-          $("val-speed").textContent = `${timestep} ms`;
-          restartTimer();
+          speed = speedOf(+target.value);
+          timestep = 100 / speed;
+          $("val-speed").textContent = fmtSpeed(speed);
         });
 
         $("eta-slider").addEventListener("input", ({ target }) => {
@@ -854,7 +1068,13 @@
           resetWorld();
           lastAction = "RESET";
           state = "INITIALIZING";
-          render();
+          shownAction = lastAction;
+          shownState = state;
+          stateHold = STATE_HOLD;
+          snapShown();
+          drawGrid();
+          gridDirty = false;
+          updateUI(UI_DT);
         });
 
         $("btn-toggle").addEventListener("click", ({ target }) => {
@@ -862,10 +1082,17 @@
           target.textContent = paused ? "Resume" : "Pause";
         });
 
+        document.addEventListener("visibilitychange", () => {
+          lastT = performance.now();
+        });
+
         resetBrain();
         resetWorld();
-        render();
-        restartTimer();
+        snapShown();
+        drawGrid();
+        gridDirty = false;
+        updateUI(UI_DT);
+        requestAnimationFrame(frame);
       })();
     </script>
   </body>
