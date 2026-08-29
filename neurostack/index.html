@@ -496,7 +496,7 @@
 
       <section class="col">
         <div class="panel">
-          <div class="panel-title"><span>Behavior</span><span class="sub" id="val-engine">—</span></div>
+          <div class="panel-title"><span>Behavior</span></div>
           <table class="num-table">
             <thead>
               <tr>
@@ -1316,7 +1316,6 @@
         snapShown();
         drawGrid();
         gridDirty = false;
-        setText($("val-engine"), "wasm·simd");
         applySpeed(+slider.value);
         updateUI(UI_DT);
         requestAnimationFrame(frame);
