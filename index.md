@@ -143,6 +143,5 @@
 - [Google AI](./prompts/google-ai.md)
 - [OpenAI](./prompts/openai.md)
 - [OpenAI Agents SDK](./prompts/openai-agents-sdk.md)
+- [Refactoring](./prompts/refactoring.md)
 - [Three.js](./prompts/three-js.md)
-- [Single HTML App Compaction](./prompts/single-html-compaction.md)
-- [Web Code Refactoring](./prompts/web-code-refactoring.md)
