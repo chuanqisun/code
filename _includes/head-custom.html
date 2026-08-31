@@ -4,7 +4,16 @@
 />
 <script>
   /**
-   * After app load, replace all https://code.chuanqisun.com/prompts/<restOfPath> with https://github.com/chuanqisun/code/blob/master/prompts/<restOfPath>
+   * After app load, replace all <origin>/prompts/<restOfPath> with https://github.com/chuanqisun/code/blob/master/prompts/<restOfPath>
    */
-  
+  document.addEventListener("DOMContentLoaded", () => {
+    const prefix = `${window.location.origin}/prompts/`;
+    const githubPrefix = `https://github.com/chuanqisun/code/blob/master/prompts/`;
+
+    document.querySelectorAll("a").forEach((link) => {
+      if (link.href && link.href.startsWith(prefix)) {
+        link.href = link.href.replace(prefix, githubPrefix);
+      }
+    });
+  });
 </script>
