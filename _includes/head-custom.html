@@ -8,11 +8,13 @@
    */
   document.addEventListener("DOMContentLoaded", () => {
     const prefix = `${window.location.origin}/prompts/`;
+    const suffix = `.html`;
     const githubPrefix = `https://github.com/chuanqisun/code/blob/master/prompts/`;
+    const githubSuffix = `.md`;
 
     document.querySelectorAll("a").forEach((link) => {
-      if (link.href && link.href.startsWith(prefix)) {
-        link.href = link.href.replace(prefix, githubPrefix);
+      if (link.href && link.href.startsWith(prefix) && link.href.endsWith(suffix)) {
+        link.href = githubPrefix + link.href.slice(prefix.length, -suffix.length) + githubSuffix;
       }
     });
   });
