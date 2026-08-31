@@ -140,9 +140,9 @@
 ## Prompts
 
 - [Find free time](./prompts/find-free-time.md)
-- [Google AI](https://github.com/chuanqisun/code/blob/master/prompts/google-ai.md)
-- [OpenAI](https://github.com/chuanqisun/code/blob/master/prompts/openai.md)
-- [OpenAI Agents SDK](https://github.com/chuanqisun/code/blob/master/prompts/openai-agents-sdk.md)
-- [Three.js](https://github.com/chuanqisun/code/blob/master/prompts/three-js.md)
+- [Google AI](./prompts/google-ai.md)
+- [OpenAI](./prompts/openai.md)
+- [OpenAI Agents SDK](./prompts/openai-agents-sdk.md)
+- [Three.js](./prompts/three-js.md)
 - [Single HTML App Compaction](./prompts/single-html-compaction.md)
 - [Web Code Refactoring](./prompts/web-code-refactoring.md)
