@@ -139,6 +139,7 @@
 
 ## Prompts
 
+- [Find free time](./prompts/find-free-time.md)
 - [Google AI](https://github.com/chuanqisun/code/blob/master/prompts/google-ai.md)
 - [OpenAI](https://github.com/chuanqisun/code/blob/master/prompts/openai.md)
 - [OpenAI Agents SDK](https://github.com/chuanqisun/code/blob/master/prompts/openai-agents-sdk.md)
