@@ -1,3 +1,4 @@
+```
 Keep the behavior unchanged but refactor the code:
 
 - consise
@@ -11,3 +12,4 @@ Keep the behavior unchanged but refactor the code:
 - typescript
   - rely on implicit type inference
   - use explicit typing only if type inference fails
+```
