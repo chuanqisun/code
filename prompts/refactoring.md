@@ -1,7 +1,7 @@
 # Single HTML File
 
 ```
-Refactor the app, respond in a single \`\`\`html block
+Refactor the app, respond in a single ```html block
 
 1. Keep the same features and hevaiors
 2. Make the code more concise but also easier to maintain
