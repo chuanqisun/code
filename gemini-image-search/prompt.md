@@ -1,0 +1,3 @@
+Find the 9 most representative CASIO watch products and display on a basic 3x3 grid. Each grid cell has #FFFFFF background. The grid gap is #000000. Page background is #000000. No text labels. Flat unstyled.
+
+Find the 9 most representative MIT Media Lab Tangible Media Group research projects and display on a basic 3x3 grid. Each grid cell has #FFFFFF background. The grid gap is #000000. Page background is #000000. No text labels. Flat unstyled.

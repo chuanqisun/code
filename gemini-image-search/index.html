@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Grounding with Google Search for Images Test</title>
+  </head>
+  <body>
+    <h3>Grounding with Google Search for Images (3.1 Flash) POC</h3>
+
+    <div>
+      <label>Gemini API Key: </label>
+      <input type="password" id="apiKey" placeholder="Enter API Key" size="40" />
+    </div>
+    <br />
+    <div>
+      <label>Text Prompt: </label><br />
+      <textarea id="promptInput" rows="3" cols="60">A detailed painting of a Timareta butterfly resting on a flower</textarea>
+    </div>
+    <br />
+    <button id="sendBtn">Generate Image</button>
+
+    <h4>Generated Output</h4>
+    <div id="imageContainer"></div>
+
+    <h4>Search Suggestions / Grounding Info</h4>
+    <div id="suggestionsContainer"></div>
+
+    <h4>Detailed Events / Response Log</h4>
+    <pre id="logOutput" style="background: #f4f4f4; border: 1px solid #ccc; padding: 10px; max-height: 400px; overflow: auto"></pre>
+
+    <script>
+      const apiKeyInput = document.getElementById("apiKey");
+      const promptInput = document.getElementById("promptInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const imageContainer = document.getElementById("imageContainer");
+      const suggestionsContainer = document.getElementById("suggestionsContainer");
+      const logOutput = document.getElementById("logOutput");
+
+      function log(message, data) {
+        const timestamp = new Date().toISOString().split("T")[1].slice(0, -1);
+        let entry = `[${timestamp}] ${message}`;
+        if (data !== undefined) {
+          entry += "\n" + (typeof data === "string" ? data : JSON.stringify(data, null, 2));
+        }
+        logOutput.textContent += entry + "\n\n";
+        logOutput.scrollTop = logOutput.scrollHeight;
+      }
+
+      sendBtn.addEventListener("click", async () => {
+        const apiKey = apiKeyInput.value.trim();
+        const prompt = promptInput.value.trim();
+
+        if (!apiKey) {
+          alert("Please provide an API key.");
+          return;
+        }
+        if (!prompt) {
+          alert("Please provide a prompt.");
+          return;
+        }
+
+        sendBtn.disabled = true;
+        imageContainer.innerHTML = "";
+        suggestionsContainer.innerHTML = "";
+        logOutput.textContent = "";
+
+        log("Starting request with Grounding with Google Search for images...");
+
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${encodeURIComponent(apiKey)}`;
+
+        const payload = {
+          model: "gemini-3.1-flash-image",
+          input: prompt,
+          tools: [
+            {
+              type: "google_search",
+              search_types: ["web_search", "image_search"],
+            },
+          ],
+          response_format: {
+            type: "image",
+            mime_type: "image/jpeg",
+            aspect_ratio: "1:1",
+            image_size: "4K",
+          },
+        };
+
+        log("POST Endpoint:", endpoint.replace(/key=[^&]+/, "key=REDACTED"));
+        log("Request Payload:", payload);
+
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": apiKey,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          log(`HTTP Response status: ${response.status} ${response.statusText}`);
+
+          const result = await response.json();
+          log("Raw API Response Object:", result);
+
+          if (!response.ok) {
+            log("Error response received:", result);
+            return;
+          }
+
+          // Check for steps in the interaction
+          if (result.steps && Array.isArray(result.steps)) {
+            log(`Processing ${result.steps.length} interaction steps...`);
+
+            result.steps.forEach((step, index) => {
+              log(`Step #${index + 1} - Type: ${step.type}`, step);
+
+              // Handle search suggestions and grounding metadata
+              if (step.google_search_result && step.google_search_result.search_suggestions) {
+                log(`Found search_suggestions in step #${index + 1}`);
+                const wrapper = document.createElement("div");
+                wrapper.innerHTML = step.google_search_result.search_suggestions;
+                suggestionsContainer.appendChild(wrapper);
+              }
+
+              // Handle content blocks in model output
+              if (step.content && Array.isArray(step.content)) {
+                step.content.forEach((block, bIdx) => {
+                  log(`Step #${index + 1} Content block #${bIdx + 1} (${block.type})`, block);
+                  if (block.type === "image" && block.data) {
+                    const mime = block.mime_type || "image/png";
+                    const img = document.createElement("img");
+                    img.src = `data:${mime};base64,${block.data}`;
+                    img.style.maxWidth = "512px";
+                    img.style.display = "block";
+                    img.style.marginTop = "10px";
+                    imageContainer.appendChild(img);
+                    log(`Rendered image from content block.`);
+                  }
+                });
+              }
+            });
+          }
+
+          // Check convenience output_image if present
+          if (result.output_image && result.output_image.data) {
+            log("Found top-level convenience output_image:");
+            const mime = result.output_image.mime_type || "image/png";
+            if (!imageContainer.querySelector("img")) {
+              const img = document.createElement("img");
+              img.src = `data:${mime};base64,${result.output_image.data}`;
+              img.style.maxWidth = "512px";
+              img.style.display = "block";
+              img.style.marginTop = "10px";
+              imageContainer.appendChild(img);
+              log(`Rendered image from output_image property.`);
+            }
+          }
+
+          log("Finished processing response.");
+        } catch (err) {
+          log("Exception caught during request execution:", err.stack || err.message || err);
+        } finally {
+          sendBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
