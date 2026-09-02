@@ -1,0 +1,182 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Grid-Gap Tile Detector POC</title>
+  </head>
+  <body>
+    <h3>Grid-Gap Tile Detector</h3>
+    <p>Paste an image (Ctrl+V) or upload: <input type="file" id="file" accept="image/*" /></p>
+    <p>
+      Dark threshold (0-255): <input type="number" id="thr" value="128" min="0" max="255" /> Gap darkness fraction:
+      <input type="number" id="gapFrac" value="0.95" step="0.01" min="0" max="1" /> Min side ratio:
+      <input type="number" id="ratio" value="0.2" step="0.05" min="0" max="1" /> Min cell brightness:
+      <input type="number" id="cellFill" value="0.5" step="0.05" min="0" max="1" />
+    </p>
+    <canvas id="cv"></canvas>
+    <pre id="out"></pre>
+
+    <script>
+      /*
+ Approach: projection profiles.
+ - A grid gap is a full-width horizontal band (or full-height vertical band) that is
+   almost entirely dark. Black lines inside a tile only cover a tiny fraction of a
+   row/column, so they never register as a gap, regardless of whether they touch the gap.
+ - Image edges are implicit gaps.
+ - Cells between gaps form the tile grid; a cell is kept if it is big enough and mostly bright
+   (to allow missing tiles in the grid).
+*/
+      const cv = document.getElementById("cv");
+      const ctx = cv.getContext("2d");
+      const out = document.getElementById("out");
+      let currentImg = null;
+
+      document.getElementById("file").onchange = (e) => {
+        const f = e.target.files[0];
+        if (f) loadBlob(f);
+      };
+      document.addEventListener("paste", (e) => {
+        for (const item of e.clipboardData.items)
+          if (item.type.startsWith("image/")) {
+            loadBlob(item.getAsFile());
+            break;
+          }
+      });
+      for (const id of ["thr", "gapFrac", "ratio", "cellFill"]) document.getElementById(id).onchange = () => currentImg && run(currentImg);
+
+      function loadBlob(blob) {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          currentImg = img;
+          run(img);
+        };
+        img.src = url;
+      }
+
+      // Split axis of length L into non-gap segments given per-index dark counts.
+      // gapIf(darkCount) tells whether that line is a gap line. Edges are implicit gaps.
+      function segments(darkCounts, L, isGap, minLen) {
+        const segs = [];
+        let start = -1;
+        for (let i = 0; i <= L; i++) {
+          const gap = i === L || isGap(darkCounts[i]);
+          if (!gap && start < 0) start = i;
+          if (gap && start >= 0) {
+            if (i - start >= minLen) segs.push([start, i - 1]);
+            start = -1;
+          }
+        }
+        return segs;
+      }
+
+      function run(img) {
+        const t0 = performance.now();
+        const thr = +document.getElementById("thr").value;
+        const gapFrac = +document.getElementById("gapFrac").value;
+        const ratio = +document.getElementById("ratio").value;
+        const cellFill = +document.getElementById("cellFill").value;
+
+        const MAX = 1024;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const W = Math.max(1, Math.round(img.width * scale));
+        const H = Math.max(1, Math.round(img.height * scale));
+
+        const pc = document.createElement("canvas");
+        pc.width = W;
+        pc.height = H;
+        const pctx = pc.getContext("2d", { willReadFrequently: true });
+        pctx.drawImage(img, 0, 0, W, H);
+        const data = pctx.getImageData(0, 0, W, H).data;
+
+        // Dark mask + projection profiles + summed-area table (for fast cell fill checks)
+        const dark = new Uint8Array(W * H);
+        const colDark = new Int32Array(W);
+        const rowDark = new Int32Array(H);
+        const sat = new Int32Array((W + 1) * (H + 1)); // integral image of dark pixels
+        for (let y = 0, i = 0, p = 0; y < H; y++) {
+          let rowSum = 0;
+          for (let x = 0; x < W; x++, i++, p += 4) {
+            const lum = (data[p] * 77 + data[p + 1] * 151 + data[p + 2] * 28) >> 8;
+            const d = lum < thr ? 1 : 0;
+            dark[i] = d;
+            colDark[x] += d;
+            rowSum += d;
+            sat[(y + 1) * (W + 1) + (x + 1)] = sat[y * (W + 1) + (x + 1)] + rowSum;
+          }
+          rowDark[y] = rowSum;
+        }
+        const darkIn = (
+          x0,
+          y0,
+          x1,
+          y1, // inclusive coords
+        ) => sat[(y1 + 1) * (W + 1) + (x1 + 1)] - sat[y0 * (W + 1) + (x1 + 1)] - sat[(y1 + 1) * (W + 1) + x0] + sat[y0 * (W + 1) + x0];
+
+        // Gap lines: nearly all pixels dark
+        const colSegs = segments(colDark, W, (c) => c >= gapFrac * H, ratio * W);
+        const rowSegs = segments(rowDark, H, (c) => c >= gapFrac * W, ratio * H);
+
+        // Build cells, keep bright ones
+        const inv = 1 / scale;
+        const result = [];
+        for (const [y0, y1] of rowSegs) {
+          for (const [x0, x1] of colSegs) {
+            const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+            const bright = 1 - darkIn(x0, y0, x1, y1) / area;
+            if (bright >= cellFill) {
+              result.push({
+                id: result.length + 1,
+                x: Math.round(x0 * inv),
+                y: Math.round(y0 * inv),
+                width: Math.round((x1 - x0 + 1) * inv),
+                height: Math.round((y1 - y0 + 1) * inv),
+                fill: +bright.toFixed(3),
+              });
+            }
+          }
+        }
+
+        // Draw
+        cv.width = img.width;
+        cv.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        ctx.lineWidth = Math.max(2, img.width / 300);
+        ctx.strokeStyle = "red";
+        ctx.fillStyle = "red";
+        const fs = Math.max(12, img.width / 40);
+        ctx.font = `${fs}px sans-serif`;
+        for (const r of result) {
+          ctx.strokeRect(r.x, r.y, r.width, r.height);
+          ctx.fillText(r.id, r.x + 4, r.y + fs + 2);
+        }
+        // Show detected gap lines (cyan) for debugging
+        ctx.strokeStyle = "cyan";
+        ctx.lineWidth = 1;
+        for (const [a, b] of colSegs) {
+          ctx.beginPath();
+          ctx.moveTo(a * inv, 0);
+          ctx.lineTo(a * inv, img.height);
+          ctx.moveTo((b + 1) * inv, 0);
+          ctx.lineTo((b + 1) * inv, img.height);
+          ctx.stroke();
+        }
+        for (const [a, b] of rowSegs) {
+          ctx.beginPath();
+          ctx.moveTo(0, a * inv);
+          ctx.lineTo(img.width, a * inv);
+          ctx.moveTo(0, (b + 1) * inv);
+          ctx.lineTo(img.width, (b + 1) * inv);
+          ctx.stroke();
+        }
+
+        const ms = (performance.now() - t0).toFixed(1);
+        out.textContent =
+          `Image: ${img.width}x${img.height} (processed at ${W}x${H}), ${ms} ms\n` +
+          `Grid: ${colSegs.length} columns x ${rowSegs.length} rows, tiles kept: ${result.length}\n\n` +
+          JSON.stringify(result, null, 2);
+      }
+    </script>
+  </body>
+</html>
