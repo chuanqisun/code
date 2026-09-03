@@ -96,6 +96,7 @@
 - [Knowledge Chronicle](./design-fiction/knowledge-chronicle.html)
 - [Life clock](./life-clock/)
 - [Life.Config](https://chuanqisun.github.io/life-config/)
+- [Live Rag](https://chuanqisun.github.io/live-rag/)
 - [Media Lab Game of Life](./media-lab-game-of-life/)
 - [Metaball Surface Geometry](./metaball-surface-geometry/)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
