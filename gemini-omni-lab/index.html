@@ -211,6 +211,15 @@
             </select>
           </label>
           <label>
+            <span>Resolution</span>
+            <select id="resolution">
+              <option value="360p">360p</option>
+              <option value="720p" selected>720p</option>
+              <option value="1080p">1080p (upscaled)</option>
+              <option value="4k">4K (upscaled)</option>
+            </select>
+          </label>
+          <label>
             <span>Task</span>
             <select id="task">
               <option value="">Infer automatically</option>
@@ -218,6 +227,7 @@
               <option value="image_to_video">Image to video</option>
               <option value="reference_to_video">Reference to video</option>
               <option value="edit">Edit</option>
+              <option value="extend">Extend</option>
             </select>
           </label>
         </div>
@@ -265,7 +275,7 @@
       import { createStore, get, set } from "https://esm.sh/idb-keyval";
 
       const API_URL = "https://generativelanguage.googleapis.com/v1beta";
-      const MODEL = "gemini-omni-flash-preview";
+      const MODEL = "gemini-omni-1.1-flash";
 
       class OmniLab {
         constructor() {
@@ -279,6 +289,7 @@
           this.dom = {
             apiKey: document.getElementById("api-key"),
             aspectRatio: document.getElementById("aspect-ratio"),
+            resolution: document.getElementById("resolution"),
             task: document.getElementById("task"),
             prompt: document.getElementById("prompt"),
             mediaList: document.getElementById("media-list"),
@@ -301,6 +312,7 @@
         bindEvents() {
           this.dom.apiKey.oninput = () => set("apiKey", this.dom.apiKey.value, this.store);
           this.dom.aspectRatio.onchange = () => this.saveConfig();
+          this.dom.resolution.onchange = () => this.saveConfig();
           this.dom.task.onchange = () => this.saveConfig();
           this.dom.prompt.oninput = () => set("draft", this.dom.prompt.value, this.store);
 
@@ -343,6 +355,7 @@
 
           if (apiKey) this.dom.apiKey.value = apiKey;
           if (config?.aspectRatio) this.dom.aspectRatio.value = config.aspectRatio;
+          if (config?.resolution) this.dom.resolution.value = config.resolution;
           if (config?.task) this.dom.task.value = config.task;
           if (draft) this.dom.prompt.value = draft;
           if (Array.isArray(outputs)) this.outputs = outputs;
@@ -350,7 +363,15 @@
         }
 
         saveConfig() {
-          return set("config", { aspectRatio: this.dom.aspectRatio.value, task: this.dom.task.value }, this.store);
+          return set(
+            "config",
+            {
+              aspectRatio: this.dom.aspectRatio.value,
+              resolution: this.dom.resolution.value,
+              task: this.dom.task.value,
+            },
+            this.store,
+          );
         }
 
         openFilePicker(accept, multiple) {
@@ -418,7 +439,6 @@
           this.dom.context.hidden = !selected;
           this.dom.newThread.hidden = !selected;
           this.dom.contextDetail.textContent = selected ? `Editing output from: ${this.shortPrompt(selected.prompt)}` : "";
-          if (selected) this.dom.task.value = "edit";
           this.renderOutputs();
           this.dom.prompt.focus();
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -466,6 +486,7 @@
               prompt,
               createdAt: Date.now(),
               aspectRatio: this.dom.aspectRatio.value,
+              resolution: this.dom.resolution.value,
               videoDataUrl,
             };
             this.outputs.push(output);
@@ -488,19 +509,25 @@
         buildRequest(prompt, parent) {
           const body = {
             model: MODEL,
-            response_format: { type: "video", delivery: "uri", aspect_ratio: this.dom.aspectRatio.value },
+            response_format: {
+              type: "video",
+              delivery: "uri",
+              aspect_ratio: this.dom.aspectRatio.value,
+              resolution: this.dom.resolution.value,
+            },
             generation_config: { video_config: {} },
             background: false,
             store: true,
             stream: false,
           };
 
-          if (this.dom.task.value) body.generation_config.video_config.task = this.dom.task.value;
           if (parent) {
             body.previous_interaction_id = parent.interactionId;
             body.input = prompt;
             return body;
           }
+
+          if (this.dom.task.value) body.generation_config.video_config.task = this.dom.task.value;
 
           const content = this.media.map((item) => ({
             type: item.type,
@@ -552,8 +579,11 @@
               await this.wait(5000, signal);
             }
           }
-          const response = await fetch(uri, {
-            headers: { "x-goog-api-key": apiKey },
+          const downloadUrl = fileId
+            ? `${API_URL}/files/${fileId}:download?alt=media&key=${encodeURIComponent(apiKey)}`
+            : uri;
+          const response = await fetch(downloadUrl, {
+            headers: fileId ? undefined : { "x-goog-api-key": apiKey },
             signal,
           });
           if (!response.ok) throw new Error(`Video download failed with status ${response.status}`);
@@ -583,6 +613,7 @@
           this.dom.apiKey.disabled = active;
           this.dom.prompt.disabled = active;
           this.dom.aspectRatio.disabled = active;
+          this.dom.resolution.disabled = active;
           this.dom.task.disabled = active;
         }
 
@@ -632,7 +663,7 @@
 
             const meta = document.createElement("div");
             meta.className = "meta";
-            meta.textContent = `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio}`;
+            meta.textContent = `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio} · ${output.resolution || "720p"}`;
             const prompt = document.createElement("div");
             prompt.className = "prompt";
             prompt.textContent = output.prompt || "Media input only";
