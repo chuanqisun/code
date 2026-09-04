@@ -474,10 +474,7 @@
 
         try {
           const ai = new GoogleGenAI({ apiKey });
-          const result = await ai.interactions.create(
-            buildRequest(prompt, parent, state.media, getConfig()),
-            { signal },
-          );
+          const result = await ai.interactions.create(buildRequest(prompt, parent, state.media, getConfig()), { signal });
 
           const video = findVideo(result);
           if (!video) throw new Error("The interaction completed without a video output.");
