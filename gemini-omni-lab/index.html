@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gemini Omni Lab</title>
     <style>
+      :root {
+        --space-xs: 0.25rem;
+        --space-sm: 0.5rem;
+        --space-md: 0.75rem;
+        --space-lg: 1.5rem;
+        --color-text-muted: #555;
+        --color-border: #bbb;
+        --color-border-light: #ccc;
+        --color-surface: #f5f5f5;
+        --color-accent: #1769aa;
+        --color-error: #b00020;
+        --font-size-sm: 0.875rem;
+        --indent-step: 0.75rem;
+      }
+
       * {
         box-sizing: border-box;
       }
@@ -26,7 +41,7 @@
       }
 
       section {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-lg);
       }
 
       input,
@@ -40,7 +55,7 @@
       select,
       textarea {
         width: 100%;
-        padding: 0.5rem;
+        padding: var(--space-sm);
       }
 
       textarea {
@@ -49,12 +64,12 @@
       }
 
       button {
-        padding: 0.45rem 0.75rem;
+        padding: 0.45rem var(--space-md);
         cursor: pointer;
-      }
 
-      button:disabled {
-        cursor: default;
+        &:disabled {
+          cursor: default;
+        }
       }
 
       .row,
@@ -62,7 +77,7 @@
       .output-heading,
       .actions {
         display: flex;
-        gap: 0.75rem;
+        gap: var(--space-md);
         align-items: center;
       }
 
@@ -74,54 +89,54 @@
       .muted,
       .meta {
         display: block;
-        color: #555;
-        font-size: 0.875rem;
-        margin-bottom: 0.25rem;
+        color: var(--color-text-muted);
+        font-size: var(--font-size-sm);
+        margin-bottom: var(--space-xs);
       }
 
       .section-heading,
       .output-heading {
         justify-content: space-between;
-      }
 
-      .section-heading h2,
-      .output-heading h3 {
-        margin: 0;
+        & h2,
+        & h3 {
+          margin: 0;
+        }
       }
 
       .composer,
       .context,
       .output {
-        border: 1px solid #bbb;
-        padding: 0.75rem;
-        margin-bottom: 0.75rem;
+        border: 1px solid var(--color-border);
+        padding: var(--space-md);
+        margin-bottom: var(--space-md);
       }
 
       .context {
-        background: #f5f5f5;
+        background: var(--color-surface);
       }
 
       .media-list {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-        gap: 0.75rem;
-        margin: 0.75rem 0;
+        gap: var(--space-md);
+        margin: var(--space-md) 0;
       }
 
       .media-item {
         min-width: 0;
-        border: 1px solid #ccc;
-        padding: 0.5rem;
-      }
+        border: 1px solid var(--color-border-light);
+        padding: var(--space-sm);
 
-      .media-item img,
-      .media-item video {
-        display: block;
-        width: 100%;
-        aspect-ratio: 16 / 9;
-        object-fit: cover;
-        background: #000;
-        margin-bottom: 0.4rem;
+        & img,
+        & video {
+          display: block;
+          width: 100%;
+          aspect-ratio: 16 / 9;
+          object-fit: cover;
+          background: #000;
+          margin-bottom: 0.4rem;
+        }
       }
 
       .media-name {
@@ -132,45 +147,46 @@
       }
 
       .actions {
-        margin-top: 0.75rem;
+        margin-top: var(--space-md);
         flex-wrap: wrap;
-      }
 
-      .actions .primary {
-        margin-left: auto;
-        font-weight: bold;
+        & .primary {
+          margin-left: auto;
+          font-weight: bold;
+        }
       }
 
       .output {
         border-left-width: 4px;
-      }
+        margin-left: calc(var(--depth, 0) * var(--indent-step));
 
-      .output.selected {
-        border-left-color: #1769aa;
-      }
+        &.selected {
+          border-left-color: var(--color-accent);
+        }
 
-      .output video {
-        display: block;
-        width: 100%;
-        max-height: 70vh;
-        background: #000;
-        margin-top: 0.75rem;
+        & video {
+          display: block;
+          width: 100%;
+          max-height: 70vh;
+          background: #000;
+          margin-top: var(--space-md);
+        }
       }
 
       .output-actions {
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-sm);
         flex-wrap: wrap;
         justify-content: flex-end;
       }
 
       .prompt {
         white-space: pre-wrap;
-        margin: 0.5rem 0;
+        margin: var(--space-sm) 0;
       }
 
       .error {
-        color: #b00020;
+        color: var(--color-error);
         white-space: pre-wrap;
       }
 
@@ -201,7 +217,7 @@
         <div class="row">
           <label>
             <span>Gemini API key</span>
-            <input id="api-key" type="password" autocomplete="off" placeholder="Enter API key" />
+            <input id="api-key" type="password" autocomplete="off" placeholder="Enter API key" data-1p-ignore />
           </label>
           <label>
             <span>Aspect ratio</span>
@@ -244,7 +260,7 @@
           <div id="context-detail" class="muted"></div>
         </div>
 
-        <div id="drop-zone" class="composer">
+        <div class="composer">
           <label for="prompt" class="muted">Prompt or editing instruction</label>
           <textarea id="prompt" placeholder="Describe a video, or select an output below and describe what to change."></textarea>
           <div id="media-list" class="media-list"></div>
@@ -276,439 +292,369 @@
 
       const API_URL = "https://generativelanguage.googleapis.com/v1beta";
       const MODEL = "gemini-omni-1.1-flash";
+      const FILE_POLL_INTERVAL_MS = 5000;
+      const STATUS_TICK_MS = 1000;
+      const MAX_INDENT_DEPTH = 4;
+      const SHORT_PROMPT_LENGTH = 80;
 
-      class OmniLab {
-        constructor() {
-          this.store = createStore("gemini-omni-lab", "state");
-          this.media = [];
-          this.outputs = [];
-          this.selectedOutputId = null;
-          this.abortController = null;
-          this.timer = null;
+      const store = createStore("gemini-omni-lab", "state");
+      const save = (key, value) => set(key, value, store);
+      const load = (key) => get(key, store);
 
-          this.dom = {
-            apiKey: document.getElementById("api-key"),
-            aspectRatio: document.getElementById("aspect-ratio"),
-            resolution: document.getElementById("resolution"),
-            task: document.getElementById("task"),
-            prompt: document.getElementById("prompt"),
-            mediaList: document.getElementById("media-list"),
-            outputList: document.getElementById("output-list"),
-            emptyState: document.getElementById("empty-state"),
-            filePicker: document.getElementById("file-picker"),
-            context: document.getElementById("context"),
-            contextDetail: document.getElementById("context-detail"),
-            newThread: document.getElementById("new-thread"),
-            clearMedia: document.getElementById("clear-media"),
-            generate: document.getElementById("generate"),
-            requestStatus: document.getElementById("request-status"),
-            dropZone: document.getElementById("drop-zone"),
-          };
+      const $ = (id) => document.getElementById(id);
+      const dom = {
+        apiKey: $("api-key"),
+        aspectRatio: $("aspect-ratio"),
+        resolution: $("resolution"),
+        task: $("task"),
+        prompt: $("prompt"),
+        mediaList: $("media-list"),
+        outputList: $("output-list"),
+        emptyState: $("empty-state"),
+        filePicker: $("file-picker"),
+        context: $("context"),
+        contextDetail: $("context-detail"),
+        newThread: $("new-thread"),
+        addImages: $("add-images"),
+        addVideo: $("add-video"),
+        clearMedia: $("clear-media"),
+        clearOutputs: $("clear-outputs"),
+        generate: $("generate"),
+        requestStatus: $("request-status"),
+      };
 
-          this.bindEvents();
-          this.loadState();
+      const state = { media: [], outputs: [], selectedOutputId: null, abortController: null };
+
+      const init = async () => {
+        bindEvents();
+
+        const [apiKey, config, draft, outputs] = await Promise.all(["apiKey", "config", "draft", "outputs"].map(load));
+        if (apiKey) dom.apiKey.value = apiKey;
+        if (config?.aspectRatio) dom.aspectRatio.value = config.aspectRatio;
+        if (config?.resolution) dom.resolution.value = config.resolution;
+        if (config?.task) dom.task.value = config.task;
+        if (draft) dom.prompt.value = draft;
+        if (Array.isArray(outputs)) state.outputs = outputs;
+        renderOutputs();
+      };
+
+      const bindEvents = () => {
+        dom.apiKey.oninput = () => save("apiKey", dom.apiKey.value);
+        dom.prompt.oninput = () => save("draft", dom.prompt.value);
+        dom.aspectRatio.onchange = dom.resolution.onchange = dom.task.onchange = () => save("config", getConfig());
+
+        dom.addImages.onclick = () => openFilePicker("image/*", true);
+        dom.addVideo.onclick = () => openFilePicker("video/*", false);
+        dom.clearMedia.onclick = clearMedia;
+        dom.newThread.onclick = () => selectOutput(null);
+        dom.generate.onclick = () => (state.abortController ? state.abortController.abort() : generate());
+        dom.clearOutputs.onclick = clearOutputs;
+
+        dom.filePicker.onchange = async ({ target }) => {
+          await addFiles(target.files);
+          target.value = "";
+        };
+
+        document.addEventListener("paste", (event) => {
+          if (!event.clipboardData?.files.length) return;
+          event.preventDefault();
+          addFiles(event.clipboardData.files);
+        });
+        document.body.addEventListener("dragover", (event) => {
+          if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+        });
+        document.body.addEventListener("drop", (event) => {
+          if (!event.dataTransfer?.files.length) return;
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        });
+      };
+
+      const getConfig = () => ({
+        aspectRatio: dom.aspectRatio.value,
+        resolution: dom.resolution.value,
+        task: dom.task.value,
+      });
+
+      const selectedOutput = () => state.outputs.find(({ id }) => id === state.selectedOutputId);
+
+      const openFilePicker = (accept, multiple) => {
+        Object.assign(dom.filePicker, { accept, multiple });
+        dom.filePicker.click();
+      };
+
+      const addFiles = async (fileList) => {
+        const mediaFiles = [...fileList].filter(({ type }) => type.startsWith("image/") || type.startsWith("video/"));
+        for (const file of mediaFiles) {
+          const type = file.type.startsWith("image/") ? "image" : "video";
+          if (type === "video" && state.media.some((item) => item.type === "video")) {
+            setStatus("Only one uploaded video can be used in a request.", true);
+            continue;
+          }
+          state.media.push({
+            id: crypto.randomUUID(),
+            type,
+            name: file.name || "pasted media",
+            mimeType: file.type,
+            dataUrl: await blobToDataUrl(file),
+          });
         }
+        renderMedia();
+      };
 
-        bindEvents() {
-          this.dom.apiKey.oninput = () => set("apiKey", this.dom.apiKey.value, this.store);
-          this.dom.aspectRatio.onchange = () => this.saveConfig();
-          this.dom.resolution.onchange = () => this.saveConfig();
-          this.dom.task.onchange = () => this.saveConfig();
-          this.dom.prompt.oninput = () => set("draft", this.dom.prompt.value, this.store);
+      const removeMedia = (id) => {
+        state.media = state.media.filter((item) => item.id !== id);
+        renderMedia();
+      };
 
-          document.getElementById("add-images").onclick = () => this.openFilePicker("image/*", true);
-          document.getElementById("add-video").onclick = () => this.openFilePicker("video/*", false);
-          this.dom.clearMedia.onclick = () => this.clearMedia();
-          this.dom.newThread.onclick = () => this.selectOutput(null);
-          this.dom.generate.onclick = () => (this.abortController ? this.cancelGeneration() : this.generate());
-          document.getElementById("clear-outputs").onclick = () => this.clearOutputs();
+      const clearMedia = () => {
+        state.media = [];
+        renderMedia();
+      };
 
-          this.dom.filePicker.onchange = async (event) => {
-            await this.addFiles(event.target.files);
-            event.target.value = "";
-          };
+      const renderMedia = () => {
+        dom.mediaList.replaceChildren(
+          ...state.media.map((item) =>
+            el(
+              "div",
+              { className: "media-item" },
+              item.type === "image" ? el("img", { src: item.dataUrl, alt: item.name }) : el("video", { src: item.dataUrl, controls: true }),
+              el("div", { className: "media-name", textContent: item.name, title: item.name }),
+              el("button", { type: "button", textContent: "Remove", onclick: () => removeMedia(item.id) }),
+            ),
+          ),
+        );
+        dom.clearMedia.hidden = state.media.length === 0;
+      };
 
-          document.addEventListener("paste", (event) => {
-            if (event.clipboardData?.files.length) {
-              event.preventDefault();
-              this.addFiles(event.clipboardData.files);
-            }
+      const selectOutput = (id) => {
+        state.selectedOutputId = id;
+        const selected = selectedOutput();
+        dom.context.hidden = dom.newThread.hidden = !selected;
+        dom.contextDetail.textContent = selected ? `Editing output from: ${shortPrompt(selected.prompt)}` : "";
+        renderOutputs();
+        dom.prompt.focus();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      };
+
+      const generate = async () => {
+        const apiKey = dom.apiKey.value.trim();
+        const prompt = dom.prompt.value.trim();
+        const parent = selectedOutput();
+        const hasMedia = state.media.length > 0;
+
+        const problem = !apiKey
+          ? "Enter a Gemini API key."
+          : !prompt && !hasMedia
+            ? "Add a prompt or media input."
+            : parent && !prompt
+              ? "Describe what to edit or extend."
+              : parent && state.media.some((item) => item.type === "video")
+                ? "Uploaded source video cannot be combined with a thread continuation. Start a new thread for new source video."
+                : null;
+        if (problem) return setStatus(problem, true);
+
+        state.abortController = new AbortController();
+        const { signal } = state.abortController;
+        const startedAt = Date.now();
+        const timer = setInterval(() => setStatus(`Generating... ${Math.floor((Date.now() - startedAt) / 1000)}s`), STATUS_TICK_MS);
+        setGenerating(true);
+
+        try {
+          const result = await fetchJson(`${API_URL}/interactions?key=${encodeURIComponent(apiKey)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildRequest(prompt, parent, state.media, getConfig())),
+            signal,
           });
 
-          document.body.addEventListener("dragover", (event) => {
-            if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
-          });
-          document.body.addEventListener("drop", (event) => {
-            if (!event.dataTransfer?.files.length) return;
-            event.preventDefault();
-            this.addFiles(event.dataTransfer.files);
-          });
-        }
+          const video = findVideo(result);
+          if (!video) throw new Error("The interaction completed without a video output.");
 
-        async loadState() {
-          const [apiKey, config, draft, outputs] = await Promise.all([
-            get("apiKey", this.store),
-            get("config", this.store),
-            get("draft", this.store),
-            get("outputs", this.store),
-          ]);
-
-          if (apiKey) this.dom.apiKey.value = apiKey;
-          if (config?.aspectRatio) this.dom.aspectRatio.value = config.aspectRatio;
-          if (config?.resolution) this.dom.resolution.value = config.resolution;
-          if (config?.task) this.dom.task.value = config.task;
-          if (draft) this.dom.prompt.value = draft;
-          if (Array.isArray(outputs)) this.outputs = outputs;
-          this.renderOutputs();
-        }
-
-        saveConfig() {
-          return set(
-            "config",
-            {
-              aspectRatio: this.dom.aspectRatio.value,
-              resolution: this.dom.resolution.value,
-              task: this.dom.task.value,
-            },
-            this.store,
-          );
-        }
-
-        openFilePicker(accept, multiple) {
-          this.dom.filePicker.accept = accept;
-          this.dom.filePicker.multiple = multiple;
-          this.dom.filePicker.click();
-        }
-
-        async addFiles(fileList) {
-          const files = [...fileList].filter((file) => file.type.startsWith("image/") || file.type.startsWith("video/"));
-          for (const file of files) {
-            if (file.type.startsWith("video/") && this.media.some((item) => item.type === "video")) {
-              this.setStatus("Only one uploaded video can be used in a request.", true);
-              continue;
-            }
-            this.media.push({
-              id: crypto.randomUUID(),
-              type: file.type.startsWith("image/") ? "image" : "video",
-              name: file.name || "pasted media",
-              mimeType: file.type,
-              dataUrl: await this.blobToDataUrl(file),
-            });
-          }
-          this.renderMedia();
-        }
-
-        clearMedia() {
-          this.media = [];
-          this.renderMedia();
-        }
-
-        renderMedia() {
-          this.dom.mediaList.replaceChildren();
-          for (const item of this.media) {
-            const card = document.createElement("div");
-            card.className = "media-item";
-
-            const preview = document.createElement(item.type === "image" ? "img" : "video");
-            preview.src = item.dataUrl;
-            preview.alt = item.type === "image" ? item.name : "";
-            if (item.type === "video") preview.controls = true;
-
-            const name = document.createElement("div");
-            name.className = "media-name";
-            name.textContent = item.name;
-            name.title = item.name;
-
-            const remove = document.createElement("button");
-            remove.type = "button";
-            remove.textContent = "Remove";
-            remove.onclick = () => {
-              this.media = this.media.filter((media) => media.id !== item.id);
-              this.renderMedia();
-            };
-
-            card.append(preview, name, remove);
-            this.dom.mediaList.appendChild(card);
-          }
-          this.dom.clearMedia.hidden = this.media.length === 0;
-        }
-
-        selectOutput(id) {
-          this.selectedOutputId = id;
-          const selected = this.outputs.find((output) => output.id === id);
-          this.dom.context.hidden = !selected;
-          this.dom.newThread.hidden = !selected;
-          this.dom.contextDetail.textContent = selected ? `Editing output from: ${this.shortPrompt(selected.prompt)}` : "";
-          this.renderOutputs();
-          this.dom.prompt.focus();
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-
-        async generate() {
-          const apiKey = this.dom.apiKey.value.trim();
-          const prompt = this.dom.prompt.value.trim();
-          const parent = this.outputs.find((output) => output.id === this.selectedOutputId);
-          if (!apiKey) return this.setStatus("Enter a Gemini API key.", true);
-          if (!prompt && this.media.length === 0) return this.setStatus("Add a prompt or media input.", true);
-          if (parent && !prompt) return this.setStatus("Describe the edit you want to make.", true);
-          if (parent && this.media.length) {
-            return this.setStatus("Thread edits use the selected output as context. Start a new thread to upload media.", true);
-          }
-
-          this.abortController = new AbortController();
-          this.setGenerating(true);
-          const startedAt = Date.now();
-          this.timer = setInterval(() => {
-            this.setStatus(`Generating... ${Math.floor((Date.now() - startedAt) / 1000)}s`);
-          }, 1000);
-
-          try {
-            const body = this.buildRequest(prompt, parent);
-            const response = await fetch(`${API_URL}/interactions?key=${encodeURIComponent(apiKey)}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body),
-              signal: this.abortController.signal,
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error?.message || `Request failed with status ${response.status}`);
-
-            const video = this.findVideo(result);
-            if (!video) throw new Error("The interaction completed without a video output.");
-            const videoDataUrl = video.data
-              ? `data:${video.mimeType};base64,${video.data}`
-              : await this.downloadVideo(video.uri, apiKey, this.abortController.signal);
-
-            const output = {
-              id: crypto.randomUUID(),
-              interactionId: result.id,
-              parentId: parent?.id || null,
-              prompt,
-              createdAt: Date.now(),
-              aspectRatio: this.dom.aspectRatio.value,
-              resolution: this.dom.resolution.value,
-              videoDataUrl,
-            };
-            this.outputs.push(output);
-            await set("outputs", this.outputs, this.store);
-            this.dom.prompt.value = "";
-            await set("draft", "", this.store);
-            this.clearMedia();
-            this.selectOutput(output.id);
-            this.setStatus("Video ready.");
-          } catch (error) {
-            this.setStatus(error.name === "AbortError" ? "Generation cancelled." : error.message, error.name !== "AbortError");
-          } finally {
-            clearInterval(this.timer);
-            this.timer = null;
-            this.abortController = null;
-            this.setGenerating(false);
-          }
-        }
-
-        buildRequest(prompt, parent) {
-          const body = {
-            model: MODEL,
-            response_format: {
-              type: "video",
-              delivery: "uri",
-              aspect_ratio: this.dom.aspectRatio.value,
-              resolution: this.dom.resolution.value,
-            },
-            generation_config: { video_config: {} },
-            background: false,
-            store: true,
-            stream: false,
+          const output = {
+            id: crypto.randomUUID(),
+            interactionId: result.id,
+            parentId: parent?.id || null,
+            prompt,
+            createdAt: Date.now(),
+            aspectRatio: dom.aspectRatio.value,
+            resolution: dom.resolution.value,
+            videoDataUrl: video.data ? `data:${video.mimeType};base64,${video.data}` : await downloadVideo(video.uri, apiKey, signal),
           };
+          state.outputs.push(output);
+          await save("outputs", state.outputs);
 
-          if (parent) {
-            body.previous_interaction_id = parent.interactionId;
-            body.input = prompt;
-            return body;
-          }
+          dom.prompt.value = "";
+          await save("draft", "");
+          clearMedia();
+          selectOutput(output.id);
+          setStatus("Video ready.");
+        } catch (error) {
+          const cancelled = error.name === "AbortError";
+          setStatus(cancelled ? "Generation cancelled." : error.message, !cancelled);
+        } finally {
+          clearInterval(timer);
+          state.abortController = null;
+          setGenerating(false);
+        }
+      };
 
-          if (this.dom.task.value) body.generation_config.video_config.task = this.dom.task.value;
+      const downloadVideo = async (uri, apiKey, signal) => {
+        if (!uri) throw new Error("The video response contained neither data nor a URI.");
+        const fileId = uri.match(/files\/([^/:?]+)/)?.[1];
+        const key = encodeURIComponent(apiKey);
+        if (fileId) await waitForFile(fileId, key, signal);
 
-          const content = this.media.map((item) => ({
-            type: item.type,
-            data: item.dataUrl.split(",")[1],
-            mime_type: item.mimeType,
-          }));
-          if (prompt) content.push({ type: "text", text: prompt });
-          if (content.some((item) => item.type === "video")) {
-            body.input = [{ type: "user_input", content }];
-          } else {
-            body.input = content.length === 1 && content[0].type === "text" ? prompt : content;
-          }
+        const response = await fetch(fileId ? `${API_URL}/files/${fileId}:download?alt=media&key=${key}` : uri, {
+          headers: fileId ? undefined : { "x-goog-api-key": apiKey },
+          signal,
+        });
+        if (!response.ok) throw new Error(`Video download failed with status ${response.status}`);
+        return blobToDataUrl(await response.blob());
+      };
+
+      const waitForFile = async (fileId, key, signal) => {
+        while (true) {
+          const file = await fetchJson(`${API_URL}/files/${fileId}?key=${key}`, { signal });
+          const fileState = file.state?.name ?? file.state;
+          if (fileState === "ACTIVE") return;
+          if (fileState === "FAILED") throw new Error("Gemini failed to process the generated video.");
+          await wait(FILE_POLL_INTERVAL_MS, signal);
+        }
+      };
+
+      const setGenerating = (active) => {
+        dom.generate.textContent = active ? "Cancel" : "Generate video";
+        for (const field of [dom.apiKey, dom.prompt, dom.aspectRatio, dom.resolution, dom.task]) field.disabled = active;
+      };
+
+      const setStatus = (message, isError = false) => {
+        dom.requestStatus.textContent = message;
+        dom.requestStatus.classList.toggle("error", isError);
+      };
+
+      const renderOutputs = () => {
+        const depths = depthsById(state.outputs);
+        dom.emptyState.hidden = state.outputs.length > 0;
+        dom.outputList.replaceChildren(
+          ...state.outputs.toReversed().map((output) => {
+            const depth = depths.get(output.id) || 0;
+            const isSelected = output.id === state.selectedOutputId;
+            return el(
+              "article",
+              { className: `output ${isSelected ? "selected" : ""}`, style: `--depth: ${Math.min(depth, MAX_INDENT_DEPTH)}` },
+              el(
+                "div",
+                { className: "output-heading" },
+                el("h3", { textContent: depth ? `Edit ${depth}` : "Original" }),
+                el(
+                  "div",
+                  { className: "output-actions" },
+                  el("button", {
+                    type: "button",
+                    textContent: isSelected ? "Selected as context" : "Continue from here",
+                    disabled: isSelected,
+                    onclick: () => selectOutput(output.id),
+                  }),
+                  el("a", { href: output.videoDataUrl, download: `gemini-omni-${output.id}.mp4`, textContent: "Download" }),
+                  el("button", { type: "button", textContent: "Remove", onclick: () => removeOutput(output.id) }),
+                ),
+              ),
+              el("div", {
+                className: "meta",
+                textContent: `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio} · ${output.resolution || "720p"}`,
+              }),
+              el("div", { className: "prompt", textContent: output.prompt || "Media input only" }),
+              el("video", { src: output.videoDataUrl, controls: true, loop: true, preload: "metadata" }),
+            );
+          }),
+        );
+      };
+
+      const removeOutput = async (id) => {
+        if (state.selectedOutputId === id) selectOutput(null);
+        state.outputs = state.outputs.filter((output) => output.id !== id).map((output) => (output.parentId === id ? { ...output, parentId: null } : output));
+        await save("outputs", state.outputs);
+        renderOutputs();
+      };
+
+      const clearOutputs = async () => {
+        if (!state.outputs.length || !confirm("Remove all saved outputs and thread history?")) return;
+        selectOutput(null);
+        state.outputs = [];
+        await save("outputs", []);
+        renderOutputs();
+      };
+
+      const buildRequest = (prompt, parent, media, { aspectRatio, resolution, task }) => {
+        const body = {
+          model: MODEL,
+          response_format: { type: "video", delivery: "uri", aspect_ratio: aspectRatio, resolution },
+          generation_config: { video_config: task && !parent ? { task } : {} },
+          background: false,
+          store: true,
+          stream: false,
+        };
+
+        const content = media.map(({ type, dataUrl, mimeType }) => ({ type, data: dataUrl.split(",")[1], mime_type: mimeType }));
+        if (prompt) content.push({ type: "text", text: prompt });
+
+        if (parent) {
+          body.previous_interaction_id = parent.interactionId;
+          body.input = content.length > 0 ? (content.length === 1 && content[0].type === "text" ? prompt : content) : prompt;
           return body;
         }
 
-        findVideo(result) {
-          if (result.output_video) {
-            return {
-              data: result.output_video.data,
-              uri: result.output_video.uri,
-              mimeType: result.output_video.mime_type || "video/mp4",
-            };
-          }
-          for (const step of result.steps || []) {
-            for (const content of step.content || []) {
-              if (content.type === "video") {
-                return { data: content.data, uri: content.uri, mimeType: content.mime_type || "video/mp4" };
-              }
-            }
-          }
-          return null;
-        }
+        const textOnly = content.length === 1 && content[0].type === "text";
+        const hasVideo = content.some(({ type }) => type === "video");
+        return { ...body, input: hasVideo ? [{ type: "user_input", content }] : textOnly ? prompt : content };
+      };
 
-        async downloadVideo(uri, apiKey, signal) {
-          if (!uri) throw new Error("The video response contained neither data nor a URI.");
-          const fileId = uri.match(/files\/([^/:?]+)/)?.[1];
-          if (fileId) {
-            while (true) {
-              const statusResponse = await fetch(`${API_URL}/files/${fileId}?key=${encodeURIComponent(apiKey)}`, {
-                signal,
-              });
-              const file = await statusResponse.json();
-              if (!statusResponse.ok) {
-                throw new Error(file.error?.message || `File status failed with status ${statusResponse.status}`);
-              }
-              const state = typeof file.state === "string" ? file.state : file.state?.name;
-              if (state === "ACTIVE") break;
-              if (state === "FAILED") throw new Error("Gemini failed to process the generated video.");
-              await this.wait(5000, signal);
-            }
-          }
-          const downloadUrl = fileId ? `${API_URL}/files/${fileId}:download?alt=media&key=${encodeURIComponent(apiKey)}` : uri;
-          const response = await fetch(downloadUrl, {
-            headers: fileId ? undefined : { "x-goog-api-key": apiKey },
-            signal,
-          });
-          if (!response.ok) throw new Error(`Video download failed with status ${response.status}`);
-          return this.blobToDataUrl(await response.blob());
-        }
+      const findVideo = ({ output_video, steps = [] }) => {
+        const video = output_video ?? steps.flatMap(({ content = [] }) => content).find(({ type }) => type === "video");
+        return video ? { data: video.data, uri: video.uri, mimeType: video.mime_type || "video/mp4" } : null;
+      };
 
-        wait(milliseconds, signal) {
-          return new Promise((resolve, reject) => {
-            const timeout = setTimeout(resolve, milliseconds);
-            signal.addEventListener(
-              "abort",
-              () => {
-                clearTimeout(timeout);
-                reject(new DOMException("Generation cancelled", "AbortError"));
-              },
-              { once: true },
-            );
-          });
-        }
+      const depthsById = (outputs) => outputs.reduce((depths, { id, parentId }) => depths.set(id, parentId ? (depths.get(parentId) ?? 0) + 1 : 0), new Map());
 
-        cancelGeneration() {
-          this.abortController?.abort();
-        }
+      const fetchJson = async (url, options) => {
+        const response = await fetch(url, options);
+        const json = await response.json();
+        if (!response.ok) throw new Error(json.error?.message || `Request failed with status ${response.status}`);
+        return json;
+      };
 
-        setGenerating(active) {
-          this.dom.generate.textContent = active ? "Cancel" : "Generate video";
-          this.dom.apiKey.disabled = active;
-          this.dom.prompt.disabled = active;
-          this.dom.aspectRatio.disabled = active;
-          this.dom.resolution.disabled = active;
-          this.dom.task.disabled = active;
-        }
+      const el = (tag, props = {}, ...children) => {
+        const element = Object.assign(document.createElement(tag), props);
+        element.append(...children);
+        return element;
+      };
 
-        setStatus(message, error = false) {
-          this.dom.requestStatus.textContent = message;
-          this.dom.requestStatus.classList.toggle("error", error);
-        }
+      const shortPrompt = (prompt) =>
+        !prompt ? "media input" : prompt.length > SHORT_PROMPT_LENGTH ? `${prompt.slice(0, SHORT_PROMPT_LENGTH - 3)}...` : prompt;
 
-        renderOutputs() {
-          this.dom.outputList.replaceChildren();
-          this.dom.emptyState.hidden = this.outputs.length > 0;
+      const wait = (milliseconds, signal) =>
+        new Promise((resolve, reject) => {
+          const timeout = setTimeout(resolve, milliseconds);
+          signal.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timeout);
+              reject(new DOMException("Generation cancelled", "AbortError"));
+            },
+            { once: true },
+          );
+        });
 
-          const depthById = new Map();
-          for (const output of this.outputs) {
-            const parentDepth = output.parentId ? (depthById.get(output.parentId) ?? 0) : -1;
-            depthById.set(output.id, parentDepth + 1);
-          }
+      const blobToDataUrl = (blob) =>
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
 
-          for (const output of [...this.outputs].reverse()) {
-            const card = document.createElement("article");
-            card.className = `output ${output.id === this.selectedOutputId ? "selected" : ""}`;
-            card.style.marginLeft = `${Math.min(depthById.get(output.id) || 0, 4) * 0.75}rem`;
-
-            const heading = document.createElement("div");
-            heading.className = "output-heading";
-            const title = document.createElement("h3");
-            const depth = depthById.get(output.id) || 0;
-            title.textContent = depth ? `Edit ${depth}` : "Original";
-
-            const actions = document.createElement("div");
-            actions.className = "output-actions";
-            const use = document.createElement("button");
-            use.type = "button";
-            use.textContent = output.id === this.selectedOutputId ? "Selected as context" : "Continue from here";
-            use.disabled = output.id === this.selectedOutputId;
-            use.onclick = () => this.selectOutput(output.id);
-            const download = document.createElement("a");
-            download.href = output.videoDataUrl;
-            download.download = `gemini-omni-${output.id}.mp4`;
-            download.textContent = "Download";
-            const remove = document.createElement("button");
-            remove.type = "button";
-            remove.textContent = "Remove";
-            remove.onclick = () => this.removeOutput(output.id);
-            actions.append(use, download, remove);
-            heading.append(title, actions);
-
-            const meta = document.createElement("div");
-            meta.className = "meta";
-            meta.textContent = `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio} · ${output.resolution || "720p"}`;
-            const prompt = document.createElement("div");
-            prompt.className = "prompt";
-            prompt.textContent = output.prompt || "Media input only";
-            const video = document.createElement("video");
-            video.src = output.videoDataUrl;
-            video.controls = true;
-            video.loop = true;
-            video.preload = "metadata";
-            card.append(heading, meta, prompt, video);
-            this.dom.outputList.appendChild(card);
-          }
-        }
-
-        async removeOutput(id) {
-          if (this.selectedOutputId === id) this.selectOutput(null);
-          this.outputs = this.outputs.filter((output) => output.id !== id);
-          for (const output of this.outputs) {
-            if (output.parentId === id) output.parentId = null;
-          }
-          await set("outputs", this.outputs, this.store);
-          this.renderOutputs();
-        }
-
-        async clearOutputs() {
-          if (!this.outputs.length || !confirm("Remove all saved outputs and thread history?")) return;
-          this.selectOutput(null);
-          this.outputs = [];
-          await set("outputs", [], this.store);
-          this.renderOutputs();
-        }
-
-        shortPrompt(prompt) {
-          if (!prompt) return "media input";
-          return prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt;
-        }
-
-        blobToDataUrl(blob) {
-          return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        }
-      }
-
-      new OmniLab();
+      init();
     </script>
   </body>
 </html>
