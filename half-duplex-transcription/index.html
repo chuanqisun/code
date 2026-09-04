@@ -488,7 +488,13 @@
       }
 
       function createInput({ type = "text", placeholder = "" }) {
-        return Object.assign(document.createElement("input"), { type, placeholder });
+        const input = Object.assign(document.createElement("input"), { type, placeholder });
+        if (type === "password") {
+          input.name = "user-password";
+          input.autocomplete = "off";
+          input.setAttribute("data-1p-ignore", "");
+        }
+        return input;
       }
 
       function getProviderConfig() {
