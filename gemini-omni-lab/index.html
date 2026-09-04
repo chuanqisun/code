@@ -227,6 +227,14 @@
             </select>
           </label>
           <label>
+            <span>Duration</span>
+            <select id="duration">
+              <option value="default">Default</option>
+              <option value="4s">4s</option>
+              <option value="8s">8s</option>
+            </select>
+          </label>
+          <label>
             <span>Resolution</span>
             <select id="resolution">
               <option value="360p">360p</option>
@@ -288,6 +296,7 @@
     <input id="file-picker" type="file" hidden multiple />
 
     <script type="module">
+      import { GoogleGenAI } from "https://esm.sh/@google/genai";
       import { createStore, get, set } from "https://esm.sh/idb-keyval";
 
       const API_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -305,6 +314,7 @@
       const dom = {
         apiKey: $("api-key"),
         aspectRatio: $("aspect-ratio"),
+        duration: $("duration"),
         resolution: $("resolution"),
         task: $("task"),
         prompt: $("prompt"),
@@ -331,6 +341,7 @@
         const [apiKey, config, draft, outputs] = await Promise.all(["apiKey", "config", "draft", "outputs"].map(load));
         if (apiKey) dom.apiKey.value = apiKey;
         if (config?.aspectRatio) dom.aspectRatio.value = config.aspectRatio;
+        if (config?.duration) dom.duration.value = config.duration;
         if (config?.resolution) dom.resolution.value = config.resolution;
         if (config?.task) dom.task.value = config.task;
         if (draft) dom.prompt.value = draft;
@@ -341,7 +352,7 @@
       const bindEvents = () => {
         dom.apiKey.oninput = () => save("apiKey", dom.apiKey.value);
         dom.prompt.oninput = () => save("draft", dom.prompt.value);
-        dom.aspectRatio.onchange = dom.resolution.onchange = dom.task.onchange = () => save("config", getConfig());
+        dom.aspectRatio.onchange = dom.duration.onchange = dom.resolution.onchange = dom.task.onchange = () => save("config", getConfig());
 
         dom.addImages.onclick = () => openFilePicker("image/*", true);
         dom.addVideo.onclick = () => openFilePicker("video/*", false);
@@ -372,6 +383,7 @@
 
       const getConfig = () => ({
         aspectRatio: dom.aspectRatio.value,
+        duration: dom.duration.value,
         resolution: dom.resolution.value,
         task: dom.task.value,
       });
@@ -461,12 +473,11 @@
         setGenerating(true);
 
         try {
-          const result = await fetchJson(`${API_URL}/interactions?key=${encodeURIComponent(apiKey)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(buildRequest(prompt, parent, state.media, getConfig())),
-            signal,
-          });
+          const ai = new GoogleGenAI({ apiKey });
+          const result = await ai.interactions.create(
+            buildRequest(prompt, parent, state.media, getConfig()),
+            { signal },
+          );
 
           const video = findVideo(result);
           if (!video) throw new Error("The interaction completed without a video output.");
@@ -478,6 +489,7 @@
             prompt,
             createdAt: Date.now(),
             aspectRatio: dom.aspectRatio.value,
+            duration: dom.duration.value,
             resolution: dom.resolution.value,
             videoDataUrl: video.data ? `data:${video.mimeType};base64,${video.data}` : await downloadVideo(video.uri, apiKey, signal),
           };
@@ -525,7 +537,7 @@
 
       const setGenerating = (active) => {
         dom.generate.textContent = active ? "Cancel" : "Generate video";
-        for (const field of [dom.apiKey, dom.prompt, dom.aspectRatio, dom.resolution, dom.task]) field.disabled = active;
+        for (const field of [dom.apiKey, dom.prompt, dom.aspectRatio, dom.duration, dom.resolution, dom.task]) field.disabled = active;
       };
 
       const setStatus = (message, isError = false) => {
@@ -562,7 +574,7 @@
               ),
               el("div", {
                 className: "meta",
-                textContent: `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio} · ${output.resolution || "720p"}`,
+                textContent: `${new Date(output.createdAt).toLocaleString()} · ${output.aspectRatio} · ${output.resolution || "720p"}${output.duration && output.duration !== "default" ? ` · ${output.duration}` : ""}`,
               }),
               el("div", { className: "prompt", textContent: output.prompt || "Media input only" }),
               el("video", { src: output.videoDataUrl, controls: true, loop: true, preload: "metadata" }),
@@ -586,11 +598,17 @@
         renderOutputs();
       };
 
-      const buildRequest = (prompt, parent, media, { aspectRatio, resolution, task }) => {
+      const buildRequest = (prompt, parent, media, { aspectRatio, resolution, duration, task }) => {
         const body = {
           model: MODEL,
-          response_format: { type: "video", delivery: "uri", aspect_ratio: aspectRatio, resolution },
-          generation_config: { video_config: task && !parent ? { task } : {} },
+          response_format: {
+            type: "video",
+            delivery: "inline",
+            ...(aspectRatio && aspectRatio !== "default" ? { aspect_ratio: aspectRatio } : {}),
+            ...(resolution && resolution !== "default" ? { resolution } : {}),
+            ...(duration && duration !== "default" ? { duration } : {}),
+          },
+          ...(task && task !== "default" && !parent ? { generation_config: { video_config: { task } } } : {}),
           background: false,
           store: true,
           stream: false,
@@ -610,7 +628,7 @@
         return { ...body, input: hasVideo ? [{ type: "user_input", content }] : textOnly ? prompt : content };
       };
 
-      const findVideo = ({ output_video, steps = [] }) => {
+      const findVideo = ({ output_video, steps = [] } = {}) => {
         const video = output_video ?? steps.flatMap(({ content = [] }) => content).find(({ type }) => type === "video");
         return video ? { data: video.data, uri: video.uri, mimeType: video.mime_type || "video/mp4" } : null;
       };
