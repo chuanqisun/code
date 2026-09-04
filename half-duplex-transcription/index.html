@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-Provider Streaming STT</title>
+    <style>
+      :root {
+        --gap: 6px;
+        --radius: 4px;
+        --border: 1px solid #e0e0e0;
+        --bg-panel: #fafafa;
+        --bg-metrics: #f4f4f4;
+        --text-muted: #666;
+        --text-alert: red;
+        --font-body: sans-serif;
+        --font-mono: monospace;
+        --font-size-small: 13px;
+        --font-size-tiny: 12px;
+      }
+
+      body {
+        font-family: var(--font-body);
+        margin: 0;
+        padding: 8px;
+        height: 100vh;
+        box-sizing: border-box;
+        display: grid;
+        grid-template-rows: auto auto auto auto 1fr;
+        gap: var(--gap);
+      }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        padding: 6px 10px;
+        background: var(--bg-panel);
+        border: var(--border);
+        border-radius: var(--radius);
+
+        .provider-picker {
+          display: flex;
+          gap: var(--gap);
+          align-items: center;
+          font-weight: 500;
+        }
+
+        #credentials {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+
+          label {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            font-size: var(--font-size-small);
+          }
+
+          input,
+          select {
+            padding: 3px 6px;
+            font-size: var(--font-size-small);
+          }
+        }
+      }
+
+      #mode-select {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-size: var(--font-size-small);
+
+        label {
+          cursor: pointer;
+        }
+      }
+
+      #controls {
+        display: flex;
+        gap: var(--gap);
+        align-items: center;
+
+        #recording-indicator {
+          color: var(--text-alert);
+          font-weight: bold;
+        }
+
+        #status {
+          font-size: var(--font-size-tiny);
+          color: var(--text-muted);
+        }
+      }
+
+      button {
+        cursor: pointer;
+        padding: 4px 10px;
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      #metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+        gap: 2px 12px;
+        padding: 6px 8px;
+        background: var(--bg-metrics);
+        border-radius: 3px;
+        font-family: var(--font-mono);
+        font-size: var(--font-size-tiny);
+
+        span {
+          white-space: nowrap;
+        }
+
+        .label {
+          color: var(--text-muted);
+        }
+      }
+
+      textarea {
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        resize: none;
+        padding: 8px;
+        font-family: inherit;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="provider-picker">
+        <label for="provider-select"><strong>Provider:</strong></label>
+        <select id="provider-select">
+          <option value="mai_transcribe_2">MAI Transcribe-2</option>
+          <option value="azure">Azure Fast Transcription</option>
+          <option value="groq">Groq Whisper</option>
+        </select>
+      </div>
+      <div id="credentials"></div>
+    </header>
+
+    <div id="mode-select">
+      <strong>Mode:</strong>
+      <label><input type="radio" name="mode" value="stream" checked /> Stream (half-duplex)</label>
+      <label><input type="radio" name="mode" value="rest" /> REST (record then submit)</label>
+    </div>
+
+    <section id="controls">
+      <button id="recordBtn">⏺ Record & Stream</button>
+      <button id="stopBtn" disabled>⏹ Stop</button>
+      <button id="submitBtn" hidden disabled>▶ Transcribe</button>
+      <span id="recording-indicator" hidden>● REC</span>
+      <span id="status"></span>
+    </section>
+
+    <div id="metrics">
+      <span><span class="label">Chunks:</span> <span id="m-chunks">0</span></span>
+      <span><span class="label">Audio queued:</span> <span id="m-queued">0 KB</span></span>
+      <span><span class="label">Transmitted:</span> <span id="m-transmitted">0 KB</span></span>
+      <span><span class="label">Elapsed:</span> <span id="m-elapsed">0.0s</span></span>
+      <span><span class="label">Upload rate:</span> <span id="m-rate">0 KB/s</span></span>
+      <span><span class="label">Stop→Result:</span> <span id="m-latency">—</span></span>
+      <span><span class="label">State:</span> <span id="m-state">idle</span></span>
+    </div>
+
+    <textarea id="output" readonly placeholder="Transcription will appear here..."></textarea>
+
+    <script>
+      // ───────────────────────── Constants ─────────────────────────
+
+      const SAMPLE_RATE = 16000;
+      const PCM_BUFFER_FRAMES = 4096;
+      const WEBM_TIMESLICE_MS = 250;
+      const METRICS_TICK_MS = 100;
+      const STORAGE_PREFIX = "stt_cfg_";
+      const PROVIDER_STORAGE_KEY = "stt_selected_provider";
+      const TRANSCRIBE_PATH = "/speechtotext/transcriptions:transcribe";
+
+      const UI_STATES = {
+        idle: { record: true, stop: false, submit: false, indicator: false },
+        recording: { record: false, stop: true, submit: false, indicator: true },
+        recorded: { record: true, stop: false, submit: true, indicator: false },
+        uploading: { record: false, stop: false, submit: false, indicator: false },
+      };
+
+      const providers = {
+        mai_transcribe_2: azureSpeechProvider({
+          id: "mai_transcribe_2",
+          name: "MAI Transcribe-2",
+          audioFormat: "wav",
+          apiVersion: "2025-10-15",
+          fields: [
+            {
+              id: "endpoint",
+              label: "Endpoint URL",
+              type: "text",
+              placeholder: "https://<resource>.cognitiveservices.azure.com",
+              width: "240px",
+              required: true,
+            },
+            { id: "key", label: "API Key", type: "password", placeholder: "Foundry / Speech Key...", width: "200px", required: true },
+            {
+              id: "style",
+              label: "Style",
+              type: "select",
+              default: "verbatim",
+              options: [
+                { value: "verbatim", label: "Verbatim" },
+                { value: "clean", label: "Clean" },
+              ],
+            },
+            {
+              id: "diarization",
+              label: "Diarization",
+              type: "select",
+              default: "false",
+              options: [
+                { value: "false", label: "Disabled" },
+                { value: "true", label: "Enabled" },
+              ],
+            },
+            { id: "locale", label: "Locale", type: "text", placeholder: "Auto (or e.g. en)", width: "80px" },
+          ],
+          baseUrl: ({ endpoint }) => normalizeEndpoint(endpoint),
+          definition: ({ style, diarization, locale }) => ({
+            enhancedMode: {
+              enabled: true,
+              model: "MAI-Transcribe-2",
+              modelOptions: { transcribeStyle: style || "verbatim" },
+            },
+            ...(diarization === "true" && { diarization: { enabled: true } }),
+            ...(locale?.trim() && { locales: [locale.trim()] }),
+          }),
+        }),
+
+        azure: azureSpeechProvider({
+          id: "azure",
+          name: "Azure Fast Transcription",
+          audioFormat: "webm",
+          apiVersion: "2024-11-15",
+          fields: [
+            {
+              id: "endpoint",
+              label: "Endpoint URL",
+              type: "text",
+              placeholder: "https://<resource>.cognitiveservices.azure.com",
+              width: "240px",
+              required: true,
+            },
+            { id: "key", label: "API Key", type: "password", placeholder: "Azure Speech Key...", width: "200px", required: true },
+          ],
+          baseUrl: ({ endpoint }) => normalizeEndpoint(endpoint),
+          definition: () => ({ locales: ["en-US"] }),
+        }),
+
+        groq: {
+          id: "groq",
+          name: "Groq Whisper",
+          audioFormat: "webm",
+          fields: [{ id: "key", label: "API Key", type: "password", placeholder: "gsk_...", width: "260px", required: true }],
+          url: () => "https://api.groq.com/openai/v1/audio/transcriptions",
+          headers: ({ key }) => ({ Authorization: `Bearer ${key.trim()}` }),
+          formFields: () => [
+            { name: "model", value: "whisper-large-v3-turbo" },
+            { name: "response_format", value: "verbose_json" },
+            { name: "temperature", value: "0" },
+          ],
+          fileFieldName: "file",
+          parseResponse: (data) => data.text || JSON.stringify(data, null, 2),
+        },
+      };
+
+      // ───────────────────────── State & DOM ─────────────────────────
+
+      const $ = (id) => document.getElementById(id);
+
+      const providerSelect = $("provider-select");
+      const credentials = $("credentials");
+      const recordBtn = $("recordBtn");
+      const stopBtn = $("stopBtn");
+      const submitBtn = $("submitBtn");
+      const recordingIndicator = $("recording-indicator");
+      const status = $("status");
+      const output = $("output");
+      const metricEls = {
+        chunks: $("m-chunks"),
+        queued: $("m-queued"),
+        transmitted: $("m-transmitted"),
+        elapsed: $("m-elapsed"),
+        rate: $("m-rate"),
+        latency: $("m-latency"),
+        state: $("m-state"),
+      };
+
+      let currentProvider = providers[localStorage.getItem(PROVIDER_STORAGE_KEY)] ?? providers.mai_transcribe_2;
+      let recorder = null;
+      let micStream = null;
+      let recordedChunks = [];
+      let metrics = createMetrics();
+      let metricsInterval = null;
+
+      // ───────────────────────── Main wiring ─────────────────────────
+
+      providerSelect.value = currentProvider.id;
+      renderCredentials();
+
+      providerSelect.onchange = ({ target }) => {
+        currentProvider = providers[target.value];
+        localStorage.setItem(PROVIDER_STORAGE_KEY, currentProvider.id);
+        renderCredentials();
+      };
+
+      document.querySelectorAll('input[name="mode"]').forEach((radio) => {
+        radio.onchange = () => {
+          const isRest = getMode() === "rest";
+          submitBtn.hidden = !isRest;
+          submitBtn.disabled = true;
+          recordBtn.textContent = isRest ? "⏺ Record" : "⏺ Record & Stream";
+          recordedChunks = [];
+        };
+      });
+
+      recordBtn.onclick = async () => {
+        const config = getProviderConfig();
+        const error = validateConfig(currentProvider, config);
+        if (error) return setStatus(error);
+
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          recorder = createRecorder(currentProvider.audioFormat);
+          recordedChunks = [];
+          output.value = "";
+          metrics = createMetrics("recording");
+          startMetricsInterval();
+          setUI("recording");
+
+          getMode() === "stream" ? startStreaming(config) : startLocalRecording();
+          await recorder.start(micStream);
+        } catch (err) {
+          setStatus("Mic error: " + err.message);
+        }
+      };
+
+      stopBtn.onclick = () => {
+        if (recorder?.state !== "recording") return;
+        recorder.stop();
+        if (getMode() === "stream") setStatus("Stopping... flushing upload & waiting for response...");
+      };
+
+      submitBtn.onclick = async () => {
+        const config = getProviderConfig();
+        const error = validateConfig(currentProvider, config);
+        if (error) return setStatus(error);
+        if (!recordedChunks.length) return setStatus("Record audio first");
+
+        setUI("uploading", `Uploading to ${currentProvider.name}...`);
+        output.value = "";
+        Object.assign(metrics, { transmitted: 0, stopTime: Date.now(), resultTime: null });
+        startMetricsInterval();
+
+        recordedChunks = recorder.finalizeChunks(recordedChunks);
+        await runTranscription(config, streamFromChunks(recordedChunks));
+
+        setUI("recorded");
+        stopMetricsInterval();
+      };
+
+      // ───────────────────────── Controller ─────────────────────────
+
+      function startStreaming(config) {
+        const { stream, push, close } = createPushStream();
+
+        recorder.onData = (chunk) => {
+          trackChunk(chunk);
+          push(chunk);
+        };
+        recorder.onStop = () => {
+          Object.assign(metrics, { stopTime: Date.now(), state: "flushing upload" });
+          close();
+        };
+
+        setStatus(`Recording & streaming to ${currentProvider.name}...`);
+        runTranscription(config, stream).finally(() => {
+          releaseMic();
+          setUI("idle");
+          stopMetricsInterval();
+        });
+      }
+
+      function startLocalRecording() {
+        recorder.onData = (chunk) => {
+          trackChunk(chunk);
+          recordedChunks.push(chunk);
+        };
+        recorder.onStop = () => {
+          releaseMic();
+          metrics.state = "recorded, ready to submit";
+          setUI("recorded", `Recorded ${fmtKB(metrics.queued)} (${recorder.ext.toUpperCase()}). Click Transcribe.`);
+          stopMetricsInterval();
+        };
+        setStatus("Recording locally...");
+      }
+
+      async function runTranscription(config, audioStream) {
+        Object.assign(metrics, { transmitStartTime: Date.now(), state: "uploading" });
+
+        try {
+          const { url, headers, body } = buildRequest(currentProvider, config, audioStream, recorder);
+          const resp = await fetch(url, { method: "POST", headers, body: body.pipeThrough(meterStream()), duplex: "half" });
+          metrics.state = "reading response";
+
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+
+          const text = currentProvider.parseResponse(await resp.json());
+          Object.assign(metrics, { resultTime: Date.now(), state: "done" });
+          output.value = text;
+          setStatus(`Done. ${text.length} chars. Latency: ${metrics.resultTime - metrics.stopTime}ms`);
+        } catch (err) {
+          metrics.state = "error";
+          output.value = "Error: " + err.message;
+          setStatus("Failed");
+        }
+      }
+
+      function trackChunk(chunk) {
+        metrics.chunks++;
+        metrics.queued += chunk.byteLength;
+      }
+
+      function releaseMic() {
+        micStream?.getTracks().forEach((track) => track.stop());
+      }
+
+      // ───────────────────────── UI helpers ─────────────────────────
+
+      function setUI(state, message) {
+        const { record, stop, submit, indicator } = UI_STATES[state];
+        recordBtn.disabled = !record;
+        stopBtn.disabled = !stop;
+        submitBtn.disabled = !submit;
+        recordingIndicator.hidden = !indicator;
+        if (message != null) setStatus(message);
+      }
+
+      function setStatus(message) {
+        status.textContent = message;
+      }
+
+      function getMode() {
+        return document.querySelector('input[name="mode"]:checked').value;
+      }
+
+      function storageKey(fieldId) {
+        return `${STORAGE_PREFIX}${currentProvider.id}_${fieldId}`;
+      }
+
+      function renderCredentials() {
+        credentials.replaceChildren(
+          ...currentProvider.fields.map((field) => {
+            const input = field.type === "select" ? createSelect(field.options) : createInput(field);
+            input.dataset.fieldId = field.id;
+            if (field.width) input.style.width = field.width;
+            input.value = localStorage.getItem(storageKey(field.id)) ?? field.default ?? "";
+
+            const persist = () => localStorage.setItem(storageKey(field.id), input.value);
+            input.oninput = input.onchange = persist;
+
+            const label = document.createElement("label");
+            label.append(`${field.label}: `, input);
+            return label;
+          }),
+        );
+      }
+
+      function createSelect(options = []) {
+        const select = document.createElement("select");
+        select.append(...options.map(({ value, label }) => new Option(label, value)));
+        return select;
+      }
+
+      function createInput({ type = "text", placeholder = "" }) {
+        return Object.assign(document.createElement("input"), { type, placeholder });
+      }
+
+      function getProviderConfig() {
+        return Object.fromEntries([...credentials.querySelectorAll("input, select")].map((el) => [el.dataset.fieldId, el.value]));
+      }
+
+      function validateConfig({ fields, name }, config) {
+        const missing = fields.find((f) => f.required && !config[f.id]?.trim());
+        return missing ? `${missing.label} is required for ${name}.` : null;
+      }
+
+      function normalizeEndpoint(endpoint = "") {
+        const trimmed = endpoint.trim().replace(/\/+$/, "");
+        return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+      }
+
+      // ───────────────────────── Metrics ─────────────────────────
+
+      function createMetrics(state = "idle") {
+        return { chunks: 0, queued: 0, transmitted: 0, startTime: Date.now(), transmitStartTime: null, stopTime: null, resultTime: null, state };
+      }
+
+      function updateMetricsUI() {
+        const { chunks, queued, transmitted, startTime, transmitStartTime, stopTime, resultTime, state } = metrics;
+        const now = Date.now();
+        const elapsed = (now - startTime) / 1000;
+        const txElapsed = transmitStartTime ? (now - transmitStartTime) / 1000 : elapsed;
+
+        metricEls.chunks.textContent = chunks;
+        metricEls.queued.textContent = fmtKB(queued);
+        metricEls.transmitted.textContent = fmtKB(transmitted);
+        metricEls.elapsed.textContent = elapsed.toFixed(1) + "s";
+        metricEls.rate.textContent = txElapsed > 0 && transmitted > 0 ? fmtKB(transmitted / txElapsed) + "/s" : "0 KB/s";
+        metricEls.state.textContent = state;
+        metricEls.latency.textContent = !stopTime ? "—" : resultTime ? `${resultTime - stopTime} ms` : `${now - stopTime} ms …`;
+      }
+
+      function startMetricsInterval() {
+        clearInterval(metricsInterval);
+        metricsInterval = setInterval(updateMetricsUI, METRICS_TICK_MS);
+        updateMetricsUI();
+      }
+
+      function stopMetricsInterval() {
+        setTimeout(() => {
+          updateMetricsUI();
+          clearInterval(metricsInterval);
+        }, 200);
+      }
+
+      function meterStream() {
+        return new TransformStream({
+          transform(chunk, ctrl) {
+            metrics.transmitted += chunk.byteLength;
+            ctrl.enqueue(chunk);
+          },
+          flush() {
+            metrics.state = "upload complete, awaiting response";
+          },
+        });
+      }
+
+      function fmtKB(bytes) {
+        return (bytes / 1024).toFixed(1) + " KB";
+      }
+
+      // ───────────────────────── Provider helpers ─────────────────────────
+
+      function azureSpeechProvider({ id, name, audioFormat, apiVersion, fields, baseUrl, definition }) {
+        return {
+          id,
+          name,
+          audioFormat,
+          fields,
+          url: (config) => `${baseUrl(config)}${TRANSCRIBE_PATH}?api-version=${apiVersion}`,
+          headers: ({ key }) => ({ Accept: "application/json", "ocp-apim-subscription-key": key.trim() }),
+          formFields: (config) => [{ name: "definition", value: JSON.stringify(definition(config)), contentType: "application/json" }],
+          fileFieldName: "audio",
+          parseResponse: parseAzureSpeechResponse,
+        };
+      }
+
+      function parseAzureSpeechResponse(data) {
+        const { phrases = [], combinedPhrases = [] } = data ?? {};
+
+        if (phrases.some((p) => p.speaker != null))
+          return phrases
+            .map((p) => `${p.speaker != null ? `[Speaker ${p.speaker}]: ` : ""}${p.text || ""}`)
+            .filter(Boolean)
+            .join("\n");
+
+        const texts = (combinedPhrases.length ? combinedPhrases : phrases).map((p) => p.text).filter(Boolean);
+        return texts.length ? texts.join(" ") : typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      }
+
+      function buildRequest(provider, config, audioStream, { ext, mimeType }) {
+        const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
+        return {
+          url: provider.url(config),
+          headers: { ...provider.headers(config), "Content-Type": `multipart/form-data; boundary=${boundary}` },
+          body: buildMultipartStream({
+            boundary,
+            fields: provider.formFields(config),
+            file: { name: provider.fileFieldName, filename: `audio.${ext}`, contentType: mimeType },
+            audioStream,
+          }),
+        };
+      }
+
+      // ───────────────────────── Stream helpers ─────────────────────────
+
+      function buildMultipartStream({ boundary, fields, file, audioStream }) {
+        const CRLF = "\r\n";
+        const encoder = new TextEncoder();
+
+        const fieldParts = fields
+          .map(
+            ({ name, value, contentType }) =>
+              `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}` +
+              (contentType ? `Content-Type: ${contentType}${CRLF}` : "") +
+              `${CRLF}${value}${CRLF}`,
+          )
+          .join("");
+
+        const filePart =
+          `--${boundary}${CRLF}Content-Disposition: form-data; name="${file.name}"; filename="${file.filename}"${CRLF}` +
+          `Content-Type: ${file.contentType}${CRLF}${CRLF}`;
+
+        const preamble = encoder.encode(fieldParts + filePart);
+        const epilogue = encoder.encode(`${CRLF}--${boundary}--${CRLF}`);
+
+        return new ReadableStream({
+          async start(ctrl) {
+            ctrl.enqueue(preamble);
+            for await (const chunk of audioStream) ctrl.enqueue(chunk);
+            ctrl.enqueue(epilogue);
+            ctrl.close();
+          },
+        });
+      }
+
+      function createPushStream() {
+        let controller;
+        const stream = new ReadableStream({
+          start: (ctrl) => {
+            controller = ctrl;
+          },
+        });
+        return { stream, push: (chunk) => controller.enqueue(chunk), close: () => controller.close() };
+      }
+
+      function streamFromChunks(chunks) {
+        return new ReadableStream({
+          start(ctrl) {
+            chunks.forEach((chunk) => ctrl.enqueue(chunk));
+            ctrl.close();
+          },
+        });
+      }
+
+      // ───────────────────────── Recorders ─────────────────────────
+
+      function createRecorder(format) {
+        return format === "wav" ? new WavRecorder() : new WebmRecorder();
+      }
+
+      class WavRecorder {
+        ext = "wav";
+        mimeType = "audio/wav";
+        state = "inactive";
+        onData = null;
+        onStop = null;
+
+        async start(stream) {
+          this.state = "recording";
+          this.context = new AudioContext({ sampleRate: SAMPLE_RATE });
+          this.source = this.context.createMediaStreamSource(stream);
+          this.processor = this.context.createScriptProcessor(PCM_BUFFER_FRAMES, 1, 1);
+
+          this.onData?.(createWavHeader());
+          this.processor.onaudioprocess = ({ inputBuffer }) => this.state === "recording" && this.onData?.(float32To16BitPCM(inputBuffer.getChannelData(0)));
+
+          this.source.connect(this.processor);
+          this.processor.connect(this.context.destination);
+        }
+
+        async stop() {
+          if (this.state === "inactive") return;
+          this.state = "inactive";
+          this.processor.disconnect();
+          this.source.disconnect();
+          if (this.context.state !== "closed") await this.context.close();
+          this.onStop?.();
+        }
+
+        finalizeChunks([, ...pcmChunks]) {
+          const dataLength = pcmChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+          return [createWavHeader(SAMPLE_RATE, 1, dataLength), ...pcmChunks];
+        }
+      }
+
+      class WebmRecorder {
+        ext = "webm";
+        mimeType = "audio/webm";
+        state = "inactive";
+        onData = null;
+        onStop = null;
+
+        start(stream) {
+          this.state = "recording";
+          const mimeType = ["audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+          this.recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+          this.recorder.ondataavailable = async ({ data }) => data?.size > 0 && this.onData?.(new Uint8Array(await data.arrayBuffer()));
+          this.recorder.onstop = () => this.onStop?.();
+          this.recorder.start(WEBM_TIMESLICE_MS);
+        }
+
+        stop() {
+          if (this.state === "inactive") return;
+          this.state = "inactive";
+          this.recorder.stop();
+        }
+
+        finalizeChunks(chunks) {
+          return chunks;
+        }
+      }
+
+      // ───────────────────────── WAV encoding ─────────────────────────
+
+      function createWavHeader(sampleRate = SAMPLE_RATE, numChannels = 1, dataLength = 0x7fffffff) {
+        const view = new DataView(new ArrayBuffer(44));
+        const isStreaming = dataLength === 0x7fffffff;
+
+        view.setUint32(0, 0x52494646, false); // "RIFF"
+        view.setUint32(4, isStreaming ? 0x7fffffff : dataLength + 36, true);
+        view.setUint32(8, 0x57415645, false); // "WAVE"
+        view.setUint32(12, 0x666d7420, false); // "fmt "
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * numChannels * 2, true);
+        view.setUint16(32, numChannels * 2, true);
+        view.setUint16(34, 16, true);
+        view.setUint32(36, 0x64617461, false); // "data"
+        view.setUint32(40, dataLength, true);
+
+        return new Uint8Array(view.buffer);
+      }
+
+      function float32To16BitPCM(samples) {
+        const pcm16 = Int16Array.from(samples, (s) => {
+          const clamped = Math.max(-1, Math.min(1, s));
+          return clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+        });
+        return new Uint8Array(pcm16.buffer);
+      }
+    </script>
+  </body>
+</html>

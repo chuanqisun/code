@@ -83,6 +83,7 @@
 - [Grid Draw](https://chuanqisun.github.io/grid-draw/)
 - [Groq transcription](./groq-transcription/)
 - [Groupthink](https://chuanqisun.github.io/groupthink/)
+- [Half-duplex transcription](./half-duplex-transcription/)
 - [Hand orientation](./hand-orientation/)
 - [Hand-box binding](./hand-box-binding/)
 - [Head tracking](./head-tracking/)
