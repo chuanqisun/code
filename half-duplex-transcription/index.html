@@ -52,6 +52,7 @@
           flex-wrap: wrap;
           gap: 8px;
           align-items: center;
+          flex: 1 1 auto;
 
           label {
             display: flex;
@@ -60,10 +61,26 @@
             font-size: var(--font-size-small);
           }
 
+          label.full-width {
+            flex: 1 0 100%;
+            flex-direction: column;
+            align-items: stretch;
+          }
+
           input,
-          select {
+          select,
+          textarea {
             padding: 3px 6px;
             font-size: var(--font-size-small);
+            font-family: inherit;
+          }
+
+          textarea {
+            width: 100%;
+            box-sizing: border-box;
+            field-sizing: content;
+            min-height: 2.2em;
+            resize: none;
           }
         }
       }
@@ -124,7 +141,7 @@
         }
       }
 
-      textarea {
+      #output {
         width: 100%;
         height: 100%;
         box-sizing: border-box;
@@ -140,6 +157,7 @@
       <div class="provider-picker">
         <label for="provider-select"><strong>Provider:</strong></label>
         <select id="provider-select">
+          <option value="llm_speech">LLM Speech</option>
           <option value="mai_transcribe_2">MAI Transcribe-2</option>
           <option value="azure">Azure Fast Transcription</option>
           <option value="groq">Groq Whisper</option>
@@ -192,21 +210,90 @@
         uploading: { record: false, stop: false, submit: false, indicator: false },
       };
 
+      const AZURE_ENDPOINT_FIELD = {
+        id: "endpoint",
+        label: "Endpoint URL",
+        type: "text",
+        placeholder: "https://<resource>.cognitiveservices.azure.com",
+        width: "240px",
+        required: true,
+      };
+
       const providers = {
+        llm_speech: azureSpeechProvider({
+          id: "llm_speech",
+          name: "LLM Speech",
+          audioFormat: "wav",
+          apiVersion: "2025-10-15",
+          fields: [
+            AZURE_ENDPOINT_FIELD,
+            { id: "key", label: "API Key", type: "password", placeholder: "Foundry / Speech Key...", width: "200px", required: true },
+            {
+              id: "task",
+              label: "Task",
+              type: "select",
+              default: "transcribe",
+              options: [
+                { value: "transcribe", label: "Transcribe" },
+                { value: "translate", label: "Translate" },
+              ],
+            },
+            {
+              id: "targetLanguage",
+              label: "Target lang",
+              type: "select",
+              default: "en",
+              options: [
+                { value: "en", label: "English" },
+                { value: "de", label: "German" },
+                { value: "es", label: "Spanish" },
+                { value: "fr", label: "French" },
+                { value: "it", label: "Italian" },
+                { value: "ja", label: "Japanese" },
+                { value: "ko", label: "Korean" },
+                { value: "pt", label: "Portuguese" },
+                { value: "zh", label: "Chinese" },
+              ],
+            },
+            {
+              id: "diarization",
+              label: "Diarization",
+              type: "select",
+              default: "false",
+              options: [
+                { value: "false", label: "Disabled" },
+                { value: "true", label: "Enabled" },
+              ],
+            },
+            { id: "locale", label: "Locale", type: "text", placeholder: "Auto (or e.g. en-us)", width: "110px" },
+            {
+              id: "prompt",
+              label: "Prompt (optional)",
+              type: "textarea",
+              placeholder: "e.g. Output must be in lexical format. Pay attention to Kenichi Kumatani, John McDonough.",
+              fullWidth: true,
+            },
+          ],
+          baseUrl: ({ endpoint }) => normalizeEndpoint(endpoint),
+          definition: ({ task, targetLanguage, diarization, locale, prompt }) => ({
+            enhancedMode: {
+              enabled: true,
+              task: task || "transcribe",
+              ...(task === "translate" && targetLanguage && { targetLanguage }),
+              ...(prompt?.trim() && { prompt: [prompt.trim()] }),
+            },
+            ...(diarization === "true" && task !== "translate" && { diarization: { enabled: true } }),
+            ...(locale?.trim() && { locales: [locale.trim()] }),
+          }),
+        }),
+
         mai_transcribe_2: azureSpeechProvider({
           id: "mai_transcribe_2",
           name: "MAI Transcribe-2",
           audioFormat: "wav",
           apiVersion: "2025-10-15",
           fields: [
-            {
-              id: "endpoint",
-              label: "Endpoint URL",
-              type: "text",
-              placeholder: "https://<resource>.cognitiveservices.azure.com",
-              width: "240px",
-              required: true,
-            },
+            AZURE_ENDPOINT_FIELD,
             { id: "key", label: "API Key", type: "password", placeholder: "Foundry / Speech Key...", width: "200px", required: true },
             {
               id: "style",
@@ -247,17 +334,7 @@
           name: "Azure Fast Transcription",
           audioFormat: "webm",
           apiVersion: "2024-11-15",
-          fields: [
-            {
-              id: "endpoint",
-              label: "Endpoint URL",
-              type: "text",
-              placeholder: "https://<resource>.cognitiveservices.azure.com",
-              width: "240px",
-              required: true,
-            },
-            { id: "key", label: "API Key", type: "password", placeholder: "Azure Speech Key...", width: "200px", required: true },
-          ],
+          fields: [AZURE_ENDPOINT_FIELD, { id: "key", label: "API Key", type: "password", placeholder: "Azure Speech Key...", width: "200px", required: true }],
           baseUrl: ({ endpoint }) => normalizeEndpoint(endpoint),
           definition: () => ({ locales: ["en-US"] }),
         }),
@@ -301,7 +378,7 @@
         state: $("m-state"),
       };
 
-      let currentProvider = providers[localStorage.getItem(PROVIDER_STORAGE_KEY)] ?? providers.mai_transcribe_2;
+      let currentProvider = providers[localStorage.getItem(PROVIDER_STORAGE_KEY)] ?? providers.llm_speech;
       let recorder = null;
       let micStream = null;
       let recordedChunks = [];
@@ -466,7 +543,7 @@
       function renderCredentials() {
         credentials.replaceChildren(
           ...currentProvider.fields.map((field) => {
-            const input = field.type === "select" ? createSelect(field.options) : createInput(field);
+            const input = createField(field);
             input.dataset.fieldId = field.id;
             if (field.width) input.style.width = field.width;
             input.value = localStorage.getItem(storageKey(field.id)) ?? field.default ?? "";
@@ -475,10 +552,22 @@
             input.oninput = input.onchange = persist;
 
             const label = document.createElement("label");
+            if (field.fullWidth) label.classList.add("full-width");
             label.append(`${field.label}: `, input);
             return label;
           }),
         );
+      }
+
+      function createField(field) {
+        switch (field.type) {
+          case "select":
+            return createSelect(field.options);
+          case "textarea":
+            return Object.assign(document.createElement("textarea"), { placeholder: field.placeholder ?? "", rows: 1 });
+          default:
+            return createInput(field);
+        }
       }
 
       function createSelect(options = []) {
@@ -488,17 +577,11 @@
       }
 
       function createInput({ type = "text", placeholder = "" }) {
-        const input = Object.assign(document.createElement("input"), { type, placeholder });
-        if (type === "password") {
-          input.name = "user-password";
-          input.autocomplete = "off";
-          input.setAttribute("data-1p-ignore", "");
-        }
-        return input;
+        return Object.assign(document.createElement("input"), { type, placeholder });
       }
 
       function getProviderConfig() {
-        return Object.fromEntries([...credentials.querySelectorAll("input, select")].map((el) => [el.dataset.fieldId, el.value]));
+        return Object.fromEntries([...credentials.querySelectorAll("input, select, textarea")].map((el) => [el.dataset.fieldId, el.value]));
       }
 
       function validateConfig({ fields, name }, config) {
