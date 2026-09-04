@@ -579,9 +579,7 @@
               await this.wait(5000, signal);
             }
           }
-          const downloadUrl = fileId
-            ? `${API_URL}/files/${fileId}:download?alt=media&key=${encodeURIComponent(apiKey)}`
-            : uri;
+          const downloadUrl = fileId ? `${API_URL}/files/${fileId}:download?alt=media&key=${encodeURIComponent(apiKey)}` : uri;
           const response = await fetch(downloadUrl, {
             headers: fileId ? undefined : { "x-goog-api-key": apiKey },
             signal,
