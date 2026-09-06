@@ -146,5 +146,6 @@
 - [Google AI](./prompts/google-ai.md)
 - [OpenAI](./prompts/openai.md)
 - [OpenAI Agents SDK](./prompts/openai-agents-sdk.md)
+- [Parse research](./prompts/academic.md)
 - [Refactoring](./prompts/refactoring.md)
 - [Three.js](./prompts/three-js.md)
