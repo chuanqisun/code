@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ICS Calendar to Flat HTML Schedule Converter</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #fff;
+        color: #000;
+        line-height: 1.4;
+      }
+      .container {
+        max-width: 680px;
+        margin: 0 auto;
+        border: 2px solid #000;
+        padding: 16px;
+      }
+      h1 {
+        font-size: 18px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0 0 8px 0;
+        border-bottom: 2px solid #000;
+        padding-bottom: 8px;
+      }
+      p {
+        font-size: 13px;
+        margin: 8px 0 16px 0;
+      }
+      .dropzone {
+        border: 2px dashed #000;
+        padding: 24px 16px;
+        text-align: center;
+        background: #fff;
+        cursor: pointer;
+        margin-bottom: 16px;
+      }
+      .dropzone:hover,
+      .dropzone.dragover {
+        background: #eee;
+      }
+      .dropzone input[type="file"] {
+        display: none;
+      }
+      .dropzone label {
+        display: block;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 14px;
+        text-transform: uppercase;
+      }
+      .file-info {
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 6px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      button {
+        background: #000;
+        color: #fff;
+        border: 2px solid #000;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        cursor: pointer;
+        border-radius: 0;
+      }
+      button:hover:not(:disabled) {
+        background: #fff;
+        color: #000;
+      }
+      button:disabled {
+        background: #888;
+        border-color: #888;
+        cursor: not-allowed;
+      }
+      #status {
+        margin-top: 12px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      #preview-container {
+        margin-top: 20px;
+        border-top: 2px solid #000;
+        padding-top: 12px;
+      }
+      #preview-header {
+        font-size: 13px;
+        font-weight: 800;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+      }
+      iframe {
+        width: 100%;
+        height: 380px;
+        border: 1px solid #000;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>ICS &rarr; Flat HTML Schedule Converter</h1>
+      <p>Upload any <code>.ics</code> calendar file to convert it into a flat, high-density, black-and-white, mobile-friendly HTML schedule.</p>
+
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept=".ics,text/calendar" />
+        <label for="fileInput">Choose .ics file or drag &amp; drop here</label>
+        <div class="file-info" id="fileInfo">No file selected</div>
+      </div>
+
+      <div class="actions">
+        <button id="convertBtn" disabled>Convert &amp; Download HTML</button>
+      </div>
+
+      <div id="status"></div>
+
+      <div id="preview-container" style="display: none">
+        <div id="preview-header">Generated Output Preview</div>
+        <iframe id="previewFrame" title="Schedule Preview"></iframe>
+      </div>
+    </div>
+
+    <script>
+      let selectedFile = null;
+      let generatedHtmlBlobUrl = null;
+
+      const dropzone = document.getElementById("dropzone");
+      const fileInput = document.getElementById("fileInput");
+      const fileInfo = document.getElementById("fileInfo");
+      const convertBtn = document.getElementById("convertBtn");
+      const statusDiv = document.getElementById("status");
+      const previewContainer = document.getElementById("preview-container");
+      const previewFrame = document.getElementById("previewFrame");
+
+      // Drag & drop listeners
+      ["dragenter", "dragover"].forEach((eventName) => {
+        dropzone.addEventListener(
+          eventName,
+          (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add("dragover");
+          },
+          false,
+        );
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        dropzone.addEventListener(
+          eventName,
+          (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove("dragover");
+          },
+          false,
+        );
+      });
+
+      dropzone.addEventListener("drop", (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          setFile(files[0]);
+        }
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          setFile(e.target.files[0]);
+        }
+      });
+
+      function setFile(file) {
+        selectedFile = file;
+        fileInfo.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        convertBtn.disabled = false;
+        statusDiv.textContent = "";
+      }
+
+      convertBtn.addEventListener("click", async () => {
+        if (!selectedFile) return;
+
+        statusDiv.textContent = "Processing calendar...";
+        try {
+          const text = await selectedFile.text();
+          const events = parseICS(text);
+
+          if (events.length === 0) {
+            statusDiv.textContent = "No VEVENT items found in file.";
+            return;
+          }
+
+          events.sort((a, b) => {
+            if (a.startDateRaw !== b.startDateRaw) {
+              return a.startDateRaw.localeCompare(b.startDateRaw);
+            }
+            return a.summary.localeCompare(b.summary);
+          });
+
+          const titleName = selectedFile.name.replace(/\.[^/.]+$/, "");
+          const outputHTML = generateHTML(events, titleName);
+
+          // Trigger download
+          const blob = new Blob([outputHTML], { type: "text/html;charset=utf-8" });
+          if (generatedHtmlBlobUrl) {
+            URL.revokeObjectURL(generatedHtmlBlobUrl);
+          }
+          generatedHtmlBlobUrl = URL.createObjectURL(blob);
+
+          const downloadLink = document.createElement("a");
+          downloadLink.href = generatedHtmlBlobUrl;
+          downloadLink.download = `${titleName}.html`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+
+          statusDiv.textContent = `Done! Converted ${events.length} events. Download started.`;
+
+          // Show preview
+          previewContainer.style.display = "block";
+          previewFrame.src = generatedHtmlBlobUrl;
+        } catch (err) {
+          console.error(err);
+          statusDiv.textContent = `Error: ${err.message}`;
+        }
+      });
+
+      function parseICS(icsContent) {
+        const lines = icsContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+        const unfolded = [];
+        for (const line of lines) {
+          if ((line.startsWith(" ") || line.startsWith("\t")) && unfolded.length > 0) {
+            unfolded[unfolded.length - 1] += line.slice(1);
+          } else {
+            unfolded.push(line);
+          }
+        }
+
+        const events = [];
+        let inEvent = false;
+        let curEvent = {};
+
+        for (const line of unfolded) {
+          const trimmed = line.trim();
+          if (trimmed === "BEGIN:VEVENT") {
+            inEvent = true;
+            curEvent = {};
+            continue;
+          }
+          if (trimmed === "END:VEVENT") {
+            if (inEvent) {
+              formatEvent(curEvent);
+              events.push(curEvent);
+            }
+            inEvent = false;
+            continue;
+          }
+
+          if (!inEvent) continue;
+
+          const colonIdx = line.indexOf(":");
+          if (colonIdx === -1) continue;
+
+          const propHeader = line.substring(0, colonIdx);
+          const val = line.substring(colonIdx + 1);
+          const propName = propHeader.split(";")[0].toUpperCase();
+
+          switch (propName) {
+            case "SUMMARY":
+              curEvent.summary = unescapeICS(val);
+              break;
+            case "DTSTART":
+              curEvent.dtstart = val;
+              break;
+            case "DTEND":
+              curEvent.dtend = val;
+              break;
+            case "DESCRIPTION":
+              curEvent.description = unescapeICS(val);
+              break;
+          }
+        }
+
+        return events;
+      }
+
+      function unescapeICS(str) {
+        if (!str) return "";
+        return str.replace(/\\n/g, "\n").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\");
+      }
+
+      function parseDateStr(raw) {
+        if (!raw) return null;
+        const m = raw.match(/^(\d{4})(\d{2})(\d{2})/);
+        if (!m) return null;
+        const year = parseInt(m[1], 10);
+        const month = parseInt(m[2], 10) - 1;
+        const day = parseInt(m[3], 10);
+        return new Date(Date.UTC(year, month, day));
+      }
+
+      function formatDateDisplay(d) {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const dayOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        return `${dayOfWeek[d.getUTCDay()]}, ${months[d.getUTCMonth()]} ${String(d.getUTCDate()).padStart(2, "0")}, ${d.getUTCFullYear()}`;
+      }
+
+      function formatShortDate(d) {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+      }
+
+      function formatEvent(ev) {
+        ev.startDateRaw = ev.dtstart || "";
+        ev.summary = ev.summary || "Untitled Event";
+
+        const dStart = parseDateStr(ev.dtstart);
+        const dEnd = parseDateStr(ev.dtend);
+
+        if (!dStart) {
+          ev.dateLabel = "TBD";
+          ev.yearMonth = "Upcoming";
+          return;
+        }
+
+        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        ev.yearMonth = `${months[dStart.getUTCMonth()]} ${dStart.getUTCFullYear()}`;
+
+        if (dEnd) {
+          const inclusiveEnd = new Date(dEnd.getTime() - 24 * 60 * 60 * 1000);
+          if (inclusiveEnd > dStart) {
+            if (dStart.getUTCFullYear() === inclusiveEnd.getUTCFullYear()) {
+              ev.dateLabel = `${formatShortDate(dStart)} – ${formatShortDate(inclusiveEnd)}, ${dStart.getUTCFullYear()}`;
+            } else {
+              ev.dateLabel = `${formatDateDisplay(dStart)} – ${formatDateDisplay(inclusiveEnd)}`;
+            }
+          } else {
+            ev.dateLabel = formatDateDisplay(dStart);
+          }
+        } else {
+          ev.dateLabel = formatDateDisplay(dStart);
+        }
+
+        let desc = ev.description || "";
+        const urlMatch = desc.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) {
+          ev.url = urlMatch[0];
+          desc = desc.replace(urlMatch[0], "").trim();
+        }
+        ev.cleanDescription = desc.replace(/^[\n\r]+|[\n\r]+$/g, "").trim();
+      }
+
+      function escapeHTML(str) {
+        if (!str) return "";
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+
+      function generateHTML(events, title) {
+        let rowsHtml = "";
+        let currentGroup = "";
+
+        for (const ev of events) {
+          if (ev.yearMonth !== currentGroup) {
+            currentGroup = ev.yearMonth;
+            rowsHtml += `
+      <tr class="month-header">
+        <th colspan="2">${escapeHTML(currentGroup)}</th>
+      </tr>`;
+          }
+
+          let descContent = "";
+          if (ev.cleanDescription) {
+            descContent += `<span class="desc">${escapeHTML(ev.cleanDescription)}</span>`;
+          }
+          if (ev.url) {
+            descContent += `${descContent ? " " : ""}<a href="${escapeHTML(ev.url)}" class="url">${escapeHTML(ev.url)}</a>`;
+          }
+
+          rowsHtml += `
+      <tr>
+        <td class="date-col">${escapeHTML(ev.dateLabel)}</td>
+        <td class="event-col">
+          <strong>${escapeHTML(ev.summary)}</strong>
+          ${descContent ? `<div class="sub">${descContent}</div>` : ""}
+        </td>
+      </tr>`;
+        }
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHTML(title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #000;
+    background: #fff;
+    line-height: 1.35;
+    font-size: 13px;
+  }
+  header {
+    margin-bottom: 12px;
+    border-bottom: 2px solid #000;
+    padding-bottom: 6px;
+  }
+  h1 {
+    font-size: 18px;
+    margin: 0 0 4px 0;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .subtitle {
+    font-size: 11px;
+    color: #333;
+    margin: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+  }
+  th, td {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  thead th {
+    background: #000;
+    color: #fff;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .month-header th {
+    background: #eee;
+    color: #000;
+    border: 1px solid #000;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 5px 8px;
+  }
+  .date-col {
+    white-space: nowrap;
+    width: 200px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .sub {
+    margin-top: 3px;
+    font-size: 12px;
+    color: #222;
+  }
+  .desc {
+    display: inline;
+  }
+  a.url {
+    color: #000;
+    text-decoration: underline;
+    word-break: break-all;
+    font-size: 11px;
+  }
+  @media (max-width: 640px) {
+    body { padding: 6px; font-size: 12px; }
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: 100%; }
+    tr {
+      border: 1px solid #000;
+      margin-bottom: 6px;
+      padding: 6px 8px;
+    }
+    td {
+      border: none;
+      padding: 2px 0;
+      white-space: normal;
+    }
+    .date-col {
+      width: 100%;
+      font-size: 12px;
+      color: #111;
+      text-decoration: underline;
+    }
+    .month-header {
+      display: block;
+      margin: 12px 0 6px 0;
+      padding: 0;
+    }
+    .month-header th {
+      display: block;
+      width: 100%;
+      border: 1px solid #000;
+    }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHTML(title)}</h1>
+    <p class="subtitle">Complete Chronological Schedule (${events.length} entries)</p>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 200px;">Date / Range</th>
+        <th>Event Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml}
+    </tbody>
+  </table>
+</body>
+</html>`;
+      }
+    </script>
+  </body>
+</html>

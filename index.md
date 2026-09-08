@@ -21,6 +21,7 @@
 - [Gemini Video Lab](./gemini-video-lab/)
 - [Gemini Omni Lab](./gemini-omni-lab/)
 - [GitHub Issue Graph](https://chuanqisun.github.io/issue-graph/)
+- [ICS → Schedule HTML](./ics-to-html/)
 - [JSON → TypeScript](./json-to-typescript/)
 - [JSON ↔ YAML](./json-to-yaml)
 - [JSONL viewer](./jsonl-viewer/)
