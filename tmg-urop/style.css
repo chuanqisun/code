@@ -1,0 +1,297 @@
+/* ./web/style.css */
+:root {
+  --fg: #000;
+  --bg: #fff;
+  --mute: #666;
+  --pad: 1rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  padding: var(--pad);
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+ul,
+ol,
+pre {
+  margin: 0;
+}
+a {
+  color: inherit;
+}
+button,
+input,
+label {
+  font: inherit;
+  color: inherit;
+}
+
+/* controls */
+.controls {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+}
+.label {
+  color: var(--mute);
+}
+.count {
+  color: var(--mute);
+}
+
+#search {
+  flex: 1 1 16rem;
+  max-width: 40rem;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid var(--fg);
+  background: transparent;
+  outline: none;
+}
+#search:focus {
+  border-bottom-width: 2px;
+}
+
+button.sort {
+  padding: 0 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--mute);
+  cursor: pointer;
+}
+button.sort.on {
+  color: var(--fg);
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.tag {
+  cursor: pointer;
+  color: var(--mute);
+  user-select: none;
+  white-space: nowrap;
+}
+.tag input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.tag::before {
+  content: "[ ] ";
+}
+.tag:has(input:checked),
+.tag[data-state="checked"],
+.tag.checked {
+  color: var(--fg);
+}
+.tag:has(input:checked)::before,
+.tag[data-state="checked"]::before,
+.tag.checked::before {
+  content: "[x] ";
+}
+.tag[data-state="invert"],
+.tag.invert {
+  color: var(--fg);
+  text-decoration: line-through;
+}
+.tag[data-state="invert"]::before,
+.tag.invert::before {
+  content: "[-] ";
+  display: inline-block;
+  text-decoration: none;
+  white-space: pre;
+}
+
+/* grid */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 1.75rem 1.25rem;
+}
+
+.card {
+  cursor: pointer;
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  outline: none;
+}
+.card img {
+  display: block;
+  width: 100%;
+  object-fit: cover;
+  background: #eee;
+  filter: grayscale(1) contrast(1.05);
+  transition: filter 0.15s;
+}
+.card:hover img,
+.card:focus-visible img {
+  filter: none;
+}
+.card h2 {
+  font-size: 1em;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+.card:hover h2,
+.card:focus-visible h2 {
+  text-decoration: underline;
+}
+.card .id {
+  color: var(--mute);
+  font-weight: normal;
+}
+.card .tagline {
+  color: var(--fg);
+}
+.card .meta {
+  color: var(--mute);
+  font-size: 0.85em;
+}
+.empty {
+  color: var(--mute);
+}
+
+/* dialog */
+dialog {
+  width: min(72ch, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 1.5rem;
+  border: 0;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--fg);
+}
+dialog::backdrop {
+  background: rgba(255, 255, 255, 0.85);
+}
+dialog form {
+  position: sticky;
+  top: 0;
+  float: right;
+  z-index: 1;
+}
+.close {
+  border: 0;
+  background: var(--bg);
+  font-size: 1.25em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+#dialog-img {
+  display: block;
+  width: 100%;
+  object-fit: cover;
+  background: #eee;
+  margin-bottom: 1rem;
+}
+#dialog-title {
+  font-size: 1.15em;
+  margin-bottom: 1rem;
+  padding-right: 2rem;
+}
+
+/* markdown body */
+.md > * + * {
+  margin-top: 0.75rem;
+}
+.md img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem 0;
+  border-radius: 4px;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-size: 1em;
+  font-weight: 700;
+  margin-top: 1.5rem;
+}
+.md h1::before {
+  content: "# ";
+  color: var(--mute);
+}
+.md h2::before {
+  content: "## ";
+  color: var(--mute);
+}
+.md h3::before {
+  content: "### ";
+  color: var(--mute);
+}
+.md ul,
+.md ol {
+  padding-left: 1.5rem;
+}
+.md ul ul,
+.md ul ol,
+.md ol ul,
+.md ol ol {
+  margin-top: 0;
+}
+.md li {
+  margin: 0.1rem 0;
+}
+.md pre {
+  padding: 0.5rem 0.75rem;
+  background: #f2f2f2;
+  overflow-x: auto;
+}
+.md code {
+  background: #f2f2f2;
+  padding: 0 0.2em;
+}
+.md pre code {
+  padding: 0;
+}
+
+@media (max-width: 480px) {
+  body {
+    padding: 0.75rem;
+  }
+  .grid {
+    gap: 1.5rem 1rem;
+  }
+  dialog {
+    padding: 1rem;
+  }
+}
