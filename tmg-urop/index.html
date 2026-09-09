@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tangible AI — Media Lab UROP Opening</title>
+    <meta
+      name="description"
+      content="Build new ways to think and act with AI at the MIT Media Lab. A hands-on UROP in interaction design, software, and hardware, with industry-experienced mentorship."
+    />
     <style>
       :root {
         --color-bg: #ffffff;
@@ -95,6 +99,7 @@
         color: var(--color-fg);
         text-decoration: underline;
         text-underline-offset: 0.2em;
+        overflow-wrap: anywhere;
       }
 
       a:hover,
@@ -111,6 +116,51 @@
 
       em {
         font-style: italic;
+      }
+
+      /* ---- Stack Quote ---- */
+
+      .stack-quote {
+        position: relative;
+        margin: calc(var(--rhythm) * 1.5) 0 var(--rhythm);
+        padding: calc(var(--rhythm) * 1.25) var(--rhythm) var(--rhythm) calc(var(--rhythm) * 1.5);
+        background: rgba(0, 0, 0, 0.02);
+        overflow: hidden;
+      }
+
+      .stack-quote::before {
+        content: "“";
+        position: absolute;
+        top: -0.85rem;
+        left: 0.35rem;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 5.5rem;
+        line-height: 1;
+        color: var(--color-fg);
+        opacity: 0.12;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .stack-quote p {
+        position: relative;
+        margin-bottom: calc(var(--rhythm) / 2);
+        font-size: 0.9375rem;
+        line-height: 1.6;
+      }
+
+      .stack-quote footer {
+        margin-top: calc(var(--rhythm) / 2);
+        padding-top: 0;
+        border-top: none;
+        font-size: var(--font-size-sm);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-muted);
+      }
+
+      .stack-quote footer::before {
+        content: "— ";
       }
 
       /* ---- Header ---- */
@@ -137,6 +187,15 @@
         text-align: center;
       }
 
+      .cta-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: calc(var(--rhythm) / 2);
+        justify-content: center;
+        align-items: center;
+        margin-bottom: var(--rhythm);
+      }
+
       .cta .cta-button {
         display: inline-block;
         background: var(--color-fg);
@@ -146,14 +205,25 @@
         text-transform: uppercase;
         letter-spacing: 0.08em;
         font-weight: 700;
-        margin-bottom: var(--rhythm);
+        border: 1px solid var(--color-fg);
       }
 
       .cta .cta-button:hover,
       .cta .cta-button:focus-visible {
         background: var(--color-bg);
         color: var(--color-fg);
-        outline: var(--border);
+        outline: none;
+      }
+
+      .cta .cta-button-secondary {
+        background: var(--color-bg);
+        color: var(--color-fg);
+      }
+
+      .cta .cta-button-secondary:hover,
+      .cta .cta-button-secondary:focus-visible {
+        background: var(--color-fg);
+        color: var(--color-bg);
       }
 
       .cta .cta-note {
@@ -161,6 +231,10 @@
         line-height: var(--rhythm);
         color: var(--color-muted);
         margin-bottom: 0;
+      }
+
+      .cta .cta-subject {
+        color: var(--color-fg);
       }
 
       /* ---- Footer ---- */
@@ -179,11 +253,21 @@
         :root {
           --space-section: calc(var(--rhythm) * 2);
         }
+
         body {
           padding: var(--rhythm);
         }
+
         h1 {
           font-size: 1.25rem;
+        }
+
+        .cta-actions {
+          flex-direction: column;
+        }
+
+        .cta .cta-button {
+          width: 100%;
         }
       }
     </style>
@@ -192,62 +276,131 @@
     <header class="masthead">
       <p class="kicker">MIT Media Lab · Tangible Media Group · UROP Opening</p>
       <h1>Tangible AI — Media Lab UROP Opening</h1>
-      <p class="kicker">Terms: 26 Fall · 26 IAP · 27 Spring</p>
+      <p class="kicker">Terms: 26 Fall · 27 IAP · 27 Spring</p>
+      <p><em>Interacting with AI should feel like a breath of fresh air.</em></p>
+      <p>Join us to design and build interactive systems that make us more human, and more than human.</p>
+      <p><strong>Commitment:</strong> At least 8 dedicated hours every week.</p>
     </header>
 
     <main>
       <section aria-labelledby="about">
-        <h2 id="about">About Tangible Media Group &amp; Tangible AI</h2>
+        <h2 id="about">Computation as human experience</h2>
         <p>
           The Tangible Media Group (TMG) at the MIT Media Lab, led by Professor Hiroshi Ishii, has spent over 30 years researching human-computer interaction by
           bridging the digital and physical worlds.
         </p>
-        <p>
-          Our Tangible AI effort focuses on giving intelligence a physical, interactive body. Instead of interacting with AI solely through text prompts in
-          isolated chat windows, we build physical interfaces, custom hardware, real-time multimodal interaction systems, and domain-specific languages that
-          fuse AI capabilities directly into physical environments and end-user programming workflows.
-        </p>
+        <p>We are tired of screens, chat bots, and endless prompting. Why can't we grasp an agent and steer it in real-time?</p>
+        <p>We are working to increase the speed and bandwidth of human-machine interaction by 100-fold without brain-computer interfaces.</p>
+        <p>We want to help people achieve more by thinking more, intending more, acting more, and aspiring more.</p>
+        <p><strong>We are the interaction maximalists.</strong></p>
       </section>
 
       <section aria-labelledby="work">
         <h2 id="work">What you will work on</h2>
-        <p>Your day-to-day work spans design and storytelling, physical fabrication, software engineering, machine learning, and publication:</p>
+        <p>
+          You will help turn open-ended interaction questions into working prototypes, learn from what fails, and communicate what the team discovers. Depending
+          on your strengths and the project direction, your work may include:
+        </p>
         <ul>
           <li>
-            <strong>Design &amp; storytelling:</strong> Collaborative brainstorming, whiteboarding, concept ideation, and crafting compelling visual/interaction
-            narratives.
+            <strong>Design &amp; storytelling:</strong> Collaborative brainstorming, whiteboarding, concept ideation, and crafting compelling visual and
+            interaction narratives.
           </li>
-          <li><strong>Computer vision &amp; multimodal models:</strong> Training and fine-tuning vision models for spatial tracking and object recognition.</li>
           <li>
             <strong>Real-time interaction systems:</strong> Engineering low-latency speech, gesture, vision, and robotic interaction loops for human-computer
             collaboration.
           </li>
           <li>
-            <strong>Domain-specific languages (DSLs):</strong> Designing DSLs and programming abstractions for end-user behavioral programming and direct
-            manipulation.
+            <strong>Computer vision &amp; multimodal models:</strong> Integrating, training, and fine-tuning models for spatial tracking, object recognition,
+            and interactive systems.
           </li>
-          <li><strong>Hardware &amp; embedded systems:</strong> Fabricating custom hardware, embedded circuits, and tangible physical objects.</li>
           <li>
-            <strong>Impact &amp; dissemination:</strong> Shipping impactful work either as top-tier conference publications or open-source software projects.
+            <strong>Programming tools &amp; abstractions:</strong> Designing domain-specific languages and interfaces that let people express intent and
+            directly shape behavior.
+          </li>
+          <li>
+            <strong>Hardware &amp; embedded systems:</strong> Designing and fabricating custom hardware, embedded circuits, and tangible physical objects.
+          </li>
+          <li>
+            <strong>Research &amp; dissemination:</strong> Documenting experiments, explaining design decisions, and developing work toward conference
+            publications or open-source software projects.
           </li>
         </ul>
+        <p>
+          You do not need to arrive with every skill on this list. We are a team of diverse talents with complementary strengths. Bring something you can
+          contribute and an appetite for learning the rest.
+        </p>
+      </section>
+
+      <section aria-labelledby="reality">
+        <h2 id="reality">An early-stage team. Real ownership.</h2>
+        <p>
+          This is a new UROP with the pace and ambiguity of an early-stage startup. We are building an airplane while flying it: the problem space is not fully
+          mapped out, the team structure is evolving, and we may change direction when an approach does not work.
+        </p>
+        <p>
+          You will not inherit a settled roadmap or a queue of daily assignments. You will help shape the questions, propose next steps, and keep making
+          progress when the answer is unclear.
+        </p>
+        <p>
+          Are you still early in your research career? You will receive technical mentorship from peers, coaching on unfamiliar skills, and career guidance. In
+          return, you own execution: surface problems early, ask for help, and bring ideas for moving forward.
+        </p>
+      </section>
+
+      <section aria-labelledby="culture">
+        <h2 id="culture">How we work together</h2>
+
+        <h3>Ownership &gt; instruction</h3>
+        <p>
+          Proactively identify problems and propose solutions. We build to think: sketch, prototype, test, and use what you learn to decide what comes next.
+          Waiting for a daily task assignment will leave too much of this opportunity unused.
+        </p>
+
+        <h3>Peer learning &gt; working alone</h3>
+        <p>
+          Teach what you know and learn what you do not. Helping a teammate get unstuck, documenting a discovery, and sharing a useful tool are part of the
+          work—not distractions from your own progress. The team succeeds when everyone gets stronger.
+        </p>
+
+        <h3>Growth mindset &gt; ego</h3>
+        <p>
+          Conflicts and failures are inevitable. Challenge ideas with respect, celebrate others' success, and treat your own failures as data. Feedback goes
+          both ways: you are expected to question decisions and call out mistakes, including your mentor's.
+        </p>
+
+        <h3>8 dedicated hours, every week</h3>
+        <p>
+          You need a strict minimum of 8 dedicated hours every week. Not 8 hours of late-night cramming. It includes weekly stand-up meetings, ad hoc in-person
+          and online syncs, documentation writing, helping your teammates get unstuck, and moving your own tasks forward. Others' progress depends on your
+          availability, so please avoid signing up if your current semester is too tight. Take care of what's most important to you, and join us in the future.
+        </p>
+
+        <h3>Team culture</h3>
+        <p>
+          We make time to get to know one another outside the lab: hiking, skiing, grabbing food, sailing, and visiting museums. We support and celebrate each
+          other both at work and in life.
+        </p>
       </section>
 
       <section aria-labelledby="fit">
         <h2 id="fit">Who this is for</h2>
 
-        <h3>Good fit</h3>
+        <h3>You may feel at home here if</h3>
         <ul>
-          <li>You enjoy the ideas behind Structure and Interpretation of Computer Programs (SICP) and thinking deeply about programming abstractions.</li>
-          <li>You have designed, CAD modeled, and 3D printed physical objects or mechanical assemblies.</li>
-          <li>You enjoy creating art with code or building interactive media.</li>
-          <li>You ask <em>why</em> to build something, more than just <em>how</em> or <em>what</em> to build.</li>
+          <li>You ask <em>why</em> to build something, not just <em>how</em> or <em>what</em> to build.</li>
+          <li>You enjoy the ideas behind Structure and Interpretation of Computer Programs (SICP), or thinking deeply about programming abstractions.</li>
+          <li>You have designed, CAD modeled, or 3D printed physical objects, or enjoy creating art with code and building interactive media.</li>
+          <li>You can take initiative without pretending to know everything, and are willing to ask questions, share unfinished work, and change your mind.</li>
+          <li>You want to use AI critically: to extend your abilities while remaining responsible for understanding and evaluating what you build.</li>
         </ul>
 
-        <h3>Poor fit</h3>
+        <h3>This may not be the right UROP if</h3>
         <ul>
-          <li>You rely primarily on tokenmaxxing or offloading all problem-solving to AI output without understanding the underlying mechanics.</li>
-          <li>You are oversubscribed with classes or other commitments and looking for a low-effort credit filler.</li>
+          <li>You need a well-specified project with clear instructions and direct mentorship from graduate students.</li>
+          <li>You are looking for a low-effort credit filler or cannot protect the weekly commitment.</li>
+          <li>You prefer working alone to teaching, learning, and sharing responsibility.</li>
+          <li>You want to offload all problem-solving to AI without understanding the underlying mechanics.</li>
           <li>You are only interested in theoretical machine learning research without building working physical or software artifacts.</li>
         </ul>
       </section>
@@ -256,45 +409,71 @@
         <h2 id="team">Who you will work with</h2>
         <ul>
           <li>
-            <strong>Sun Chuanqi (Stack):</strong> 10+ years of full-time software engineering experience at Microsoft. Experienced mentor to early-career
-            engineers and designers. Website: <a href="https://chuanqisun.com/">chuanqisun.com</a>
+            <strong>Sun Chuanqi (Stack):</strong> Your mentor, with 10+ years of full-time software engineering experience at Microsoft, most recently as a
+            Principal AI Engineer. Experienced in mentoring early-career engineers and designers. Website: <a href="https://chuanqisun.com/">chuanqisun.com</a>
           </li>
           <li>
-            <strong>Tangible Media Group (TMG):</strong> Led by Hiroshi Ishii, with 30+ years of track record publishing research at the intersection of
-            physical design and computing. Lab website: <a href="https://tangible.media.mit.edu/">tangible.media.mit.edu</a>
+            <strong>Tangible Media Group (TMG):</strong> Led by Hiroshi Ishii, with a 30+ year track record of research at the intersection of physical design
+            and computing. Lab website: <a href="https://tangible.media.mit.edu/">tangible.media.mit.edu</a>
           </li>
-          <li><strong>UROP Peer Cohort:</strong> A small team of UROPs bringing complementary hardware, software, and design skills.</li>
+          <li>
+            <strong>UROP peer cohort:</strong> A small team bringing complementary hardware, software, and design skills. You will be both a learner and a
+            teacher.
+          </li>
         </ul>
+
+        <blockquote class="stack-quote">
+          <p>
+            I owe my success to two mentors, who generously helped me in my first and last year at Microsoft. I'm paying it forward by helping you succeed. I
+            left a comfortable Principal AI Engineer role at Microsoft to pursue unconventional ideas at the Media Lab. We have only one year left. I don't want
+            to waste my time, or yours, repeating the "cog in a machine" type of work, which AI will soon do better than us anyway. So, I'm all-in, and I need
+            you to be all-in as well.
+          </p>
+          <footer>A note from Stack</footer>
+        </blockquote>
       </section>
 
       <section aria-labelledby="outcomes">
         <h2 id="outcomes">What you will walk away with</h2>
+        <p>This UROP is designed to help you develop:</p>
         <ul>
-          <li>Compelling portfolio projects for careers in AI hardware, software engineering, and interaction design.</li>
-          <li>Practical experience building and deploying real-time AI hardware and software systems.</li>
-          <li>Connections to researchers, designers, and engineers across the Media Lab ecosystem.</li>
-          <li>Applied software engineering habits: version control, testing, software architecture, and CI/CD pipelines.</li>
-          <li>An environment that encourages original thinking, rapid prototyping, and startup incubation.</li>
+          <li>
+            <strong>Work you can explain and show:</strong> Portfolio projects that connect research questions, design decisions, technical implementation, and
+            lessons learned.
+          </li>
+          <li>
+            <strong>Industry-relevant engineering habits:</strong> Experience building, shipping, and communicating as a team, including version control,
+            testing, software architecture, documentation, and CI/CD.
+          </li>
+          <li>
+            <strong>Judgment under uncertainty:</strong> Practice breaking down ambiguous problems, choosing useful experiments, learning from failure, and
+            adapting a plan.
+          </li>
+          <li><strong>Personal AI tools &amp; workflows:</strong> Practical ways to extend your abilities that remain useful beyond this UROP.</li>
+          <li>
+            <strong>Collaboration &amp; leadership:</strong> Experience teaching peers, receiving feedback, resolving disagreements, and helping a team move
+            forward.
+          </li>
+          <li>
+            <strong>Career perspective &amp; community:</strong> Mentorship informed by industry experience, and connections with researchers, designers, and
+            engineers across the Media Lab.
+          </li>
         </ul>
-      </section>
-
-      <section aria-labelledby="culture">
-        <h2 id="culture">Team culture</h2>
-        <ul>
-          <li><strong>High commitment:</strong> We work hard. This is an active research commitment rather than a minimum-effort UROP.</li>
-          <li><strong>Building as thinking:</strong> We iterate quickly through hacking, physical fabrication, and software prototyping.</li>
-          <li><strong>Collaboration over ego:</strong> We prioritize helping teammates, sharing knowledge, and building together.</li>
-          <li><strong>Community:</strong> We spend time together outside the lab, including hiking, skiing, grabbing food, sailing, and visiting museums.</li>
-        </ul>
+        <p>
+          We aim to build work worth publishing and sharing. Publication may take the form of open-source release, social media posting, and conference/journal
+          submission. Faculty-advised publication is not guaranteed. When we publish, authorship and credit will reflect actual intellectual contributions. Your
+          mentor will advocate for first or co-first authorship when your contribution merits it.
+        </p>
       </section>
 
       <section aria-labelledby="projects">
         <h2 id="projects">Past projects</h2>
-        <p>To understand our lab's work and style, explore these project videos:</p>
+        <p>These demos represent the taste and style of our work. UROP projects expand on these ideas.</p>
         <ul>
           <li><a href="https://www.instagram.com/reel/DVOl2a0DWNE/">Packing Rush</a></li>
           <li><a href="https://www.youtube.com/watch?v=FUGcTMSbbyM">Dream Brush</a></li>
           <li><a href="https://www.youtube.com/watch?v=WapWovoUq5U">Tangible Prompting</a></li>
+          <li><a href="https://dl.acm.org/doi/pdf/10.1145/3802974.3810894">Tangible Co-Ideation</a></li>
           <li><a href="https://www.youtube.com/watch?v=F1KOJxsaAfY">Tangible Visual RAG</a></li>
           <li><a href="https://www.youtube.com/watch?v=0V7LAdV-e4c">Time Machine</a></li>
           <li><a href="https://www.youtube.com/watch?v=-WRwk7b3agE">Thinking Machine</a></li>
@@ -304,29 +483,45 @@
 
       <section aria-labelledby="apply">
         <h2 id="apply">What to submit when applying</h2>
-        <p>When reaching out, please include your resume/portfolio and answers to the following four questions:</p>
+        <p>If this sounds like the kind of team you want to help build, send your resume/portfolio and answers to the following four questions:</p>
         <ol>
           <li><strong>Goals:</strong> What skills do you want to build during this UROP, and what goals are you pursuing that this project supports?</li>
-          <li><strong>Projects:</strong> Describe something cool you have made (hardware, software, art, or design).</li>
+          <li>
+            <strong>Projects:</strong> Describe something cool or significant you have made. It can be hardware, software, art, or design. What did you
+            contribute, and what could you teach a teammate from that experience?
+          </li>
           <li>
             <strong>Reflections on failure:</strong> Share a mistake or technical failure from a past project. What happened, and what would you do differently
             now?
           </li>
           <li><strong>AI usage:</strong> How do you currently use AI tools in your workflow? What works well, and what do you find frustrating or limiting?</li>
         </ol>
+        <p>
+          Also include your preferred term or terms and how you plan to make room for at least 8 dedicated hours each week. Please read the expectations above
+          before applying. We will get back to you by email.
+        </p>
 
         <div class="cta">
-          <a class="cta-button" href="mailto:stack@mit.edu?subject=UROP%20Application%20-%20Your%20Name">Apply Now</a>
+          <div class="cta-actions">
+            <a class="cta-button" href="mailto:stack@mit.edu?subject=UROP%20Application%20-%20Your%20Name">Apply Now</a>
+            <a class="cta-button cta-button-secondary" href="./projects.html">Explore Projects</a>
+          </div>
           <p class="cta-note">
-            To apply, email <a href="mailto:stack@mit.edu?subject=UROP%20Application%20-%20Your%20Name">stack@mit.edu</a> with the subject title
-            <span style="white-space: nowrap; color: var(--color-fg)">&ldquo;UROP Application - Your Name&rdquo;</span> and include the relevant material.
+            Email
+            <a href="mailto:stack@mit.edu?subject=UROP%20Application%20-%20Your%20Name">stack@mit.edu</a>
+            with the subject
+            <span class="cta-subject">&ldquo;UROP Application - Your Name&rdquo;</span>
+            and include the materials above. Informal inquiries are welcome.
           </p>
         </div>
       </section>
     </main>
 
     <footer>
-      <p>Tangible Media Group · MIT Media Lab · tangible.media.mit.edu</p>
+      <p>
+        Tangible Media Group · MIT Media Lab ·
+        <a href="https://tangible.media.mit.edu/">tangible.media.mit.edu</a>
+      </p>
     </footer>
   </body>
 </html>
