@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tangible AI</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #fff;
+        display: grid;
+        place-items: center;
+        touch-action: none;
+        overflow: hidden;
+      }
+      canvas {
+        width: min(90vw, 400px);
+        height: min(90vw, 400px);
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c" width="400" height="400"></canvas>
+    <script>
+      (() => {
+        const cv = document.getElementById("c");
+        const ctx = cv.getContext("2d", { alpha: false });
+        const SIZE = 400;
+
+        const N = 720;
+        const x = new Float32Array(N),
+          y = new Float32Array(N);
+        const a = new Float32Array(N),
+          va = new Float32Array(N);
+        const R = SIZE * 0.48;
+
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        for (let i = 0; i < N; i++) {
+          const r = Math.sqrt((i + 0.5) / N) * R;
+          const th = i * golden;
+          x[i] = 200 + Math.cos(th) * r;
+          y[i] = 200 + Math.sin(th) * r;
+          a[i] = th;
+        }
+
+        let tx = 200,
+          ty = 200,
+          mx = 200,
+          my = 200;
+        let gx = 0,
+          gy = 0;
+
+        const setPtr = (cx, cy) => {
+          const r = cv.getBoundingClientRect();
+          tx = ((cx - r.left) / r.width) * SIZE;
+          ty = ((cy - r.top) / r.height) * SIZE;
+        };
+
+        window.addEventListener("pointermove", (e) => setPtr(e.clientX, e.clientY), { passive: true });
+        window.addEventListener(
+          "pointerdown",
+          (e) => {
+            setPtr(e.clientX, e.clientY);
+            if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+              DeviceOrientationEvent.requestPermission().catch(() => {});
+            }
+          },
+          { passive: true },
+        );
+
+        window.addEventListener(
+          "deviceorientation",
+          (e) => {
+            if (e.gamma == null || e.beta == null) return;
+            const g = Math.max(-45, Math.min(45, e.gamma)) / 45;
+            const b = Math.max(-45, Math.min(45, e.beta)) / 45;
+            gx = g * 70;
+            gy = b * 70;
+          },
+          { passive: true },
+        );
+
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "#000";
+
+        let last = performance.now();
+        function tick(now) {
+          const dt = Math.min((now - last) * 0.001, 0.033);
+          last = now;
+
+          mx += (tx + gx - mx) * 0.12;
+          my += (ty + gy - my) * 0.12;
+
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, SIZE, SIZE);
+
+          const t = now * 0.0012;
+          const gripRadius2 = 140 * 140;
+
+          ctx.beginPath();
+          for (let i = 0; i < N; i++) {
+            const xi = x[i],
+              yi = y[i];
+            const dx = mx - xi,
+              dy = my - yi;
+            const d2 = dx * dx + dy * dy;
+
+            let targetAngle = Math.sin((xi + yi) * 0.015 + t) * 0.6 + Math.atan2(yi - 200, xi - 200) * 0.3;
+
+            if (d2 < gripRadius2) {
+              const steerAngle = Math.atan2(dy, dx) + 1.5708;
+              const force = 1 - d2 / gripRadius2;
+              targetAngle += (steerAngle - targetAngle) * (force * 0.85);
+            }
+
+            let diff = targetAngle - a[i];
+            diff -= Math.round(diff / 6.28318) * 6.28318;
+            va[i] = (va[i] + diff * 35 * dt) * 0.78;
+            a[i] += va[i];
+
+            const ca = Math.cos(a[i]) * 4.5,
+              sa = Math.sin(a[i]) * 4.5;
+            ctx.moveTo(xi - ca, yi - sa);
+            ctx.lineTo(xi + ca, yi + sa);
+          }
+          ctx.stroke();
+
+          requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      })();
+    </script>
+  </body>
+</html>

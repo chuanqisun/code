@@ -78,6 +78,7 @@
 - [Fable Knot](./fable-knot/)
 - [Face that is none](https://code.chuanqisun.com/recreating-the-past/salavon/demo.html)
 - [FirstCheck](./first-check/)
+- [Force Field](./force-field/)
 - [Gemini Image Search](./gemini-image-search/)
 - [Gemini Live Console](./gemini-live-console/)
 - [Generational Parallax](./generational-parallax/)
