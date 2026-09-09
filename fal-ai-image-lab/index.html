@@ -640,7 +640,52 @@
         { value: "landscape_16_9", label: "Landscape 16:9" },
       ];
 
-      const gptImage2SizeChoices = [{ value: "auto", label: "auto" }, ...fluxSizeChoices];
+      const openaiSizeChoices = [
+        { value: "auto", label: "auto" },
+        { value: "landscape_4_3", label: "landscape_4_3" },
+        { value: "portrait_4_3", label: "portrait_4_3" },
+        { value: "landscape_16_9", label: "landscape_16_9" },
+        { value: "portrait_16_9", label: "portrait_16_9" },
+        { value: "square", label: "square" },
+        { value: "square_hd", label: "square_hd" },
+      ];
+
+      const openaiQualityChoices = [
+        { value: "auto", label: "auto" },
+        { value: "low", label: "low" },
+        { value: "medium", label: "medium" },
+        { value: "high", label: "high" },
+        { value: "xhigh", label: "xhigh" },
+        { value: "max", label: "max" },
+      ];
+
+      const openaiBackgroundChoices = [
+        { value: "auto", label: "auto" },
+        { value: "transparent", label: "transparent" },
+        { value: "opaque", label: "opaque" },
+      ];
+
+      const openaiFormatChoices = [
+        { value: "png", label: "png" },
+        { value: "jpeg", label: "jpeg" },
+        { value: "webp", label: "webp" },
+      ];
+
+      const openaiTextOptions = [
+        { key: "image_size", label: "Image size", type: "select", default: "landscape_4_3", choices: openaiSizeChoices },
+        { key: "quality", label: "Quality", type: "select", default: "high", choices: openaiQualityChoices },
+        { key: "background", label: "Background", type: "select", default: "auto", choices: openaiBackgroundChoices },
+        { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 10 },
+        { key: "output_format", label: "Format", type: "select", default: "png", choices: openaiFormatChoices },
+      ];
+
+      const openaiEditOptions = [
+        { key: "image_size", label: "Image size", type: "select", default: "auto", choices: openaiSizeChoices },
+        { key: "quality", label: "Quality", type: "select", default: "high", choices: openaiQualityChoices },
+        { key: "background", label: "Background", type: "select", default: "auto", choices: openaiBackgroundChoices },
+        { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 10 },
+        { key: "output_format", label: "Format", type: "select", default: "png", choices: openaiFormatChoices },
+      ];
 
       const MODELS = [
         new FalModelProvider({
@@ -704,58 +749,70 @@
         }),
 
         new FalModelProvider({
-          id: "fal-ai/gpt-image-2",
-          label: "gpt-image-2",
-          endpoint: "fal-ai/gpt-image-2",
+          id: "openai/gpt-image-2.5/flare/text-to-image",
+          label: "openai/gpt-image-2.5/flare/text-to-image",
+          endpoint: "openai/gpt-image-2.5/flare/text-to-image",
           capabilities: { imageToImage: false },
-          options: [{ key: "image_size", label: "Image size", type: "select", default: "auto", choices: gptImage2SizeChoices }],
+          options: openaiTextOptions,
           buildInput({ prompt, options }) {
-            const validSizes = new Set(gptImage2SizeChoices.map((choice) => choice.value));
-            const imageSize = validSizes.has(options.image_size) ? options.image_size : "auto";
-            return { prompt, image_size: imageSize };
+            const input = { prompt };
+            if (options.image_size) input.image_size = options.image_size;
+            if (options.quality) input.quality = options.quality;
+            if (options.background) input.background = options.background;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.output_format) input.output_format = options.output_format;
+            return input;
           },
         }),
 
         new FalModelProvider({
-          id: "openai/gpt-image-2/edit",
-          label: "gpt-image-2/edit",
-          endpoint: "openai/gpt-image-2/edit",
+          id: "openai/gpt-image-2.5/flare/edit",
+          label: "openai/gpt-image-2.5/flare/edit",
+          endpoint: "openai/gpt-image-2.5/flare/edit",
           capabilities: { imageToImage: true },
-          options: [
-            { key: "image_size", label: "Image size", type: "select", default: "auto", choices: gptImage2SizeChoices },
-            {
-              key: "quality",
-              label: "Quality",
-              type: "select",
-              default: "high",
-              choices: [
-                { value: "low", label: "low" },
-                { value: "medium", label: "medium" },
-                { value: "high", label: "high" },
-              ],
-            },
-            { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 4 },
-            {
-              key: "output_format",
-              label: "Format",
-              type: "select",
-              default: "png",
-              choices: [
-                { value: "png", label: "png" },
-                { value: "jpeg", label: "jpeg" },
-                { value: "webp", label: "webp" },
-              ],
-            },
-          ],
+          options: openaiEditOptions,
           buildInput({ prompt, imageDataUrls, options }) {
-            return {
-              prompt,
-              image_urls: imageDataUrls,
-              image_size: options.image_size || "auto",
-              quality: options.quality || "high",
-              num_images: options.num_images || 1,
-              output_format: options.output_format || "png",
-            };
+            const input = { prompt, image_urls: imageDataUrls };
+            if (options.image_size) input.image_size = options.image_size;
+            if (options.quality) input.quality = options.quality;
+            if (options.background) input.background = options.background;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.output_format) input.output_format = options.output_format;
+            return input;
+          },
+        }),
+
+        new FalModelProvider({
+          id: "openai/gpt-image-2.5/sunburst/text-to-image",
+          label: "openai/gpt-image-2.5/sunburst/text-to-image",
+          endpoint: "openai/gpt-image-2.5/sunburst/text-to-image",
+          capabilities: { imageToImage: false },
+          options: openaiTextOptions,
+          buildInput({ prompt, options }) {
+            const input = { prompt };
+            if (options.image_size) input.image_size = options.image_size;
+            if (options.quality) input.quality = options.quality;
+            if (options.background) input.background = options.background;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.output_format) input.output_format = options.output_format;
+            return input;
+          },
+        }),
+
+        new FalModelProvider({
+          id: "openai/gpt-image-2.5/sunburst/edit",
+          label: "openai/gpt-image-2.5/sunburst/edit",
+          endpoint: "openai/gpt-image-2.5/sunburst/edit",
+          capabilities: { imageToImage: true },
+          options: openaiEditOptions,
+          buildInput({ prompt, imageDataUrls, options }) {
+            const input = { prompt, image_urls: imageDataUrls };
+            if (options.image_size) input.image_size = options.image_size;
+            if (options.quality) input.quality = options.quality;
+            if (options.background) input.background = options.background;
+            if (options.num_images) input.num_images = Number(options.num_images);
+            if (options.output_format) input.output_format = options.output_format;
+            return input;
           },
         }),
 
@@ -917,17 +974,12 @@
           this.elements.apiKeyInput.value = (await get("apiKey", this.store)) || "";
 
           this.selectedModelId = (await get("selectedModelId", this.store)) || MODELS[0].id;
+          if (!MODELS.some((m) => m.id === this.selectedModelId)) {
+            this.selectedModelId = MODELS[0].id;
+          }
           this.elements.modelSelect.value = this.selectedModelId;
 
           this.optionState = (await get("optionState", this.store)) || {};
-
-          if (
-            this.optionState["fal-ai/gpt-image-2"]?.image_size &&
-            !gptImage2SizeChoices.some((c) => c.value === this.optionState["fal-ai/gpt-image-2"].image_size)
-          ) {
-            this.optionState["fal-ai/gpt-image-2"].image_size = "auto";
-            await set("optionState", this.optionState, this.store);
-          }
 
           const messages = await get("messages", this.store);
           if (Array.isArray(messages)) {
@@ -1262,8 +1314,13 @@
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
-          } else if (this.selectedModelId === "fal-ai/gpt-image-2") {
-            this.selectedModelId = "openai/gpt-image-2/edit";
+          } else if (this.selectedModelId === "openai/gpt-image-2.5/flare/text-to-image") {
+            this.selectedModelId = "openai/gpt-image-2.5/flare/edit";
+            this.elements.modelSelect.value = this.selectedModelId;
+            set("selectedModelId", this.selectedModelId, this.store);
+            this.renderModelControls();
+          } else if (this.selectedModelId === "openai/gpt-image-2.5/sunburst/text-to-image") {
+            this.selectedModelId = "openai/gpt-image-2.5/sunburst/edit";
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
