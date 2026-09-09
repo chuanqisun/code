@@ -4,8 +4,9 @@
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
   const grid = $("#grid");
-  const cards = $$(".card", grid);
+  const allCards = $$(".card", grid);
   const search = $("#search");
+  const count = $("#count");
   const shown = $("#shown");
   const empty = $("#empty");
   const tagLabels = $$("#tags .tag");
@@ -15,9 +16,30 @@
   const dTitle = $("#dialog-title");
   const dBody = $("#dialog-body");
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const showTeam = urlParams.get("team")?.toLowerCase() === "true";
+
+  if (!showTeam) {
+    for (const label of tagLabels) {
+      const input = $("input", label);
+      const val = (input ? input.value : label.textContent).trim();
+      if (val.toLowerCase() === "team") {
+        label.hidden = true;
+      }
+    }
+  }
+
+  const allTags = new Map(allCards.map((c) => [c, new Set((c.dataset.tags || "").split(" ").filter(Boolean))]));
+  const cards = showTeam
+    ? allCards
+    : allCards.filter((c) => {
+        const t = allTags.get(c);
+        return ![...t].some((tag) => tag.toLowerCase() === "team");
+      });
+
   // precompute searchable text per card
   const text = new Map(cards.map((c) => [c, c.textContent.toLowerCase().replace(/\s+/g, " ")]));
-  const tags = new Map(cards.map((c) => [c, new Set(c.dataset.tags.split(" ").filter(Boolean))]));
+  const tags = new Map(cards.map((c) => [c, allTags.get(c)]));
 
   // tag filter state: Map tag -> 'checked' | 'invert'
   const tagFilters = new Map();
@@ -67,10 +89,13 @@
       visible.sort((a, b) => +a.dataset.id - +b.dataset.id);
     }
 
-    for (const c of cards) c.hidden = true;
+    for (const c of allCards) c.hidden = true;
     for (const c of visible) c.hidden = false;
     grid.append(...visible); // reorder in place
     shown.textContent = visible.length;
+    if (count && count.lastChild && count.lastChild.nodeType === Node.TEXT_NODE) {
+      count.lastChild.textContent = `/${cards.length}`;
+    }
     empty.hidden = visible.length > 0;
   }
 
