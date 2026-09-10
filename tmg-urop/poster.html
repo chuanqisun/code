@@ -1,276 +1,1163 @@
+<!-- ./web/index.html -->
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tangible AI — UROP Poster</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Projects</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌿</text></svg>" />
-    <style>
-      :root {
-        --color-bg: #ffffff;
-        --color-fg: #000000;
-        --color-muted: #555555;
-        --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
-        --rhythm: 0.32in;
-        --pad: 0.6in;
-        --border: 2px solid var(--color-fg);
-        --hairline: 1px solid var(--color-fg);
-        --page-w: 8.5in;
-        --page-h: 11in;
-      }
-
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      html,
-      body {
-        background: #e5e5e5; /* screen backdrop only */
-        font-family: var(--font-mono);
-        color: var(--color-fg);
-      }
-
-      /* ---- The poster page ---- */
-
-      .poster {
-        width: var(--page-w);
-        height: var(--page-h);
-        background: var(--color-bg);
-        margin: 0.5in auto;
-        padding: var(--pad);
-        display: flex;
-        flex-direction: column;
-        outline: 1px solid #bbb; /* screen only, shows page edge */
-      }
-
-      @page {
-        size: letter;
-        margin: 0;
-      }
-
-      @media print {
-        html,
-        body {
-          background: var(--color-bg);
-        }
-        .poster {
-          margin: 0;
-          outline: none;
-        }
-        .deadline-badge {
-          background: var(--color-fg) !important;
-          color: var(--color-bg) !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
-
-      /* ---- Masthead ---- */
-
-      .masthead {
-        border-bottom: var(--border);
-        padding-bottom: calc(var(--rhythm) / 2);
-        display: flex;
-        justify-content: space-between;
-        font-size: 10pt;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-      }
-
-      /* ---- Hero ---- */
-
-      .hero {
-        padding: var(--rhythm) 0;
-      }
-
-      .hero h1 {
-        font-size: 54pt;
-        line-height: 1.05;
-        letter-spacing: -0.02em;
-        text-transform: uppercase;
-      }
-
-      .hero h2 {
-        font-size: 54pt;
-        line-height: 1.05;
-        letter-spacing: -0.02em;
-        text-transform: uppercase;
-      }
-
-      .hero .sub {
-        margin-top: calc(var(--rhythm) / 1.5);
-        font-size: 13pt;
-        line-height: 1.5;
-        max-width: 6.6in;
-      }
-
-      /* ---- Body columns ---- */
-
-      .body {
-        flex: 1;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: var(--rhythm);
-        border-top: var(--hairline);
-        padding-top: var(--rhythm);
-      }
-
-      .body h2 {
-        font-size: 10pt;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: calc(var(--rhythm) / 2);
-      }
-
-      .body h2::before {
-        content: "// ";
-        color: var(--color-muted);
-      }
-
-      .body ul {
-        list-style: none;
-        font-size: 10.5pt;
-        line-height: 1.55;
-      }
-
-      .body li {
-        padding-left: 1.4em;
-        text-indent: -1.4em;
-        margin-bottom: 0.5em;
-      }
-
-      .body li::before {
-        content: "→ ";
-        color: var(--color-fg);
-      }
-
-      /* ---- Footer / CTA ---- */
-
-      .cta {
-        border-top: var(--border);
-        padding-top: var(--rhythm);
-        display: flex;
-        align-items: center;
-        gap: var(--rhythm);
-      }
-
-      .qr {
-        flex: 0 0 auto;
-        width: 1.6in;
-        height: 1.6in;
-        border: var(--border);
-      }
-
-      .qr img {
-        width: 100%;
-        height: 100%;
-        display: block;
-        object-fit: cover;
-      }
-
-      .cta-text {
-        flex: 1;
-      }
-
-      .cta-header {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        align-items: start;
-        flex-wrap: wrap;
-      }
-
-      .cta-text .scan {
-        font-size: 16pt;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        line-height: 1;
-      }
-
-      .deadline-badge {
-        background: var(--color-fg);
-        color: var(--color-bg);
-        font-size: 8.5pt;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        padding: 0.25em 0.55em 0.2em 0.55em;
-        white-space: nowrap;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-
-      .cta-text .contact {
-        margin-top: 0.5em;
-        font-size: 10.5pt;
-        line-height: 1.5;
-      }
-
-      .cta-text .fine {
-        margin-top: 0.5em;
-        font-size: 9pt;
-        color: var(--color-muted);
-        line-height: 1.5;
-      }
-    </style>
+    <link rel="stylesheet" href="assets/style.css" />
   </head>
   <body>
-    <main class="poster">
-      <header class="masthead">
-        <span>MIT Media Lab · Tangible Media Group</span>
-        <span>UROP · Fall / IAP / Spring</span>
-      </header>
+    <header class="controls">
+      <div class="row">
+        <input id="search" type="search" placeholder="search…" autocomplete="off" spellcheck="false" />
+        <span id="count" class="count"><span id="shown">45</span>/45</span>
+      </div>
+      <div class="row">
+        <button type="button" class="sort" data-key="size">size</button>
+        <button type="button" class="sort" data-key="mission">mission</button>
+        <button type="button" class="sort" data-key="creative">creative</button>
+      </div>
+      <div class="row tags" id="tags">
+        <label class="tag"><input type="checkbox" value="Art" />Art</label>
+        <label class="tag"><input type="checkbox" value="CS" />CS</label>
+        <label class="tag"><input type="checkbox" value="CV" />CV</label>
+        <label class="tag"><input type="checkbox" value="EE" />EE</label>
+        <label class="tag"><input type="checkbox" value="Fab" />Fab</label>
+        <label class="tag"><input type="checkbox" value="GenAI" />GenAI</label>
+        <label class="tag"><input type="checkbox" value="NLP" />NLP</label>
+        <label class="tag"><input type="checkbox" value="Team" />Team</label>
+        <label class="tag"><input type="checkbox" value="UI/UX" />UI/UX</label>
+      </div>
+    </header>
 
-      <section class="hero">
-        <h1>Prompt 2.0</h1>
-        <p class="sub">
-          Most people prompt AI through a text box. We don't. Join us to make hardware, vision systems, and programming languages that let you grab an agent
-          with your hands and steer it in real time.
+    <main id="grid" class="grid">
+      <article class="card" tabindex="0" data-id="366" data-size="L" data-tags="CS CV GenAI NLP" data-mission="5" data-creative="3">
+        <img
+          src="assets/images/366.webp"
+          alt="Humanist colored pencil free-hand sketch of an outstretched hand pointing a single index finger toward a floating schematic sketch above a wooden drafting desk, soft warm shading and visible pencil hatch marks on textured paper."
+          loading="lazy"
+        />
+        <h2>Put That There 2.0 <span class="id">#366</span></h2>
+        <p class="tagline">
+          A next-generation multimodal HUD combining sub-second voice commands, spatial finger gestures, and tangible pucks to give creators instant, fluid
+          agency over digital simulations.
         </p>
-      </section>
-
-      <section class="body">
-        <div>
-          <h2>You will build</h2>
+        <p class="meta">L · m5 c3 · CS, CV, GenAI, NLP</p>
+        <div class="body" hidden>
+          <p>HUD interface</p>
+          <h2>Vision</h2>
+          <p>Immediate Agency</p>
+          <h2>Tech</h2>
           <ul>
-            <li>Real-time speech, gesture, and vision interaction loops</li>
-            <li>Custom hardware, embedded circuits, tangible objects</li>
-            <li>Fine-tuned vision models for spatial tracking</li>
-            <li>DSLs for programming agent behavior by direct manipulation</li>
-            <li>Work that ships: top-tier papers or open source</li>
+            <li>Fastest speech to text (200 ms)</li>
+            <li>text to markdown + script (500 ms)</li>
+            <li>
+              One finger
+              <ul>
+                <li>pointing</li>
+                <li>sketching</li>
+                <li>annotation</li>
+              </ul>
+            </li>
+            <li>
+              Two fingers
+              <ul>
+                <li>selection</li>
+                <li>relational pointing</li>
+              </ul>
+            </li>
+            <li>Puck (with names) as variable (container)</li>
+            <li>A foot clutch for ppt speech?</li>
+          </ul>
+          <h2>UX</h2>
+          <ul>
+            <li>
+              Demo 1
+              <ul>
+                <li>Poem -&gt; show word selection with hand</li>
+                <li>Generate pixel art -&gt; layered 3D navigation, hand sketching, and annotation</li>
+              </ul>
+            </li>
+            <li>
+              Demo 2
+              <ul>
+                <li>Design the perfect mug</li>
+              </ul>
+            </li>
+            <li>
+              Demo 3
+              <ul>
+                <li>Simulation of physics, simulate equations (PV = nRT)</li>
+              </ul>
+            </li>
+            <li>
+              Demo 4
+              <ul>
+                <li>Searching for art, with dynamic agentic filtering and spatial navigation</li>
+              </ul>
+            </li>
+            <li>
+              Demo 5
+              <ul>
+                <li>Reading an article and take notes: pen + paper to screen transfer</li>
+              </ul>
+            </li>
+            <li>
+              Demo 6
+              <ul>
+                <li>Realtime pen on paper sketch with HUD guide</li>
+              </ul>
+            </li>
           </ul>
         </div>
-        <div>
-          <h2>You will fit</h2>
+      </article>
+      <article class="card" tabindex="0" data-id="185" data-size="L" data-tags="CS GenAI NLP" data-mission="3" data-creative="3">
+        <img
+          src="assets/images/185.webp"
+          alt="Humanist colored pencil free-hand sketch of miniature everyday objects including a small vintage bell, a camera lens, and a wooden block connected by delicate hand-drawn modular connecting wires on off-white paper."
+          loading="lazy"
+        />
+        <h2>OOAI <span class="id">#185</span></h2>
+        <p class="tagline">
+          An object-oriented paradigm and IDE that treats AI entities and physical artifacts as modular objects, letting developers compose complex generative
+          systems as easily as software classes.
+        </p>
+        <p class="meta">L · m3 c3 · CS, GenAI, NLP</p>
+        <div class="body" hidden>
+          <p>Object-oriented AI</p>
           <ul>
-            <li>SICP made you rethink what a program is</li>
-            <li>You've CAD'd and 3D printed real things</li>
-            <li>You make art with code</li>
-            <li>You want to stop theorizing, and start building</li>
-            <li>You ask <em>why</em> to build something, not just <em>how</em> or <em>what</em></li>
+            <li>A programming language</li>
+            <li>An IDE</li>
+            <li>A paradigm</li>
+            <li>An SDK</li>
+          </ul>
+          <p>Implementation ideas:</p>
+          <ul>
+            <li>a music synth: a drum, a keyboard, a bell</li>
+            <li>interaction simulator: a book, a person, a radio, a car, an argument</li>
+            <li>a camera that takes photo, a slider that changes age, and a display that shows result</li>
           </ul>
         </div>
-      </section>
-
-      <footer class="cta">
-        <div class="qr">
-          <!-- Placeholder QR code — replace with generated QR linking to the full posting -->
-          <img src="./qr-code.jpeg" alt="QR code linking to the full UROP posting and application details" />
-        </div>
-        <div class="cta-text">
-          <div class="cta-header">
-            <span class="scan">Scan to apply</span>
-            <span class="deadline-badge">Submit by Sep 5</span>
-          </div>
-          <p class="contact">Or email <strong>stack@mit.edu</strong> for questions<br />Subject: "UROP Application - Your Name"</p>
-          <p class="fine">
-            Tangible AI · Hiroshi Ishii's Tangible Media Group · 30+ years bridging bits and atoms. High commitment. Real research. Not a credit filler.
+      </article>
+      <article class="card" tabindex="0" data-id="123" data-size="M" data-tags="Art EE Fab GenAI NLP" data-mission="1" data-creative="4">
+        <img
+          src="assets/images/123.webp"
+          alt="Humanist colored pencil free-hand sketch of a retro portable cassette tape player with tactile tuning knobs resting beside a mechanical keyboard, warm earth tones and crosshatch shading."
+          loading="lazy"
+        />
+        <h2>Sound of Open Source <span class="id">#123</span></h2>
+        <p class="tagline">
+          A physical audio narrative device that turns GitHub commits and pull requests into an ambient acoustic drama, celebrating the unsung human labor
+          behind open source software.
+        </p>
+        <p class="meta">M · m1 c4 · Art, EE, Fab, GenAI, NLP</p>
+        <div class="body" hidden>
+          <p>Turn GitHub commit message into a developer thriller story about an open source project.</p>
+          <p>Variants:</p>
+          <ul>
+            <li>Use Walkman and Cassette tape instead floppy drive (justify the physical controls)</li>
+            <li>Real time global open source breaking news based on commit history</li>
+            <li>Tell the story of a open source contributor</li>
+            <li>Tell the story of an entire project</li>
+            <li>Sound of &quot;block chain&quot;</li>
+            <li>What if we connect to 3D printer</li>
+            <li>
+              References:
+              <ul>
+                <li>Visual only: <a href="https://gmunk.com/Github-Gitmos">https://gmunk.com/Github-Gitmos</a></li>
+                <li>Visual only (abstract): <a href="https://gitart.app/generate">https://gitart.app/generate</a></li>
+                <li>Block chain symphony: <a href="https://symphony.iohk.io/">https://symphony.iohk.io/</a></li>
+              </ul>
+            </li>
+          </ul>
+          <p>Design inspiration: <a href="https://www.wearerewind.com/">https://www.wearerewind.com/</a></p>
+          <p>Semantic mapping:</p>
+          <ul>
+            <li>Album: coding project</li>
+            <li>Artist: contributor</li>
+            <li>Track: commit message</li>
+          </ul>
+          <p>Physical mapping:</p>
+          <ul>
+            <li>Antenna angle: repo/project</li>
+            <li>Tuning knob: timeline (right most means live?)</li>
+          </ul>
+          <p>
+            For an even stronger artistic effect, connect to a keyboard that types by itself, simulating the presence of the open source contributor. A computer
+            screen shows code editor and the lines being edited.
           </p>
+          <p>A more poetic version would only play the sound of the keyboard and a vintage terminal emulator without any voice over.</p>
+          <p>Instead of commit, we can also make the pull request and issue history audible, where human speech was used.</p>
         </div>
-      </footer>
+      </article>
+      <article class="card" tabindex="0" data-id="37" data-size="L" data-tags="CS EE Fab" data-mission="1" data-creative="1">
+        <img
+          src="assets/images/37.webp"
+          alt="Humanist colored pencil free-hand sketch of a polished oval stone pendant strung on a simple cord, faintly illuminated by subtle pencil-stippled rays representing cosmic particles on textured sketchbook paper."
+          loading="lazy"
+        />
+        <h2>StarCatcher <span class="id">#37</span></h2>
+        <p class="tagline">
+          A poetic wearable muon detector pendant that flashes whenever a cosmic ray particle hits you, tangibly connecting everyday human presence with the
+          deep cosmos.
+        </p>
+        <p class="meta">L · m1 c1 · CS, EE, Fab</p>
+        <div class="body" hidden>
+          <p>Use muon detector to count the particles from space.</p>
+          <p>Format factor: wearable pendent<br />Poetic: unique experience, connected to cosmos, being &quot;star struck&quot;</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="100" data-size="M" data-tags="Fab GenAI" data-mission="4" data-creative="3">
+        <img
+          src="assets/images/100.webp"
+          alt="Humanist colored pencil free-hand sketch of two hands resting gently over a set of ergonomic wooden keys, with soft colored lines radiating outward like musical chords."
+          loading="lazy"
+        />
+        <h2>Semantic chording <span class="id">#100</span></h2>
+        <p class="tagline">
+          A rapid chorded keying interface that allows a single thinker to harmonize multiple AI agents simultaneously, transforming prompt crafting into
+          musical improvisation.
+        </p>
+        <p class="meta">M · m4 c3 · Fab, GenAI</p>
+        <div class="body" hidden>
+          <p>
+            Similar to how music instrument and computer keyboard allow chording, what is the equivalent of chording in one-human multi-AI entity interaction?
+            Can we have real time feedback in the result of the chording, leading to discovery of Harmony, Resonance?
+          </p>
+          <p>Might be useful for Creativity generation #55</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="57" data-size="S" data-tags="Art CV Fab GenAI NLP UI/UX" data-mission="3" data-creative="2">
+        <img
+          src="assets/images/57.webp"
+          alt="Humanist colored pencil free-hand sketch of an unfolded cardboard packaging net folding gracefully into a sculptural bottle container, drawn with clean graphite and colored pencil contours."
+          loading="lazy"
+        />
+        <h2>Kenvue packaging <span class="id">#57</span></h2>
+        <p class="tagline">
+          A computational design system optimizing consumer packaging geometries for minimal ecological impact without compromising physical ergonomics.
+        </p>
+        <p class="meta">S · m3 c2 · Art, CV, Fab, GenAI, NLP, UI/UX</p>
+        <div class="body" hidden><p>Computational packaging design project. Under NDA.</p></div>
+      </article>
+      <article class="card" tabindex="0" data-id="144" data-size="M" data-tags="Art EE Fab GenAI" data-mission="4" data-creative="5">
+        <img
+          src="assets/images/144.webp"
+          alt="Humanist colored pencil free-hand sketch of hexagonal wooden tiles laid across a workbench, with delicate green vine branches spreading across their borders in colored pencil shading."
+          loading="lazy"
+        />
+        <h2>Tile based growth simulation <span class="id">#144</span></h2>
+        <p class="tagline">
+          An interactive procedural simulation where arranging modular physical tiles dictates organic growth patterns and branching decision pathways.
+        </p>
+        <p class="meta">M · m4 c5 · Art, EE, Fab, GenAI</p>
+        <div class="body" hidden>
+          <ul>
+            <li>Adding a tile creates the space for growth.</li>
+            <li>Procedural generation</li>
+            <li>Art use case</li>
+            <li>Decision/Graph simulation</li>
+            <li>Demo for #138</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="161" data-size="M" data-tags="Art GenAI" data-mission="4" data-creative="5">
+        <img
+          src="assets/images/161.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after a branching decision tree diagram, showing small rectangular paper cards linked by sketched branching pencil stems on an ivory tabletop."
+          loading="lazy"
+        />
+        <h2>Poetree <span class="id">#161</span></h2>
+        <p class="tagline">A branching physical e-ink poetry display that lets writers fork verses into parallel narrative universes with the tap of a card.</p>
+        <p class="meta">M · m4 c5 · Art, GenAI</p>
+        <div class="body" hidden>
+          <img loading="lazy" alt="Image" src="assets/images/161-desc-1.webp" />
+          <p>Use mini eink screen to steer poetry generation.</p>
+          <p>Allow forking an alternative universe.</p>
+          <p>Use e-ink screen for extra poetic interface.</p>
+          <p>Evolved from <a href="#144">#144</a></p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="174" data-size="M" data-tags="Art CS GenAI UI/UX" data-mission="2" data-creative="4">
+        <img
+          src="assets/images/174.webp"
+          alt="Humanist colored pencil free-hand sketch of a speculative retro-futuristic mechanical gadget blueprint, detailed with soft sepia linework, callout notes, and gentle watercolor-like pencil shading."
+          loading="lazy"
+        />
+        <h2>Fictitious designs from the D Space <span class="id">#174</span></h2>
+        <p class="tagline">
+          A computational creativity engine that mines decades of archived MIT thesis proposals to generate provocative, plausible design inventions that never
+          were.
+        </p>
+        <p class="meta">M · m2 c4 · Art, CS, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>Use thesis proposals from the MIT D Space to generate plausible designs from MIT</p>
+          <p>Related to computational creativity</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="205" data-size="M" data-tags="Art CV" data-mission="4" data-creative="5">
+        <img
+          src="assets/images/205.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after hands sculpting clay, showing an expressive artisan hand shaping the contours of a soft clay head on a wooden pedestal with visible pencil hatching."
+          loading="lazy"
+        />
+        <h2>Digital Sculpture <span class="id">#205</span></h2>
+        <p class="tagline">
+          A spatial digital sculpting interface that maps one hand to hold a virtual clay mass while the other carves, bringing visceral craft back into 3D
+          modeling.
+        </p>
+        <p class="meta">M · m4 c5 · Art, CV</p>
+        <div class="body" hidden>
+          <p>Use #204, one hand binding to a 3D model. the other hand as tool for sculpture</p>
+          <p>Maybe useful for #179</p>
+          <p>WIP in <a href="https://github.com/chuanqisun/clay-box">https://github.com/chuanqisun/clay-box</a></p>
+          <p>Radical idea: use head or entire body as clay</p>
+          <p><a href="https://www.instagram.com/p/Db3WzymSXvR/">https://www.instagram.com/p/Db3WzymSXvR/</a></p>
+          <img loading="lazy" alt="Image" src="assets/images/205-desc-1.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="206" data-size="L" data-tags="Fab EE GenAI CV CS NLP" data-mission="5" data-creative="4">
+        <img
+          src="assets/images/206.webp"
+          alt="Humanist colored pencil free-hand sketch of human hands arranging geometric wooden blocks and tokens inscribed with simple iconography onto a light drafting surface."
+          loading="lazy"
+        />
+        <h2>Tangible Prompt <span class="id">#206</span></h2>
+        <p class="tagline">
+          An embodied gestural grammar and symbolic physical toolkit that lets people sculpt generative prompts through hands-on manipulation instead of typing
+          text walls.
+        </p>
+        <p class="meta">L · m5 c4 · Fab, EE, GenAI, CV, CS, NLP</p>
+        <div class="body" hidden>
+          <p>A rapid prompt scaffolding system, using symbolic manipulation with create prompt</p>
+          <p>At a system level, can we design a small set of gestural grammars to help people write prompts in a more intuitive, embodied way?</p>
+          <p>Start with narrower use cases:</p>
+          <ol>
+            <li>image generation prompt</li>
+            <li>music generation prompt</li>
+            <li>text manipulation (summarize, expand, fill, search)</li>
+          </ol>
+          <p>When does hand become insufficient? Then we can add voice, and physical tools</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="257" data-size="M" data-tags="Art GenAI CV" data-mission="4" data-creative="5">
+        <img
+          src="assets/images/257.webp"
+          alt="Humanist colored pencil free-hand sketch of dynamic vibrating charcoal-like wavy lines forming the loose silhouette of a bird in mid-flight, drawn with rhythmic energetic pencil strokes."
+          loading="lazy"
+        />
+        <h2>Unstable lines <span class="id">#257</span></h2>
+        <p class="tagline">
+          A perceptual drawing canvas where drawn strokes gently morph and vibrate in response to your motion, sparking unexpected visual associations in the
+          creator&#39;s mind.
+        </p>
+        <p class="meta">M · m4 c5 · Art, GenAI, CV</p>
+        <div class="body" hidden>
+          <p>
+            Couple animation with drawing. Inspired by the game mechanism of Superhot. As you draw the line, all the lines you&#39;ve drawn start vibrating.
+          </p>
+          <p>Create a perceptual loop:</p>
+          <ol>
+            <li>We draw something without expectation</li>
+            <li>The system morph the drawing, prompt us into thinking and visualizing</li>
+            <li>We draw more to explore</li>
+            <li>The system reveal more possibilities</li>
+          </ol>
+          <p>Good class project idea for Drawing++</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="261" data-size="M" data-tags="Art GenAI CV" data-mission="5" data-creative="5">
+        <img
+          src="assets/images/261.webp"
+          alt="Humanist colored pencil free-hand sketch of hand-lettered paper text slips floating and shifting across a sketchbook page, connected by subtle graphite force-field lines."
+          loading="lazy"
+        />
+        <h2>Semantic Canvas <span class="id">#261</span></h2>
+        <p class="tagline">
+          An active typographic workspace where dragging words across a canvas instantly rewrites their meaning and context based on spatial proximity to
+          neighboring thoughts.
+        </p>
+        <p class="meta">M · m5 c5 · Art, GenAI, CV</p>
+        <div class="body" hidden><p>Drag a text around a canvas and see it instantly update based on positioning and relation to other texts nearby</p></div>
+      </article>
+      <article class="card" tabindex="0" data-id="264" data-size="S" data-tags="Art CV UI/UX" data-mission="4" data-creative="5">
+        <img
+          src="assets/images/264.webp"
+          alt="Humanist colored pencil free-hand sketch of a vintage mechanical pocket watch neatly exploded into floating gears, springs, and casing components, drawn with warm colored pencil precision."
+          loading="lazy"
+        />
+        <h2>Take apart, Put it back <span class="id">#264</span></h2>
+        <p class="tagline">
+          A sub-second diffusion editing tool that explodes any image into isolated modular parts so creators can tweak a single component and reassemble the
+          whole seamlessly.
+        </p>
+        <p class="meta">S · m4 c5 · Art, CV, UI/UX</p>
+        <div class="body" hidden>
+          <p>Use flux 2 klein for sub-second rendering</p>
+          <ul>
+            <li>explode an object into parts (render all of them), edit one of them, and put it back into the object.</li>
+            <li>disassemble an image of anything into parts. Then edit and reassemble with image diffusion</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="269" data-size="M" data-tags="Art GenAI UI/UX" data-mission="3" data-creative="5">
+        <img
+          src="assets/images/269.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after a large hand-drawn visual conference roadmap, showing an illustrated journey map with winding paths, cartoon landmarks, and speech bubbles."
+          loading="lazy"
+        />
+        <h2>Story Map <span class="id">#269</span></h2>
+        <p class="tagline">
+          A bidirectional storytelling interface that converts complex narratives into navigable visual maps, allowing authors to plot compelling plots simply
+          by drawing journeys.
+        </p>
+        <p class="meta">M · m3 c5 · Art, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>Generate any story as a map</p>
+          <ul>
+            <li>Based on physical locations</li>
+            <li>Based on conceptual travels</li>
+          </ul>
+          <h2>Examples</h2>
+          <ul>
+            <li>LOTR</li>
+            <li>Frankenstein</li>
+          </ul>
+          <h2>Inversion</h2>
+          <p>Generate a story from a map! Use navigation as metaphor. A map to story generator</p>
+          <p>aka: draw a story</p>
+          <h2>Extension</h2>
+          <p>What is redrawing on part of the image causes other parts of the image to change?</p>
+          <p>Based on observation from #186</p>
+          <p>Reference:</p>
+          <ul>
+            <li><a href="https://www.zldrawings.com/graphic-recording">https://www.zldrawings.com/graphic-recording</a></li>
+            <li><a href="https://inkfactorystudio.com/services/visual-notes/">https://inkfactorystudio.com/services/visual-notes/</a></li>
+            <li>
+              <a href="https://www.byjuliabakay.com/post/creating-a-visual-summary-of-a-conference-day"
+                >https://www.byjuliabakay.com/post/creating-a-visual-summary-of-a-conference-day</a
+              >
+            </li>
+          </ul>
+          <img loading="lazy" alt="Image" src="assets/images/269-desc-1.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="283" data-size="M" data-tags="Art CV GenAI UI/UX" data-mission="5" data-creative="5">
+        <img
+          src="assets/images/283.webp"
+          alt="Humanist colored pencil free-hand sketch of poetic handwritten stanzas on lined journal paper, where unpinned words blur into soft colored pencil smudges beside crisply inked words."
+          loading="lazy"
+        />
+        <h2>Unstable Diffusion <span class="id">#283</span></h2>
+        <p class="tagline">
+          A real-time sonnet workstation where words constantly shift and mutate until you pin them down, keeping poets in a continuous state of creative
+          serendipity.
+        </p>
+        <p class="meta">M · m5 c5 · Art, CV, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>
+            A sonnet editor.<br />Words are rapidly shifting by default<br />User can &quot;pin down&quot; an idea progressively<br />One word change may affect
+            other words
+          </p>
+          <p>Additionally</p>
+          <ul>
+            <li>Can this apply to visual art composition? music composition?</li>
+            <li>
+              The key insight is that user must be able to perceive multiple possibilities either in parallel or in rapid successions in order to stay in the
+              creative flow.
+            </li>
+          </ul>
+          <p>This is the text modality of <a href="#257">#257</a></p>
+          <p>It is not the same as #148. It must be instant and realtime.</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="286" data-size="M" data-tags="Art GenAI" data-mission="1" data-creative="3">
+        <img
+          src="assets/images/286.webp"
+          alt="Humanist colored pencil free-hand sketch of a serene gallery room with wooden floors, displaying curious abstract geometric artifacts on pedestals under warm natural skylight."
+          loading="lazy"
+        />
+        <h2>Museum by AI, for AI <span class="id">#286</span></h2>
+        <p class="tagline">
+          A speculative autonomous art institution curated, created, and critiqued entirely by synthetic intelligences to investigate what non-human aesthetics
+          look like.
+        </p>
+        <p class="meta">M · m1 c3 · Art, GenAI</p>
+        <div class="body" hidden>
+          <p>Yufeng&#39;s idea.</p>
+          <p>A virtual museum entirely run by AI.</p>
+          <ul>
+            <li>Curation by AI</li>
+            <li>Artwork by AI</li>
+            <li>Communication by AI</li>
+            <li>Audience may be AI or human.</li>
+            <li>Financial system managed by AI too.</li>
+          </ul>
+          <p>May require DAO and NFT to sustain business.</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="289" data-size="S" data-tags="Fab EE GenAI CS UI/UX" data-mission="4" data-creative="4">
+        <img
+          src="assets/images/289.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after a compact square macropad controller, showing tactile keycaps and two rotary dials rendered with soft pastel shades and pencil line work."
+          loading="lazy"
+        />
+        <h2>Semantic Calculator <span class="id">#289</span></h2>
+        <p class="tagline">
+          A playful desktop macropad that lets you add, subtract, and multiply ideas and words like numbers to discover surprising new concepts.
+        </p>
+        <p class="meta">S · m4 c4 · Fab, EE, GenAI, CS, UI/UX</p>
+        <div class="body" hidden>
+          <p>A minimalist playful interface for people to add/subtract/multiply/divide words.</p>
+          <p>Need to solve:</p>
+          <ul>
+            <li>Need a full keyboard to type words, can we: generate words? use image/icons?</li>
+            <li>What semantic operators should we support. Can use understand them</li>
+          </ul>
+          <p>This can be a minimalist hardware (product!)</p>
+          <img loading="lazy" alt="Image" src="assets/images/289-desc-1.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="295" data-size="M" data-tags="Art GenAI NLP UI/UX" data-mission="3" data-creative="3">
+        <img
+          src="assets/images/295.webp"
+          alt="Humanist colored pencil free-hand sketch of a blank speech bubble drawn on manga manuscript paper, surrounded by light pencil outlines of an expressive character silhouette."
+          loading="lazy"
+        />
+        <h2>Text bubble to manga <span class="id">#295</span></h2>
+        <p class="tagline">
+          A comic sketching canvas where drawing handwritten dialogue bubbles on paper immediately prompts generative models to complete the surrounding manga
+          scene.
+        </p>
+        <p class="meta">M · m3 c3 · Art, GenAI, NLP, UI/UX</p>
+        <div class="body" hidden>
+          <p>User draw and write a text bubble.</p>
+          <p>AI complete the manga scene with predefined universe and characters.</p>
+          <p>A new spin on Storybox.</p>
+          <ul>
+            <li>User design character</li>
+            <li>User direct the story by dialogs</li>
+            <li>AI fill in the frames</li>
+          </ul>
+          <p>Continuation of #186</p>
+          <ul>
+            <li>Tangibility: use real pen on paper, and use either HUD or projection mapping</li>
+          </ul>
+          <h2>Inversion</h2>
+          <p>Add text bubble to video, see demo: <a href="https://www.instagram.com/p/Db9Dvd6vFaz/">https://www.instagram.com/p/Db9Dvd6vFaz/</a></p>
+          <p>People watch videos in public without sound, creators need a tool to make the story engaging.</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="299" data-size="M" data-tags="Art GenAI UI/UX" data-mission="4" data-creative="2">
+        <img
+          src="assets/images/299.webp"
+          alt="Humanist colored pencil free-hand sketch of a metallic circular handpan instrument with tuned tone fields, resting on a woven mat with warm earth-toned pencil shading."
+          loading="lazy"
+        />
+        <h2>Soft Drum (Handpan) <span class="id">#299</span></h2>
+        <p class="tagline">
+          An intuitive, zero-barrier musical interface that maps melodic percussive gestures onto a digital handpan so anyone can play expressive acoustic
+          melodies immediately.
+        </p>
+        <p class="meta">M · m4 c2 · Art, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <ul>
+            <li>Inspired by <a href="https://www.instagram.com/reels/DS2fNnjiJQh/">https://www.instagram.com/reels/DS2fNnjiJQh/</a></li>
+            <li>Handpan is a good candidate because of its simplicity and pleasant sound quality</li>
+            <li>For novice people who want to express themselves with music</li>
+            <li>Simplify simplify simplify but high ceiling</li>
+            <li>Drum machine with melodic output</li>
+            <li>Identify the minimum intent face for user to express dramatic emotives.</li>
+            <li>
+              Need to solve the problem:
+              <ul>
+                <li>Realtime (need high skill) vs plan ahead (need good abstraction)</li>
+                <li>Structure vs freedom</li>
+              </ul>
+            </li>
+          </ul>
+          <p>For UROP, build a just-in-time music interface. An agent update the UI based on performance needs. Use computer vision and HUD setup</p>
+          <ol>
+            <li>percussion (we can detect with microphone)</li>
+            <li>string (we can probably visually detect pluck)</li>
+            <li>wind (it&#39;s hard)</li>
+          </ol>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="308" data-size="L" data-tags="CS CV EE Fab GenAI NLP" data-mission="3" data-creative="3">
+        <img
+          src="assets/images/308.webp"
+          alt="Humanist colored pencil free-hand sketch of everyday desk items like a ceramic coffee mug, an upside-down wooden bowl, and a notebook being tapped by wooden drumsticks."
+          loading="lazy"
+        />
+        <h2>Anywhere Drum <span class="id">#308</span></h2>
+        <p class="tagline">
+          A clip-on vibration sensor and computer vision kit that transforms any tabletop, coffee mug, or book into a zero-latency tactile drum kit with true
+          physical rebound.
+        </p>
+        <p class="meta">L · m3 c3 · CS, CV, EE, Fab, GenAI, NLP</p>
+        <div class="body" hidden>
+          <ul>
+            <li>Use computer vision + tracking to turn any object into percussion instrument</li>
+            <li>Allow tangible input but the flexibility of real world objects</li>
+            <li>Make a drum kit using vibration sensors. The sensors can attach to any surface with clip, strap, magnet, suction cup etc.</li>
+            <li>
+              This is better than drumstick because you have haptic feedback
+              <ul>
+                <li>Aerodrum selling at $250: <a href="https://aerodrums.com/pick-your-aerodrums/">https://aerodrums.com/pick-your-aerodrums/</a></li>
+              </ul>
+            </li>
+          </ul>
+          <p>This is the hardware version of <a href="#299">#299</a></p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="331" data-size="M" data-tags="Art CV Fab" data-mission="1" data-creative="5">
+        <img
+          src="assets/images/331.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after a mannequin wearing a motion capture suit, showing a tailored jacket covered in geometric circular tracking patterns."
+          loading="lazy"
+        />
+        <h2>Critical Fashion <span class="id">#331</span></h2>
+        <p class="tagline">
+          Speculative physical streetwear designed specifically for algorithmic computer vision rather than human eyes, augmented dynamically when captured
+          through digital lenses.
+        </p>
+        <p class="meta">M · m1 c5 · Art, CV, Fab</p>
+        <div class="body" hidden>
+          <p>
+            Would people still dress the same way if photography was never invented? What if we can fully decouple the aesthetic/social value of clothing from
+            its functional value?
+          </p>
+          <p>
+            As a speculative design, AI made &quot;Virtual Fashion&quot; possible. But we can bring that back into the physical world. A fashion company can
+            sell a &quot;blank canvas&quot; clothing that is optimized for computer gaze, NOT human gaze. And then the company would sell &quot;style
+            packs&quot; that augment the look of the clothing when they appear in photos.
+          </p>
+          <p>Think of Motion Capture Suit. But make it actually fashionable.</p>
+          <p>
+            The style packs are where the human artistic craft comes, or they could be computational. Once the clothing entered the digital realm, many
+            impossible designs become possible, e.g. dynamically morphing clothes, animal skins (without the cruelty), glitch visual styles.
+          </p>
+          <img loading="lazy" alt="Image" src="assets/images/331-desc-1.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="336" data-size="M" data-tags="Art CV Fab" data-mission="4" data-creative="5">
+        <img
+          src="assets/images/336.webp"
+          alt="Humanist colored pencil free-hand sketch of colorful drops of ink blooming and dispersing through clear water inside a glass cylindrical beaker, with soft textured shading."
+          loading="lazy"
+        />
+        <h2>Tangible diffusion <span class="id">#336</span></h2>
+        <p class="tagline">
+          An analog-digital installation that links swirling real-world inks in a glass liquid tank to real-time diffusion models, bridging physical
+          hydrodynamics and latent space.
+        </p>
+        <p class="meta">M · m4 c5 · Art, CV, Fab</p>
+        <div class="body" hidden>
+          <p>Liquid diffusion for art rendering using real paint/ink and liquid tanks.</p>
+          <p>Lava lamp gel.</p>
+          <p>Use computer vision and realtime image to image model to create artistic effect</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="337" data-size="S" data-tags="CS CV GenAI UI/UX" data-mission="5" data-creative="4">
+        <img
+          src="assets/images/337.webp"
+          alt="Humanist colored pencil free-hand sketch of a hand tilting a small rectangular paper card marked with a bezier easing curve, trailing a gentle dashed graphite motion arc."
+          loading="lazy"
+        />
+        <h2>Tangible CSS <span class="id">#337</span></h2>
+        <p class="tagline">
+          A handheld physical controller and IMU card that lets frontend designers choreograph interface animations and easing curves through bodily movement
+          instead of manual code tweaking.
+        </p>
+        <p class="meta">S · m5 c4 · CS, CV, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>CSS authoring device for animation, transform, and easing curves using computer vision or IMU</p>
+          <p>Can be a simple piece of paper with QR code</p>
+          <p>Or can be linked to a smartphone with IMU</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="338" data-size="L" data-tags="CV Fab GenAI NLP UI/UX" data-mission="4" data-creative="3">
+        <img
+          src="assets/images/338.webp"
+          alt="Humanist colored pencil free-hand sketch of a crafted wooden desktop control box fitted with analog sliders, brass rotary dials, and small engraved labels, drawn with warm colored pencil tones."
+          loading="lazy"
+        />
+        <h2>Object-Oriented Poetry <span class="id">#338</span></h2>
+        <p class="tagline">
+          A physical poetry console featuring dials and sliders that treats poetic motifs as reactive objects, rendering verses in real time as parameters
+          shift.
+        </p>
+        <p class="meta">L · m4 c3 · CV, Fab, GenAI, NLP, UI/UX</p>
+        <div class="body" hidden>
+          <ul>
+            <li>A modular design system for poem</li>
+            <li>Model a poem as the interactions between objects (people, animal, landscape)</li>
+            <li>User can instantiate objects, each with method and properties</li>
+            <li>User will tweak the objects. The system in (near) realtime, &quot;renders&quot; the poem</li>
+            <li>A hand-held controller exposes dials, sliders, and radio buttons for the poem</li>
+          </ul>
+          <p>
+            #35 twist: When people select the same object, the interface will reflect what others are thinking about, creative a ghostly presence of the
+            collective memory
+          </p>
+          <ul>
+            <li>
+              CHI Research twist
+              <ul>
+                <li>Collective UI: Design patterns for space-shared interaction</li>
+                <li>UI that remembers its users. User doesn&#39;t remember the UI</li>
+                <li>Feel the wisdom of others</li>
+              </ul>
+            </li>
+          </ul>
+          <p>Continuation of #371</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="344" data-size="M" data-tags="GenAI NLP" data-mission="4" data-creative="4">
+        <img
+          src="assets/images/344.webp"
+          alt="Humanist colored pencil free-hand sketch of a human profile silhouette with an intricate web of intertwined colored pencil branches and delicate leaf motifs blooming from within the mind."
+          loading="lazy"
+        />
+        <h2>Large Thought Language Model (LTLM) <span class="id">#344</span></h2>
+        <p class="tagline">
+          An egocentric language model fine-tuned to mirror internal streams of consciousness, offering a window into how personal and non-human minds
+          synthesize raw thoughts.
+        </p>
+        <p class="meta">M · m4 c4 · GenAI, NLP</p>
+        <div class="body" hidden>
+          <p>An Egocentric Language Model that fuses with the owners thoughts</p>
+          <ul>
+            <li>Fine tune or train models that only generates thought</li>
+            <li>Useful for brain storming ideas</li>
+            <li>Simulate dreams, alien minds</li>
+            <li>Then add controls to steer the thoughts</li>
+            <li>Then add visualization of thoughts</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="354" data-size="S" data-tags="Art GenAI NLP" data-mission="4" data-creative="4">
+        <img
+          src="assets/images/354.webp"
+          alt="Humanist colored pencil free-hand sketch of an ethereal landscape where a quiet bedroom gently dissolves into rolling hills and a starry crescent moon, rendered with soft colored pencils."
+          loading="lazy"
+        />
+        <h2>Dreamscape <span class="id">#354</span></h2>
+        <p class="tagline">
+          A real-time visual thought stream that synthesizes personal dreams into evocative, evolving imagery using rapid image-to-image diffusion guided by
+          ambient wiki lore.
+        </p>
+        <p class="meta">S · m4 c4 · Art, GenAI, NLP</p>
+        <div class="body" hidden>
+          <p>Describe, fetch from wiki spy, and style transfer visualize with realtime image to image diffusion.</p>
+          <p>Prototype at: <a href="https://github.com/chuanqisun/dreamscape">https://github.com/chuanqisun/dreamscape</a></p>
+          <p>If the dreaming object is a creature or person, we could use #356 to morph its appearance.</p>
+          <p>Can be built on top of <a href="#344">#344</a></p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="360" data-size="M" data-tags="CS GenAI NLP UI/UX" data-mission="5" data-creative="5">
+        <img
+          src="assets/images/360.webp"
+          alt="Humanist colored pencil free-hand sketch of four people sitting in a circle in conversation, their overlapping spoken paths represented by gentle entwined colored pencil arcs meeting at the center."
+          loading="lazy"
+        />
+        <h2>Concurrent group interview system <span class="id">#360</span></h2>
+        <p class="tagline">
+          A conversational intelligence system that listens to overlapping group discussions simultaneously, mapping evolving consensus and disagreements into a
+          coherent collective interview.
+        </p>
+        <p class="meta">M · m5 c5 · CS, GenAI, NLP, UI/UX</p>
+        <div class="body" hidden>
+          <p>
+            group interview where everyone is talking simultaneously and AI is cloning each other&#39;s voice as well as aligning their ideas. In the end, N 1:1
+            interview becomes 1 N:N interview. Consensus and conflicts are detected and tracked.
+          </p>
+          <p>Good for: team interview, group dynamics simulation</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="361" data-size="M" data-tags="Art CV Fab GenAI" data-mission="1" data-creative="4">
+        <img
+          src="assets/images/361.webp"
+          alt="Humanist colored pencil free-hand sketch of a mechanical robotic plotter arm holding an artist&#39;s pencil, drawing delicate crosshatched facial contours onto a sheet of paper on an easel."
+          loading="lazy"
+        />
+        <h2>The Artist is Present <span class="id">#361</span></h2>
+        <p class="tagline">
+          A contemplative robotic pen plotter installation that quietly observes sitting gallery visitors and sketches real-time analog portraits using real
+          graphite on paper.
+        </p>
+        <p class="meta">M · m1 c4 · Art, CV, Fab, GenAI</p>
+        <div class="body" hidden><p>Use a pen plotter to draw a portrait for the audience</p></div>
+      </article>
+      <article class="card" tabindex="0" data-id="364" data-size="M" data-tags="Art CV Fab GenAI" data-mission="4" data-creative="2">
+        <img
+          src="assets/images/364.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after a colorful Lego brick model and its schematic diagram, showing simple interlocking toy building blocks drawn with warm pencil shading."
+          loading="lazy"
+        />
+        <h2>LEGO Brick to Anything <span class="id">#364</span></h2>
+        <p class="tagline">
+          A tangible vision pipeline that recognizes physical LEGO constructions on your desk and instantly translates them into functional code, musical
+          scores, or architectural renders.
+        </p>
+        <p class="meta">M · m4 c2 · Art, CV, Fab, GenAI</p>
+        <div class="body" hidden>
+          <p>Related #193</p>
+          <p>Use Computer Vision + LEGO as input.</p>
+          <p>Output:</p>
+          <ul>
+            <li>Programs</li>
+            <li>Music</li>
+            <li>Poetry</li>
+            <li>Image</li>
+            <li>Architecture</li>
+          </ul>
+          <p>Prototypes:</p>
+          <ul>
+            <li><a href="https://youtu.be/7k8wNE878sU">https://youtu.be/7k8wNE878sU</a></li>
+            <li><a href="https://youtu.be/BrOIX--ixJ4">https://youtu.be/BrOIX--ixJ4</a></li>
+          </ul>
+          <p>Perspective mapping:</p>
+          <img loading="lazy" alt="Image" src="assets/images/364-desc-1.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="368" data-size="M" data-tags="CS EE Fab UI/UX" data-mission="2" data-creative="1">
+        <img
+          src="assets/images/368.webp"
+          alt="Humanist colored pencil free-hand sketch modeling after a compact macro pad controller with custom tactile knobs and translucent keycaps featuring icon engravings on a clean desk surface."
+          loading="lazy"
+        />
+        <h2>A-Frame (An Open Agent Interface) <span class="id">#368</span></h2>
+        <p class="tagline">
+          An open-source, affordable hardware macro deck designed with mechanical switches, rotary encoders, and a push-to-talk mic specifically for fluid
+          multi-agent AI interactions.
+        </p>
+        <p class="meta">M · m2 c1 · CS, EE, Fab, UI/UX</p>
+        <div class="body" hidden>
+          <ul>
+            <li>The market is crazy. This can be produced at &lt; $30, but is being sold at $200+</li>
+            <li>We can design an open framework for PCB and case with hot swap switches</li>
+            <li>However, we need to think outside just buttons and knobs.</li>
+            <li>Microphone and speaker is minimum requirement, and push to talk</li>
+            <li>For MAS.S60, consider multi-agent interation. See #100</li>
+            <li>For MAS.S61, consider it as controller for drawing</li>
+            <li>For UROPs, consider what is direct manipulation, what is agentic</li>
+          </ul>
+          <img loading="lazy" alt="Image" src="assets/images/368-desc-1.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="369" data-size="M" data-tags="CS GenAI UI/UX" data-mission="5" data-creative="4">
+        <img
+          src="assets/images/369.webp"
+          alt="Humanist colored pencil free-hand sketch of two reference image cards pinned to a pinboard, connected by an interpolated gradient line of transitional concept sketches."
+          loading="lazy"
+        />
+        <h2>Generative Search/Design Engine <span class="id">#369</span></h2>
+        <p class="tagline">
+          A creative search engine that unifies querying and generation, enabling designers to pin aesthetic anchors and effortlessly navigate the latent space
+          between them.
+        </p>
+        <p class="meta">M · m5 c4 · CS, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>How can we combine search with generation for images?</p>
+          <ol>
+            <li>Single point: user can bind an object, and generate a 1D/2D/3D space to explore adjacent ideas</li>
+            <li>Two point: user identify for visuals, we can establish an axis and interpolate every point to mean something</li>
+          </ol>
+          <ul>
+            <li>For MAS.S60, frame as interface agents + direct manipulation hybrid</li>
+            <li>For MAS.S61, frame as a drawing tool</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="370" data-size="M" data-tags="Art CS CV GenAI NLP" data-mission="5" data-creative="5">
+        <img
+          src="assets/images/370.webp"
+          alt="Humanist colored pencil free-hand sketch of a small friendly robotic companion figure following a hand gesture, with simple input-output chalk diagrams sketched on a blackboard backdrop."
+          loading="lazy"
+        />
+        <h2>Agent Behavioral Conditioning <span class="id">#370</span></h2>
+        <p class="tagline">
+          A behavior-shaping framework that trains intelligent agents through direct human manipulation and classical conditioning rather than tedious prompt
+          engineering.
+        </p>
+        <p class="meta">M · m5 c5 · Art, CS, CV, GenAI, NLP</p>
+        <div class="body" hidden>
+          <p>A programmable agent that can be directly manipulated by the user<br />It will then build habits based on direction manipulation.</p>
+          <p>Formal research: #58</p>
+          <p>It uses classical conditioning theory</p>
+          <ul>
+            <li>Direct manipulation must be pairs of (input) =&gt; (output) mappings.</li>
+            <li>AI generalized the mapping to behaviors (stored as code)</li>
+            <li>AI pattern matches new input to invoke known behaviors</li>
+          </ul>
+          <p>Innovation</p>
+          <ul>
+            <li>Formal representation of behavior as code (related to #347)</li>
+            <li>A framework to enumerate the types of input =&gt; output mapping that this technique applies to</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="372" data-size="M" data-tags="Art CS CV EE Fab" data-mission="1" data-creative="5">
+        <img
+          src="assets/images/372.webp"
+          alt="Humanist colored pencil free-hand sketch showing sequential overlapping phases of a seagull flapping its wings across the page, forming an elegant continuous motion ribbon in soft blues and grays."
+          loading="lazy"
+        />
+        <h2>Gull in Flight camera <span class="id">#372</span></h2>
+        <p class="tagline">
+          A computational camera system that captures unfolding continuous motions and condenses temporal flight paths into a single expressive sculptural
+          frame.
+        </p>
+        <p class="meta">M · m1 c5 · Art, CS, CV, EE, Fab</p>
+        <div class="body" hidden>
+          <p>Inspired by #119 sculpture. Can we invent a camera that captures motion in still frame?</p>
+          <p>User aims at an evolving event, capture a video, then the system produces a trace of the subject.</p>
+          <p>Requires advanced computer vision and photogrammetry techniques.</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="373" data-size="M" data-tags="Art CV GenAI UI/UX" data-mission="3" data-creative="5">
+        <img
+          src="assets/images/373.webp"
+          alt="Humanist colored pencil free-hand sketch of sketched dominoes, a ball, and a balance scale interacting in a chain reaction, rendered in expressive graphite and colored pencil linework."
+          loading="lazy"
+        />
+        <h2>Causal-Relational Drawing <span class="id">#373</span></h2>
+        <p class="tagline">
+          A dynamic drawing board where sketched entities obey simulated physical cause-and-effect laws, letting artists create animations simply by defining
+          relationships.
+        </p>
+        <p class="meta">M · m3 c5 · Art, CV, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>User select objects and entities on a canvas, simulate their interaction to create the next frame.</p>
+          <ul>
+            <li>Evolution of #186</li>
+            <li>With auto inference mode, changing on object may require other parts of the canvas to update. As observed in #186</li>
+            <li>For MAS.S60, frame as interface agents (plural)</li>
+            <li>For MAS.S61, frame as novel drawing tool (draw by simulation)</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="374" data-size="S" data-tags="Art CV UI/UX" data-mission="2" data-creative="4">
+        <img
+          src="assets/images/374.webp"
+          alt="Humanist colored pencil free-hand sketch of an antique tuning fork vibrating on a wooden surface, with delicate ripple waves expanding across colorful textured pastel surfaces."
+          loading="lazy"
+        />
+        <h2>Synesthesia <span class="id">#374</span></h2>
+        <p class="tagline">
+          A multisensory art installation that bridges human senses by translating live ambient audio and tactile inputs into visceral, responsive visual
+          textures.
+        </p>
+        <p class="meta">S · m2 c4 · Art, CV, UI/UX</p>
+        <div class="body" hidden><p>Members week art installation</p></div>
+      </article>
+      <article class="card" tabindex="0" data-id="375" data-size="M" data-tags="Art CV UI/UX" data-mission="1" data-creative="5">
+        <img
+          src="assets/images/375.webp"
+          alt="Humanist colored pencil free-hand sketch of the lid of an open laptop adorned with overlapping die-cut stickers depicting mascots and emblems, drawn in warm colored pencils on ivory paper."
+          loading="lazy"
+        />
+        <h2>StickerNet <span class="id">#375</span></h2>
+        <p class="tagline">
+          A formal computational study and latent space visualization analyzing laptop stickers as visual artifacts of hacker culture, personal identity, and
+          subcultural pride.
+        </p>
+        <p class="meta">M · m1 c5 · Art, CV, UI/UX</p>
+        <div class="body" hidden>
+          <p>A formal study of laptop stickers</p>
+          <ul>
+            <li>Understand identify, personality, and creative expression</li>
+            <li>Latent space visualization</li>
+            <li>Interactive indexing and query system</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="376" data-size="M" data-tags="CS CV EE Fab GenAI NLP UI/UX" data-mission="5" data-creative="4">
+        <img
+          src="assets/images/376.webp"
+          alt="Humanist colored pencil free-hand sketch of a sleek cylindrical wooden puck resting on a desk beside an open notebook and coffee cup, drawn with soft colored pencil shading."
+          loading="lazy"
+        />
+        <h2>Context pucks <span class="id">#376</span></h2>
+        <p class="tagline">
+          Multimodal desktop pucks equipped with ambient cameras and microphones that ground conversational agents in the physical realities of your immediate
+          workspace.
+        </p>
+        <p class="meta">M · m5 c4 · CS, CV, EE, Fab, GenAI, NLP, UI/UX</p>
+        <div class="body" hidden><p>Use speaker phone and camera to acquire real-world context for human-agent interactions</p></div>
+      </article>
+      <article class="card" tabindex="0" data-id="377" data-size="S" data-tags="GenAI UI/UX Team" data-mission="4" data-creative="4">
+        <img
+          src="assets/images/377.webp"
+          alt="Humanist colored pencil free-hand sketch of an open notebook displaying clean hand-drawn wireframes of team member portraits and research project logs, with warm wooden pencil tones."
+          loading="lazy"
+        />
+        <h2>UROP team website <span class="id">#377</span></h2>
+        <p class="tagline">
+          A minimalist, markdown-powered collaborative hub designed to transparently showcase our research group&#39;s people, prototypes, and living lab notes.
+        </p>
+        <p class="meta">S · m4 c4 · GenAI, UI/UX, Team</p>
+        <div class="body" hidden>
+          <ul>
+            <li>Intro</li>
+            <li>Member profile</li>
+            <li>Blog</li>
+            <li>Markdown as source of truth</li>
+            <li>Project</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="378" data-size="S" data-tags="Team" data-mission="5" data-creative="1">
+        <img
+          src="assets/images/378.webp"
+          alt="Humanist colored pencil free-hand sketch of an open desk planner with hand-drawn weekly calendar grids, highlighted time slots, and a small potted plant nearby in warm tones."
+          loading="lazy"
+        />
+        <h2>Schedule weekly meetup <span class="id">#378</span></h2>
+        <p class="tagline">
+          A community scheduling workflow designed to find the optimal weekly gathering window for interdisciplinary researchers to share ideas and spark
+          collaboration.
+        </p>
+        <p class="meta">S · m5 c1 · Team</p>
+        <div class="body" hidden>
+          <p>Find an overlapping time for 1 hour weekly group meetup</p>
+          <ul>
+            <li>Preferable with buffer time after, for breakout discussions</li>
+            <li>Location is Idea Garden, TMG, with backup meetup in the Media Lab building</li>
+          </ul>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="379" data-size="S" data-tags="Art GenAI Team" data-mission="3" data-creative="5">
+        <img
+          src="assets/images/379.webp"
+          alt="Humanist colored pencil free-hand sketch of a playful sticker sheet filled with die-cut badges, celebratory anniversary numerals, and whimsical lab gadgets drawn in cheerful colored pencils."
+          loading="lazy"
+        />
+        <h2>TMG sticker design ML 40+ event <span class="id">#379</span></h2>
+        <p class="tagline">
+          A computational design project generating commemorative sticker sheets celebrating four decades of Media Lab inventions to adorn the laptops of
+          community legends.
+        </p>
+        <p class="meta">S · m3 c5 · Art, GenAI, Team</p>
+        <div class="body" hidden>
+          <p>
+            Use GenAI and Computational design method to design a stickersheet for Media Lab 40th anniversary. Your sticker will travel to the laptops of ML
+            legends.
+          </p>
+          <p>Consider a warm up exercise to <a href="#375">#375</a></p>
+          <img loading="lazy" alt="Image" src="assets/images/379-desc-1.webp" /><img loading="lazy" alt="Image" src="assets/images/379-desc-2.webp" />
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="380" data-size="S" data-tags="Team" data-mission="4" data-creative="3">
+        <img
+          src="assets/images/380.webp"
+          alt="Humanist colored pencil free-hand sketch of teammates gathered closely around a steaming central hotpot dinner table, laughing and sharing food, rendered with warm inviting pencil hatch marks."
+          loading="lazy"
+        />
+        <h2>Team bonding activity <span class="id">#380</span></h2>
+        <p class="tagline">
+          A dedicated experiential retreat aimed at building genuine trust, shared memories, and informal camaraderie across our interdisciplinary lab cohort.
+        </p>
+        <p class="meta">S · m4 c3 · Team</p>
+        <div class="body" hidden>
+          <p>Plan and organize a half day or one day event to celebrate the beginning of our journey.</p>
+          <p>Example ideas, from short to long:</p>
+          <ul>
+            <li>Getting hotpot</li>
+            <li>Group sailing on Charles</li>
+            <li>Boda Borg</li>
+            <li>Foliage hike in NH/VT</li>
+          </ul>
+          <p>And your ideas...</p>
+          <p>
+            Please prioritize creating meaningful shared experience and an opportunity to know each other. By this logic, we should not go to a movie because we
+            can&#39;t talk to each other during the activity.
+          </p>
+          <p>Budget $40 per person. I will cover the cost personally. Need to discuss if the team becomes &gt;6 people</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="383" data-size="S" data-tags="Team" data-mission="99" data-creative="99">
+        <img
+          src="assets/images/383.webp"
+          alt="Humanist colored pencil free-hand sketch of a neatly organized filing cabinet with small open drawers revealing neatly labeled project folders and tidy connecting lines on paper."
+          loading="lazy"
+        />
+        <h2>GitHub org setup <span class="id">#383</span></h2>
+        <p class="tagline">
+          A structured repository architecture and automated continuous integration pipeline engineered to streamline code sharing and idea migration across the
+          lab.
+        </p>
+        <p class="meta">S · m99 c99 · Team</p>
+        <div class="body" hidden>
+          <ol>
+            <li>investigate github org constraints. Can we get private repos? Limit on collaborators?</li>
+            <li>Set up org level project, migrate ideas</li>
+            <li>Next step, connect to <a href="#377">#377</a>, re-generate website when content changes</li>
+          </ol>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="384" data-size="S" data-tags="Art CS GenAI UI/UX" data-mission="2" data-creative="4">
+        <img
+          src="assets/images/384.webp"
+          alt="Humanist colored pencil free-hand sketch of an antique desk globe surrounded by small handwritten paper notes and gentle date stamps marking present moments across different continents, rendered in warm sepia and soft colored pencil tones on textured paper."
+          loading="lazy"
+        />
+        <h2>Now Now Now <span class="id">#384</span></h2>
+        <p class="tagline">
+          A contemplative crawler and visual atlas that aggregates personal &#39;/now&#39; pages worldwide, turning fragmented snapshots of what people are
+          living in the present into a shared narrative of human connection.
+        </p>
+        <p class="meta">S · m2 c4 · Art, CS, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>
+            Based on Connie&#39;s personal website: <a href="https://conniehuang.dev/now">https://conniehuang.dev/now</a> and the movement behind it:
+            <a href="https://nownownow.com/about">https://nownownow.com/about</a>
+          </p>
+          <p>Consider it a TeleAbsence (#35) project, how preserving a present moment is a form a communication (storage = communication over time)</p>
+          <p>Also related to <a href="#375">#375</a>. Identify how people use a shared practice to deepen their sense of belonging.</p>
+          <p>For this project, we can visualize a global map of &quot;now&quot;s. It is a crawler, indexer, and visualizer.</p>
+          <p>We need good story telling and UI/UX. Presenting the data itself isn&#39;t enough.</p>
+        </div>
+      </article>
+      <article class="card" tabindex="0" data-id="385" data-size="M" data-tags="Art CS CV GenAI UI/UX" data-mission="5" data-creative="4">
+        <img
+          src="assets/images/385.webp"
+          alt="Humanist colored pencil free-hand sketch of cut-out paper drawings and translucent layered illustration sheets arranged across a wooden drafting desk, surrounded by markers, drafting pencils, and small craft scissors with gentle warm shading."
+          loading="lazy"
+        />
+        <h2>Papershop <span class="id">#385</span></h2>
+        <p class="tagline">
+          A tangible physical compositing system that reimagines multi-layer digital editing using real paper cutouts, markers, and desktop objects, bringing
+          tactile craft back into graphic illustration.
+        </p>
+        <p class="meta">M · m5 c4 · Art, CS, CV, GenAI, UI/UX</p>
+        <div class="body" hidden>
+          <p>Continuation from #186 (Dream Brush)</p>
+          <ul>
+            <li>Photoshop multi-layered image editor and drawing system</li>
+            <li>Use real paper and markers</li>
+            <li>Allow people to move and rearrange paper on the table</li>
+            <li>Allow non-flat objects to be added to the scene</li>
+            <li>It is more productive and intuitive than digital UI</li>
+            <li>Also celebrates artists hand drawing skills, allow them to use their real pens</li>
+          </ul>
+        </div>
+      </article>
     </main>
+
+    <p id="empty" class="empty" hidden>no matches</p>
+
+    <dialog id="dialog">
+      <form method="dialog"><button class="close" aria-label="close">×</button></form>
+      <img id="dialog-img" alt="" hidden loading="lazy" />
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-body" class="md"></div>
+    </dialog>
+
+    <script src="assets/main.js"></script>
   </body>
 </html>
