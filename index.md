@@ -146,6 +146,7 @@
 
 - [Find free time](./prompts/find-free-time.md)
 - [Google AI](./prompts/google-ai.md)
+- [Lecture notes](./prompts/lecture-notes.md)
 - [OpenAI](./prompts/openai.md)
 - [OpenAI Agents SDK](./prompts/openai-agents-sdk.md)
 - [Parse research](./prompts/academic.md)
