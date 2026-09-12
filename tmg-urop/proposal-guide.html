@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Markdown Preview</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown-light.min.css" />
+    <style>
+      .markdown-body {
+        box-sizing: border-box;
+        min-width: 200px;
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 45px;
+      }
+      @media (max-width: 767px) {
+        .markdown-body {
+          padding: 15px;
+        }
+      }
+      body {
+        background: #f6f8fa;
+      }
+      .markdown-body pre {
+        border-radius: 6px;
+        code {
+          white-space: pre-wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <article class="markdown-body">
+      <h1>Tangible AI: UROP Proposal Writing Guide</h1>
+      <p>Use this guide to draft your formal Fall 2026 MIT UROP research proposal for the Tangible AI initiative.</p>
+      <p>
+        A strong proposal demonstrates clear technical intent, realistic scope, and genuine ownership. It must fulfill every official MIT UROP standard while
+        reflecting the Tangible Media Group (TMG) ethos: building to think, taking creative initiative, and learning in public.
+      </p>
+      <p>Write your proposal directly into the sections below.</p>
+      <h2>Proposal Header</h2>
+      <p>Fill out this required header block at the very top of your document:</p>
+      <pre
+        class="shiki dark-plus"
+        style="background-color: #1e1e1e; color: #d4d4d4"
+        tabindex="0"
+      ><code><span class="line"><span>Name: [Your Full Name]</span></span>
+<span class="line"><span>Faculty Supervisor: Hiroshi Ishii</span></span>
+<span class="line"><span>Direct Supervisor: Chuanqi Sun</span></span>
+<span class="line"><span>Term: Fall 2026</span></span>
+<span class="line"><span>Date: [Submission Date]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>[Project Title: Choose a concise, descriptive title reflecting your focus]</span></span></code></pre>
+      <h2>Project Overview</h2>
+      <p>Provide the background, aim, and scope of your proposed research, naming your lab and collaborators.</p>
+      <p>
+        Ground your overview in the core mission of Tangible AI: closing the gap between real-time direct manipulation and modern AI systems. Explain why
+        screen-bound interfaces, text prompting, and chat boxes limit human expressiveness, and define the interaction bottleneck your chosen work addresses.
+      </p>
+      <p>
+        Explicitly state that you are conducting research within the Tangible Media Group at the MIT Media Lab, working under the guidance of Professor Hiroshi
+        Ishii and direct supervisor Chuanqi Sun alongside a peer cohort. Introduce the specific projects from the Tangible AI project list that you plan to
+        tackle.
+      </p>
+      <p>Projects list: <a href="https://code.chuanqisun.com/tmg-urop/projects">https://code.chuanqisun.com/tmg-urop/projects</a></p>
+      <p><strong>Questions to guide your draft:</strong></p>
+      <ul>
+        <li>What physical or spatial interaction paradigm are you exploring to replace passive chat interfaces?</li>
+        <li>Can you explain the core interaction loop to an engineer or designer in two clear sentences?</li>
+      </ul>
+      <h2>Communication with Mentor(s)</h2>
+      <p>State your exact meeting cadence, working locations, and communication channels.</p>
+      <p>Use and adapt the following baseline structure:</p>
+      <ul>
+        <li>
+          You will attend a weekly 1-hour in-person stand-up meeting in the Tangible Media Group space at the Media Lab for status updates, design critique, and
+          task coordination.
+        </li>
+        <li>You will participate in breakout work sessions with your direct supervisor and peer UROP cohort immediately following the stand-up.</li>
+        <li>
+          You will maintain ongoing communication between meetings via Slack and ad hoc Zoom syncs to resolve technical blockers, share working builds, and
+          coordinate code or hardware integration.
+        </li>
+      </ul>
+      <h2>Research Role &amp; Tentative Work Plan</h2>
+      <p>Detail what you will personally contribute, your week-by-week execution roadmap, and your final deliverables.</p>
+      <p>
+        Structure your semester around a staged workload: choose <strong>one small (S) project</strong> from the list as a rapid ramp-up build, followed by
+        <strong>one or two medium/large (M/L) projects</strong> as your primary research objective.
+      </p>
+      <h3>Personal Research Role</h3>
+      <p>
+        Clarify your core technical focus. Are you leading hardware fabrication, computer vision tracking, low-latency audio/visual pipelines, interaction
+        mechanics, or frontend systems engineering? Define where your direct contribution sits within the overall system.
+      </p>
+      <h3>Responsibilities and Duties</h3>
+      <p>Break your semester down into concrete, progressive phases:</p>
+      <ul>
+        <li>
+          <strong>Weeks 1 to 3 (Ramp-up):</strong> Specify the small starter project you will prototype, the environment or bench tests you will set up, and the
+          initial baseline you will establish.
+        </li>
+        <li>
+          <strong>Weeks 4 to 8 (Core Implementation):</strong> Detail your work on the primary project. List the core systems, physical assemblies, or
+          interaction loops you will design and build.
+        </li>
+        <li>
+          <strong>Weeks 9 to 12 (Iteration and Testing):</strong> Describe how you will evaluate latency, refine ergonomics, troubleshoot failure points, and
+          stress-test the prototype.
+        </li>
+        <li>
+          <strong>Weeks 13 to end (Synthesis and Documentation):</strong> Outline how you will package clean code, write clear documentation, and prepare demo
+          media.
+        </li>
+      </ul>
+      <h3>Anticipated Deliverables</h3>
+      <p>List concrete, verifiable artifacts you will produce by the end of the term:</p>
+      <ul>
+        <li>A functional, tested physical or software prototype that demonstrates real-time interaction.</li>
+        <li>Documented open-source repositories with clean architectures and clear reproduction instructions.</li>
+        <li>Short video documentation demonstrating the live user interaction loop.</li>
+        <li>A final project write-up or technical note suitable for lab dissemination.</li>
+      </ul>
+      <h2>Personal Statement &amp; Goals</h2>
+      <p>Explain your motivation, mutual technical growth, and personal definitions of success for the term.</p>
+      <h3>Why You Are Interested</h3>
+      <p>
+        Reflect on your personal stance on tools and technology. Why does physical, sensory, or embodied interaction matter to you? Why do you want to build at
+        the Media Lab instead of pursuing standard software development or purely theoretical machine learning?
+      </p>
+      <h3>What You Hope to Gain and What You Can Teach</h3>
+      <p>Research on this team is a mutual exchange:</p>
+      <ul>
+        <li>
+          <strong>What you want to learn:</strong> Identify explicit technical and design gaps you plan to close, whether that involves embedded circuits,
+          real-time multimodal models, CAD, or system architecture.
+        </li>
+        <li>
+          <strong>What you can teach:</strong> Name specific skills, previous build experiences, or engineering habits you can actively share with your peers
+          during lab sessions.
+        </li>
+      </ul>
+      <h3>Personal Goals Throughout the Term</h3>
+      <p>
+        Define clear metrics of personal success. Consider what habits of technical independence, handling ambiguous design problems, and shipping working
+        artifacts you want to solidify by the end of Fall 2026.
+      </p>
+      <h2>Final checklist</h2>
+      <ul>
+        <li><input disabled="" type="checkbox" /> Typo and grammar check. AI tools can help.</li>
+        <li><input disabled="" type="checkbox" /> No generic/unrealisitc statements about technology changing the world.</li>
+        <li><input disabled="" type="checkbox" /> A specific plan showing how you will build, test, and ship your ideas. (The plan will change, that's ok)</li>
+        <li><input disabled="" type="checkbox" /> The timeline is realistic for your weekly commitment</li>
+        <li><input disabled="" type="checkbox" /> Be yourself</li>
+      </ul>
+    </article>
+  </body>
+</html>
