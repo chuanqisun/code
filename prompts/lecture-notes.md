@@ -16,3 +16,13 @@ Convert lecture notes to plaintext
 ```md
 Now use the transcript to enrich and augment class notes. Use the class notes as core but pull content from the lecture transcript to enrich the notes. Use unicode symbols to replace spoken equations/code where approperiate
 ```
+
+# Interactive HTML explanation
+
+```md
+Use a single HTML to explain the ideas in the lecture.
+
+1. Use rich text where approperiate
+2. Use interactive demo to make complex, procedural knowledge easy to understand
+3. Minimum styling, minimum css
+```
