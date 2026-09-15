@@ -10,3 +10,9 @@ Convert lecture notes to plaintext
 5. no bold text
 6. no latex
 ```
+
+# Enrich hand written notes with lecture transcript
+
+```md
+Now use the transcript to enrich and augment class notes. Use the class notes as core but pull content from the lecture transcript to enrich the notes. Use unicode symbols to replace spoken equations/code where approperiate
+```
