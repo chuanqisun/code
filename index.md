@@ -11,6 +11,7 @@
 - [Clipboard → Markdown](./clipboard-to-markdown/)
 - [Color Analyzer](./color-analyzer/)
 - [CSV Visualizer](./csv-visualizer/)
+- [ElevenLabs JSON Transcript → Text](./transcript-formatter/)
 - [Emoji → Favicon](./emoji-to-favicon/)
 - [Emoji → Pixel Art](./emoji-to-pixel-art/)
 - [ESPP cost basis calculator](./espp-cost-basis-calculator/)

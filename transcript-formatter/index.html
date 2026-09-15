@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transcript Formatter</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: monospace;
+        background: #fff;
+        color: #000;
+        margin: 0 auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-width: 800px;
+      }
+      h1 {
+        font-size: 1.2rem;
+        margin: 0;
+        text-transform: uppercase;
+      }
+      #dropzone {
+        border: 2px dashed #000;
+        padding: 24px 16px;
+        text-align: center;
+        cursor: pointer;
+      }
+      #dropzone.dragover {
+        background: #000;
+        color: #fff;
+      }
+      textarea,
+      input[type="text"] {
+        font-family: monospace;
+        border: 2px solid #000;
+        background: #fff;
+        color: #000;
+        padding: 8px;
+        width: 100%;
+      }
+      #output {
+        height: 250px;
+        resize: vertical;
+        white-space: pre-wrap;
+      }
+      #speakers-section {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .speaker-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .speaker-label {
+        min-width: 120px;
+        word-break: break-all;
+        font-weight: bold;
+      }
+      button {
+        font-family: monospace;
+        background: #000;
+        color: #fff;
+        border: 2px solid #000;
+        padding: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        width: 100%;
+      }
+      button:active {
+        background: #fff;
+        color: #000;
+      }
+      .error {
+        color: #fff;
+        background: #000;
+        padding: 4px;
+        display: none;
+      }
+      input[type="file"] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Transcript Merger</h1>
+
+    <input type="file" id="file-input" accept=".json,application/json" />
+
+    <div id="dropzone">[ DROP, CLICK TO SELECT, OR PASTE JSON / FILE DIRECTLY ]</div>
+
+    <div id="error-msg" class="error"></div>
+
+    <!-- Editable Speakers Container -->
+    <div id="speakers-section">
+      <strong>EDIT SPEAKERS:</strong>
+      <div id="speakers-list" style="display: flex; flex-direction: column; gap: 8px"></div>
+    </div>
+
+    <!-- Output Area -->
+    <textarea id="output" readonly placeholder="Output will appear here..."></textarea>
+    <button id="download-btn" style="display: none">DOWNLOAD OUTPUT.TXT</button>
+
+    <script>
+      const dropzone = document.getElementById("dropzone");
+      const fileInput = document.getElementById("file-input");
+      const output = document.getElementById("output");
+      const downloadBtn = document.getElementById("download-btn");
+      const errorMsg = document.getElementById("error-msg");
+      const speakersSection = document.getElementById("speakers-section");
+      const speakersList = document.getElementById("speakers-list");
+
+      let rawMergedSegments = [];
+      let speakerMap = {};
+
+      function showError(text) {
+        errorMsg.textContent = `ERROR: ${text}`;
+        errorMsg.style.display = "block";
+      }
+
+      function clearError() {
+        errorMsg.style.display = "none";
+        errorMsg.textContent = "";
+      }
+
+      // Re-renders the final text using the updated speaker names
+      function updateOutput() {
+        const result = rawMergedSegments
+          .map(({ origSpeaker, text }) => {
+            const currentName = speakerMap[origSpeaker] || origSpeaker;
+            return `${currentName}: ${text}`;
+          })
+          .join("\n");
+
+        output.value = result;
+        downloadBtn.style.display = result ? "block" : "none";
+      }
+
+      // Dynamically builds the mapping inputs for discovered speakers
+      function buildSpeakerInputs() {
+        speakersList.innerHTML = "";
+        const uniqueSpeakers = Object.keys(speakerMap);
+
+        if (uniqueSpeakers.length === 0) {
+          speakersSection.style.display = "none";
+          return;
+        }
+
+        uniqueSpeakers.forEach((originalName) => {
+          const row = document.createElement("div");
+          row.className = "speaker-row";
+
+          const label = document.createElement("span");
+          label.className = "speaker-label";
+          label.textContent = originalName + ":";
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = speakerMap[originalName];
+
+          input.addEventListener("input", (e) => {
+            speakerMap[originalName] = e.target.value.trim() || originalName;
+            updateOutput();
+          });
+
+          row.appendChild(label);
+          row.appendChild(input);
+          speakersList.appendChild(row);
+        });
+
+        speakersSection.style.display = "flex";
+      }
+
+      // Process parsed JSON logic
+      function processJSON(jsonString) {
+        clearError();
+        try {
+          const transcript = JSON.parse(jsonString);
+          if (!transcript.segments || !Array.isArray(transcript.segments)) {
+            throw new Error("Invalid format: Missing 'segments' array.");
+          }
+
+          rawMergedSegments = [];
+          speakerMap = {};
+
+          for (const segment of transcript.segments) {
+            const speaker = segment.speaker?.name || segment.speaker?.id || "Unknown";
+            const text = String(segment.text || "")
+              .replace(/\s+/g, " ")
+              .trim();
+
+            if (!text) continue;
+
+            // Track unique speaker mappings
+            if (!(speaker in speakerMap)) {
+              speakerMap[speaker] = speaker;
+            }
+
+            const previous = rawMergedSegments[rawMergedSegments.length - 1];
+
+            if (previous && previous.origSpeaker === speaker) {
+              previous.text += " " + text;
+            } else {
+              rawMergedSegments.push({ origSpeaker: speaker, text });
+            }
+          }
+
+          buildSpeakerInputs();
+          updateOutput();
+        } catch (err) {
+          showError(err.message);
+        }
+      }
+
+      function handleFile(file) {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => processJSON(e.target.result);
+        reader.onerror = () => showError("Failed to read file.");
+        reader.readAsText(file);
+      }
+
+      // Drag and Drop
+      dropzone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropzone.classList.add("dragover");
+      });
+      dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+      dropzone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("dragover");
+        if (e.dataTransfer.files.length) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      // File Selector Click
+      dropzone.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", (e) => {
+        if (e.target.files.length) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      // Global Paste (Automatically handles either pasted files or pasted text)
+      window.addEventListener("paste", (e) => {
+        // Ignore paste events happening inside the editable speaker inputs
+        if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+
+        const clipboardData = e.clipboardData;
+        if (!clipboardData) return;
+
+        if (clipboardData.files.length > 0) {
+          e.preventDefault();
+          handleFile(clipboardData.files[0]);
+        } else {
+          const pastedText = clipboardData.getData("text");
+          if (pastedText && pastedText.trim()) {
+            e.preventDefault();
+            processJSON(pastedText.trim());
+          }
+        }
+      });
+
+      // Download Button
+      downloadBtn.addEventListener("click", () => {
+        const blob = new Blob([output.value], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "output.txt";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    </script>
+  </body>
+</html>
