@@ -449,7 +449,7 @@
 
         return streamCompletion(
           {
-            model: "gemma-4-31b",
+            model: "qwen-3.8-27b",
             stream: true,
             max_tokens: 1024,
             temperature: 0.4,
@@ -667,9 +667,9 @@
 
         synthesisSubscription = streamCompletion(
           {
-            model: "gemma-4-31b",
+            model: "qwen-3.8-27b",
             stream: true,
-            max_tokens: 32000,
+            max_tokens: 40_000,
             temperature: 0,
             top_p: 1,
             messages: [
