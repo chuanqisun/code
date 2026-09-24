@@ -102,6 +102,7 @@
 - [Life.Config](https://chuanqisun.github.io/life-config/)
 - [Live Rag](https://chuanqisun.github.io/live-rag/)
 - [Media Lab Game of Life](./media-lab-game-of-life/)
+- [Mediapipe text embedding](./mediapipe-text-embedding/)
 - [Metaball Surface Geometry](./metaball-surface-geometry/)
 - [Mugen AI](https://chuanqisun.github.io/mugen-ai/)
 - [NeuroStack](./neurostack/)
