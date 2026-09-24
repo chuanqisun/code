@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MediaPipe Text Embedder Options PoC</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.5;
+      }
+      .options-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        padding: 1rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+      }
+      .option-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #334155;
+      }
+      select,
+      input[type="text"] {
+        padding: 0.4rem;
+        font-size: 0.9rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+      }
+      .checkbox-group {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      textarea {
+        width: 100%;
+        height: 90px;
+        font-size: 1rem;
+        padding: 0.5rem;
+        box-sizing: border-box;
+        margin-top: 0.25rem;
+      }
+      #status {
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #b45309;
+      }
+      #status.ready {
+        color: #15803d;
+      }
+      #status.error {
+        color: #dc2626;
+      }
+      pre {
+        background: #f1f5f9;
+        padding: 1rem;
+        border-radius: 4px;
+        overflow-x: auto;
+        max-height: 300px;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>MediaPipe Text Embedder PoC</h2>
+    <div id="status">Initializing WebAssembly...</div>
+
+    <!-- Config Options UI -->
+    <div class="options-grid">
+      <div class="option-group">
+        <label for="modelSelect">Model</label>
+        <select id="modelSelect">
+          <option value="https://storage.googleapis.com/mediapipe-tasks/text_embedder/universal_sentence_encoder.tflite">Universal Sentence Encoder</option>
+          <option value="https://storage.googleapis.com/mediapipe-models/text_embedder/bert_embedder/float32/1/bert_embedder.tflite">BERT Embedder</option>
+          <option value="custom">Custom URL...</option>
+        </select>
+      </div>
+
+      <div class="option-group" id="customUrlGroup" style="display: none">
+        <label for="customModelUrl">Custom Model URL (.tflite)</label>
+        <input type="text" id="customModelUrl" placeholder="https://.../model.tflite" />
+      </div>
+
+      <div class="option-group">
+        <label for="delegateSelect">Execution Delegate</label>
+        <select id="delegateSelect">
+          <option value="CPU" selected>CPU (WASM)</option>
+          <option value="GPU">GPU (WebGL / WebGPU)</option>
+        </select>
+      </div>
+
+      <div class="option-group checkbox-group" style="margin-top: 1.25rem">
+        <input type="checkbox" id="quantizeCheck" />
+        <label for="quantizeCheck">Quantize (Int8 / Bytes)</label>
+      </div>
+
+      <div class="option-group checkbox-group" style="margin-top: 1.25rem">
+        <input type="checkbox" id="l2NormCheck" />
+        <label for="l2NormCheck">L2 Normalize</label>
+      </div>
+    </div>
+
+    <label for="inputText"><strong>Input Text:</strong></label>
+    <textarea id="inputText" placeholder="Type text here to get embeddings in realtime..." disabled></textarea>
+
+    <h3>Embedding Result</h3>
+    <div id="metaInfo">Dimensions: - | Latency: -</div>
+    <pre id="output">Waiting for input...</pre>
+
+    <script type="module">
+      import { TextEmbedder, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-text@latest";
+
+      const statusEl = document.getElementById("status");
+      const inputEl = document.getElementById("inputText");
+      const metaEl = document.getElementById("metaInfo");
+      const outputEl = document.getElementById("output");
+
+      const modelSelect = document.getElementById("modelSelect");
+      const customUrlGroup = document.getElementById("customUrlGroup");
+      const customModelUrl = document.getElementById("customModelUrl");
+      const delegateSelect = document.getElementById("delegateSelect");
+      const quantizeCheck = document.getElementById("quantizeCheck");
+      const l2NormCheck = document.getElementById("l2NormCheck");
+
+      let textEmbedder = null;
+      let wasmFiles = null;
+
+      function getSelectedModelPath() {
+        if (modelSelect.value === "custom") {
+          return customModelUrl.value.trim();
+        }
+        return modelSelect.value;
+      }
+
+      async function reloadEmbedder() {
+        const modelPath = getSelectedModelPath();
+        if (!modelPath) {
+          statusEl.textContent = "Please provide a valid model URL.";
+          statusEl.className = "error";
+          return;
+        }
+
+        // Disable input while loading
+        inputEl.disabled = true;
+        statusEl.className = "";
+        statusEl.textContent = `Loading model (${delegateSelect.value} delegate)...`;
+
+        try {
+          if (!wasmFiles) {
+            wasmFiles = await FilesetResolver.forTextTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-text@latest/wasm");
+          }
+
+          if (textEmbedder) {
+            textEmbedder.close();
+          }
+
+          textEmbedder = await TextEmbedder.createFromOptions(wasmFiles, {
+            baseOptions: {
+              modelAssetPath: modelPath,
+              delegate: delegateSelect.value, // "CPU" or "GPU"
+            },
+            quantize: quantizeCheck.checked,
+            l2Normalize: l2NormCheck.checked,
+          });
+
+          statusEl.textContent = `Ready (${delegateSelect.value} mode active).`;
+          statusEl.className = "ready";
+          inputEl.disabled = false;
+
+          // Recompute on current text if present
+          if (inputEl.value.trim()) {
+            computeEmbedding();
+          }
+        } catch (err) {
+          statusEl.textContent = `Error loading model/delegate: ${err.message}`;
+          statusEl.className = "error";
+          console.error(err);
+        }
+      }
+
+      function computeEmbedding() {
+        if (!textEmbedder) return;
+
+        const text = inputEl.value.trim();
+        if (!text) {
+          outputEl.textContent = "Waiting for input...";
+          metaEl.textContent = "Dimensions: - | Latency: -";
+          return;
+        }
+
+        try {
+          const startTime = performance.now();
+          const result = textEmbedder.embed(text);
+          const latency = (performance.now() - startTime).toFixed(2);
+
+          const head = result.embeddings[0];
+          const vector = head.floatEmbedding || head.quantizedEmbedding;
+
+          metaEl.textContent = `Dimensions: ${vector.length} | Latency: ${latency} ms (${head.floatEmbedding ? "Float32" : "Quantized"})`;
+          outputEl.textContent = JSON.stringify(Array.from(vector), null, 2);
+        } catch (err) {
+          metaEl.textContent = "Inference failed";
+          outputEl.textContent = err.message;
+        }
+      }
+
+      // Direct event bindings - no debouncing
+      inputEl.addEventListener("input", computeEmbedding);
+
+      // Reload model on any option change
+      modelSelect.addEventListener("change", () => {
+        customUrlGroup.style.display = modelSelect.value === "custom" ? "flex" : "none";
+        if (modelSelect.value !== "custom") reloadEmbedder();
+      });
+      customModelUrl.addEventListener("change", reloadEmbedder);
+      delegateSelect.addEventListener("change", reloadEmbedder);
+      quantizeCheck.addEventListener("change", reloadEmbedder);
+      l2NormCheck.addEventListener("change", reloadEmbedder);
+
+      // Initial load
+      reloadEmbedder();
+    </script>
+  </body>
+</html>
