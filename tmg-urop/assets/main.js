@@ -258,7 +258,6 @@
         return;
       }
     }
-    if (e.target === dialog) dialog.close(); // backdrop click
   });
   dialog.addEventListener("close", () => {
     if (location.hash) {
