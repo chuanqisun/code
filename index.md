@@ -113,6 +113,7 @@
 - [Perlin noise](./perlin-noise/)
 - [Phorm](./phorm/)
 - [Photon Grammar](./photon-grammar/)
+- [Planetary Gear](./planetary-gear/)
 - [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Ramiel](./ramiel/)
