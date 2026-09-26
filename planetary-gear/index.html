@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title></title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f1eedf;
+      }
+      canvas {
+        position: fixed;
+        inset: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas aria-label="Animated mechanical assembly"></canvas>
+    <script>
+      const canvas = document.querySelector("canvas"),
+        c = canvas.getContext("2d");
+      const WIDTH = 900,
+        HEIGHT = 1600,
+        TAU = Math.PI * 2;
+      const PAPER = "#f1eedf",
+        INK = "#29302a",
+        GRAY = "#929987",
+        FAINT = "#b5baa9",
+        RED = "#cb472c";
+      let viewportW, viewportH, dpr, scale, offsetX, offsetY, background;
+      let seed = 317;
+      function rand() {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      }
+      function line(x, y, X, Y, color = INK, w = 1) {
+        c.beginPath();
+        c.moveTo(x, y);
+        c.lineTo(X, Y);
+        c.strokeStyle = color;
+        c.lineWidth = w;
+        c.stroke();
+      }
+      function circle(x, y, r, color = INK, w = 1, fill) {
+        c.beginPath();
+        c.arc(x, y, Math.max(0.1, r), 0, TAU);
+        if (fill) {
+          c.fillStyle = fill;
+          c.fill();
+        }
+        c.strokeStyle = color;
+        c.lineWidth = w;
+        c.stroke();
+      }
+      function rect(x, y, w, h, color = INK, lw = 1, fill, r = 0) {
+        c.beginPath();
+        c.roundRect(x, y, w, h, r);
+        if (fill) {
+          c.fillStyle = fill;
+          c.fill();
+        }
+        c.strokeStyle = color;
+        c.lineWidth = lw;
+        c.stroke();
+      }
+      function poly(p, color = INK, w = 1, fill, close = false) {
+        c.beginPath();
+        p.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y)));
+        if (close) c.closePath();
+        if (fill) {
+          c.fillStyle = fill;
+          c.fill();
+        }
+        c.strokeStyle = color;
+        c.lineWidth = w;
+        c.stroke();
+      }
+      function local(x, y, a, fn) {
+        c.save();
+        c.translate(x, y);
+        c.rotate(a);
+        fn();
+        c.restore();
+      }
+      function dash(fn) {
+        c.save();
+        c.setLineDash([6, 3, 1, 3]);
+        fn();
+        c.restore();
+      }
+      function arc(x, y, r, a, b, color = RED, w = 2) {
+        c.beginPath();
+        c.arc(x, y, r, a, b);
+        c.strokeStyle = color;
+        c.lineWidth = w;
+        c.stroke();
+      }
+      function bolt(x, y, r = 2.5, a = 0.8) {
+        circle(x, y, r, INK, 0.65, PAPER);
+        line(x - Math.cos(a) * r * 0.62, y - Math.sin(a) * r * 0.62, x + Math.cos(a) * r * 0.62, y + Math.sin(a) * r * 0.62, INK, 0.6);
+      }
+      function pin(x, y, r = 4, red = false) {
+        circle(x, y, r, red ? RED : INK, 1.1, PAPER);
+        circle(x, y, r * 0.34, INK, 0.65);
+      }
+      function cross(x, y, r) {
+        line(x - r, y, x + r, y, GRAY, 0.5);
+        line(x, y - r, x, y + r, GRAY, 0.5);
+      }
+      function rod(a, b, w = 8, red = false) {
+        local(a.x, a.y, Math.atan2(b.y - a.y, b.x - a.x), () => {
+          const d = Math.hypot(b.x - a.x, b.y - a.y);
+          rect(-w / 2, -w / 2, d + w, w, INK, 1.05, PAPER, w / 2);
+          line(w, 0, d - w, 0, red ? RED : GRAY, red ? 2 : 0.55);
+          if (d > 70) for (let x = 18; x < d - 10; x += 14) circle(x, 0, 1.1, GRAY, 0.45);
+        });
+        pin(a.x, a.y, w * 0.42, red);
+        pin(b.x, b.y, w * 0.42, red);
+      }
+
+      // Native portrait composition, derived from the dense mechanical layout.
+      const nodes = [
+        [125, 130, 68],
+        [305, 99, 40],
+        [452, 147, 77],
+        [654, 103, 44],
+        [823, 157, 92],
+        [1033, 105, 49],
+        [1199, 151, 73],
+        [1437, 112, 65],
+        [226, 292, 52],
+        [394, 324, 51],
+        [590, 302, 75],
+        [1004, 304, 63],
+        [1371, 318, 99],
+        [107, 462, 57],
+        [278, 489, 75],
+        [486, 503, 54],
+        [722, 482, 102],
+        [922, 501, 43],
+        [1124, 473, 80],
+        [1510, 485, 41],
+        [156, 674, 88],
+        [396, 682, 83],
+        [592, 657, 42],
+        [890, 686, 94],
+        [1093, 680, 49],
+        [1245, 687, 91],
+        [1462, 707, 62],
+        [72, 816, 30],
+        [279, 818, 37],
+        [537, 809, 51],
+        [708, 792, 46],
+        [1050, 819, 39],
+        [1409, 837, 28],
+        [66, 303, 32],
+        [335, 202, 26],
+        [710, 257, 25],
+        [1145, 291, 29],
+        [1495, 255, 27],
+        [380, 437, 25],
+        [1008, 419, 24],
+        [791, 800, 24],
+        [1345, 514, 35],
+        [773, 647, 26],
+      ].map(([y, x, r], i) => ({
+        x,
+        y,
+        r,
+        i,
+        phase: i * 1.349,
+        red: [0, 4, 16, 25].includes(i),
+        kind: i % 5,
+      }));
+
+      const edges = [];
+      nodes[0].speed = 0.5;
+      for (let i = 1; i < nodes.length; i++) {
+        let best = Infinity,
+          parent = 0;
+        for (let j = 0; j < i; j++) {
+          const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+          if (d < best) {
+            best = d;
+            parent = j;
+          }
+        }
+        const a = nodes[parent],
+          b = nodes[i];
+        const ra = 10 + ((i * 7) % 15),
+          rb = 10 + ((i * 11) % 19);
+        b.speed = (a.speed * ra) / rb;
+        edges.push({ a, b, ra, rb });
+      }
+
+      function gear(x, y, r, a, red = false, style = 0) {
+        local(x, y, a, () => {
+          const count = Math.max(14, Math.round(r * 0.78)),
+            p = [];
+          for (let j = 0; j < count; j++) {
+            for (const [f, rr] of [
+              [0, r - 2.8],
+              [0.18, r - 2.8],
+              [0.29, r + 1.8],
+              [0.66, r + 1.8],
+              [0.8, r - 2.8],
+            ]) {
+              const u = ((j + f) * TAU) / count;
+              p.push([Math.cos(u) * rr, Math.sin(u) * rr]);
+            }
+          }
+          poly(p, INK, 0.95, PAPER, true);
+          circle(0, 0, r - 6, INK, 0.7);
+          if (r > 25) circle(0, 0, r - 9, GRAY, 0.5);
+          const spokes = [6, 4, 8][style % 3];
+          if (r > 27)
+            for (let j = 0; j < spokes; j++)
+              local(0, 0, (j * TAU) / spokes, () => {
+                if (style % 2) rect(11, -3.3, Math.max(3, r - 24), 6.6, INK, 0.7, undefined, 3);
+                else
+                  poly(
+                    [
+                      [10, -2],
+                      [r - 13, -5],
+                      [r - 13, 5],
+                      [10, 2],
+                    ],
+                    INK,
+                    0.7,
+                    undefined,
+                    true,
+                  );
+                bolt(r - 12, 0, 1.6, 0);
+              });
+          if (r > 62)
+            for (let j = 0; j < 64; j++) {
+              const u = (j * TAU) / 64;
+              line(Math.cos(u) * (r - 15), Math.sin(u) * (r - 15), Math.cos(u) * (r - (j % 4 ? 18 : 22)), Math.sin(u) * (r - (j % 4 ? 18 : 22)), GRAY, 0.5);
+            }
+          if (red) arc(0, 0, r - 8, -0.6, 0.8, RED, 3);
+          circle(0, 0, Math.min(11, r * 0.28), INK, 1, PAPER);
+          circle(0, 0, 4, INK, 0.8);
+          rect(-1.3, -5, 2.6, 2.2, INK, 0.5);
+        });
+      }
+      function pulley(x, y, r, a) {
+        circle(x, y, r + 2, INK, 0.9, PAPER);
+        circle(x, y, r - 0.5, GRAY, 0.6);
+        local(x, y, a, () => {
+          for (let j = 0; j < 3; j++)
+            local(0, 0, (j * TAU) / 3, () => {
+              line(3, 0, r - 3, 0, INK, 1);
+              if (r > 15) circle(r * 0.65, 3, 1.5, INK, 0.5);
+            });
+          pin(0, 0, 3.5);
+        });
+      }
+      function belt({ a, b, ra, rb }, t) {
+        const d = Math.hypot(b.x - a.x, b.y - a.y);
+        const theta = Math.atan2(b.y - a.y, b.x - a.x);
+        const alpha = Math.acos((ra - rb) / d),
+          u = theta + alpha,
+          v = theta - alpha;
+        const point = (n, r, a) => ({ x: n.x + Math.cos(a) * r, y: n.y + Math.sin(a) * r });
+        const p = point(a, ra, u),
+          q = point(b, rb, u),
+          z = point(a, ra, v),
+          w = point(b, rb, v);
+        c.beginPath();
+        c.moveTo(p.x, p.y);
+        c.lineTo(q.x, q.y);
+        c.arc(b.x, b.y, rb, u, v, false);
+        c.lineTo(z.x, z.y);
+        c.arc(a.x, a.y, ra, v, u, false);
+        c.closePath();
+        c.strokeStyle = INK;
+        c.lineWidth = 3.6;
+        c.stroke();
+        c.strokeStyle = PAPER;
+        c.lineWidth = 1.8;
+        c.stroke();
+        const speed = a.speed * ra;
+        for (const [A, B] of [
+          [p, q],
+          [w, z],
+        ]) {
+          const len = Math.hypot(B.x - A.x, B.y - A.y);
+          const nx = -(B.y - A.y) / len,
+            ny = (B.x - A.x) / len;
+          for (let s = (((t * speed) % 11) + 11) % 11; s < len; s += 11) {
+            const x = A.x + ((B.x - A.x) * s) / len,
+              y = A.y + ((B.y - A.y) * s) / len;
+            line(x - nx * 1.4, y - ny * 1.4, x + nx * 1.4, y + ny * 1.4, INK, 0.55);
+          }
+        }
+      }
+      function housing(n) {
+        const { x, y, r, i } = n;
+        dash(() => {
+          cross(x, y, r + 24);
+          circle(x, y, r + 10, GRAY, 0.5);
+        });
+        local(x, y, i % 7 === 0 ? 0.08 : 0, () => {
+          if (i % 3 === 0) {
+            rect(-r - 16, -r - 16, r * 2 + 32, r * 2 + 32, GRAY, 0.65, undefined, 7);
+            rect(-r - 12, -r - 12, r * 2 + 24, r * 2 + 24, GRAY, 0.45, undefined, 5);
+            for (const sx of [-1, 1]) for (const sy of [-1, 1]) bolt(sx * (r + 7), sy * (r + 7), 2);
+          } else if (i % 3 === 1) {
+            circle(0, 0, r + 16, GRAY, 0.6);
+            for (let j = 0; j < 8; j++) {
+              const u = (j * TAU) / 8;
+              bolt(Math.cos(u) * (r + 16), Math.sin(u) * (r + 16), 1.9, u);
+            }
+          } else {
+            poly(
+              [
+                [-r - 16, -r * 0.6],
+                [-r * 0.6, -r - 16],
+                [r + 16, -r - 16],
+                [r + 16, r * 0.6],
+                [r * 0.6, r + 16],
+                [-r - 16, r + 16],
+              ],
+              GRAY,
+              0.6,
+              undefined,
+              true,
+            );
+            for (const sx of [-1, 1]) bolt(sx * (r + 8), 0, 2);
+          }
+          for (let k = 0; k < 6; k++) line(-r + k * 4, r + 20, -r - 4 + k * 4, r + 25, GRAY, 0.45);
+        });
+      }
+      function inward(n) {
+        if (n.x > 680) return Math.PI;
+        if (n.x < 180) return 0;
+        if (n.y > 1350) return -Math.PI / 2;
+        return n.i % 2 ? Math.PI / 2 : 0;
+      }
+      function slider(n, t) {
+        const a = n.speed * t + n.phase,
+          r = n.r;
+        local(n.x, n.y, inward(n), () => {
+          const crank = r * 0.48,
+            L = r + 40;
+          const p = { x: Math.cos(a) * crank, y: Math.sin(a) * crank };
+          const q = { x: p.x + Math.sqrt(L * L - p.y * p.y), y: 0 };
+          const left = L - crank - 15,
+            right = L + crank + 16;
+          for (const y of [-11, 11]) {
+            line(left, y, right, y, INK, 0.95);
+            line(left, y * 1.4, right, y * 1.4, GRAY, 0.55);
+          }
+          for (const x of [left, right]) {
+            rect(x - 4, -20, 8, 40, INK, 0.7, PAPER, 1);
+            bolt(x, -16, 1.7);
+            bolt(x, 16, 1.7);
+          }
+          rect(q.x - 11, -9, 22, 18, INK, 0.9, PAPER, 2);
+          for (let j = 0; j < 4; j++) line(q.x - 7 + j * 4, -6, q.x - 7 + j * 4, 6, GRAY, 0.45);
+          rod(p, q, 7, n.red);
+          rod({ x: 0, y: 0 }, p, 9, n.red);
+        });
+      }
+      function linkage(n, t) {
+        const a = n.speed * t + n.phase,
+          r = n.r;
+        const theta = inward(n) + (n.i % 2 ? 0.45 : -0.45);
+        const A = { x: n.x, y: n.y },
+          B = {
+            x: n.x + Math.cos(theta) * (r + 57),
+            y: n.y + Math.sin(theta) * (r + 57),
+          };
+        const cr = r * 0.45;
+        const P = { x: A.x + Math.cos(a) * cr, y: A.y + Math.sin(a) * cr };
+        const Q = { x: B.x + Math.cos(a) * cr, y: B.y + Math.sin(a) * cr };
+        dash(() => circle(B.x, B.y, cr, GRAY, 0.5));
+        circle(B.x, B.y, cr + 7, GRAY, 0.6);
+        rod(A, P, 8, n.red);
+        rod(B, Q, 7);
+        rod(P, Q, 7, n.red);
+        pin(B.x, B.y, 5);
+      }
+      function cam(n, t) {
+        local(n.x, n.y, n.y > 1400 ? Math.PI : 0, () => {
+          const a = n.speed * t + n.phase,
+            r = n.r,
+            e = r * 0.16,
+            R = r * 0.4;
+          const cx = Math.cos(a) * e,
+            cy = Math.sin(a) * e;
+          circle(cx, cy, R, INK, 1.3, PAPER);
+          circle(cx, cy, R - 4, GRAY, 0.6);
+          if (n.red) arc(cx, cy, R - 2, a, a + 0.9, RED, 2);
+          pin(0, 0, 5);
+          const roller = 5,
+            y = cy + Math.sqrt((R + roller) ** 2 - cx * cx);
+          circle(0, y, roller, INK, 1, PAPER);
+          line(0, y + roller, 0, r + 39, INK, 2);
+          rect(-8, r + 6, 16, 24, INK, 0.8, PAPER, 1);
+          line(0, r + 8, 0, r + 28, n.red ? RED : INK, 1.5);
+          const top = y + 9,
+            bottom = r + 3,
+            p = [[0, top]];
+          for (let j = 0; j < 17; j++) p.push([j % 2 ? 5 : -5, top + ((bottom - top) * j) / 16]);
+          p.push([0, bottom]);
+          poly(p, INK, 0.65);
+        });
+      }
+      function mechanism(n, t) {
+        const { x, y, r, i } = n,
+          a = n.speed * t + n.phase;
+        gear(x, y, r, a, n.red, i);
+        const sr = 11 + (i % 4) * 4,
+          phi = [-1.05, 2.5, 0.7, -2.5, 1.65][i % 5];
+        gear(x + Math.cos(phi) * (r + sr - 0.9), y + Math.sin(phi) * (r + sr - 0.9), sr, (-a * r) / sr + phi, false, 1);
+        if (r > 65) {
+          const rr = 10,
+            phi2 = phi + 1.8;
+          gear(x + Math.cos(phi2) * (r + rr - 1), y + Math.sin(phi2) * (r + rr - 1), rr, (-a * r) / rr + phi2, false, 2);
+        }
+        if (r < 33) {
+          pulley(x, y, 7, a);
+          return;
+        }
+        if (n.kind === 0) slider(n, t);
+        else if (n.kind === 1) linkage(n, t);
+        else if (n.kind === 2) cam(n, t);
+        else if (n.kind === 3) {
+          rod({ x, y }, { x: x + Math.cos(a) * r * 0.66, y: y + Math.sin(a) * r * 0.66 }, 10, n.red);
+        } else {
+          const orbit = r * 0.43,
+            pr = r * 0.15;
+          for (let j = 0; j < 3; j++) {
+            const u = a + (j * TAU) / 3,
+              p = { x: x + Math.cos(u) * orbit, y: y + Math.sin(u) * orbit };
+            rod({ x, y }, p, 6);
+            gear(p.x, p.y, pr, -a * 2.8 + j, false, 1);
+          }
+          pin(x, y, 6, n.red);
+        }
+      }
+
+      const auxiliaries = [];
+      for (let k = 0; k < 1800 && auxiliaries.length < 65; k++) {
+        const x = 48 + rand() * 804,
+          y = 48 + rand() * 1504,
+          r = 8 + rand() * 12;
+        if (nodes.some((n) => Math.hypot(x - n.x, y - n.y) < n.r + r + 20)) continue;
+        if (auxiliaries.some((n) => Math.hypot(x - n.x, y - n.y) < n.r + r + 19)) continue;
+        let parent = nodes[0];
+        for (const n of nodes) if (Math.hypot(x - n.x, y - n.y) < Math.hypot(x - parent.x, y - parent.y)) parent = n;
+        auxiliaries.push({ x, y, r, parent, speed: (parent.speed * 12) / (r * 0.6) });
+      }
+      function auxiliary(n, t) {
+        rect(n.x - n.r - 5, n.y - n.r - 5, n.r * 2 + 10, n.r * 2 + 10, GRAY, 0.55, undefined, 2);
+        bolt(n.x - n.r - 2, n.y - n.r - 2, 1.4);
+        bolt(n.x + n.r + 2, n.y + n.r + 2, 1.4);
+        gear(n.x, n.y, n.r, t * n.speed, false, 2);
+        pin(n.x, n.y, 3);
+      }
+      function infrastructure() {
+        rect(17, 17, 866, 1566, GRAY, 0.75, undefined, 10);
+        rect(23, 23, 854, 1554, GRAY, 0.45, undefined, 7);
+        for (let x = 39; x < 870; x += 31) {
+          bolt(x, 29, 1.8);
+          bolt(x, 1571, 1.8);
+        }
+        for (let y = 55; y < 1555; y += 31) {
+          bolt(29, y, 1.8);
+          bolt(871, y, 1.8);
+        }
+        for (const n of nodes) {
+          dash(() => {
+            line(Math.max(36, n.x - n.r - 65), n.y, Math.min(864, n.x + n.r + 65), n.y, FAINT, 0.45);
+            line(n.x, Math.max(36, n.y - n.r - 55), n.x, Math.min(1564, n.y + n.r + 55), FAINT, 0.45);
+          });
+          housing(n);
+        }
+        for (const { a, b } of edges) {
+          const dx = b.x - a.x,
+            dy = b.y - a.y,
+            l = Math.hypot(dx, dy);
+          const nx = (-dy / l) * 7,
+            ny = (dx / l) * 7;
+          line(a.x + nx, a.y + ny, b.x + nx, b.y + ny, GRAY, 0.5);
+          line(a.x - nx, a.y - ny, b.x - nx, b.y - ny, GRAY, 0.5);
+          local((a.x + b.x) / 2, (a.y + b.y) / 2, Math.atan2(dy, dx), () => {
+            rect(-9, -12, 18, 24, GRAY, 0.6, undefined, 2);
+            bolt(-6, -9, 1.5);
+            bolt(6, 9, 1.5);
+          });
+        }
+      }
+      function setSceneTransform() {
+        c.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
+        c.lineCap = "round";
+        c.lineJoin = "round";
+      }
+      function resize() {
+        const bounds = canvas.getBoundingClientRect();
+        viewportW = bounds.width;
+        viewportH = bounds.height;
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(viewportW * dpr);
+        canvas.height = Math.round(viewportH * dpr);
+
+        // Centered object-fit: cover. Preserve the 9:16 scene without stretching.
+        scale = Math.max(viewportW / WIDTH, viewportH / HEIGHT);
+        offsetX = (viewportW - WIDTH * scale) / 2;
+        offsetY = (viewportH - HEIGHT * scale) / 2;
+
+        const paper = document.createElement("canvas");
+        paper.width = paper.height = 256;
+        const p = paper.getContext("2d");
+        p.fillStyle = PAPER;
+        p.fillRect(0, 0, 256, 256);
+        let noiseSeed = 51;
+        const noise = () => {
+          noiseSeed = (noiseSeed * 1664525 + 1013904223) >>> 0;
+          return noiseSeed / 4294967296;
+        };
+        for (let i = 0; i < 17000; i++) {
+          p.fillStyle = `rgba(72,65,38,${noise() * 0.04})`;
+          p.fillRect(noise() * 256, noise() * 256, 1, 1);
+        }
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.fillStyle = c.createPattern(paper, "repeat");
+        c.fillRect(0, 0, canvas.width, canvas.height);
+        setSceneTransform();
+        infrastructure();
+
+        background = document.createElement("canvas");
+        background.width = canvas.width;
+        background.height = canvas.height;
+        background.getContext("2d").drawImage(canvas, 0, 0);
+      }
+      let resizePending = false;
+      function scheduleResize() {
+        if (resizePending) return;
+        resizePending = true;
+        requestAnimationFrame(() => {
+          resizePending = false;
+          resize();
+        });
+      }
+      new ResizeObserver(scheduleResize).observe(canvas);
+      window.addEventListener("resize", scheduleResize);
+      window.visualViewport?.addEventListener("resize", scheduleResize);
+      resize();
+
+      let previous = performance.now(),
+        time = 0;
+      document.addEventListener("visibilitychange", () => {
+        previous = performance.now();
+      });
+      function animate(now) {
+        if (!document.hidden) {
+          time += Math.min(0.05, (now - previous) / 1000);
+          c.setTransform(1, 0, 0, 1, 0, 0);
+          c.drawImage(background, 0, 0);
+          setSceneTransform();
+          c.save();
+          c.beginPath();
+          c.rect(35, 35, 830, 1530);
+          c.clip();
+
+          for (const e of edges) belt(e, time);
+          for (const n of auxiliaries) belt({ a: n.parent, b: n, ra: 12, rb: n.r * 0.6 }, time);
+          for (const n of nodes) mechanism(n, time);
+          for (const n of auxiliaries) auxiliary(n, time);
+          for (const e of edges) {
+            pulley(e.a.x, e.a.y, e.ra, e.a.speed * time);
+            pulley(e.b.x, e.b.y, e.rb, e.b.speed * time);
+          }
+          for (const n of nodes) {
+            pin(n.x, n.y, 4, n.red);
+            if (n.red) {
+              const a = n.speed * time;
+              line(n.x + Math.cos(a) * 6, n.y + Math.sin(a) * 6, n.x + Math.cos(a) * 18, n.y + Math.sin(a) * 18, RED, 2.2);
+            }
+          }
+          c.restore();
+        }
+        previous = now;
+        requestAnimationFrame(animate);
+      }
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>
