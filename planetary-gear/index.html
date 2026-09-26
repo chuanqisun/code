@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title></title>
     <style>
       * {
@@ -14,33 +14,38 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #f1eedf;
+        background: #dedbce;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        height: 100dvh;
       }
       canvas {
-        position: fixed;
-        inset: 0;
         display: block;
-        width: 100%;
-        height: 100%;
-        touch-action: none;
+        width: min(100vw, 56.25dvh);
+        height: min(177.777778vw, 100dvh);
+        aspect-ratio: 9/16;
       }
     </style>
   </head>
   <body>
-    <canvas aria-label="Animated mechanical assembly"></canvas>
+    <canvas aria-label="Animated mechanical line art"></canvas>
     <script>
       const canvas = document.querySelector("canvas"),
         c = canvas.getContext("2d");
-      const WIDTH = 900,
-        HEIGHT = 1600,
+      const VW = 900,
+        VH = 1600,
         TAU = Math.PI * 2;
       const PAPER = "#f1eedf",
         INK = "#29302a",
         GRAY = "#929987",
         FAINT = "#b5baa9",
         RED = "#cb472c";
-      let viewportW, viewportH, dpr, scale, offsetX, offsetY, background;
-      let seed = 317;
+      let sx = 1,
+        sy = 1,
+        staticLayer,
+        seed = 317;
       function rand() {
         seed = (seed * 1664525 + 1013904223) >>> 0;
         return seed / 4294967296;
@@ -130,7 +135,6 @@
         pin(b.x, b.y, w * 0.42, red);
       }
 
-      // Native portrait composition, derived from the dense mechanical layout.
       const nodes = [
         [125, 130, 68],
         [305, 99, 40],
@@ -198,13 +202,12 @@
           }
         }
         const a = nodes[parent],
-          b = nodes[i];
-        const ra = 10 + ((i * 7) % 15),
+          b = nodes[i],
+          ra = 10 + ((i * 7) % 15),
           rb = 10 + ((i * 11) % 19);
         b.speed = (a.speed * ra) / rb;
         edges.push({ a, b, ra, rb });
       }
-
       function gear(x, y, r, a, red = false, style = 0) {
         local(x, y, a, () => {
           const count = Math.max(14, Math.round(r * 0.78)),
@@ -267,11 +270,12 @@
           pin(0, 0, 3.5);
         });
       }
-      function belt({ a, b, ra, rb }, t) {
+      function belt(e, t) {
+        const { a, b, ra, rb } = e;
         const d = Math.hypot(b.x - a.x, b.y - a.y);
-        const theta = Math.atan2(b.y - a.y, b.x - a.x);
-        const alpha = Math.acos((ra - rb) / d),
-          u = theta + alpha,
+        const theta = Math.atan2(b.y - a.y, b.x - a.x),
+          alpha = Math.acos((ra - rb) / d);
+        const u = theta + alpha,
           v = theta - alpha;
         const point = (n, r, a) => ({ x: n.x + Math.cos(a) * r, y: n.y + Math.sin(a) * r });
         const p = point(a, ra, u),
@@ -338,21 +342,16 @@
               undefined,
               true,
             );
-            for (const sx of [-1, 1]) bolt(sx * (r + 8), 0, 2);
+            for (const s of [-1, 1]) bolt(s * (r + 8), 0, 2);
           }
           for (let k = 0; k < 6; k++) line(-r + k * 4, r + 20, -r - 4 + k * 4, r + 25, GRAY, 0.45);
         });
       }
-      function inward(n) {
-        if (n.x > 680) return Math.PI;
-        if (n.x < 180) return 0;
-        if (n.y > 1350) return -Math.PI / 2;
-        return n.i % 2 ? Math.PI / 2 : 0;
-      }
       function slider(n, t) {
         const a = n.speed * t + n.phase,
           r = n.r;
-        local(n.x, n.y, inward(n), () => {
+        const direction = n.x > 650 ? Math.PI : n.y > 1350 ? -Math.PI / 2 : n.i % 2 ? Math.PI / 2 : 0;
+        local(n.x, n.y, direction, () => {
           const crank = r * 0.48,
             L = r + 40;
           const p = { x: Math.cos(a) * crank, y: Math.sin(a) * crank };
@@ -377,7 +376,7 @@
       function linkage(n, t) {
         const a = n.speed * t + n.phase,
           r = n.r;
-        const theta = inward(n) + (n.i % 2 ? 0.45 : -0.45);
+        const theta = n.x > 650 ? 2.8 : n.y > 1350 ? -1.3 : n.i % 2 ? 0.7 : -0.7;
         const A = { x: n.x, y: n.y },
           B = {
             x: n.x + Math.cos(theta) * (r + 57),
@@ -394,30 +393,28 @@
         pin(B.x, B.y, 5);
       }
       function cam(n, t) {
-        local(n.x, n.y, n.y > 1400 ? Math.PI : 0, () => {
-          const a = n.speed * t + n.phase,
-            r = n.r,
-            e = r * 0.16,
-            R = r * 0.4;
-          const cx = Math.cos(a) * e,
-            cy = Math.sin(a) * e;
-          circle(cx, cy, R, INK, 1.3, PAPER);
-          circle(cx, cy, R - 4, GRAY, 0.6);
-          if (n.red) arc(cx, cy, R - 2, a, a + 0.9, RED, 2);
-          pin(0, 0, 5);
-          const roller = 5,
-            y = cy + Math.sqrt((R + roller) ** 2 - cx * cx);
-          circle(0, y, roller, INK, 1, PAPER);
-          line(0, y + roller, 0, r + 39, INK, 2);
-          rect(-8, r + 6, 16, 24, INK, 0.8, PAPER, 1);
-          line(0, r + 8, 0, r + 28, n.red ? RED : INK, 1.5);
-          const top = y + 9,
-            bottom = r + 3,
-            p = [[0, top]];
-          for (let j = 0; j < 17; j++) p.push([j % 2 ? 5 : -5, top + ((bottom - top) * j) / 16]);
-          p.push([0, bottom]);
-          poly(p, INK, 0.65);
-        });
+        const a = n.speed * t + n.phase,
+          r = n.r,
+          e = r * 0.16,
+          R = r * 0.4;
+        const cx = n.x + Math.cos(a) * e,
+          cy = n.y + Math.sin(a) * e;
+        circle(cx, cy, R, INK, 1.3, PAPER);
+        circle(cx, cy, R - 4, GRAY, 0.6);
+        if (n.red) arc(cx, cy, R - 2, a, a + 0.9, RED, 2);
+        pin(n.x, n.y, 5);
+        const roller = 5,
+          y = cy + Math.sqrt((R + roller) ** 2 - (cx - n.x) ** 2);
+        circle(n.x, y, roller, INK, 1, PAPER);
+        line(n.x, y + roller, n.x, n.y + r + 39, INK, 2);
+        rect(n.x - 8, n.y + r + 6, 16, 24, INK, 0.8, PAPER, 1);
+        line(n.x, n.y + r + 8, n.x, n.y + r + 28, n.red ? RED : INK, 1.5);
+        const top = y + 9,
+          bottom = n.y + r + 3,
+          p = [[n.x, top]];
+        for (let j = 0; j < 17; j++) p.push([n.x + (j % 2 ? 5 : -5), top + ((bottom - top) * j) / 16]);
+        p.push([n.x, bottom]);
+        poly(p, INK, 0.65);
       }
       function mechanism(n, t) {
         const { x, y, r, i } = n,
@@ -444,17 +441,16 @@
           const orbit = r * 0.43,
             pr = r * 0.15;
           for (let j = 0; j < 3; j++) {
-            const u = a + (j * TAU) / 3,
-              p = { x: x + Math.cos(u) * orbit, y: y + Math.sin(u) * orbit };
+            const u = a + (j * TAU) / 3;
+            const p = { x: x + Math.cos(u) * orbit, y: y + Math.sin(u) * orbit };
             rod({ x, y }, p, 6);
             gear(p.x, p.y, pr, -a * 2.8 + j, false, 1);
           }
           pin(x, y, 6, n.red);
         }
       }
-
       const auxiliaries = [];
-      for (let k = 0; k < 1800 && auxiliaries.length < 65; k++) {
+      for (let k = 0; k < 1500 && auxiliaries.length < 65; k++) {
         const x = 48 + rand() * 804,
           y = 48 + rand() * 1504,
           r = 8 + rand() * 12;
@@ -465,27 +461,28 @@
         auxiliaries.push({ x, y, r, parent, speed: (parent.speed * 12) / (r * 0.6) });
       }
       function auxiliary(n, t) {
-        rect(n.x - n.r - 5, n.y - n.r - 5, n.r * 2 + 10, n.r * 2 + 10, GRAY, 0.55, undefined, 2);
-        bolt(n.x - n.r - 2, n.y - n.r - 2, 1.4);
-        bolt(n.x + n.r + 2, n.y + n.r + 2, 1.4);
-        gear(n.x, n.y, n.r, t * n.speed, false, 2);
-        pin(n.x, n.y, 3);
+        const { x, y, r, speed } = n;
+        rect(x - r - 5, y - r - 5, r * 2 + 10, r * 2 + 10, GRAY, 0.55, undefined, 2);
+        bolt(x - r - 2, y - r - 2, 1.4);
+        bolt(x + r + 2, y + r + 2, 1.4);
+        gear(x, y, r, t * speed, false, 2);
+        pin(x, y, 3);
       }
       function infrastructure() {
-        rect(17, 17, 866, 1566, GRAY, 0.75, undefined, 10);
-        rect(23, 23, 854, 1554, GRAY, 0.45, undefined, 7);
-        for (let x = 39; x < 870; x += 31) {
+        rect(17, 17, VW - 34, VH - 34, GRAY, 0.75, undefined, 10);
+        rect(23, 23, VW - 46, VH - 46, GRAY, 0.45, undefined, 7);
+        for (let x = 39; x < VW - 30; x += 31) {
           bolt(x, 29, 1.8);
-          bolt(x, 1571, 1.8);
+          bolt(x, VH - 29, 1.8);
         }
-        for (let y = 55; y < 1555; y += 31) {
+        for (let y = 55; y < VH - 45; y += 31) {
           bolt(29, y, 1.8);
-          bolt(871, y, 1.8);
+          bolt(VW - 29, y, 1.8);
         }
         for (const n of nodes) {
           dash(() => {
-            line(Math.max(36, n.x - n.r - 65), n.y, Math.min(864, n.x + n.r + 65), n.y, FAINT, 0.45);
-            line(n.x, Math.max(36, n.y - n.r - 55), n.x, Math.min(1564, n.y + n.r + 55), FAINT, 0.45);
+            line(Math.max(36, n.x - n.r - 65), n.y, Math.min(VW - 36, n.x + n.r + 65), n.y, FAINT, 0.45);
+            line(n.x, Math.max(36, n.y - n.r - 55), n.x, Math.min(VH - 36, n.y + n.r + 55), FAINT, 0.45);
           });
           housing(n);
         }
@@ -504,97 +501,70 @@
           });
         }
       }
-      function setSceneTransform() {
-        c.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY);
-        c.lineCap = "round";
-        c.lineJoin = "round";
+
+      const paper = document.createElement("canvas");
+      paper.width = paper.height = 256;
+      const p = paper.getContext("2d");
+      p.fillStyle = PAPER;
+      p.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 17000; i++) {
+        p.fillStyle = `rgba(72,65,38,${rand() * 0.04})`;
+        p.fillRect(rand() * 256, rand() * 256, 1, 1);
       }
       function resize() {
+        // The CSS box contains one complete 9:16 composition, without cropping.
         const bounds = canvas.getBoundingClientRect();
-        viewportW = bounds.width;
-        viewportH = bounds.height;
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
-        canvas.width = Math.round(viewportW * dpr);
-        canvas.height = Math.round(viewportH * dpr);
-
-        // Centered object-fit: cover. Preserve the 9:16 scene without stretching.
-        scale = Math.max(viewportW / WIDTH, viewportH / HEIGHT);
-        offsetX = (viewportW - WIDTH * scale) / 2;
-        offsetY = (viewportH - HEIGHT * scale) / 2;
-
-        const paper = document.createElement("canvas");
-        paper.width = paper.height = 256;
-        const p = paper.getContext("2d");
-        p.fillStyle = PAPER;
-        p.fillRect(0, 0, 256, 256);
-        let noiseSeed = 51;
-        const noise = () => {
-          noiseSeed = (noiseSeed * 1664525 + 1013904223) >>> 0;
-          return noiseSeed / 4294967296;
-        };
-        for (let i = 0; i < 17000; i++) {
-          p.fillStyle = `rgba(72,65,38,${noise() * 0.04})`;
-          p.fillRect(noise() * 256, noise() * 256, 1, 1);
-        }
-        c.setTransform(1, 0, 0, 1, 0, 0);
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(bounds.width * dpr));
+        const height = Math.max(1, Math.round(bounds.height * dpr));
+        if (staticLayer && canvas.width === width && canvas.height === height) return;
+        canvas.width = width;
+        canvas.height = height;
+        sx = width / VW;
+        sy = height / VH;
+        c.setTransform(sx, 0, 0, sy, 0, 0);
         c.fillStyle = c.createPattern(paper, "repeat");
-        c.fillRect(0, 0, canvas.width, canvas.height);
-        setSceneTransform();
+        c.fillRect(0, 0, VW, VH);
+        c.lineCap = "round";
+        c.lineJoin = "round";
         infrastructure();
-
-        background = document.createElement("canvas");
-        background.width = canvas.width;
-        background.height = canvas.height;
-        background.getContext("2d").drawImage(canvas, 0, 0);
+        staticLayer = document.createElement("canvas");
+        staticLayer.width = width;
+        staticLayer.height = height;
+        staticLayer.getContext("2d").drawImage(canvas, 0, 0);
       }
-      let resizePending = false;
-      function scheduleResize() {
-        if (resizePending) return;
-        resizePending = true;
-        requestAnimationFrame(() => {
-          resizePending = false;
-          resize();
-        });
-      }
-      new ResizeObserver(scheduleResize).observe(canvas);
-      window.addEventListener("resize", scheduleResize);
-      window.visualViewport?.addEventListener("resize", scheduleResize);
+      new ResizeObserver(resize).observe(canvas);
+      addEventListener("resize", resize);
       resize();
 
       let previous = performance.now(),
         time = 0;
-      document.addEventListener("visibilitychange", () => {
-        previous = performance.now();
-      });
       function animate(now) {
-        if (!document.hidden) {
-          time += Math.min(0.05, (now - previous) / 1000);
-          c.setTransform(1, 0, 0, 1, 0, 0);
-          c.drawImage(background, 0, 0);
-          setSceneTransform();
-          c.save();
-          c.beginPath();
-          c.rect(35, 35, 830, 1530);
-          c.clip();
-
-          for (const e of edges) belt(e, time);
-          for (const n of auxiliaries) belt({ a: n.parent, b: n, ra: 12, rb: n.r * 0.6 }, time);
-          for (const n of nodes) mechanism(n, time);
-          for (const n of auxiliaries) auxiliary(n, time);
-          for (const e of edges) {
-            pulley(e.a.x, e.a.y, e.ra, e.a.speed * time);
-            pulley(e.b.x, e.b.y, e.rb, e.b.speed * time);
-          }
-          for (const n of nodes) {
-            pin(n.x, n.y, 4, n.red);
-            if (n.red) {
-              const a = n.speed * time;
-              line(n.x + Math.cos(a) * 6, n.y + Math.sin(a) * 6, n.x + Math.cos(a) * 18, n.y + Math.sin(a) * 18, RED, 2.2);
-            }
-          }
-          c.restore();
-        }
+        time += Math.min(0.05, (now - previous) / 1000);
         previous = now;
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.drawImage(staticLayer, 0, 0);
+        c.setTransform(sx, 0, 0, sy, 0, 0);
+        c.save();
+        c.beginPath();
+        c.rect(35, 35, VW - 70, VH - 70);
+        c.clip();
+        for (const e of edges) belt(e, time);
+        for (const n of auxiliaries) belt({ a: n.parent, b: n, ra: 12, rb: n.r * 0.6 }, time);
+        for (const n of nodes) mechanism(n, time);
+        for (const n of auxiliaries) auxiliary(n, time);
+        for (const e of edges) {
+          pulley(e.a.x, e.a.y, e.ra, e.a.speed * time);
+          pulley(e.b.x, e.b.y, e.rb, e.b.speed * time);
+        }
+        for (const n of nodes) {
+          pin(n.x, n.y, 4, n.red);
+          if (n.red) {
+            const a = n.speed * time;
+            line(n.x + Math.cos(a) * 6, n.y + Math.sin(a) * 6, n.x + Math.cos(a) * 18, n.y + Math.sin(a) * 18, RED, 2.2);
+          }
+        }
+        c.restore();
         requestAnimationFrame(animate);
       }
       requestAnimationFrame(animate);
