@@ -25,6 +25,7 @@
 - [ICS → Schedule HTML](./ics-to-html/)
 - [JSON → TypeScript](./json-to-typescript/)
 - [JSON ↔ YAML](./json-to-yaml)
+- [JSONL text chunk merger](./jsonl-text-chunk-merge/)
 - [JSONL viewer](./jsonl-viewer/)
 - [Kanji Inscription](./kanji-inscription/)
 - [Keyboard bounce tester](./keyboard-bounce-tester/)

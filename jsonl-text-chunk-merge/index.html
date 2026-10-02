@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JSONL De-duplicating Merger</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 20px;
+    }
+    textarea {
+      width: 100%;
+      height: 250px;
+      box-sizing: border-box;
+      font-family: monospace;
+      white-space: pre;
+    }
+    .controls {
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>JSONL Chunker Reconstructor</h2>
+
+  <label for="input">Paste JSONL here:</label>
+  <textarea id="input" placeholder='{"text": "...", "chunk_id": 0}&#10;{"text": "...", "chunk_id": 1}'></textarea>
+
+  <div class="controls">
+    <button onclick="processJSONL()">Merge Chunks</button>
+    <button onclick="copyOutput()">Copy Plaintext</button>
+    <span id="status"></span>
+  </div>
+
+  <label for="output">Plaintext Output:</label>
+  <textarea id="output" readonly></textarea>
+
+  <script>
+    function findOverlap(prev, next) {
+      // Find the longest suffix of prev that matches a prefix of next
+      const maxPossible = Math.min(prev.length, next.length);
+      for (let len = maxPossible; len > 0; len--) {
+        if (prev.endsWith(next.slice(0, len))) {
+          return len;
+        }
+      }
+      return 0;
+    }
+
+    function processJSONL() {
+      const input = document.getElementById('input').value;
+      const lines = input.split('\n');
+      const chunks = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        try {
+          const parsed = JSON.parse(line);
+          if (typeof parsed.text === 'string') {
+            chunks.push(parsed);
+          }
+        } catch (e) {
+          console.warn(`Line ${i + 1} skipped: invalid JSON.`);
+        }
+      }
+
+      if (chunks.length === 0) {
+        document.getElementById('output').value = '';
+        document.getElementById('status').innerText = 'No valid chunks found.';
+        return;
+      }
+
+      // Sort by chunk_id if available to guarantee correct sequence
+      if (chunks[0].chunk_id !== undefined) {
+        chunks.sort((a, b) => (a.chunk_id ?? 0) - (b.chunk_id ?? 0));
+      }
+
+      let combined = chunks[0].text;
+
+      for (let i = 1; i < chunks.length; i++) {
+        const currentText = chunks[i].text;
+        const overlapLen = findOverlap(combined, currentText);
+        
+        // Append only the non-overlapping portion
+        combined += currentText.slice(overlapLen);
+      }
+
+      document.getElementById('output').value = combined;
+      document.getElementById('status').innerText = `Merged ${chunks.length} chunks.`;
+    }
+
+    function copyOutput() {
+      const output = document.getElementById('output');
+      output.select();
+      navigator.clipboard.writeText(output.value).then(() => {
+        document.getElementById('status').innerText = 'Copied to clipboard!';
+      });
+    }
+  </script>
+
+</body>
+</html>
