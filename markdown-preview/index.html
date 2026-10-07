@@ -1,11 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>GitHub Markdown Preview Tool with Shiki</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- GitHub Markdown CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown-light.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.9.0/github-markdown-light.min.css" />
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.21/katex.min.css" />
     <style>
       body {
         margin: 0;
@@ -142,14 +144,25 @@ Paste your **Markdown** on the left.
 - See the preview on the right
 - Download as GitHub-styled HTML
 - Paste images directly - they'll be converted to base64!
+- Write math with KaTeX: $E = mc^2$
 
 ---
 
-> Built with vanilla JS + Shiki.
+> Built with vanilla JS + Shiki + KaTeX.
+
+### Math Examples
+
+Inline math: $\lim_{x \to 0} \frac{\sin x}{x} = 1$ and \(a^2 + b^2 = c^2\)
+
+Block math:
+
+$$
+\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}
+$$
 
 Here's a footnote example. This is some text with a footnote[^1].
 
-[^1]: This is the content of the footnote.
+[^1]: This is the content of the footnote with $e^{i\pi} + 1 = 0$.
 </textarea
       >
       <div class="preview-pane">
@@ -158,13 +171,116 @@ Here's a footnote example. This is some text with a footnote[^1].
     </div>
     <div class="paste-indicator" id="pasteIndicator">Processing image...</div>
 
-    <!-- Module script: Marked + Shiki integration -->
+    <!-- Module script: Marked + Shiki + KaTeX integration -->
     <script type="module">
       import { Marked } from "https://esm.sh/marked@16.0.0";
       import markedShiki from "https://esm.sh/marked-shiki@1.2.0";
       import markedFootnote from "https://esm.sh/marked-footnote@1.4.0"; // Import marked-footnote
       import { bundledLanguages } from "https://esm.sh/shiki@3.7.0/bundle/full";
       import { createHighlighter } from "https://esm.sh/shiki@3.7.0";
+      import katex from "https://esm.sh/katex@0.16.21";
+
+      /**
+       * KaTeX extension for Marked.
+       * Supports block math ($$...$$ and \[...\]) and inline math ($...$, \(...\), etc.).
+       */
+      function markedKatex(options = {}) {
+        const macros = options.macros ?? {};
+
+        function render(tex, displayMode) {
+          try {
+            return katex.renderToString(tex, {
+              ...options,
+              macros,
+              displayMode,
+              throwOnError: options.throwOnError ?? false,
+              trust: options.trust ?? false,
+            });
+          } catch (err) {
+            console.error("KaTeX render error:", err);
+            return `<span class="katex-error">${escapeHtml(tex)}</span>`;
+          }
+        }
+
+        function escapeHtml(str) {
+          return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+
+        // Block math: $$...$$ or \[...\]
+        const blockDollarStartRegex = /^\s*\$\$/m;
+        const blockDollarRegex = /^\s*\$\$[ \t]*\n?([\s\S]*?)\n?[ \t]*\$\$(?:\n|$)/;
+        const blockBracketStartRegex = /^\s*\\\[/m;
+        const blockBracketRegex = /^\s*\\\[[ \t]*\n?([\s\S]*?)\n?[ \t]*\\\](?:\n|$)/;
+
+        // Inline math: $...$ or \(...\) or $$...$$ or \[...\]
+        const inlineDoubleDollarRegex = /^\$\$((?:\\.|[^\\$])+?)\$\$/;
+        const inlineBracketRegex = /^\\\[((?:\\.|[\s\S])+?)\\\]/;
+        const inlineDollarRegex = /^\$(?!\$|\s)((?:\\.|[^\\$\n])+?)(?<!\s)\$(?!\$)/;
+        const inlineParenRegex = /^\\\(((?:\\.|[^\\\n])+?)\\\)/;
+        const inlineStartRegex = /\$|\\\(|\\\[/;
+
+        const blockMath = {
+          name: "blockMath",
+          level: "block",
+
+          start(src) {
+            const dollarIndex = src.match(blockDollarStartRegex)?.index;
+            const bracketIndex = src.match(blockBracketStartRegex)?.index;
+
+            if (dollarIndex === undefined) return bracketIndex;
+            if (bracketIndex === undefined) return dollarIndex;
+
+            return Math.min(dollarIndex, bracketIndex);
+          },
+
+          tokenizer(src) {
+            const match = blockDollarRegex.exec(src) ?? blockBracketRegex.exec(src);
+            if (!match) return;
+
+            return {
+              type: "blockMath",
+              raw: match[0],
+              text: match[1].trim(),
+            };
+          },
+
+          renderer(token) {
+            return `${render(token.text, true)}\n`;
+          },
+        };
+
+        const inlineMath = {
+          name: "inlineMath",
+          level: "inline",
+
+          start(src) {
+            return src.match(inlineStartRegex)?.index;
+          },
+
+          tokenizer(src) {
+            const match = inlineDoubleDollarRegex.exec(src) ?? inlineBracketRegex.exec(src) ?? inlineDollarRegex.exec(src) ?? inlineParenRegex.exec(src);
+
+            if (!match) return;
+
+            const isDisplay = match[0].startsWith("$$") || match[0].startsWith("\\[");
+
+            return {
+              type: "inlineMath",
+              raw: match[0],
+              text: match[1].trim(),
+              displayMode: isDisplay,
+            };
+          },
+
+          renderer(token) {
+            return render(token.text, token.displayMode ?? false);
+          },
+        };
+
+        return {
+          extensions: [blockMath, inlineMath],
+        };
+      }
 
       /**
        * Wraps marked.parse() and integrates Shiki for syntax highlighting.
@@ -211,8 +327,19 @@ Here's a footnote example. This is some text with a footnote[^1].
           };
 
           this.marked = new Marked().use(
+            markedKatex(),
             markedShiki({
               async highlight(code, lang) {
+                if (lang === "math" || lang === "katex") {
+                  try {
+                    return katex.renderToString(code, {
+                      displayMode: true,
+                      throwOnError: false,
+                    });
+                  } catch (e) {
+                    console.error("KaTeX code block error:", e);
+                  }
+                }
                 const highlightLang = supportedLanguages.includes(lang) ? lang : "text";
                 const highlighter = await getHighlighter(highlightLang);
                 return highlighter.codeToHtml(code, {
@@ -221,7 +348,7 @@ Here's a footnote example. This is some text with a footnote[^1].
                 });
               },
             }),
-            markedFootnote() // Use marked-footnote plugin
+            markedFootnote(), // Use marked-footnote plugin
           );
         }
 
@@ -360,7 +487,8 @@ Here's a footnote example. This is some text with a footnote[^1].
   <meta charset="UTF-8">
   <title>Markdown Preview</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown-light.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.9.0/github-markdown-light.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.21/katex.min.css" />
   <style>
     .markdown-body { box-sizing: border-box; min-width:200px; max-width:980px; margin:0 auto; padding:45px; }
     @media(max-width:767px){ .markdown-body{padding:15px;} }
