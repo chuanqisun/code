@@ -640,6 +640,49 @@
         { value: "landscape_16_9", label: "Landscape 16:9" },
       ];
 
+      const flux3AspectChoices = ["auto", "21:9", "2:1", "16:9", "3:2", "7:5", "4:3", "5:4", "1:1", "4:5", "3:4", "5:7", "2:3", "9:16", "1:2"].map((v) => ({
+        value: v,
+        label: v,
+      }));
+
+      const flux3ResolutionChoices = [
+        { value: "512sq", label: "512sq" },
+        { value: "768sq", label: "768sq" },
+        { value: "1k", label: "1k" },
+        { value: "2k", label: "2k" },
+        { value: "4k", label: "4k" },
+      ];
+
+      const flux3FormatChoices = [
+        { value: "jpeg", label: "jpeg" },
+        { value: "png", label: "png" },
+      ];
+
+      const flux3SafetyChoices = [
+        { value: "0", label: "0 (strictest)" },
+        { value: "1", label: "1" },
+        { value: "2", label: "2 (default)" },
+        { value: "3", label: "3" },
+        { value: "4", label: "4 (lenient)" },
+      ];
+
+      const flux3Options = [
+        { key: "aspect_ratio", label: "Aspect Ratio", type: "select", default: "auto", choices: flux3AspectChoices },
+        { key: "resolution", label: "Resolution", type: "select", default: "1k", choices: flux3ResolutionChoices },
+        { key: "safety_tolerance", label: "Safety Tolerance", type: "select", default: "2", choices: flux3SafetyChoices },
+        { key: "output_format", label: "Format", type: "select", default: "jpeg", choices: flux3FormatChoices },
+        {
+          key: "enable_prompt_expansion",
+          label: "Prompt Expansion",
+          type: "select",
+          default: "false",
+          choices: [
+            { value: "false", label: "false" },
+            { value: "true", label: "true" },
+          ],
+        },
+      ];
+
       const openaiSizeChoices = [
         { value: "auto", label: "auto" },
         { value: "landscape_4_3", label: "landscape_4_3" },
@@ -909,6 +952,48 @@
               enable_safety_checker: false,
               safety_tolerance: "6",
             };
+          },
+        }),
+
+        new FalModelProvider({
+          id: "blackforestlabs/flux-3/text-to-image",
+          label: "blackforestlabs/flux-3/text-to-image",
+          endpoint: "blackforestlabs/flux-3/text-to-image",
+          capabilities: { imageToImage: false },
+          options: flux3Options,
+          buildInput({ prompt, options }) {
+            const input = { prompt };
+            if (options.aspect_ratio) input.aspect_ratio = options.aspect_ratio;
+            if (options.resolution) input.resolution = options.resolution;
+            if (options.safety_tolerance !== undefined && options.safety_tolerance !== "") {
+              input.safety_tolerance = Number(options.safety_tolerance);
+            }
+            if (options.output_format) input.output_format = options.output_format;
+            if (options.enable_prompt_expansion !== undefined) {
+              input.enable_prompt_expansion = options.enable_prompt_expansion === "true";
+            }
+            return input;
+          },
+        }),
+
+        new FalModelProvider({
+          id: "blackforestlabs/flux-3/edit-image",
+          label: "blackforestlabs/flux-3/edit-image",
+          endpoint: "blackforestlabs/flux-3/edit-image",
+          capabilities: { imageToImage: true },
+          options: flux3Options,
+          buildInput({ prompt, imageDataUrls, options }) {
+            const input = { prompt, image_urls: imageDataUrls };
+            if (options.aspect_ratio) input.aspect_ratio = options.aspect_ratio;
+            if (options.resolution) input.resolution = options.resolution;
+            if (options.safety_tolerance !== undefined && options.safety_tolerance !== "") {
+              input.safety_tolerance = Number(options.safety_tolerance);
+            }
+            if (options.output_format) input.output_format = options.output_format;
+            if (options.enable_prompt_expansion !== undefined) {
+              input.enable_prompt_expansion = options.enable_prompt_expansion === "true";
+            }
+            return input;
           },
         }),
       ];
@@ -1326,6 +1411,11 @@
             this.renderModelControls();
           } else if (this.selectedModelId === "fal-ai/nano-banana" || this.selectedModelId === "fal-ai/nano-banana-2") {
             this.selectedModelId = "fal-ai/nano-banana-2/edit";
+            this.elements.modelSelect.value = this.selectedModelId;
+            set("selectedModelId", this.selectedModelId, this.store);
+            this.renderModelControls();
+          } else if (this.selectedModelId === "blackforestlabs/flux-3/text-to-image") {
+            this.selectedModelId = "blackforestlabs/flux-3/edit-image";
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
