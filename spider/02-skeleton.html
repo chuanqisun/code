@@ -34,14 +34,23 @@
 
       canvas {
         display: block;
-        margin-top: var(--gap);
-        border: 1px solid var(--ink);
+      }
+
+      .camera {
+        position: absolute;
+        top: var(--gap);
+        left: var(--gap);
+        opacity: 0;
+      }
+
+      .camera:hover,
+      .camera:focus-within {
+        opacity: 1;
       }
     </style>
   </head>
   <body>
-    <p id="status">Loading model...</p>
-    <div>
+    <div class="camera">
       <label for="camera-select">Camera:</label>
       <select id="camera-select"></select>
     </div>
@@ -85,7 +94,7 @@
         [19, 20],
       ];
 
-      const [status, video, canvas, cameraSelect] = ["status", "video", "canvas", "camera-select"].map((id) => document.getElementById(id));
+      const [video, canvas, cameraSelect] = ["video", "canvas", "camera-select"].map((id) => document.getElementById(id));
       const ctx = canvas.getContext("2d");
 
       const filters = Array.from({ length: MAX_HANDS }, () =>
@@ -99,7 +108,7 @@
       let currentStream;
       let lastVideoTime = -1;
 
-      init().catch((err) => (status.textContent = `Error: ${err.message}`));
+      init().catch((err) => console.error(err));
 
       async function init() {
         const vision = await FilesetResolver.forVisionTasks(WASM_URL);
@@ -110,18 +119,14 @@
           numHands: MAX_HANDS,
         });
 
-        status.textContent = "Requesting camera...";
         const activeDeviceId = await startCamera(localStorage.getItem(STORAGE_KEY));
         await populateCameraList(activeDeviceId);
 
         cameraSelect.onchange = async () => {
-          status.textContent = "Switching camera...";
           clearCanvas();
           await startCamera(cameraSelect.value);
-          status.textContent = "Tracking hands.";
         };
 
-        status.textContent = "Tracking hands.";
         render();
       }
 
