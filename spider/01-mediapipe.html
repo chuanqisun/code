@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hand Landmarks</title>
+    <style>
+      body,
+      select {
+        font-family: monospace;
+        background: white;
+        color: black;
+      }
+      #container {
+        position: relative;
+        display: inline-block;
+        margin-top: 8px;
+      }
+      video {
+        display: block;
+      }
+      .dot {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: black;
+        border: 1px solid white;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="status">Loading model...</p>
+    <div>
+      <label for="camera-select">Camera:</label>
+      <select id="camera-select"></select>
+    </div>
+    <div id="container">
+      <video id="video" autoplay playsinline></video>
+      <div id="dots"></div>
+    </div>
+
+    <script type="module">
+      import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+
+      // --- 1 Euro Filter Implementation ---
+      class LowPassFilter {
+        constructor() {
+          this.y = null;
+          this.s = null;
+        }
+        filter(value, alpha) {
+          if (this.y === null) {
+            this.s = value;
+          } else {
+            this.s = alpha * value + (1.0 - alpha) * this.s;
+          }
+          this.y = value;
+          return this.s;
+        }
+        hasLastRawValue() {
+          return this.y !== null;
+        }
+        lastRawValue() {
+          return this.y;
+        }
+        reset() {
+          this.y = null;
+          this.s = null;
+        }
+      }
+
+      class OneEuroFilter {
+        constructor(minCutoff = 1.0, beta = 0.0, dcutoff = 1.0) {
+          this.minCutoff = minCutoff;
+          this.beta = beta;
+          this.dcutoff = dcutoff;
+          this.x = new LowPassFilter();
+          this.dx = new LowPassFilter();
+          this.lastTime = null;
+        }
+        alpha(cutoff, te) {
+          const r = 2 * Math.PI * cutoff * te;
+          return r / (r + 1);
+        }
+        filter(value, timestamp) {
+          // timestamp in seconds
+          if (this.lastTime !== null && timestamp !== undefined) {
+            const te = timestamp - this.lastTime;
+            // Reset if time delta is invalid or too much time passed (e.g. > 1s)
+            if (te <= 0) return this.x.s;
+            if (te > 1.0) this.reset();
+          }
+
+          const te = this.lastTime ? timestamp - this.lastTime : 1 / 60;
+          this.lastTime = timestamp;
+
+          const dvalue = this.x.hasLastRawValue() ? (value - this.x.lastRawValue()) / te : 0.0;
+          const edvalue = this.dx.filter(dvalue, this.alpha(this.dcutoff, te));
+          const cutoff = this.minCutoff + this.beta * Math.abs(edvalue);
+          return this.x.filter(value, this.alpha(cutoff, te));
+        }
+        reset() {
+          this.x.reset();
+          this.dx.reset();
+          this.lastTime = null;
+        }
+      }
+      // ------------------------------------
+
+      const status = document.getElementById("status");
+      const video = document.getElementById("video");
+      const dotsContainer = document.getElementById("dots");
+      const cameraSelect = document.getElementById("camera-select");
+      const STORAGE_KEY = "selected_camera_id";
+
+      let handLandmarker;
+      let currentStream;
+      let lastVideoTime = -1;
+
+      // Create filter banks for up to 2 hands, 21 points each
+      // minCutoff = 1.0 (stabilizes slow jitter), beta = 10.0 (reduces lag on fast movement)
+      const MAX_HANDS = 2;
+      const NUM_POINTS = 21;
+      const filters = Array.from({ length: MAX_HANDS }, () =>
+        Array.from({ length: NUM_POINTS }, () => ({
+          x: new OneEuroFilter(1.0, 10.0),
+          y: new OneEuroFilter(1.0, 10.0),
+        })),
+      );
+
+      async function startCamera(deviceId) {
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+        }
+
+        const constraints = {
+          video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        };
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+          if (deviceId) {
+            currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          } else {
+            throw err;
+          }
+        }
+
+        video.srcObject = currentStream;
+        await new Promise((resolve) => (video.onloadeddata = resolve));
+
+        const activeDeviceId = currentStream.getVideoTracks()[0]?.getSettings()?.deviceId;
+        if (activeDeviceId) {
+          localStorage.setItem(STORAGE_KEY, activeDeviceId);
+        }
+        return activeDeviceId;
+      }
+
+      async function populateCameraList(activeDeviceId) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+
+        cameraSelect.innerHTML = "";
+        videoDevices.forEach((device, i) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.textContent = device.label || `Camera ${i + 1}`;
+          cameraSelect.appendChild(option);
+        });
+
+        if (activeDeviceId) {
+          cameraSelect.value = activeDeviceId;
+        }
+      }
+
+      function render() {
+        if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          const nowMs = performance.now();
+          const nowSec = nowMs / 1000;
+          const results = handLandmarker.detectForVideo(video, nowMs);
+
+          dotsContainer.innerHTML = "";
+
+          const detectedHands = results.landmarks ? results.landmarks.length : 0;
+
+          // Reset filters for hands that are no longer detected
+          for (let h = detectedHands; h < MAX_HANDS; h++) {
+            for (let p = 0; p < NUM_POINTS; p++) {
+              filters[h][p].x.reset();
+              filters[h][p].y.reset();
+            }
+          }
+
+          if (results.landmarks) {
+            results.landmarks.forEach((hand, handIndex) => {
+              if (handIndex >= MAX_HANDS) return;
+
+              hand.forEach((point, pointIndex) => {
+                const fx = filters[handIndex][pointIndex].x.filter(point.x, nowSec);
+                const fy = filters[handIndex][pointIndex].y.filter(point.y, nowSec);
+
+                const dot = document.createElement("div");
+                dot.className = "dot";
+                dot.style.left = `${fx * 100}%`;
+                dot.style.top = `${fy * 100}%`;
+                dotsContainer.appendChild(dot);
+              });
+            });
+          }
+        }
+        requestAnimationFrame(render);
+      }
+
+      async function init() {
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            delegate: "GPU",
+          },
+          runningMode: "VIDEO",
+          numHands: MAX_HANDS,
+        });
+
+        status.textContent = "Requesting camera...";
+
+        const savedDeviceId = localStorage.getItem(STORAGE_KEY);
+        const activeDeviceId = await startCamera(savedDeviceId);
+        await populateCameraList(activeDeviceId);
+
+        cameraSelect.onchange = async () => {
+          status.textContent = "Switching camera...";
+          dotsContainer.innerHTML = "";
+          await startCamera(cameraSelect.value);
+          status.textContent = "Tracking hands.";
+        };
+
+        status.textContent = "Tracking hands.";
+        render();
+      }
+
+      init().catch((err) => {
+        status.textContent = "Error: " + err.message;
+      });
+    </script>
+  </body>
+</html>
