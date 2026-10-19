@@ -5,7 +5,9 @@
     <title>Hand Landmarks</title>
     <style>
       body,
-      select {
+      select,
+      input,
+      button {
         font-family: monospace;
         background: white;
         color: black;
@@ -37,8 +39,17 @@
     <div>
       <label for="camera-select">Camera:</label>
       <select id="camera-select"></select>
-      <label for="zoom">Zoom:</label>
-      <input id="zoom" type="range" min="0.3" max="2" step="0.05" value="1" />
+    </div>
+    <div>
+      <label for="fov">FOV (°):</label>
+      <input id="fov" type="number" min="10" max="175" step="1" />
+      <label for="yaw">Yaw (°):</label>
+      <input id="yaw" type="number" min="-90" max="90" step="1" />
+      <label for="pitch">Pitch (°):</label>
+      <input id="pitch" type="number" min="-90" max="90" step="1" />
+      <label for="roll">Roll (°):</label>
+      <input id="roll" type="number" min="-180" max="180" step="1" />
+      <button id="projection-reset">Reset</button>
     </div>
     <div id="container">
       <video id="video" autoplay playsinline muted></video>
@@ -119,11 +130,17 @@
       const dotsContainer = document.getElementById("dots");
       const cameraSelect = document.getElementById("camera-select");
       const canvas = document.getElementById("canvas");
-      const zoomInput = document.getElementById("zoom");
       const STORAGE_KEY = "selected_camera_id";
+      const PROJECTION_STORAGE_KEY = "camera_projection";
+
+      // Virtual pinhole camera the omnidir frame is reprojected into. fov is horizontal, all angles in degrees.
+      const DEFAULT_PROJECTION = { fov: 120, yaw: 0, pitch: 0, roll: 0 };
+      const PROJECTION_KEYS = Object.keys(DEFAULT_PROJECTION);
+      const projectionInputs = Object.fromEntries(PROJECTION_KEYS.map((key) => [key, document.getElementById(key)]));
+      const projectionReset = document.getElementById("projection-reset");
 
       // --- Omnidirectional (Mei) undistortion via WebGL ---
-      // For each output pixel: back-project through a virtual pinhole camera (Knew),
+      // For each output pixel: back-project through a virtual pinhole camera (Knew), rotate,
       // project onto the unit sphere, then through the calibrated omnidir model to find
       // the source pixel in the raw frame.
       const VERT_SRC = `
@@ -140,13 +157,19 @@
         uniform vec4 uK;      // fx, fy, cx, cy of the calibrated camera
         uniform float uSkew;
         uniform vec4 uKnew;   // fx, fy, cx, cy of the virtual pinhole camera
+        uniform mat3 uR;      // virtual camera rotation
         uniform float uXi;
         uniform vec4 uD;      // k1, k2, p1, p2
         varying vec2 vUv;
         void main() {
           vec2 px = vUv * uSize;
-          vec3 s = normalize(vec3((px - uKnew.zw) / uKnew.xy, 1.0));
-          vec2 xu = s.xy / (s.z + uXi);
+          vec3 s = normalize(uR * vec3((px - uKnew.zw) / uKnew.xy, 1.0));
+          float denom = s.z + uXi;
+          if (denom <= 0.0) {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+            return;
+          }
+          vec2 xu = s.xy / denom;
           float r2 = dot(xu, xu);
           float radial = 1.0 + uD.x * r2 + uD.y * r2 * r2;
           vec2 xd = xu * radial + vec2(
@@ -194,7 +217,7 @@
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
         uniforms = Object.fromEntries(
-          ["uSize", "uK", "uSkew", "uKnew", "uXi", "uD"].map((n) => [n, gl.getUniformLocation(program, n)]),
+          ["uSize", "uK", "uSkew", "uKnew", "uR", "uXi", "uD"].map((n) => [n, gl.getUniformLocation(program, n)]),
         );
       }
 
@@ -212,13 +235,15 @@
           console.warn(`Camera aspect ${w}x${h} differs from calibration ${intrinsics.image_width}x${intrinsics.image_height}`);
         }
         const [[fx, skew, cx], [, fy, cy]] = intrinsics.K;
-        // Virtual pinhole focal: roughly the equivalent perspective focal of the omnidir model, scaled by zoom.
-        const fNew = (((fx * sx + fy * sy) / 2) / (1 + intrinsics.xi)) * parseFloat(zoomInput.value);
+        const { fov, yaw, pitch, roll } = readProjection();
+        const toRad = (deg) => (deg * Math.PI) / 180;
+        const fNew = w / 2 / Math.tan(toRad(Math.min(Math.max(fov, 1), 179)) / 2);
 
         gl.uniform2f(uniforms.uSize, w, h);
         gl.uniform4f(uniforms.uK, fx * sx, fy * sy, cx * sx, cy * sy);
         gl.uniform1f(uniforms.uSkew, skew * sx);
         gl.uniform4f(uniforms.uKnew, fNew, fNew, w / 2, h / 2);
+        gl.uniformMatrix3fv(uniforms.uR, false, rotationMatrix(toRad(yaw), toRad(pitch), toRad(roll)));
         gl.uniform1f(uniforms.uXi, intrinsics.xi);
         gl.uniform4f(uniforms.uD, ...intrinsics.D);
       }
@@ -226,6 +251,54 @@
       function undistortFrame() {
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
+      // R = Ry(yaw) * Rx(pitch) * Rz(roll), returned column-major for WebGL
+      function rotationMatrix(yaw, pitch, roll) {
+        const [cy, sy, cp, sp, cr, sr] = [Math.cos(yaw), Math.sin(yaw), Math.cos(pitch), Math.sin(pitch), Math.cos(roll), Math.sin(roll)];
+        const ry = [
+          [cy, 0, sy],
+          [0, 1, 0],
+          [-sy, 0, cy],
+        ];
+        const rx = [
+          [1, 0, 0],
+          [0, cp, -sp],
+          [0, sp, cp],
+        ];
+        const rz = [
+          [cr, -sr, 0],
+          [sr, cr, 0],
+          [0, 0, 1],
+        ];
+        const multiply = (a, b) => a.map((row) => [0, 1, 2].map((j) => row.reduce((sum, v, k) => sum + v * b[k][j], 0)));
+        const r = multiply(multiply(ry, rx), rz);
+        return new Float32Array([0, 1, 2].flatMap((col) => r.map((row) => row[col])));
+      }
+
+      function initProjectionControls() {
+        const stored = JSON.parse(localStorage.getItem(PROJECTION_STORAGE_KEY) ?? "{}");
+        const setValues = (projection) => PROJECTION_KEYS.forEach((key) => (projectionInputs[key].value = projection[key] ?? DEFAULT_PROJECTION[key]));
+        const onChange = () => {
+          localStorage.setItem(PROJECTION_STORAGE_KEY, JSON.stringify(readProjection()));
+          if (video.videoWidth) updateUndistortParams();
+        };
+
+        setValues(stored);
+        PROJECTION_KEYS.forEach((key) => projectionInputs[key].addEventListener("input", onChange));
+        projectionReset.onclick = () => {
+          setValues(DEFAULT_PROJECTION);
+          onChange();
+        };
+      }
+
+      function readProjection() {
+        return Object.fromEntries(
+          PROJECTION_KEYS.map((key) => {
+            const value = parseFloat(projectionInputs[key].value);
+            return [key, Number.isFinite(value) ? value : DEFAULT_PROJECTION[key]];
+          }),
+        );
       }
       // ------------------------------------
 
@@ -335,7 +408,7 @@
       async function init() {
         intrinsics = await (await fetch("./intrinsics.json")).json();
         initUndistort();
-        zoomInput.oninput = updateUndistortParams;
+        initProjectionControls();
 
         const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
 
