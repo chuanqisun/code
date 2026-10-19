@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hand Landmarks</title>
+    <style>
+      :root {
+        --ink: black;
+        --paper: white;
+        --font: monospace;
+        --gap: 8px;
+      }
+
+      body {
+        font-family: var(--font);
+        background: var(--paper);
+        color: var(--ink);
+
+        & select {
+          font-family: inherit;
+          background: inherit;
+          color: inherit;
+        }
+      }
+
+      /* Video must stay in the DOM for frame decoding, but is invisible */
+      video {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      canvas {
+        display: block;
+        margin-top: var(--gap);
+        border: 1px solid var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <p id="status">Loading model...</p>
+    <div>
+      <label for="camera-select">Camera:</label>
+      <select id="camera-select"></select>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+      import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+
+      const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+      const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+      const STORAGE_KEY = "selected_camera_id";
+
+      const MAX_HANDS = 2;
+      const POINTS_PER_HAND = 21;
+      const POINT_SIZE = 6;
+      const DRAW_STYLE = { strokeStyle: "black", fillStyle: "black", lineWidth: 2 };
+      const FILTER_OPTIONS = { minCutoff: 1, beta: 10 };
+
+      const HAND_CONNECTIONS = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [0, 5],
+        [5, 6],
+        [6, 7],
+        [7, 8],
+        [5, 9],
+        [9, 10],
+        [10, 11],
+        [11, 12],
+        [9, 13],
+        [13, 14],
+        [14, 15],
+        [15, 16],
+        [13, 17],
+        [0, 17],
+        [17, 18],
+        [18, 19],
+        [19, 20],
+      ];
+
+      const [status, video, canvas, cameraSelect] = ["status", "video", "canvas", "camera-select"].map((id) => document.getElementById(id));
+      const ctx = canvas.getContext("2d");
+
+      const filters = Array.from({ length: MAX_HANDS }, () =>
+        Array.from({ length: POINTS_PER_HAND }, () => ({
+          x: createOneEuroFilter(FILTER_OPTIONS),
+          y: createOneEuroFilter(FILTER_OPTIONS),
+        })),
+      );
+
+      let handLandmarker;
+      let currentStream;
+      let lastVideoTime = -1;
+
+      init().catch((err) => (status.textContent = `Error: ${err.message}`));
+
+      async function init() {
+        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+          runningMode: "VIDEO",
+          numHands: MAX_HANDS,
+        });
+
+        status.textContent = "Requesting camera...";
+        const activeDeviceId = await startCamera(localStorage.getItem(STORAGE_KEY));
+        await populateCameraList(activeDeviceId);
+
+        cameraSelect.onchange = async () => {
+          status.textContent = "Switching camera...";
+          clearCanvas();
+          await startCamera(cameraSelect.value);
+          status.textContent = "Tracking hands.";
+        };
+
+        status.textContent = "Tracking hands.";
+        render();
+      }
+
+      function render() {
+        if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          const nowMs = performance.now();
+          const nowSec = nowMs / 1000;
+          const { landmarks = [] } = handLandmarker.detectForVideo(video, nowMs);
+
+          clearCanvas();
+
+          filters
+            .slice(landmarks.length)
+            .flat()
+            .forEach(({ x, y }) => {
+              x.reset();
+              y.reset();
+            });
+
+          landmarks.slice(0, MAX_HANDS).forEach((hand, handIndex) => {
+            const points = hand.map(({ x, y }, pointIndex) => ({
+              x: filters[handIndex][pointIndex].x.filter(x, nowSec) * canvas.width,
+              y: filters[handIndex][pointIndex].y.filter(y, nowSec) * canvas.height,
+            }));
+            drawHand(ctx, points);
+          });
+        }
+        requestAnimationFrame(render);
+      }
+
+      async function startCamera(deviceId) {
+        currentStream?.getTracks().forEach((track) => track.stop());
+
+        const requestStream = (constraints) => navigator.mediaDevices.getUserMedia({ video: constraints });
+        currentStream = await requestStream(deviceId ? { deviceId: { exact: deviceId } } : true).catch((err) => {
+          if (!deviceId) throw err;
+          return requestStream(true);
+        });
+
+        video.srcObject = currentStream;
+        await new Promise((resolve) => (video.onloadeddata = resolve));
+        Object.assign(canvas, { width: video.videoWidth, height: video.videoHeight });
+
+        const activeDeviceId = currentStream.getVideoTracks()[0]?.getSettings()?.deviceId;
+        if (activeDeviceId) localStorage.setItem(STORAGE_KEY, activeDeviceId);
+        return activeDeviceId;
+      }
+
+      async function populateCameraList(activeDeviceId) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const options = devices.filter(({ kind }) => kind === "videoinput").map(({ deviceId, label }, i) => new Option(label || `Camera ${i + 1}`, deviceId));
+
+        cameraSelect.replaceChildren(...options);
+        if (activeDeviceId) cameraSelect.value = activeDeviceId;
+      }
+
+      function clearCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      function drawHand(ctx, points) {
+        Object.assign(ctx, DRAW_STYLE);
+
+        ctx.beginPath();
+        for (const [a, b] of HAND_CONNECTIONS) {
+          ctx.moveTo(points[a].x, points[a].y);
+          ctx.lineTo(points[b].x, points[b].y);
+        }
+        ctx.stroke();
+
+        for (const { x, y } of points) {
+          ctx.fillRect(x - POINT_SIZE / 2, y - POINT_SIZE / 2, POINT_SIZE, POINT_SIZE);
+        }
+      }
+
+      function createOneEuroFilter({ minCutoff = 1, beta = 0, derivativeCutoff = 1 } = {}) {
+        let state;
+        const reset = () => (state = { time: null, raw: null, value: null, velocity: null });
+
+        const filter = (raw, time) => {
+          const elapsed = state.time === null ? null : time - state.time;
+          if (elapsed !== null && elapsed <= 0) return state.value;
+          if (elapsed > 1) reset();
+
+          const dt = state.time === null ? 1 / 60 : elapsed;
+          const rawVelocity = state.raw === null ? 0 : (raw - state.raw) / dt;
+          const velocity = lowPass(state.velocity, rawVelocity, smoothingFactor(derivativeCutoff, dt));
+          const cutoff = minCutoff + beta * Math.abs(velocity);
+          const value = lowPass(state.value, raw, smoothingFactor(cutoff, dt));
+
+          state = { time, raw, value, velocity };
+          return value;
+        };
+
+        reset();
+        return { filter, reset };
+      }
+
+      function smoothingFactor(cutoff, dt) {
+        const r = 2 * Math.PI * cutoff * dt;
+        return r / (r + 1);
+      }
+
+      function lowPass(previous, next, alpha) {
+        return previous === null ? next : alpha * next + (1 - alpha) * previous;
+      }
+    </script>
+  </body>
+</html>
