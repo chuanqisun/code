@@ -5,10 +5,15 @@
     <title>Hand Landmarks</title>
     <style>
       :root {
-        --ink: black;
-        --paper: white;
+        color-scheme: light;
+        --ink: light-dark(black, white);
+        --paper: light-dark(white, black);
         --font: monospace;
         --gap: 8px;
+
+        &.inverted {
+          color-scheme: dark;
+        }
       }
 
       body {
@@ -20,8 +25,6 @@
         & input,
         & button {
           font-family: inherit;
-          background: inherit;
-          color: inherit;
         }
       }
 
@@ -77,6 +80,22 @@
       <input id="roll" type="number" min="-180" max="180" step="1" />
       <span></span>
       <button id="projection-reset">Reset</button>
+      <label for="panX">Pan X (px):</label>
+      <input id="panX" type="number" step="1" />
+      <label for="panY">Pan Y (px):</label>
+      <input id="panY" type="number" step="1" />
+      <label for="scaleX">Scale X:</label>
+      <input id="scaleX" type="number" min="0.1" step="0.01" />
+      <label for="scaleY">Scale Y:</label>
+      <input id="scaleY" type="number" min="0.1" step="0.01" />
+      <label for="strokeWidth">Stroke (px):</label>
+      <input id="strokeWidth" type="number" min="0.5" step="0.5" />
+      <span></span>
+      <button id="view-reset">Reset</button>
+      <span></span>
+      <label><input id="invert" type="checkbox" /> invert</label>
+      <span></span>
+      <label><input id="debug" type="checkbox" /> debug</label>
     </div>
 
     <script type="module">
@@ -91,6 +110,11 @@
       // Virtual pinhole camera the omnidir frame is reprojected into. fov is horizontal, all angles in degrees.
       const DEFAULT_PROJECTION = { fov: 120, yaw: 0, pitch: 0, roll: 0 };
       const PROJECTION_KEYS = Object.keys(DEFAULT_PROJECTION);
+
+      // Screen-space transform applied to both the camera feed and the landmarks. Scale is about the screen center.
+      const VIEW_STORAGE_KEY = "camera_view";
+      const DEFAULT_VIEW = { panX: 0, panY: 0, scaleX: 1, scaleY: 1, strokeWidth: 2 };
+      const VIEW_KEYS = Object.keys(DEFAULT_VIEW);
 
       // For each output pixel: back-project through the virtual pinhole camera, rotate, project onto the
       // unit sphere, then through the calibrated omnidir (Mei) model to find the source pixel in the raw frame.
@@ -137,8 +161,7 @@
 
       const MAX_HANDS = 2;
       const POINTS_PER_HAND = 21;
-      const POINT_SIZE = 6;
-      const DRAW_STYLE = { strokeStyle: "black", fillStyle: "black", lineWidth: 2 };
+      const POINT_SIZE_PER_STROKE = 3;
       const FILTER_OPTIONS = { minCutoff: 1, beta: 10 };
 
       const HAND_CONNECTIONS = [
@@ -169,6 +192,11 @@
       const ctx = canvas.getContext("2d");
       const projectionInputs = Object.fromEntries(PROJECTION_KEYS.map((key) => [key, document.getElementById(key)]));
       const projectionReset = document.getElementById("projection-reset");
+      const viewInputs = Object.fromEntries(VIEW_KEYS.map((key) => [key, document.getElementById(key)]));
+      const viewReset = document.getElementById("view-reset");
+      const debugInput = document.getElementById("debug");
+      const invertInput = document.getElementById("invert");
+      invertInput.onchange = () => document.documentElement.classList.toggle("inverted", invertInput.checked);
 
       // offscreen canvas holding the undistorted frame that is fed to hand tracking
       const frameCanvas = document.createElement("canvas");
@@ -176,9 +204,7 @@
       let uniforms;
       let intrinsics;
 
-      const SIDES = ["Left", "Right"];
-
-      // filters[0] tracks the left hand, filters[1] the right hand
+      // filters[i] tracks the i-th detected hand
       const filters = Array.from({ length: MAX_HANDS }, () =>
         Array.from({ length: POINTS_PER_HAND }, () => ({
           x: createOneEuroFilter(FILTER_OPTIONS),
@@ -198,7 +224,10 @@
       async function init() {
         intrinsics = await (await fetch(INTRINSICS_URL)).json();
         initUndistort();
-        initProjectionControls();
+        initControls(projectionInputs, projectionReset, DEFAULT_PROJECTION, PROJECTION_STORAGE_KEY, () => {
+          if (video.videoWidth) updateUndistortParams();
+        });
+        initControls(viewInputs, viewReset, DEFAULT_VIEW, VIEW_STORAGE_KEY);
 
         const vision = await FilesetResolver.forVisionTasks(WASM_URL);
 
@@ -225,37 +254,34 @@
           const nowMs = performance.now();
           const nowSec = nowMs / 1000;
           undistortFrame();
-          const { landmarks = [], handedness = [] } = handLandmarker.detectForVideo(frameCanvas, nowMs);
+          const { landmarks = [] } = handLandmarker.detectForVideo(frameCanvas, nowMs);
 
           clearCanvas();
+          // the undistorted frame is stretched over the screen, matching the landmark mapping below
+          const { panX, panY, scaleX, scaleY, strokeWidth } = readValues(viewInputs, DEFAULT_VIEW);
+          const ink = invertInput.checked ? "white" : "black";
+          const viewWidth = canvas.width * scaleX;
+          const viewHeight = canvas.height * scaleY;
+          const viewLeft = (canvas.width - viewWidth) / 2 + panX;
+          const viewTop = (canvas.height - viewHeight) / 2 + panY;
+          if (debugInput.checked) ctx.drawImage(frameCanvas, viewLeft, viewTop, viewWidth, viewHeight);
 
-          // separate hands by side; the first detection wins if a side is reported twice
-          const hands = {};
-          landmarks.forEach((hand, i) => {
-            const side = handedness[i]?.[0]?.categoryName;
-            if (SIDES.includes(side) && !hands[side]) hands[side] = hand;
-          });
-
-          SIDES.forEach((side, sideIndex) => {
-            const hand = hands[side];
+          filters.forEach((handFilters, handIndex) => {
+            const hand = landmarks[handIndex];
             if (!hand) {
-              filters[sideIndex].forEach(({ x, y }) => {
+              handFilters.forEach(({ x, y }) => {
                 x.reset();
                 y.reset();
               });
               return;
             }
 
-            // original size: scale normalized landmarks by the undistorted frame's pixel dimensions
-            const { width: frameWidth, height: frameHeight } = frameCanvas;
-            const offsetX = side === "Left" ? 0 : canvas.width - frameWidth;
-            const offsetY = (canvas.height - frameHeight) / 2;
-
+            // direct mapping: normalized frame coordinates scaled to the view rect
             const points = hand.map(({ x, y }, pointIndex) => ({
-              x: filters[sideIndex][pointIndex].x.filter(x, nowSec) * frameWidth + offsetX,
-              y: filters[sideIndex][pointIndex].y.filter(y, nowSec) * frameHeight + offsetY,
+              x: handFilters[pointIndex].x.filter(x, nowSec) * viewWidth + viewLeft,
+              y: handFilters[pointIndex].y.filter(y, nowSec) * viewHeight + viewTop,
             }));
-            drawHand(ctx, points);
+            drawHand(ctx, points, ink, strokeWidth);
           });
         }
         requestAnimationFrame(render);
@@ -289,29 +315,34 @@
         if (activeDeviceId) cameraSelect.value = activeDeviceId;
       }
 
-      function initProjectionControls() {
-        const stored = JSON.parse(localStorage.getItem(PROJECTION_STORAGE_KEY) ?? "{}");
-        const setValues = (projection) => PROJECTION_KEYS.forEach((key) => (projectionInputs[key].value = projection[key] ?? DEFAULT_PROJECTION[key]));
+      // bind numeric inputs to defaults, persisted under storageKey
+      function initControls(inputs, resetButton, defaults, storageKey, onUpdate = () => {}) {
+        const stored = JSON.parse(localStorage.getItem(storageKey) ?? "{}");
+        const setValues = (values) => Object.keys(defaults).forEach((key) => (inputs[key].value = values[key] ?? defaults[key]));
         const onChange = () => {
-          localStorage.setItem(PROJECTION_STORAGE_KEY, JSON.stringify(readProjection()));
-          if (video.videoWidth) updateUndistortParams();
+          localStorage.setItem(storageKey, JSON.stringify(readValues(inputs, defaults)));
+          onUpdate();
         };
 
         setValues(stored);
-        PROJECTION_KEYS.forEach((key) => projectionInputs[key].addEventListener("input", onChange));
-        projectionReset.onclick = () => {
-          setValues(DEFAULT_PROJECTION);
+        Object.values(inputs).forEach((input) => input.addEventListener("input", onChange));
+        resetButton.onclick = () => {
+          setValues(defaults);
           onChange();
         };
       }
 
-      function readProjection() {
+      function readValues(inputs, defaults) {
         return Object.fromEntries(
-          PROJECTION_KEYS.map((key) => {
-            const value = parseFloat(projectionInputs[key].value);
-            return [key, Number.isFinite(value) ? value : DEFAULT_PROJECTION[key]];
+          Object.keys(defaults).map((key) => {
+            const value = parseFloat(inputs[key].value);
+            return [key, Number.isFinite(value) ? value : defaults[key]];
           }),
         );
+      }
+
+      function readProjection() {
+        return readValues(projectionInputs, DEFAULT_PROJECTION);
       }
 
       function initUndistort() {
@@ -407,8 +438,9 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
 
-      function drawHand(ctx, points) {
-        Object.assign(ctx, DRAW_STYLE);
+      function drawHand(ctx, points, ink, lineWidth) {
+        Object.assign(ctx, { strokeStyle: ink, fillStyle: ink, lineWidth });
+        const pointSize = lineWidth * POINT_SIZE_PER_STROKE;
 
         ctx.beginPath();
         for (const [a, b] of HAND_CONNECTIONS) {
@@ -418,7 +450,7 @@
         ctx.stroke();
 
         for (const { x, y } of points) {
-          ctx.fillRect(x - POINT_SIZE / 2, y - POINT_SIZE / 2, POINT_SIZE, POINT_SIZE);
+          ctx.fillRect(x - pointSize / 2, y - pointSize / 2, pointSize, pointSize);
         }
       }
 
