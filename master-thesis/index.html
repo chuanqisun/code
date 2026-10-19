@@ -1,0 +1,1514 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Direct Manipulation for Generative Media — Thesis Proposal | Chuanqi Sun</title>
+
+    <!-- Google Fonts: Source Serif 4 for academic body, Inter for clean UI/headers/tables, JetBrains Mono for technical tokens -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- Top Utility Bar (Hidden when printing/saving to PDF) -->
+    <div class="utility-bar" role="region" aria-label="Document Actions">
+      <span class="doc-badge">MIT Media Lab — Master of Science Thesis Proposal</span>
+      <button class="print-btn" onclick="window.print()" type="button">Print / Save as PDF</button>
+    </div>
+
+    <main class="thesis-sheet">
+      <!-- Title Header -->
+      <header class="title-block">
+        <div class="institution-banner">Massachusetts Institute of Technology · Program in Media Arts and Sciences</div>
+        <h1 class="thesis-title">Direct Manipulation for Generative Media</h1>
+
+        <div class="meta-grid">
+          <div class="author-column">
+            <div class="author-info">
+              <div class="author-name">Chuanqi Sun</div>
+              <div class="author-credentials">BA, Computer Science, Dartmouth College, 2015</div>
+              <a class="author-email" href="mailto:stack@media.mit.edu">stack@media.mit.edu</a>
+            </div>
+            <div class="degree-statement">
+              Thesis proposal for the degree of<br />
+              <strong>Master of Science in Media Arts and Sciences</strong><br />
+              at the Massachusetts Institute of Technology
+            </div>
+          </div>
+
+          <div class="committee-grid" aria-label="Thesis Committee">
+            <div class="committee-member">
+              <div class="committee-role">Advisor</div>
+              <div class="committee-name">Hiroshi Ishii</div>
+              <div class="committee-title">Jerome B. Wiesner Professor of Media Arts and Sciences<br />Media Lab, Massachusetts Institute of Technology</div>
+            </div>
+
+            <div class="committee-member">
+              <div class="committee-role">Reader</div>
+              <div class="committee-name">Zach Lieberman</div>
+              <div class="committee-title">Adjunct Associate Professor of Media Arts and Sciences<br />Media Lab, Massachusetts Institute of Technology</div>
+            </div>
+
+            <div class="committee-member">
+              <div class="committee-role">Reader</div>
+              <div class="committee-name">[Reader 2 Name TBD]</div>
+              <div class="committee-title">[Reader 2 Title(s)]<br />[Reader 2 Department/Lab, Institution]</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Abstract -->
+      <section id="abstract" class="abstract-section" aria-labelledby="heading-abstract">
+        <h2 id="heading-abstract">Abstract</h2>
+        <p>
+          The enduring joy of programming arises from three foundational experiences: intimate contact with computational material, the sense of control gained
+          by grabbing handles that manipulate system semantics, and the deep confidence that comes from comprehending every part of a running system. Today, the
+          rapid rise of generative media, spanning neural image synthesis, dynamic simulations, and agentic code generation, threatens to extinguish this joy.
+          Although generative artificial intelligence accelerates raw production, prevailing interfaces restrict creators to turn-based natural language
+          prompting and autonomous delegation. This conversational bottleneck severs continuous sensory-motor contact with the underlying model, widens the
+          Gulfs of Execution and Evaluation, induces severe cognitive debt, and reduces creative practice to detached verification. This thesis investigates the
+          hypothesis that <em>direct manipulation</em> can restore the joy of programming to generative media. To bridge the gap between high-dimensional
+          generative models and embodied human action, I propose a neuro-symbolic interaction framework that synthesizes Ben Shneiderman's direct manipulation
+          with Pattie Maes's interface agents into a Fast-and-Slow loop. In the Slow analytical loop, multimodal interface agents interpret human speech,
+          gesture, and hand-drawn ink to synthesize bespoke programmatic handles and inspectable rules on the fly. In the Fast sensory-motor loop, creators grab
+          these spatial, parametric, and tangible handles to sculpt continuous solution spaces in real time. I evaluate this hypothesis through a progressive
+          portfolio of five systems: <em>Dream Brush</em> (spatial-semantic diffusion control via physical water calligraphy),
+          <em>Parametric Diffusion</em> (real-time steering of generative diffusion via reactive cellular substrates), <em>Sable</em> (a projection-augmented
+          granular sandbox for 3D semantic sculpting), <em>Braindump</em> (a speech-and-gesture system for human-to-machine mental model transfer), and
+          <em>Papershop</em> (a communal paper workbench uniting hand-drawn simulations with interface agents). Through qualitative user studies and design
+          critiques exploring creative flow, semantic and articulatory distance, mental model alignment, and creative ownership, this work establishes a
+          blueprint for generative media environments that prioritize human agency and joyful craft.
+        </p>
+      </section>
+
+      <!-- Table of Contents -->
+      <nav class="toc-nav" aria-label="Table of Contents">
+        <div class="toc-title">Table of Contents</div>
+        <ol class="toc-list">
+          <li class="toc-item"><a href="#abstract">Abstract</a><span class="toc-dots"></span><span class="toc-page">1</span></li>
+          <li class="toc-item"><a href="#introduction">1. Introduction</a><span class="toc-dots"></span><span class="toc-page">2</span></li>
+          <li class="toc-item"><a href="#contribution">2. Contribution</a><span class="toc-dots"></span><span class="toc-page">2</span></li>
+          <li class="toc-item"><a href="#related-work">3. Related Work</a><span class="toc-dots"></span><span class="toc-page">3</span></li>
+          <li class="toc-item"><a href="#proposed-work">4. Proposed Work</a><span class="toc-dots"></span><span class="toc-page">4</span></li>
+          <li class="toc-item"><a href="#timeline">5. Timeline</a><span class="toc-dots"></span><span class="toc-page">6</span></li>
+          <li class="toc-item"><a href="#references">6. References</a><span class="toc-dots"></span><span class="toc-page">6</span></li>
+        </ol>
+      </nav>
+
+      <!-- 1. Introduction -->
+      <section id="introduction">
+        <h2 class="section-heading"><span class="sec-num">1</span> Introduction</h2>
+        <p>
+          Programming at its best is a deeply joyful creative medium. This joy stems from three interconnected pillars: the tactile satisfaction of remaining in
+          continuous contact with computational material (such as logical building blocks, components, and data structures), the empowering sense of control
+          when manipulating semantic handles to steer system behavior, and the confidence of full comprehension that allows a creator to adapt a system to
+          evolving needs [1], [7], [27]. However, the contemporary shift toward <em>generative media</em>, encompassing both neural audiovisual synthesis and
+          agentic software creation, has created a troubling paradox. Empirical studies show that while generative models increase raw productivity, creators
+          and developers feel increasingly alienated from their work [18], [19], [29]. Advait Sarkar identifies this alienation as
+          <em>material disengagement</em>: by mediating creation through conversational text prompts and autonomous agents, existing tools sever the creator's
+          direct contact with code and media state [20]. Turn-based chat interfaces reintroduce the latency of ahead-of-time batch processing, inflating
+          semantic and articulatory distance across the Gulfs of Execution and Evaluation [2], [21]. Stripped of rich manipulation surfaces and immediate
+          feedback loops, practitioners suffer from prompt fatigue, context-switching exhaustion, and accumulating cognitive debt. To preserve the joy of
+          programming in the era of generative media, we require an interaction paradigm that places the human creator back into continuous, hands-on contact
+          with the computational model.
+        </p>
+
+        <p>
+          Restoring this continuous contact is essential for sustaining human creativity, psychological flow, and epistemological diversity. In his philosophy
+          of creative practice, Tim Ingold critiques the <em>hylomorphic model</em> of making, wherein a creator stands outside passive matter and imposes a
+          preconceived verbal or mental form upon it [10]. Prompt-driven generative media enforces this exact hylomorphic detachment. In contrast, Ingold
+          describes the <em>textility of making</em>, where form grows through an improvisational, sensory-motor correspondence between a sentient practitioner
+          and an active material that possesses its own structural tendencies and flows [10], [11]. This material correspondence echoes Sherry Turkle and
+          Seymour Papert's call for epistemological pluralism, which celebrates proximal, concrete tinkering (<em>bricolage</em>) as a vital mode of
+          computational thought [12], as well as the live coding and creative coding traditions championed by practitioners who treat algorithms as expressive
+          audiovisual instruments [9], [13], [14], [17]. When a programming environment provides immediate, unambiguous feedback and perceived control, the
+          creator enters Mihaly Csikszentmihalyi's psychological <em>flow state</em>, where action and awareness merge into autotelic enjoyment [16], [28].
+          Bringing these tangible, continuous qualities to generative media ensures that artists, programmers, and end-users retain creative ownership and deep
+          comprehension over the systems they build [25], [30].
+        </p>
+
+        <p>
+          This thesis advances the core hypothesis that <strong>direct manipulation</strong> can resolve the alienation of generative media and restore the joy
+          of programming. Because generative models operate over vast, high-dimensional latent and algorithmic spaces, applying classic direct manipulation
+          requires a new synthesis between Ben Shneiderman's vision of continuous, reversible physical actions [1] and Pattie Maes's vision of intelligent
+          interface agents [3]. I formulate this synthesis as a <em>Fast-and-Slow</em> neuro-symbolic sculpting process. In the <em>Slow</em> analytical loop,
+          multimodal interface agents observe human speech, depictive gestures, and freehand sketches to perform on-the-fly program synthesis, generating
+          custom, inspectable control structures and generative user interfaces [4], [22], [67]. In the <em>Fast</em> sensory-motor loop, the creator uses these
+          tangible, spatial, and parametric handles to directly manipulate computational substrates and explore continuous solution spaces in real time [5],
+          [6], [62]. I investigate and validate this hypothesis across five progressive systems: <em>Dream Brush</em> [31], <em>Parametric Diffusion</em> (<em
+            >sh.elf</em
+          >
+          and <em>life.config</em>), <em>Sable</em>, <em>Braindump</em>, and <em>Papershop</em>. Spanning calligraphic canvases, reactive cellular grids,
+          granular 3D sandboxes, mid-air gestural capture, and communal paper desks, this portfolio demonstrates how direct manipulation transforms generative
+          media from an opaque oracle into a joyful, sculptable medium.
+        </p>
+
+        <!-- Figure 1 -->
+        <figure id="fig-1" class="academic-figure" aria-labelledby="fig1-title" aria-describedby="fig1-desc">
+          <img
+            src="./assets/figure-01.webp"
+            alt="Side-by-side conceptual comparison diagram. On the left, a monochrome illustration shows a person typing at a keyboard separated by a wide gap from an opaque dark cube, connected only by a thin dashed line with a speech bubble. On the right, a person stands directly against an open, transparent geometric lattice; a teal-cyan sound and gesture wave at the top forms slider handles on the lattice, while the person's two hands directly grasp and sculpt glowing vermilion-orange handles on the structure below."
+          />
+          <figcaption>
+            <span class="fig-title-line">
+              <span class="fig-label">Figure 1:</span>
+              <span id="fig1-title" class="fig-title">Bridging the gulf of conversational AI through Fast-and-Slow neuro-symbolic direct manipulation.</span>
+            </span>
+            <span class="fig-detail">
+              Thesis framing and architectural overview. Direct manipulation resolves the material disengagement of generative media by coupling a Slow
+              neuro-symbolic handle synthesis loop with a Fast sensory-motor manipulation loop, restoring the three pillars of the joy of programming: contact
+              with material, control, and comprehension.
+            </span>
+            <span id="fig1-desc" class="sr-only">
+              Accessibility description: Side-by-side conceptual comparison diagram. On the left, a monochrome illustration shows a person typing at a keyboard
+              separated by a wide gap from an opaque dark cube, connected only by a thin dashed line with a speech bubble. On the right, a person stands
+              directly against an open, transparent geometric lattice; a teal-cyan sound and gesture wave at the top forms slider handles on the lattice, while
+              the person's two hands directly grasp and sculpt glowing vermilion-orange handles on the structure below.
+            </span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <!-- 2. Contribution -->
+      <section id="contribution">
+        <h2 class="section-heading"><span class="sec-num">2</span> Contribution</h2>
+        <p>
+          Through the theoretical formulation, engineering implementation, and qualitative evaluation of <em>Direct Manipulation for Generative Media</em>, my
+          goal is to make four key contributions:
+        </p>
+
+        <ul>
+          <li>
+            <strong>Five-System Portfolio for Direct Manipulation of Generative Media:</strong> Design, fabrication, and implementation of five interactive
+            systems that instantiate direct manipulation across visual, tangible, and programmatic generative media: (1) <em>Dream Brush</em>, a calligraphic
+            water canvas unifying symbolic prompts with spatial stroke control; (2) <em>Parametric Diffusion</em> (<em>sh.elf</em> and <em>life.config</em>), a
+            real-time system steering generative diffusion via reactive cellular substrates; (3) <em>Sable</em>, a projection-augmented granular sandbox for
+            bimanual 3D semantic sculpting; (4) <em>Braindump</em>, a speech-and-gesture system for human-to-machine mental model transfer; and (5)
+            <em>Papershop</em>, a social paper-computing workbench integrating hand-drawn simulations with interface agents.
+          </li>
+          <li>
+            <strong>Open-Source Neuro-Symbolic Toolkits and Conditioning Bridges:</strong> Creation of reusable software libraries and accessible hardware
+            calibration guides, including a unified framework for real-time gesture and object tracking coupled with a generative rendering loop, an overhead
+            depth-to-conditioning pipeline for tangible sandboxes, and an open-source multimodal agent runtime for projection-mapped paper programs optimized
+            for everyday consumer hardware.
+          </li>
+          <li>
+            <strong>Qualitative Insights into Flow, Agency, and Mental Model Synchronization:</strong> Qualitative findings and observational insights from
+            studio critiques, think-aloud sessions, and exploratory user studies examining how direct manipulation of generative media shapes creative flow,
+            agency, semantic and articulatory distance, and system comprehension compared to conversational prompting workflows.
+          </li>
+          <li>
+            <strong>Design Recommendations for Joyful Generative Programming Environments:</strong> A cohesive set of design principles for future programming
+            languages, IDEs, and creative runtimes that balance fast sensory-motor manipulation with slow agentic program synthesis, proportional
+            effort-to-fidelity sculpting, and transparent concept design.
+          </li>
+        </ul>
+
+        <p>
+          By open-sourcing all software runtimes and consumer-accessible hardware specifications, this work provides the HCI, programming languages, and
+          creative coding communities with practical foundations for building human-centric generative tools.
+        </p>
+      </section>
+
+      <!-- 3. Related Work -->
+      <section id="related-work">
+        <h2 class="section-heading"><span class="sec-num">3</span> Related Work</h2>
+        <p>
+          My thesis builds upon four foundational pillars of literature: the cognitive mechanics of direct manipulation and mental models, tangible user
+          interfaces, creative coding as material craft, and mixed-initiative interface agents.
+        </p>
+
+        <h3 class="subsection-heading">3.1 Direct Manipulation, Instrumental Interaction, and Mental Models</h3>
+
+        <p>
+          Ben Shneiderman coined the term <em>direct manipulation</em> in 1983 to explain why certain interactive systems generate immediate user delight,
+          mastery, and confidence [1]. By presenting a continuous visual representation of objects of interest and replacing complex command syntax with rapid,
+          incremental, reversible physical actions, direct manipulation provides an uninterrupted sensory-motor loop. Hutchins, Hollan, and Norman grounded this
+          paradigm in cognitive science, showing that direct manipulation bridges the <em>Gulf of Execution</em> and the <em>Gulf of Evaluation</em> by
+          minimizing <em>semantic distance</em> (how closely system semantics match human intent) and <em>articulatory distance</em> (how directly the physical
+          form of an action reflects its meaning) [2]. Michel Beaudouin-Lafon expanded these principles to post-WIMP interfaces through
+          <em>Instrumental Interaction</em> [32] and the design patterns of <em>reification, polymorphism, and reuse</em> [33], [34], [35], demonstrating that
+          turning abstract commands into first-class manipulable objects minimizes spatial and temporal indirection.
+        </p>
+
+        <p>
+          In programming system design, Bret Victor frames human-computer interaction as the continuous exchange of information between a human mental model and
+          a computer model [7], [36]. Through <em>Learnable Programming</em> and <em>Up and Down the Ladder of Abstraction</em>, Victor demonstrates that deep
+          comprehension requires making execution state visible, linking code directly to concrete visual behavior, and providing interactive handles to scrub
+          across time and continuous parameter spaces [7], [8], [9]. Evaluated against Green and Petre's <em>Cognitive Dimensions of Notation</em> [26] and
+          Daniel Jackson's concept design framework [27], current conversational generative media tools fail because they hide dependencies inside stochastic
+          black boxes and impose high viscosity when users attempt fine-grained adjustments.
+        </p>
+
+        <h3 class="subsection-heading">3.2 Tangible Bits, Graspable Handles, and Augmented Paper Workbenches</h3>
+
+        <p>
+          To engage the full richness of human kinesthetic and spatial intelligence [37], Hiroshi Ishii and Brygg Ullmer introduced <em>Tangible Bits</em>,
+          coupling digital bits with physical atoms across interactive surfaces [6]. Grounded in Fitzmaurice, Ishii, and Buxton's <em>Bricks</em> [5], tangible
+          user interfaces (TUIs) replace sequential, time-multiplexed GUI inputs with <em>space-multiplexed</em> physical handles that support two-handed
+          parallel manipulation. Ullmer and Ishii's <em>MCRpd</em> architecture formalizes how physical representations (<span class="math-rm">R</span
+          ><sub class="math-var">p</sub>) and projected digital representations (<span class="math-rm">R</span><sub class="math-var">d</sub>) synchronize with
+          an underlying computational model (<span class="math-rm">M</span>) [38].
+        </p>
+
+        <p>
+          A rich lineage of MIT Tangible Media Group systems demonstrates the power of coupling physical materials with live computation.
+          <em>I/O Brush</em> turned everyday physical textures and movements into drawing ink [39], while <em>Urp</em> coupled architectural scale models on a
+          workbench to real-time wind and shadow simulations [40]. Most relevant to my thesis, <em>Illuminating Clay</em> and <em>SandScape</em> pioneered
+          Continuous Plastic TUIs, using overhead depth sensing and projection over deformable clay and glass beads to enable bimanual topographic sculpting
+          [41], [42], a paradigm further popularized by <em>SARndbox</em> [43] and critiqued for parametric extensibility by Philip Belesky [44]. Later visions
+          including <em>Radical Atoms</em> and <em>inFORM</em> explored dynamically actuated physical constraints [45], [46]. Concurrently, Pierre Wellner's
+          <em>DigitalDesk</em> [47], François Guimbretière's <em>PADD</em> [48], Ishii and Kobayashi's <em>ClearBoard</em> [49], and Bret Victor's communal
+          <em>Dynamicland</em> (<em>Realtalk</em>) [50], [51] established that augmenting physical paper on shared tables preserves gaze awareness and fosters
+          <em>embodied facilitation</em> [52]. My work extends these tangible and paper-based architectures into the domain of steerable generative media and
+          neuro-symbolic synthesis.
+        </p>
+
+        <h3 class="subsection-heading">3.3 Creative Coding, Live Performance, and Generative Substrates</h3>
+
+        <p>
+          In creative practice, computation serves as an expressive medium where the joy of programming manifests through live audiovisual improvisation. Zach
+          Lieberman's <em>openFrameworks</em> empowers artists with transparent, low-level C++ building blocks that keep the creator close to pixel buffers,
+          audio streams, and hardware sensors [17]. Similarly, the live coding movement treats source code as a performative instrument modified in real time
+          [13], [15]. In <em>TidalCycles</em>, Alex McLean shows how functional programming simplicity, representing musical patterns as pure composable
+          functions of cyclic time, enables rapid reversible changes that induce psychological flow [14], [28]. Emma Cocker describes this live coding state as
+          <em>meletē</em>, a meditative thinking-in-action that balances deliberate analytical framing with immediate performative response [16].
+        </p>
+
+        <p>
+          This creative coding ethos embodies Tim Ingold's <em>textility of making</em>, where the artist follows the active forces and flows of a material
+          [10], [11]. While early cybernetic art systems like Harold Cohen's <em>AARON</em> operated autonomously [53] and Sougwen Chung's
+          <em>D.O.U.G.</em> explored robotic co-drawing [54], [55], modern visual generative media relies heavily on latent diffusion. Recent computer vision
+          breakthroughs have opened the door to spatial and real-time diffusion control: <em>ControlNet</em> [56], <em>SpaText</em> [57],
+          <em>MultiDiffusion</em> [58], <em>Blended Latent Diffusion</em> [59], <em>Make-A-Scene</em> [60], <em>T2I-Adapter</em> [61],
+          <em>FreeControl</em> [62], and <em>DragGAN</em> [63] enable localized spatial and manifold conditioning, while <em>StreamDiffusion</em> and
+          <em>StreamDiffusionV2</em> demonstrate interactive frame rates via stream batching and residual classifier-free guidance [64], [65]. By uniting
+          low-latency cloud and streaming diffusion pipelines with biological morphogenesis models, specifically Alan Turing's reaction-diffusion equations
+          [66], [67] and Mordvintsev's <em>Growing Neural Cellular Automata</em> [68], my thesis provides generative media with a living, directly manipulable
+          computational substrate.
+        </p>
+
+        <h3 class="subsection-heading">3.4 Interface Agents, Multimodal Dialogue, and Neuro-Symbolic Synthesis</h3>
+
+        <p>
+          Bringing direct manipulation to general-purpose generative media and end-user programming requires addressing the classic 1997 debate between Ben
+          Shneiderman and Pattie Maes regarding direct manipulation versus interface agents [3]. While Shneiderman emphasized user control and predictability,
+          Maes demonstrated that interface agents can overcome end-user programming friction by inferring intent and automating complex syntactic plumbing.
+          Foundational work in Programming by Demonstration (PBD) and Programming by Example (PBE) by Allen Cypher [23] and Henry Lieberman [24] proved that
+          agents can synthesize generalized procedures directly from concrete user actions on visual objects. In programming languages, Armando Solar-Lezama's
+          <em>Sketch</em> formalized neuro-symbolic synthesis, allowing humans to specify high-level structural sketches while an inductive solver synthesizes
+          low-level parameters [22].
+        </p>
+
+        <p>
+          Empirical studies of modern AI coding by Shraddha Barke et al. reveal a bimodal workflow: developers switch between a fast
+          <em>acceleration mode</em> and a slow <em>exploration mode</em> [18]. Damien Masson et al.'s <em>DirectGPT</em> bridges these modes by turning natural
+          language prompts into reusable direct manipulation tool buttons that act on spatial selections [4]. Furthermore, to transfer human mental models into
+          the machine without text-prompting friction, we can leverage multimodal speech and gesture systems pioneered at MIT: Richard Bolt's
+          <em>"Put-That-There"</em> [69] and two-handed kinematic dialogue [70], Koons and Sparrell's <em>Iconic</em> depictive gestures [71], Philip Cohen's
+          synergistic blending of direct manipulation and natural language [72], Cheyer's <em>Open Agent Architecture</em> [73], and interactive machine
+          learning loops [74], [75]. Contemporary systems such as Ken Perlin's <em>Chalktalk</em> [76], <em>DrawTalking</em> [77], and Ink &amp; Switch's
+          <em>Potluck</em> and <em>Inkbase</em> [25], [78], [79] validate that freehand ink and spoken rules can dynamically construct live simulations. My
+          thesis unifies these multimodal agent techniques with tangible direct manipulation to create a cohesive generative media workbench.
+        </p>
+      </section>
+
+      <!-- 4. Proposed Work -->
+      <section id="proposed-work">
+        <h2 class="section-heading"><span class="sec-num">4</span> Proposed Work</h2>
+        <h3 class="subsection-heading">4.1 System Overview: Testing the Direct Manipulation Hypothesis</h3>
+
+        <p>
+          To systematically test how direct manipulation can restore the joy of programming across generative media, I propose a portfolio of five systems
+          organized around a <strong>Fast-and-Slow neuro-symbolic sculpting workflow</strong>. Across all five systems, the creator begins with low-effort,
+          general gestures to establish coarse structure and progressively refines the work toward high-fidelity specificity, ensuring that physical and
+          cognitive effort scales proportionally with visual and behavioral fidelity [30].
+        </p>
+
+        <p>The portfolio progresses across three levels of generative media complexity:</p>
+
+        <ol>
+          <li>
+            <strong>Level 1: Spatial and Parametric Direct Manipulation of Visual Generative Media (Completed).</strong> <em>Dream Brush</em> and
+            <em>Parametric Diffusion</em> replace detached text-to-image prompting with continuous spatial calligraphy and reactive cellular substrates,
+            establishing an immediate Fast sensory-motor loop.
+          </li>
+          <li>
+            <strong>Level 2: Tangible 3D Sculpting and Multimodal Mental Model Transfer (In Progress).</strong> <em>Sable</em> merges <em>Dream Brush</em> and
+            <em>Parametric Diffusion</em> inside a physical granular sandbox for bimanual 3D world sculpting. Concurrently, <em>Braindump</em> establishes the
+            Slow neuro-symbolic loop, using speech and depictive two-handed gestures to transfer human conceptual models to the machine and generate interactive
+            handles on the fly.
+          </li>
+          <li>
+            <strong>Level 3: Integrated Neuro-Symbolic Programming on Physical Paper (Culminating Prototype).</strong> <em>Papershop</em> unites the Fast direct
+            manipulation loop and the Slow interface agent loop on an augmented communal desk, allowing users to sketch on physical paper to perform
+            simulations, visual compositions, and collaborative knowledge sharing.
+          </li>
+        </ol>
+
+        <!-- Figure 2 -->
+        <figure id="fig-2" class="academic-figure" aria-labelledby="fig2-title" aria-describedby="fig2-desc">
+          <img
+            src="./assets/figure-02.webp"
+            alt="Five minimalist isometric vignettes arranged left to right along a continuous line. First, Dream Brush shows a hand painting a vermilion-orange calligraphy stroke that rises into a mountain contour. Second, Parametric Diffusion shows hands turning a rotary dial and touching a grid of vermilion-orange reaction-diffusion ripples. Third, Sable shows two hands sculpting white sand illuminated by vermilion-orange topographic contour rings. Fourth, Braindump shows two hands gesturing in mid-air as a teal-cyan wave turns into a floating vermilion-orange slider. Fifth, Papershop shows two pairs of hands across a desk drawing an ink pendulum and sliding a projected vermilion-orange handle that links two sheets of paper."
+          />
+          <figcaption>
+            <span class="fig-title-line">
+              <span class="fig-label">Figure 2:</span>
+              <span id="fig2-title" class="fig-title">Progression of the five thesis systems from spatial substrates to communal paper computing.</span>
+            </span>
+            <span class="fig-detail">
+              <em>Dream Brush</em>, <em>Parametric Diffusion</em>, and <em>Sable</em> establish spatial, parametric, and tangible direct manipulation for visual
+              generative media (Fast Loop), while <em>Braindump</em> introduces multimodal mental model transfer (Slow Loop), converging in <em>Papershop</em>'s
+              communal paper programming environment.
+            </span>
+            <span id="fig2-desc" class="sr-only">
+              Accessibility description: Five minimalist isometric vignettes arranged left to right along a continuous line. First, Dream Brush shows a hand
+              painting a vermilion-orange calligraphy stroke that rises into a mountain contour. Second, Parametric Diffusion shows hands turning a rotary dial
+              and touching a grid of vermilion-orange reaction-diffusion ripples. Third, Sable shows two hands sculpting white sand illuminated by
+              vermilion-orange topographic contour rings. Fourth, Braindump shows two hands gesturing in mid-air as a teal-cyan wave turns into a floating
+              vermilion-orange slider. Fifth, Papershop shows two pairs of hands across a desk drawing an ink pendulum and sliding a projected vermilion-orange
+              handle that links two sheets of paper.
+            </span>
+          </figcaption>
+        </figure>
+
+        <h3 class="subsection-heading">4.2 Research Questions</h3>
+
+        <ol>
+          <li>
+            <strong>Redefining Programming and Interaction in Generative Media:</strong> How can a Fast-and-Slow neuro-symbolic architecture reconcile direct
+            manipulation (Shneiderman) with interface agents (Maes) so that human mental models and generative computer models remain in continuous perceptual
+            synchronization?
+          </li>
+          <li>
+            <strong>Restoring the Three Pillars of Joy:</strong> How does manipulating generative media through tangible, spatial, and reactive substrates (<em
+              >Dream Brush</em
+            >, <em>Parametric Diffusion</em>, <em>Sable</em>) affect a creator's experience of <em>material contact</em>, <em>control</em>,
+            <em>comprehension</em>, and creative <em>flow</em> compared to conversational prompting?
+          </li>
+          <li>
+            <strong>Proportional Effort-to-Fidelity Sculpting:</strong> How effectively do multi-resolution physical and cellular substrates allow creators to
+            sculpt generative media from rapid, coarse conceptual blocking to fine-grained semantic and structural refinement?
+          </li>
+          <li>
+            <strong>End-User &amp; Social Programmability:</strong> How does combining freehand paper sketching with multimodal speech-and-gesture interface
+            agents (<em>Braindump</em>, <em>Papershop</em>) lower end-user programming friction while preserving creative ownership and social legibility?
+          </li>
+        </ol>
+
+        <h3 class="subsection-heading">4.3 Technical Details and System Architecture</h3>
+
+        <ul>
+          <li>
+            <strong>Hardware Platforms (Optimized for Off-the-Shelf Consumer Electronics):</strong>
+            <ul>
+              <li>
+                <em>Dream Brush:</em> Water-sensitive calligraphy canvas, traditional brush, standard overhead RGB webcam, and consumer short-throw projector.
+              </li>
+              <li>
+                <em>Parametric Diffusion (</em>sh.elf<em> &amp; </em>life.config<em>):</em> Standard personal computer connected to off-the-shelf cloud-hosted
+                text-to-image and image-to-image diffusion models, paired with a multi-touch surface and tangible rotary/slider control console.
+              </li>
+              <li>
+                <em>Sable:</em> Custom-fabricated sandbox filled with fine white glass beads, overhead depth sensor, standard RGB webcam for calligraphic stroke
+                tracking, and consumer projector.
+              </li>
+              <li>
+                <em>Braindump:</em> Built entirely with off-the-shelf personal computers, built-in microphones, and standard consumer webcams, requiring no
+                specialized depth or optical tracking hardware.
+              </li>
+              <li>
+                <em>Papershop:</em> Shared wooden workbench, standard off-the-shelf consumer webcam and projector rig with ArUco tag fiducial registration,
+                physical paper sheets, and standard felt-tip pens.
+              </li>
+            </ul>
+          </li>
+          <li>
+            <strong>Software Stack &amp; Core Technologies:</strong>
+            <ul>
+              <li>
+                <em>Consumer-Accessible Vision &amp; Gesture Tracking:</em> All systems are engineered to run on everyday consumer hardware for maximum
+                accessibility and availability. Real-time hand, body, and gesture tracking rely heavily on <em>MediaPipe</em> alongside lightweight fine-tuned
+                <em>YOLO</em> object tracking models, complemented by SIMD-accelerated WebAssembly (WASM) for CPU-based computer vision tasks (such as contour
+                extraction and ArUco fiducial registration).
+              </li>
+              <li>
+                <em>WebGPU Substrates &amp; Cloud Generative Rendering Loop:</em> Client-side <em>WebGPU</em> compute shaders run responsive 2D
+                reaction-diffusion [66] and cellular substrates locally in the browser, coupled to a real-time generative rendering loop powered by
+                off-the-shelf cloud-hosted text-to-image and image-to-image diffusion APIs.
+              </li>
+              <li>
+                <em>Frontier Multimodal Agent &amp; Synthesis Runtime:</em> Rather than training custom deep neural networks or bespoke LLMs, the Slow synthesis
+                loop leverages off-the-shelf frontier lab models (such as <em>Gemini 4</em> and <em>GPT-6.1</em>) for speech, sketch, and gesture
+                interpretation, driving a TypeScript/React reactive dataflow runtime (inspired by <em>Inkbase</em> [79] and <em>Potluck</em> [78]).
+              </li>
+            </ul>
+          </li>
+          <li>
+            <strong>Current Completion Status:</strong> <em>Dream Brush</em> (100% complete; published at ACM DIS '26 Companion [31]);
+            <em>Parametric Diffusion</em> (100% complete; <em>sh.elf</em> and <em>life.config</em> deployed); <em>Papershop</em> (30% complete; initial tabletop
+            prototype with webcam ArUco registration and ink tracking); <em>Sable</em> (20% complete; initial sandbox ideation and depth-to-diffusion
+            conditioning tests, fabrication scheduled for January); <em>Braindump</em> (20% complete; multimodal interaction grammar specified, webcam +
+            MediaPipe software prototyping scheduled for December).
+          </li>
+        </ul>
+
+        <div class="table-wrapper">
+          <div class="table-caption">
+            <span>Table 1:</span> Architectural overview of the five-system thesis portfolio, detailing mediums, mechanisms, and target outcomes.
+          </div>
+          <table class="booktabs">
+            <thead>
+              <tr>
+                <th style="width: 19%">System / Module</th>
+                <th style="width: 21%">Status &amp; Medium</th>
+                <th style="width: 35%">Direct Manipulation &amp; Agentic Mechanisms</th>
+                <th style="width: 25%">Target Outcomes (Joy of Programming)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1: Dream Brush</strong></td>
+                <td><strong>Completed</strong> (DIS '26)<br />Physical water canvas &amp; brush</td>
+                <td>
+                  <em>Spatial-Semantic Calligraphy:</em> Painting Chinese characters with water unifies symbolic semantics and spatial geometry in one mark,
+                  incrementally steering Blended Latent Diffusion.
+                </td>
+                <td>Eliminate spatial-textual indirection; establish continuous material correspondence in AI painting.</td>
+              </tr>
+              <tr>
+                <td><strong>2: Parametric Diffusion</strong></td>
+                <td><strong>Completed</strong> (<em>sh.elf</em>, <em>life.config</em>)<br />Reactive cellular &amp; tangible substrates</td>
+                <td>
+                  <em>Substrate-Steered Generation:</em> Users directly perturb WebGPU cellular substrates via touch and dials to parametrically steer
+                  cloud-hosted text-to-image and image-to-image diffusion models.
+                </td>
+                <td>Achieve an immediate sensory-motor loop; provide continuous semantic handles over generative imagery.</td>
+              </tr>
+              <tr>
+                <td><strong>3: Sable</strong></td>
+                <td><strong>Initial Ideation / Fab (20%)</strong><br />Projection-augmented 3D granular sandbox</td>
+                <td>
+                  <em>Tangible Semantic Sculpting:</em> Unites <em>Dream Brush</em> and <em>Parametric Diffusion</em>. Users sculpt 3D sand topography with both
+                  hands and trace symbolic strokes in sand to steer world generation.
+                </td>
+                <td>Realize space-multiplexed bimanual control (MCRpd); match physical sculpting effort to visual fidelity.</td>
+              </tr>
+              <tr>
+                <td><strong>4: Braindump</strong></td>
+                <td><strong>Initial Ideation / Proto (20%)</strong><br />Speech &amp; bimanual depictive gesture</td>
+                <td>
+                  <em>Human-to-Machine Model Transfer:</em> Using an off-the-shelf webcam and PC, MediaPipe and frontier LLMs parse speech and two-handed
+                  gestures into interactive graphical handles.
+                </td>
+                <td>Complement Bret Victor's <em>Magic Ink</em> by solving human-to-machine model intake; prevent prompt fatigue.</td>
+              </tr>
+              <tr>
+                <td><strong>5: Papershop</strong></td>
+                <td><strong>Early Prototype (30%)</strong><br />Augmented paper desk &amp; social agents</td>
+                <td>
+                  <em>Communal Sketch Programming:</em> Using consumer webcams, projectors, and ArUco tags, agents bind hand-drawn ink strokes and spoken rules
+                  to live physics, dataflows, and paper sliders.
+                </td>
+                <td>Synthesize direct manipulation and interface agents into an inspectable, malleable social programming medium.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="subsection-heading">4.4 Detailed System Designs and User Workflows</h3>
+
+        <h4 class="subsubsection-heading">1. Dream Brush: Unifying Symbolic Intent and Spatial Gesture</h4>
+
+        <p>
+          In conventional controllable image generation (such as <em>SpaText</em> [57] or <em>Make-A-Scene</em> [60]), the user's workflow is fractured across
+          two incompatible modalities: drawing a spatial mask with a mouse and typing a symbolic text prompt on a keyboard. <em>Dream Brush</em> [31] resolves
+          this fracture through the medium of Chinese calligraphy, where written characters carry both semantic meaning and expressive spatial form. As a
+          creator writes characters with water on a physical canvas, an overhead camera captures the wet brushstroke's geometry while a vision-language pipeline
+          identifies the character's semantic concept. Using spatial conditioning [56] and <em>Blended Latent Diffusion</em> [59], the system synthesizes visual
+          motifs that follow the exact calligraphic brushwork and blend seamlessly into the existing projected painting. Evaluated through Beaudouin-Lafon's
+          <em>Instrumental Interaction</em> framework [32], the calligraphy brush achieves near-zero spatial and temporal indirection, transforming prompt
+          engineering into embodied mark-making.
+        </p>
+
+        <h4 class="subsubsection-heading">2. Parametric Diffusion: Computational Substrates as Semantic Handles</h4>
+
+        <p>
+          To achieve true direct manipulation in visual generative media, the system must respond to user input with immediate, continuous, and reversible
+          visual feedback [1]. Standard turn-based diffusion interfaces force users to wait between isolated text prompts, breaking the sensory-motor loop.
+          <em>Parametric Diffusion</em> (implemented across <em>sh.elf</em> and <em>life.config</em>) solves this by inserting a real-time
+          <em>computational substrate</em> between the human creator and off-the-shelf cloud-hosted text-to-image and image-to-image diffusion models. Inspired
+          by Alan Turing's chemical morphogenesis [67], Greg Turk's reaction-diffusion textures [66], and cellular automata [68], the substrate is a 2D
+          dynamical system running in WebGPU. Using multi-touch gestures and tangible dials on a standard personal computer, the creator directly perturbs cell
+          states and adjusts morphogenetic parameters (feed rates, diffusion gradients, vector flows). Because these cellular patterns continuously drive the
+          generative rendering loop via image-to-image conditioning [56], [62], the creator can grab semantic handles to bend, grow, and heal generative
+          imagery, experiencing the latent space as an active, self-organizing material [10].
+        </p>
+
+        <h4 class="subsubsection-heading">3. Sable: Bimanual 3D Semantic Sculpting in a Tangible Sandbox</h4>
+
+        <p>
+          <em>Sable</em> elevates the 2D interactions of <em>Dream Brush</em> and <em>Parametric Diffusion</em> into a 3D Continuous Plastic TUI modeled on
+          <em>Illuminating Clay</em> [41] and <em>SandScape</em> [42]. Standing at a projection-augmented sandbox filled with fine glass beads, the creator uses
+          both hands concurrently (<em>Bricks</em> [5]) to sculpt physical topography. An overhead depth sensor captures the 3D surface elevation and normal
+          maps, which drive a live WebGPU cellular hydrodynamic and reaction-diffusion substrate flowing over the terrain. Simultaneously, the creator can use a
+          finger to draw calligraphic symbols or boundary paths directly into the sand (<em>Dream Brush</em>). The generative rendering loop fuses the 3D
+          topographic depth, the evolving cellular substrate, and the localized symbolic strokes via cloud-hosted image-to-image diffusion to project coherent,
+          living worlds directly onto the physical sand. Broad, sweeping hand movements rapidly reshape macro-level geography (low effort, coarse fidelity),
+          while delicate finger pinching carves intricate architectural or ecological features (high effort, high fidelity), fulfilling the sculpting process.
+        </p>
+
+        <!-- Figure 3 -->
+        <figure id="fig-3" class="academic-figure" aria-labelledby="fig3-title" aria-describedby="fig3-desc">
+          <img
+            src="./assets/figure-03.webp"
+            alt="Isometric system diagram of the Sable sandbox. On the left, an overhead projector-camera bar casts a light cone onto a wooden sandbox where two hands sculpt a 3D sand ridge and trace a curve, illuminated by vermilion-orange topographic contours. On the right, a circular loop connects the sandbox to three vertically stacked floating planes: a black wireframe elevation mesh at the top, a teal-cyan reaction-diffusion ripple pattern in the middle, and a vermilion-orange landscape projection at the bottom returning to the overhead projector."
+          />
+          <figcaption>
+            <span class="fig-title-line">
+              <span class="fig-label">Figure 3:</span>
+              <span id="fig3-title" class="fig-title">Sable couples bimanual sand sculpting with real-time substrate and diffusion projection.</span>
+            </span>
+            <span class="fig-detail">
+              <em>Sable</em> unites <em>Dream Brush</em> and <em>Parametric Diffusion</em> in a tangible sandbox. Bimanual sand sculpting and surface stroke
+              inscriptions drive a real-time depth-and-substrate conditioned generative rendering loop.
+            </span>
+            <span id="fig3-desc" class="sr-only">
+              Accessibility description: Isometric system diagram of the Sable sandbox. On the left, an overhead projector-camera bar casts a light cone onto a
+              wooden sandbox where two hands sculpt a 3D sand ridge and trace a curve, illuminated by vermilion-orange topographic contours. On the right, a
+              circular loop connects the sandbox to three vertically stacked floating planes: a black wireframe elevation mesh at the top, a teal-cyan
+              reaction-diffusion ripple pattern in the middle, and a vermilion-orange landscape projection at the bottom returning to the overhead projector.
+            </span>
+          </figcaption>
+        </figure>
+
+        <h4 class="subsubsection-heading">4. Braindump: Multimodal Mental Model Transfer and Handle Synthesis</h4>
+
+        <p>
+          While <em>Dream Brush</em>, <em>Parametric Diffusion</em>, and <em>Sable</em> provide fast sensory-motor handles for visual generative media,
+          general-purpose programming requires constructing structural and behavioral models. In <em>Magic Ink</em> [36], Bret Victor demonstrated how software
+          can transfer knowledge from the machine to the human mental model through context-sensitive graphics. <em>Braindump</em> addresses the complementary
+          challenge: transferring a complex mental model from the human mind into the computer without the articulatory bottleneck of typing code or text
+          prompts.
+        </p>
+
+        <p>
+          Drawing on Richard Bolt's <em>"Put-That-There"</em> [69], two-handed gesture dialogue [70], and Koons and Sparrell's <em>Iconic</em> depictive
+          gestures [71], <em>Braindump</em> allows a creator to externalize ideas through synchronized speech and mid-air bimanual gestures using only an
+          off-the-shelf webcam and a standard personal computer. As the creator speaks about a system's architecture while using both hands to pantomime shapes,
+          spatial topologies, and kinematic interactions, MediaPipe and SIMD-accelerated WASM vision pipelines track the hand trajectories and feed them
+          alongside speech transcripts to frontier multimodal LLMs (such as Gemini 4 or GPT-6.1). Crucially, the agent's output is an inspectable concept graph
+          [27] equipped with custom direct manipulation affordances (sliders, draggable spatial nodes, and scrubbable state timelines) [4], [8]. Once the Slow
+          agentic loop reifies these handles onto the canvas, the creator immediately enters the Fast loop, grabbing the handles to test edge cases, verify
+          system comprehension, and refine the underlying logic.
+        </p>
+
+        <h4 class="subsubsection-heading">5. Papershop: Uniting Direct Manipulation and Interface Agents on Paper</h4>
+
+        <p>
+          <em>Papershop</em> represents the culminating system of the thesis, integrating direct manipulation and interface agents into a communal, paper-based
+          programming environment built entirely from off-the-shelf consumer electronics. Building upon Pierre Wellner's <em>DigitalDesk</em> [47] and Bret
+          Victor's <em>Dynamicland</em> [50], <em>Papershop</em> uses a standard consumer webcam, ArUco fiducial tags, and an off-the-shelf projector above a
+          shared wooden table so multiple creators can program together using ordinary paper and pens while maintaining natural eye contact (<em>ClearBoard</em>
+          [49]). Where <em>Dynamicland</em> requires users to type textual code onto paper rulecards and explicitly rejects AI agents,
+          <em>Papershop</em> demonstrates that multimodal interface agents powered by frontier LLMs can turn hand-drawn ink sketches directly into live,
+          malleable software [25], [77].
+        </p>
+
+        <p>
+          In <em>Papershop</em>, a user sketches a visual diagram on paper, such as a mechanical linkage, a cellular automaton grid, or a musical sequencer, and
+          uses deictic speech and pointing (<em>Braindump</em>) to specify behavior:
+          <em>"Make this gear drive that piston, and let me control the torque with this drawn dial."</em> Within moments (the Slow synthesis loop), the
+          <em>Papershop</em> runtime—combining SIMD-accelerated WASM computer vision, fine-tuned YOLO object tracking, MediaPipe hand tracking, and frontier
+          LLMs (Gemini 4 / GPT-6.1)—segments the ink strokes into reified objects [33], synthesizes a constraint-based reactive program (<em>Sketch</em> [22],
+          <em>Inkbase</em> [79]), and projects live physical motion, dataflow wires, and interactive UI overlays directly onto the physical paper. Entering the
+          Fast manipulation loop, collaborators can slide physical paper dials, draw new ink strokes that immediately participate in the live simulation, or
+          place two separate ArUco-tagged sheets of paper side by side to link their computational models together. All synthesized rules and state variables
+          are projected as transparent inline annotations next to the user's ink (<em>Potluck</em> [78]), guaranteeing full system comprehension and eliminating
+          cognitive debt.
+        </p>
+
+        <!-- Figure 4 -->
+        <figure id="fig-4" class="academic-figure" aria-labelledby="fig4-title" aria-describedby="fig4-desc">
+          <img
+            src="./assets/figure-04.webp"
+            alt="Three-panel horizontal storyboard showing a wooden desk with white paper. In the left panel, a hand draws a black ink pendulum with a pen while another hand points alongside a teal-cyan soundwave icon. In the center panel, an overhead projection outlines the drawn pendulum in teal-cyan and projects a vermilion-orange slider bar and motion arc onto the paper. In the right panel, one collaborator's hand drags the projected vermilion-orange slider on the first sheet while a second collaborator slides an adjacent sheet of paper next to it, linked by a glowing vermilion-orange line across the pages."
+          />
+          <figcaption>
+            <span class="fig-title-line">
+              <span class="fig-label">Figure 4:</span>
+              <span id="fig4-title" class="fig-title">Papershop transforms hand-drawn sketches and spoken rules into manipulable paper programs.</span>
+            </span>
+            <span class="fig-detail">
+              In <em>Papershop</em>, hand-drawn paper sketches and deictic speech trigger on-the-fly program synthesis (Slow Loop), reifying projected handles
+              and live simulations that collaborators directly manipulate and compose on the physical desk (Fast Loop).
+            </span>
+            <span id="fig4-desc" class="sr-only">
+              Accessibility description: Three-panel horizontal storyboard showing a wooden desk with white paper. In the left panel, a hand draws a black ink
+              pendulum with a pen while another hand points alongside a teal-cyan soundwave icon. In the center panel, an overhead projection outlines the drawn
+              pendulum in teal-cyan and projects a vermilion-orange slider bar and motion arc onto the paper. In the right panel, one collaborator's hand drags
+              the projected vermilion-orange slider on the first sheet while a second collaborator slides an adjacent sheet of paper next to it, linked by a
+              glowing vermilion-orange line across the pages.
+            </span>
+          </figcaption>
+        </figure>
+
+        <h3 class="subsection-heading">4.5 Design Process</h3>
+
+        <p>
+          My design process grounds Hiroshi Ishii's <em>vision-driven design</em> methodology [80] in iterative studio critiques with calligraphers, creative
+          coders, and domain experts. A guiding principle across all five systems is preserving the authentic tactile resistance and spatial affordances of
+          physical media while relying on accessible, off-the-shelf consumer hardware. During the development of <em>Dream Brush</em>, early prototypes using
+          digital styluses on tablet screens felt sterile and disconnected; transitioning to real water on a mineral-coated fabric canvas restored the physical
+          drag, bristle splay, and evaporative timing that calligraphers rely upon for expressive control [31]. Similarly, for <em>Sable</em> and
+          <em>Papershop</em>, all sensing and projection hardware consists of standard webcams and consumer projectors housed in an overhead frame. Keeping the
+          physical sand and paper completely free of tethered sensors or head-mounted displays ensures a zero-barrier entry point, inviting spontaneous
+          multi-user tinkering and <em>embodied facilitation</em> [52], [81].
+        </p>
+
+        <h3 class="subsection-heading">4.6 User Studies &amp; Qualitative Evaluation</h3>
+
+        <ul>
+          <li>
+            <strong>Completed Pilot Studies:</strong> In our published evaluation of <em>Dream Brush</em> (DIS '26 [31]), qualitative studio sessions with
+            practicing artists confirmed that unifying symbolic character writing with spatial stroke conditioning eliminated prompt-formulation interruptions
+            and fostered a sustained state of creative correspondence with the diffusion model. In addition, interactive installations of
+            <em>Parametric Diffusion</em> (<em>sh.elf</em> and <em>life.config</em>) demonstrated that coupling responsive cellular substrates with cloud-hosted
+            diffusion shifts user perception from "waiting for an AI generation" to "physically sculpting a live medium."
+          </li>
+          <li>
+            <strong>Proposed Qualitative Evaluation Design:</strong> To evaluate my hypothesis across the complete portfolio, I will conduct two qualitative
+            user studies and design critique sessions:
+            <ul>
+              <li>
+                <strong>Study 1: Direct Manipulation of Visual Generative Media (<em>Sable</em> &amp; <em>Parametric Diffusion</em>).</strong> An exploratory
+                studio study with visual artists, designers, and creative coders. Participants will engage in both a targeted composition task and an open-ended
+                world-sculpting session across three workflows:
+                <ul>
+                  <li><em>Workflow A (Conversational + 2D GUI Baseline):</em> Standard text prompting paired with mouse-drawn 2D conditioning maps.</li>
+                  <li>
+                    <em>Workflow B (2D Parametric Substrate Direct Manipulation):</em> Multi-touch and tangible dial manipulation of
+                    <em>Parametric Diffusion</em> cellular substrates.
+                  </li>
+                  <li>
+                    <em>Workflow C (3D Tangible Direct Manipulation - Sable):</em> Bimanual physical sand sculpting and calligraphic sand strokes in the
+                    <em>Sable</em> sandbox.
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <strong>Study 2: Neuro-Symbolic Direct Manipulation for Programming (<em>Braindump</em> &amp; <em>Papershop</em>).</strong> A qualitative study
+                with end-user domain experts and experienced programmers, observed in both solo and paired collaborative sessions. Participants will build
+                interactive physics simulations and custom data calculation tools across two environments:
+                <ul>
+                  <li><em>Environment A (Agentic Chat Coding Baseline):</em> Creating interactive applets via a conversational LLM coding interface.</li>
+                  <li>
+                    <em>Environment B (Neuro-Symbolic Direct Manipulation - Papershop + Braindump):</em> Freehand paper sketching combined with speech/gesture
+                    handle synthesis and direct manipulation on the augmented workbench.
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+          <li>
+            <strong>Qualitative Data Collection &amp; Analysis:</strong>
+            <ul>
+              <li>
+                <em>Observational &amp; Think-Aloud Protocols:</em> Multi-angle video recordings, concurrent and retrospective think-aloud protocols, and
+                artifact walkthroughs capturing how creators transition between the Slow agentic synthesis loop and the Fast direct manipulation loop.
+              </li>
+              <li>
+                <em>Semi-Structured Interviews &amp; Thematic Analysis:</em> In-depth exit interviews and studio critiques will be analyzed via reflexive
+                thematic analysis, examining participants' lived experience of the three pillars of joy (<em>material contact</em>, <em>perceived control</em>,
+                and <em>system comprehension</em>), alongside <em>creative ownership</em>, semantic and articulatory distance [2], material correspondence [10],
+                mental model alignment [7], and collaborative dynamics [52].
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </section>
+
+      <!-- 5. Timeline -->
+      <section id="timeline">
+        <h2 class="section-heading"><span class="sec-num">5</span> Timeline</h2>
+
+        <div class="table-wrapper">
+          <div class="table-caption"><span>Table 2:</span> Proposed research, implementation, evaluation, and thesis writing schedule (November – May).</div>
+          <table class="booktabs timeline-table">
+            <thead>
+              <tr>
+                <th>Task / Phase</th>
+                <th>Nov</th>
+                <th>Dec</th>
+                <th>Jan</th>
+                <th>Feb</th>
+                <th>Mar</th>
+                <th>Apr</th>
+                <th>May</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><em>Papershop</em> Core System &amp; Agent Implementation</td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td><em>Braindump</em> Speech/Gesture Software Prototyping</td>
+                <td></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td><em>Sable</em> Sandbox Fabrication &amp; Optical Calibration</td>
+                <td></td>
+                <td></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>IRB Protocol Approval &amp; Study Recruitment</td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Conduct Study 2 (<em>Papershop</em> &amp; <em>Braindump</em> User Sessions)</td>
+                <td></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Conduct Study 1 (<em>Sable</em> &amp; <em>Parametric Diffusion</em> Sessions)</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Qualitative Thematic Analysis &amp; Open-Source Release</td>
+                <td></td>
+                <td></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td>Conference Publications &amp; Master's Thesis Writing</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+                <td><span class="milestone-mark">X</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ul>
+          <li>
+            <strong>Milestones &amp; Freeze Dates:</strong>
+            <ul>
+              <li><em>December 20:</em> Feature freeze for <em>Papershop</em> and <em>Braindump</em> software prototypes; commence Study 2 pilot sessions.</li>
+              <li>
+                <em>January 25:</em> Hardware freeze for <em>Sable</em> sandbox fabrication and depth-projector calibration; release open-source
+                <em>Braindump</em> codebase.
+              </li>
+              <li><em>February 28:</em> Conclude all participant sessions for Study 1 and Study 2.</li>
+              <li><em>April 15:</em> Deliver complete Master's thesis draft to committee readers.</li>
+            </ul>
+          </li>
+          <li>
+            <strong>Scope &amp; Future Work:</strong> To ensure timely completion by May, motorized physical actuation of the sandbox and paper surfaces (such
+            as coupling <em>Sable</em> or <em>Papershop</em> with a 2.5D actuated pin array like <em>inFORM</em> [46] for computer-driven haptic feedback) is
+            scoped out of this thesis and reserved for future work. Likewise, while <em>Papershop</em> supports multi-user collaboration around a shared
+            physical desk, networked tele-collaboration across remote <em>Papershop</em> tables will be pursued post-graduation.
+          </li>
+        </ul>
+      </section>
+
+      <!-- 6. References -->
+      <section id="references">
+        <h2 class="section-heading"><span class="sec-num">6</span> References</h2>
+        <ol class="references-list">
+          <li>
+            <span class="ref-num">[1]</span
+            ><span class="ref-body"
+              ><strong
+                >B. Shneiderman, "Direct manipulation: A step beyond programming languages," <em>Computer</em>, vol. 16, no. 8, pp. 57–69, Aug. 1983.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[2]</span
+            ><span class="ref-body"
+              ><strong
+                >E. L. Hutchins, J. D. Hollan, and D. A. Norman, "Direct manipulation interfaces," <em>Human-Computer Interaction</em>, vol. 1, no. 4, pp.
+                311–338, 1985.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[3]</span
+            ><span class="ref-body"
+              ><strong
+                >B. Shneiderman and P. Maes, "Direct manipulation vs. interface agents," <em>Interactions</em>, vol. 4, no. 6, pp. 42–61, Nov. 1997.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[4]</span
+            ><span class="ref-body"
+              >D. Masson, S. Malacria, G. Casiez, and D. Vogel, "DirectGPT: A direct manipulation interface to interact with large language models," in
+              <em>Proc. CHI Conf. Human Factors in Computing Systems (CHI '24)</em>, 2024, pp. 1–16.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[5]</span
+            ><span class="ref-body"
+              >G. W. Fitzmaurice, H. Ishii, and W. A. S. Buxton, "Bricks: Laying the foundations for graspable user interfaces," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '95)</em>, 1995, pp. 442–449.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[6]</span
+            ><span class="ref-body"
+              ><strong
+                >H. Ishii and B. Ullmer, "Tangible bits: Towards seamless interfaces between people, bits and atoms," in
+                <em>Proc. ACM SIGCHI Conf. Human Factors in Computing Systems (CHI '97)</em>, 1997, pp. 234–241.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[7]</span
+            ><span class="ref-body"
+              ><strong
+                >B. Victor, "Learnable programming: Designing a programming system for understanding programs," 2012. [Online]. Available:
+                <a href="https://worrydream.com/LearnableProgramming/" target="_blank" rel="noopener">https://worrydream.com/LearnableProgramming/</a></strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[8]</span
+            ><span class="ref-body"
+              >B. Victor, "Up and down the ladder of abstraction," 2011. [Online]. Available:
+              <a href="https://worrydream.com/LadderOfAbstraction/" target="_blank" rel="noopener">https://worrydream.com/LadderOfAbstraction/</a></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[9]</span><span class="ref-body">B. Victor, "Inventing on principle," presented at CUSEC, Montreal, Canada, 2012.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[10]</span
+            ><span class="ref-body"
+              ><strong>T. Ingold, "The textility of making," <em>Cambridge Journal of Economics</em>, vol. 34, no. 1, pp. 91–102, Jan. 2010.</strong></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[11]</span
+            ><span class="ref-body">T. Ingold, <em>Making: Anthropology, Archaeology, Art and Architecture</em>. London, UK: Routledge, 2013.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[12]</span
+            ><span class="ref-body"
+              >S. Turkle and S. Papert, "Epistemological pluralism and the revaluation of the concrete," <em>Journal of Mathematical Behavior</em>, vol. 11, no.
+              1, pp. 3–33, Mar. 1992.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[13]</span
+            ><span class="ref-body"
+              >N. Collins, A. McLean, J. Rohrhuber, and A. Ward, "Live coding techniques for laptop performance," <em>Organised Sound</em>, vol. 8, no. 3, pp.
+              321–330, Dec. 2003.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[14]</span
+            ><span class="ref-body"
+              >A. McLean, "Making programming languages to dance to: Live coding with Tidal," in
+              <em>Proc. 2nd ACM SIGPLAN Int. Workshop on Functional Art, Music, Modeling &amp; Design (FARM '14)</em>, 2014, pp. 63–70.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[15]</span
+            ><span class="ref-body"
+              >A. F. Blackwell, E. Cocker, G. Cox, A. McLean, and T. Magnusson, <em>Live Coding: A User's Manual</em>. Cambridge, MA: MIT Press, 2022.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[16]</span
+            ><span class="ref-body"
+              >E. Cocker, "Performing thinking in action: The meletē of live coding," <em>International Journal of Performance Arts and Digital Media</em>, vol.
+              12, no. 2, pp. 102–116, 2016.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[17]</span
+            ><span class="ref-body"
+              >Z. Lieberman, T. Watson, and A. Castro, "openFrameworks: An open source C++ toolkit for creative coding," 2005. [Online]. Available:
+              <a href="https://openframeworks.cc/" target="_blank" rel="noopener">https://openframeworks.cc/</a></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[18]</span
+            ><span class="ref-body"
+              ><strong
+                >S. Barke, M. B. James, and N. Polikarpova, "Grounded Copilot: How programmers interact with code-generating models,"
+                <em>Proc. ACM Program. Lang.</em>, vol. 7, no. OOPSLA1, pp. 85–111, Apr. 2023.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[19]</span
+            ><span class="ref-body"
+              >A. Sarkar, A. D. Gordon, C. Negreanu, C. Poelitz, S. S. Ragavan, and B. Zorn, "What is it like to program with artificial intelligence?"
+              <em>arXiv preprint arXiv:2208.06213</em>, 2022.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[20]</span
+            ><span class="ref-body"
+              ><strong
+                >A. Sarkar, "Will code remain a relevant user interface for end-user programming with generative AI models?" in
+                <em>Proc. ACM SIGPLAN Int. Symp. New Ideas, New Paradigms, and Reflections on Programming and Software (Onward! '23)</em>, 2023, pp.
+                153–167.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[21]</span
+            ><span class="ref-body"
+              >S. I. Ross, F. Martinez, S. Houde, M. Muller, and J. D. Weisz, "The programmer's assistant: Conversational interaction with a large language
+              model for software development," in <em>Proc. 28th Int. Conf. Intelligent User Interfaces (IUI '23)</em>, 2023, pp. 491–514.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[22]</span
+            ><span class="ref-body"
+              >A. Solar-Lezama, "Program synthesis by sketching," Ph.D. dissertation, Dept. Elect. Eng. Comput. Sci., Univ. California, Berkeley, CA,
+              2008.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[23]</span
+            ><span class="ref-body">A. Cypher, Ed., <em>Watch What I Do: Programming by Demonstration</em>. Cambridge, MA: MIT Press, 1993.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[24]</span
+            ><span class="ref-body"
+              >H. Lieberman, Ed., <em>Your Wish is My Command: Programming by Example</em>. San Francisco, CA: Morgan Kaufmann, 2001.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[25]</span
+            ><span class="ref-body"
+              >Ink &amp; Switch, "Malleable software: Restoring user agency in a world of locked-down apps," 2025. [Online]. Available:
+              <a href="https://www.inkandswitch.com/malleable-software/" target="_blank" rel="noopener"
+                >https://www.inkandswitch.com/malleable-software/</a
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[26]</span
+            ><span class="ref-body"
+              >T. R. G. Green and M. Petre, "Usability analysis of visual programming environments: A 'cognitive dimensions' framework,"
+              <em>Journal of Visual Languages &amp; Computing</em>, vol. 7, no. 2, pp. 131–174, Jun. 1996.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[27]</span
+            ><span class="ref-body"
+              >D. Jackson, <em>The Essence of Software: Why Concepts Matter for Great Design</em>. Princeton, NJ: Princeton Univ. Press, 2021.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[28]</span
+            ><span class="ref-body">M. Csikszentmihalyi, <em>Flow: The Psychology of Optimal Experience</em>. New York, NY: Harper &amp; Row, 1990.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[29]</span
+            ><span class="ref-body"
+              >N. Forsgren, M.-A. Storey, C. Maddila, T. Zimmermann, B. Houck, and J. Butler, "The SPACE of developer productivity: There's more to it than you
+              think," <em>Queue</em>, vol. 19, no. 1, pp. 20–48, Feb. 2021.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[30]</span
+            ><span class="ref-body"
+              >"Digital clay modeling with AI-assisted feedback," <em>ResearchGate</em>, 2025. [Online]. Available:
+              <a href="https://www.researchgate.net/publication/399264720" target="_blank" rel="noopener"
+                >https://www.researchgate.net/publication/399264720</a
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[31]</span
+            ><span class="ref-body"
+              ><strong
+                >C. Sun, Y. Wang, Q. Kuang, and H. Ishii, "Dream Brush: Generative painting with Chinese calligraphy," in
+                <em>Companion Publication of the 2026 ACM Designing Interactive Systems Conf. (DIS '26 Companion)</em>, 2026.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[32]</span
+            ><span class="ref-body"
+              >M. Beaudouin-Lafon, "Instrumental interaction: An interaction model for designing post-WIMP user interfaces," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '00)</em>, 2000, pp. 446–453.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[33]</span
+            ><span class="ref-body"
+              >M. Beaudouin-Lafon and W. E. Mackay, "Reification, polymorphism and reuse: Three principles for designing visual interfaces," in
+              <em>Proc. Working Conf. Advanced Visual Interfaces (AVI '00)</em>, 2000, pp. 102–109.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[34]</span
+            ><span class="ref-body"
+              >M. Beaudouin-Lafon, "Designing interaction, not interfaces," in <em>Proc. Working Conf. Advanced Visual Interfaces (AVI '04)</em>, 2004, pp.
+              15–22.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[35]</span
+            ><span class="ref-body"
+              >M. Beaudouin-Lafon, S. Bødker, and W. E. Mackay, "Generative theories of interaction," <em>ACM Trans. Comput.-Hum. Interact.</em>, vol. 28, no.
+              6, pp. 1–54, Nov. 2021.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[36]</span
+            ><span class="ref-body"
+              ><strong
+                >B. Victor, "Magic Ink: Information software and the graphical interface," 2006. [Online]. Available:
+                <a href="https://worrydream.com/MagicInk/" target="_blank" rel="noopener">https://worrydream.com/MagicInk/</a></strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[37]</span
+            ><span class="ref-body">B. Victor, "The humane representation of thought," presented at UIST '14, Honolulu, HI, 2014.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[38]</span
+            ><span class="ref-body"
+              >B. Ullmer and H. Ishii, "Emerging frameworks for tangible user interfaces," <em>IBM Systems Journal</em>, vol. 39, no. 3.4, pp. 915–931,
+              2000.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[39]</span
+            ><span class="ref-body"
+              >K. Ryokai, S. Marti, and H. Ishii, "I/O Brush: Drawing with everyday objects as ink," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '04)</em>, 2004, pp. 303–310.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[40]</span
+            ><span class="ref-body"
+              >J. Underkoffler and H. Ishii, "Urp: A luminous-tangible workbench for urban planning and design," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '99)</em>, 1999, pp. 386–393.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[41]</span
+            ><span class="ref-body"
+              ><strong
+                >B. Piper, C. Ratti, and H. Ishii, "Illuminating Clay: A 3-D tangible interface for landscape analysis," in
+                <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '02)</em>, 2002, pp. 355–362.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[42]</span
+            ><span class="ref-body"
+              >H. Ishii et al., "Bringing clay and sand into digital design: Continuous tangible user interfaces," <em>BT Technology Journal</em>, vol. 22, no.
+              4, pp. 287–299, Oct. 2004.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[43]</span
+            ><span class="ref-body">O. Kreylos et al., "Augmented reality sandbox (SARndbox)," Univ. California, Davis, 2012.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[44]</span
+            ><span class="ref-body"
+              >P. Belesky, "Sandscape and datascape: Augmenting tangible tables as general-purpose tools for thought,"
+              <em>Journal of Digital Landscape Architecture</em>, 2018.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[45]</span
+            ><span class="ref-body"
+              >H. Ishii, D. Lakatos, L. Bonanni, and J.-B. Labrune, "Radical atoms: Beyond tangible bits, toward transformable materials,"
+              <em>Interactions</em>, vol. 19, no. 1, pp. 38–51, Jan. 2012.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[46]</span
+            ><span class="ref-body"
+              >S. Follmer, D. Leithinger, A. Olwal, A. Hogge, and H. Ishii, "inFORM: Dynamic physical affordances and constraints through shape and object
+              actuation," in <em>Proc. 26th Annu. ACM Symp. User Interface Software and Technology (UIST '13)</em>, 2013, pp. 417–426.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[47]</span
+            ><span class="ref-body"
+              ><strong>P. Wellner, "Interacting with paper on the DigitalDesk," <em>Commun. ACM</em>, vol. 36, no. 7, pp. 87–96, Jul. 1993.</strong></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[48]</span
+            ><span class="ref-body"
+              >F. Guimbretière, "Paper augmented digital documents," in <em>Proc. 16th Annu. ACM Symp. User Interface Software and Technology (UIST '03)</em>,
+              2003, pp. 51–60.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[49]</span
+            ><span class="ref-body"
+              >H. Ishii and M. Kobayashi, "ClearBoard: A seamless medium for shared drawing and conversation with eye contact," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '92)</em>, 1992, pp. 525–532.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[50]</span
+            ><span class="ref-body"
+              ><strong
+                >B. Victor et al., "Dynamicland and Realtalk: A humane dynamic medium and communal computing system," 2024. [Online]. Available:
+                <a href="https://dynamicland.org/" target="_blank" rel="noopener">https://dynamicland.org/</a></strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[51]</span
+            ><span class="ref-body"
+              >MIT Tangible Media Group, "Co-ideation across time: Revitalizing legacy design sketchnotes with conversational AI agents," 2026.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[52]</span
+            ><span class="ref-body"
+              >E. Hornecker and J. Buur, "Getting a grip on tangible interaction: A framework on physical space and social interaction," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '06)</em>, 2006, pp. 437–446.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[53]</span
+            ><span class="ref-body">H. Cohen, "AARON: Cybernetic and autonomous drawing systems," Whitney Museum of American Art Retrospective, 2024.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[54]</span
+            ><span class="ref-body">S. Chung, "Drawing Operations Unit: Generation 1 to Generation 7 (D.O.U.G.)," MIT Docubase, 2014–2024.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[55]</span
+            ><span class="ref-body"
+              >"A taxonomy of AI personas in interactive art and robotic installations," <em>Applied Sciences</em>, vol. 16, no. 20, p. 10090, 2026.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[56]</span
+            ><span class="ref-body"
+              >L. Zhang, A. Rao, and M. Agrawala, "Adding conditional control to text-to-image diffusion models," in
+              <em>Proc. IEEE/CVF Int. Conf. Computer Vision (ICCV)</em>, 2023, pp. 3836–3847.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[57]</span
+            ><span class="ref-body"
+              >O. Avrahami et al., "SpaText: Spatio-textual representation for controllable image generation," in
+              <em>Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)</em>, 2023, pp. 18370–18380.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[58]</span
+            ><span class="ref-body"
+              >O. Bar-Tal, L. Yariv, Y. Lipman, and T. Dekel, "MultiDiffusion: Fusing diffusion paths for controlled image generation," in
+              <em>Proc. Int. Conf. Machine Learning (ICML)</em>, 2023, pp. 1737–1752.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[59]</span
+            ><span class="ref-body"
+              >O. Avrahami, O. Fried, and D. Lischinski, "Blended latent diffusion," <em>ACM Trans. Graph.</em>, vol. 42, no. 4, pp. 1–11, Jul. 2023.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[60]</span
+            ><span class="ref-body"
+              >O. Gafni et al., "Make-A-Scene: Scene-based text-to-image generation with human priors," in <em>Proc. Eur. Conf. Computer Vision (ECCV)</em>,
+              2022, pp. 89–106.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[61]</span
+            ><span class="ref-body"
+              >C. Mou et al., "T2I-Adapter: Learning adapters to dig out more controllable ability for text-to-image diffusion models,"
+              <em>arXiv preprint arXiv:2302.08453</em>, 2023.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[62]</span
+            ><span class="ref-body"
+              >S. Mo et al., "FreeControl: Training-free spatial control of any text-to-image diffusion model with any condition," in
+              <em>Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition (CVPR)</em>, 2024, pp. 7465–7475.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[63]</span
+            ><span class="ref-body"
+              >X. Pan et al., "Drag your GAN: Interactive point-based manipulation on the generative image manifold," in <em>ACM SIGGRAPH 2023 Conf. Proc.</em>,
+              2023, pp. 1–11.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[64]</span
+            ><span class="ref-body"
+              ><strong
+                >A. Kodaira et al., "StreamDiffusion: A pipeline-level solution for real-time interactive generation," in
+                <em>Proc. IEEE/CVF Int. Conf. Computer Vision (ICCV)</em>, 2025.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[65]</span
+            ><span class="ref-body"
+              >A. Kodaira et al., "StreamDiffusionV2: A streaming system for dynamic and interactive video generation," in
+              <em>Proc. Machine Learning and Systems (MLSys)</em>, 2026.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[66]</span
+            ><span class="ref-body"
+              >G. Turk, "Generating textures on arbitrary surfaces using reaction-diffusion," in
+              <em>Proc. 18th Annu. Conf. Computer Graphics and Interactive Techniques (SIGGRAPH '91)</em>, 1991, pp. 289–298.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[67]</span
+            ><span class="ref-body"
+              >A. M. Turing, "The chemical basis of morphogenesis,"
+              <em>Philosophical Transactions of the Royal Society of London. Series B, Biological Sciences</em>, vol. 237, no. 641, pp. 37–72, Aug. 1952.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[68]</span
+            ><span class="ref-body"
+              ><strong
+                >A. Mordvintsev, E. Randazzo, E. Niklasson, and M. Levin, "Growing neural cellular automata," <em>Distill</em>, vol. 5, no. 2, e23,
+                2020.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[69]</span
+            ><span class="ref-body"
+              ><strong
+                >R. A. Bolt, "'Put-that-there': Voice and gesture at the graphics interface," in
+                <em>Proc. 7th Annu. Conf. Computer Graphics and Interactive Techniques (SIGGRAPH '80)</em>, 1980, pp. 262–270.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[70]</span
+            ><span class="ref-body"
+              >R. A. Bolt and E. Herranz, "Two-handed gesture in multi-modal natural dialog," in
+              <em>Proc. 5th Annu. ACM Symp. User Interface Software and Technology (UIST '92)</em>, 1992, pp. 7–14.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[71]</span
+            ><span class="ref-body"
+              >D. B. Koons, C. J. Sparrell, and K. R. Thorisson, "Integrating simultaneous input from speech, gaze, and hand gestures," in
+              <em>Intelligent Multimedia Interfaces</em>, M. T. Maybury, Ed. Cambridge, MA: MIT Press, 1993, pp. 257–276.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[72]</span
+            ><span class="ref-body"
+              >P. R. Cohen et al., "Synergistic use of direct manipulation and natural language," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '89)</em>, 1989, pp. 227–233.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[73]</span
+            ><span class="ref-body"
+              >A. Cheyer and L. Julia, "Multimodal maps: An agent-based approach," in <em>Proc. Int. Conf. Cooperative Multimodal Communication</em>, 1995, pp.
+              103–113.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[74]</span
+            ><span class="ref-body"
+              >S. Amershi, M. Cakmak, W. B. Knox, and T. Kulesza, "Power to the people: The role of humans in interactive machine learning,"
+              <em>AI Magazine</em>, vol. 35, no. 4, pp. 105–120, Dec. 2014.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[75]</span
+            ><span class="ref-body"
+              >"Human-in-the-loop machine learning: A macro-micro lifecycle perspective," <em>arXiv preprint arXiv:2202.10564</em>, 2022.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[76]</span
+            ><span class="ref-body"
+              >K. Perlin, Z. He, and K. Rosenberg, "Chalktalk: A visualization and communication language," <em>arXiv preprint arXiv:1809.07166</em>,
+              2018.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[77]</span
+            ><span class="ref-body"
+              ><strong
+                >K. T. Rosenberg, R. H. Kazi, L. Wei, H. Xia, and K. Perlin, "DrawTalking: Building interactive worlds by sketching and speaking," in
+                <em>Proc. 37th Annu. ACM Symp. User Interface Software and Technology (UIST '24)</em>, 2024, pp. 1–14.</strong
+              ></span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[78]</span
+            ><span class="ref-body"
+              >G. Litt, P. Shen, M. Schoening, and M. Sonnentag, "Potluck: Dynamic documents as personal software," Ink &amp; Switch, 2022.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[79]</span
+            ><span class="ref-body">M. Kaliski, J. Lindenbaum, and J. P. Posma, "Programmable ink and paper programs," Ink &amp; Switch, 2023.</span>
+          </li>
+
+          <li>
+            <span class="ref-num">[80]</span
+            ><span class="ref-body"
+              >H. Ishii, "Vision-driven design: From Tangible Bits and Radical Atoms to TeleAbsence," in
+              <em>Proc. Working Conf. Advanced Visual Interfaces (AVI 2026)</em>, 2026.</span
+            >
+          </li>
+
+          <li>
+            <span class="ref-num">[81]</span
+            ><span class="ref-body"
+              >M. W. Krueger, T. Gionfriddo, and K. Hinrichsen, "VIDEOPLACE: An artificial reality," in
+              <em>Proc. SIGCHI Conf. Human Factors in Computing Systems (CHI '85)</em>, 1985, pp. 35–40.</span
+            >
+          </li>
+        </ol>
+      </section>
+    </main>
+  </body>
+</html>

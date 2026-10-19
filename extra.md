@@ -3,6 +3,7 @@
 - [Cobreath](./cobreath/)
 - [Life Choice Live](./life-choice-live/)
 - [Live Sketch](./live-sketch/)
+- [Master Thesis](./master-thesis/)
 - [Synthetic Memory](./synthetic-memory/simulation-01.md)
 - [Thank You](./thank-you/)
 - [TMG UROP posting](./tmg-urop/)
