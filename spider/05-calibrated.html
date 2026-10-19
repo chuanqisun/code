@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hand Landmarks</title>
+    <style>
+      body,
+      select {
+        font-family: monospace;
+        background: white;
+        color: black;
+      }
+      #container {
+        position: relative;
+        display: inline-block;
+        margin-top: 8px;
+      }
+      video {
+        display: none;
+      }
+      canvas {
+        display: block;
+      }
+      .dot {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        background: black;
+        border: 1px solid white;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <p id="status">Loading model...</p>
+    <div>
+      <label for="camera-select">Camera:</label>
+      <select id="camera-select"></select>
+      <label for="zoom">Zoom:</label>
+      <input id="zoom" type="range" min="0.3" max="2" step="0.05" value="1" />
+    </div>
+    <div id="container">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div id="dots"></div>
+    </div>
+
+    <script type="module">
+      import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+
+      // --- 1 Euro Filter Implementation ---
+      class LowPassFilter {
+        constructor() {
+          this.y = null;
+          this.s = null;
+        }
+        filter(value, alpha) {
+          if (this.y === null) {
+            this.s = value;
+          } else {
+            this.s = alpha * value + (1.0 - alpha) * this.s;
+          }
+          this.y = value;
+          return this.s;
+        }
+        hasLastRawValue() {
+          return this.y !== null;
+        }
+        lastRawValue() {
+          return this.y;
+        }
+        reset() {
+          this.y = null;
+          this.s = null;
+        }
+      }
+
+      class OneEuroFilter {
+        constructor(minCutoff = 1.0, beta = 0.0, dcutoff = 1.0) {
+          this.minCutoff = minCutoff;
+          this.beta = beta;
+          this.dcutoff = dcutoff;
+          this.x = new LowPassFilter();
+          this.dx = new LowPassFilter();
+          this.lastTime = null;
+        }
+        alpha(cutoff, te) {
+          const r = 2 * Math.PI * cutoff * te;
+          return r / (r + 1);
+        }
+        filter(value, timestamp) {
+          // timestamp in seconds
+          if (this.lastTime !== null && timestamp !== undefined) {
+            const te = timestamp - this.lastTime;
+            // Reset if time delta is invalid or too much time passed (e.g. > 1s)
+            if (te <= 0) return this.x.s;
+            if (te > 1.0) this.reset();
+          }
+
+          const te = this.lastTime ? timestamp - this.lastTime : 1 / 60;
+          this.lastTime = timestamp;
+
+          const dvalue = this.x.hasLastRawValue() ? (value - this.x.lastRawValue()) / te : 0.0;
+          const edvalue = this.dx.filter(dvalue, this.alpha(this.dcutoff, te));
+          const cutoff = this.minCutoff + this.beta * Math.abs(edvalue);
+          return this.x.filter(value, this.alpha(cutoff, te));
+        }
+        reset() {
+          this.x.reset();
+          this.dx.reset();
+          this.lastTime = null;
+        }
+      }
+      // ------------------------------------
+
+      const status = document.getElementById("status");
+      const video = document.getElementById("video");
+      const dotsContainer = document.getElementById("dots");
+      const cameraSelect = document.getElementById("camera-select");
+      const canvas = document.getElementById("canvas");
+      const zoomInput = document.getElementById("zoom");
+      const STORAGE_KEY = "selected_camera_id";
+
+      // --- Omnidirectional (Mei) undistortion via WebGL ---
+      // For each output pixel: back-project through a virtual pinhole camera (Knew),
+      // project onto the unit sphere, then through the calibrated omnidir model to find
+      // the source pixel in the raw frame.
+      const VERT_SRC = `
+        attribute vec2 aPos;
+        varying vec2 vUv;
+        void main() {
+          vUv = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5);
+          gl_Position = vec4(aPos, 0.0, 1.0);
+        }`;
+      const FRAG_SRC = `
+        precision highp float;
+        uniform sampler2D uTex;
+        uniform vec2 uSize;   // frame size in px (input and output)
+        uniform vec4 uK;      // fx, fy, cx, cy of the calibrated camera
+        uniform float uSkew;
+        uniform vec4 uKnew;   // fx, fy, cx, cy of the virtual pinhole camera
+        uniform float uXi;
+        uniform vec4 uD;      // k1, k2, p1, p2
+        varying vec2 vUv;
+        void main() {
+          vec2 px = vUv * uSize;
+          vec3 s = normalize(vec3((px - uKnew.zw) / uKnew.xy, 1.0));
+          vec2 xu = s.xy / (s.z + uXi);
+          float r2 = dot(xu, xu);
+          float radial = 1.0 + uD.x * r2 + uD.y * r2 * r2;
+          vec2 xd = xu * radial + vec2(
+            2.0 * uD.z * xu.x * xu.y + uD.w * (r2 + 2.0 * xu.x * xu.x),
+            uD.z * (r2 + 2.0 * xu.y * xu.y) + 2.0 * uD.w * xu.x * xu.y);
+          vec2 src = vec2(uK.x * xd.x + uSkew * xd.y + uK.z, uK.y * xd.y + uK.w);
+          vec2 uv = src / uSize;
+          if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+          } else {
+            gl_FragColor = texture2D(uTex, uv);
+          }
+        }`;
+
+      const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
+      let uniforms;
+      let intrinsics;
+
+      function compileShader(type, src) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, src);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+        return shader;
+      }
+
+      function initUndistort() {
+        const program = gl.createProgram();
+        gl.attachShader(program, compileShader(gl.VERTEX_SHADER, VERT_SRC));
+        gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, FRAG_SRC));
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+        gl.useProgram(program);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+        const aPos = gl.getAttribLocation(program, "aPos");
+        gl.enableVertexAttribArray(aPos);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+        gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+        uniforms = Object.fromEntries(
+          ["uSize", "uK", "uSkew", "uKnew", "uXi", "uD"].map((n) => [n, gl.getUniformLocation(program, n)]),
+        );
+      }
+
+      // Calibration was done at intrinsics.image_width x image_height; scale K to the live resolution.
+      function updateUndistortParams() {
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+        canvas.width = w;
+        canvas.height = h;
+        gl.viewport(0, 0, w, h);
+
+        const sx = w / intrinsics.image_width;
+        const sy = h / intrinsics.image_height;
+        if (Math.abs(sx - sy) > 1e-3) {
+          console.warn(`Camera aspect ${w}x${h} differs from calibration ${intrinsics.image_width}x${intrinsics.image_height}`);
+        }
+        const [[fx, skew, cx], [, fy, cy]] = intrinsics.K;
+        // Virtual pinhole focal: roughly the equivalent perspective focal of the omnidir model, scaled by zoom.
+        const fNew = (((fx * sx + fy * sy) / 2) / (1 + intrinsics.xi)) * parseFloat(zoomInput.value);
+
+        gl.uniform2f(uniforms.uSize, w, h);
+        gl.uniform4f(uniforms.uK, fx * sx, fy * sy, cx * sx, cy * sy);
+        gl.uniform1f(uniforms.uSkew, skew * sx);
+        gl.uniform4f(uniforms.uKnew, fNew, fNew, w / 2, h / 2);
+        gl.uniform1f(uniforms.uXi, intrinsics.xi);
+        gl.uniform4f(uniforms.uD, ...intrinsics.D);
+      }
+
+      function undistortFrame() {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+      // ------------------------------------
+
+      let handLandmarker;
+      let currentStream;
+      let lastVideoTime = -1;
+
+      // Create filter banks for up to 2 hands, 21 points each
+      // minCutoff = 1.0 (stabilizes slow jitter), beta = 10.0 (reduces lag on fast movement)
+      const MAX_HANDS = 2;
+      const NUM_POINTS = 21;
+      const filters = Array.from({ length: MAX_HANDS }, () =>
+        Array.from({ length: NUM_POINTS }, () => ({
+          x: new OneEuroFilter(1.0, 10.0),
+          y: new OneEuroFilter(1.0, 10.0),
+        })),
+      );
+
+      async function startCamera(deviceId) {
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+        }
+
+        const size = { width: { ideal: intrinsics.image_width }, height: { ideal: intrinsics.image_height } };
+        const constraints = {
+          video: deviceId ? { deviceId: { exact: deviceId }, ...size } : size,
+        };
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err) {
+          if (deviceId) {
+            currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          } else {
+            throw err;
+          }
+        }
+
+        video.srcObject = currentStream;
+        await new Promise((resolve) => (video.onloadeddata = resolve));
+        updateUndistortParams();
+
+        const activeDeviceId = currentStream.getVideoTracks()[0]?.getSettings()?.deviceId;
+        if (activeDeviceId) {
+          localStorage.setItem(STORAGE_KEY, activeDeviceId);
+        }
+        return activeDeviceId;
+      }
+
+      async function populateCameraList(activeDeviceId) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+
+        cameraSelect.innerHTML = "";
+        videoDevices.forEach((device, i) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.textContent = device.label || `Camera ${i + 1}`;
+          cameraSelect.appendChild(option);
+        });
+
+        if (activeDeviceId) {
+          cameraSelect.value = activeDeviceId;
+        }
+      }
+
+      function render() {
+        if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          const nowMs = performance.now();
+          const nowSec = nowMs / 1000;
+          undistortFrame();
+          const results = handLandmarker.detectForVideo(canvas, nowMs);
+
+          dotsContainer.innerHTML = "";
+
+          const detectedHands = results.landmarks ? results.landmarks.length : 0;
+
+          // Reset filters for hands that are no longer detected
+          for (let h = detectedHands; h < MAX_HANDS; h++) {
+            for (let p = 0; p < NUM_POINTS; p++) {
+              filters[h][p].x.reset();
+              filters[h][p].y.reset();
+            }
+          }
+
+          if (results.landmarks) {
+            results.landmarks.forEach((hand, handIndex) => {
+              if (handIndex >= MAX_HANDS) return;
+
+              hand.forEach((point, pointIndex) => {
+                const fx = filters[handIndex][pointIndex].x.filter(point.x, nowSec);
+                const fy = filters[handIndex][pointIndex].y.filter(point.y, nowSec);
+
+                const dot = document.createElement("div");
+                dot.className = "dot";
+                dot.style.left = `${fx * 100}%`;
+                dot.style.top = `${fy * 100}%`;
+                dotsContainer.appendChild(dot);
+              });
+            });
+          }
+        }
+        requestAnimationFrame(render);
+      }
+
+      async function init() {
+        intrinsics = await (await fetch("./intrinsics.json")).json();
+        initUndistort();
+        zoomInput.oninput = updateUndistortParams;
+
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            delegate: "GPU",
+          },
+          runningMode: "VIDEO",
+          numHands: MAX_HANDS,
+        });
+
+        status.textContent = "Requesting camera...";
+
+        const savedDeviceId = localStorage.getItem(STORAGE_KEY);
+        const activeDeviceId = await startCamera(savedDeviceId);
+        await populateCameraList(activeDeviceId);
+
+        cameraSelect.onchange = async () => {
+          status.textContent = "Switching camera...";
+          dotsContainer.innerHTML = "";
+          await startCamera(cameraSelect.value);
+          status.textContent = "Tracking hands.";
+        };
+
+        status.textContent = "Tracking hands.";
+        render();
+      }
+
+      init().catch((err) => {
+        status.textContent = "Error: " + err.message;
+      });
+    </script>
+  </body>
+</html>
