@@ -80,12 +80,6 @@
       p {
         margin: 8px 0;
       }
-      #status {
-        min-height: 2em;
-      }
-      .note {
-        line-height: 1.6;
-      }
       @media (max-width: 760px) {
         main {
           grid-template-columns: 1fr;
@@ -100,7 +94,7 @@
   </head>
   <body>
     <header>
-      <h1>HAND PUPPET / PROTOTYPE</h1>
+      <h1>HAND PUPPET</h1>
       <button id="cameraButton">Enable camera</button>
       <select id="cameraSelect" aria-label="Camera" disabled>
         <option>Camera source</option>
@@ -109,17 +103,10 @@
       <button id="calibrateButton" disabled>Recalibrate neutral</button>
     </header>
 
-    <p id="status" role="status">Drag the numbered controls, or enable your camera.</p>
-
     <main>
       <section>
-        <canvas id="canvas" aria-label="Mirrored camera with puppet, finger controls and strings"></canvas>
+        <canvas id="canvas"></canvas>
         <video id="video" autoplay playsinline muted></video>
-        <p>1 thumb → left arm / 2 index → left leg / 3 middle → head / 4 ring → right leg / 5 pinky → right arm</p>
-        <p class="note">
-          Controls are anchored at the top. Moving fingers relative to neutral pose pulls the puppet strings. Camera and landmarks are mirrored horizontally at
-          50% opacity under the puppet.
-        </p>
       </section>
 
       <aside>
@@ -151,7 +138,7 @@
         </fieldset>
 
         <fieldset>
-          <legend>Physics (Original)</legend>
+          <legend>Physics</legend>
 
           <label class="setting">
             <span>Gravity scale <output id="gravityValue"></output></span>
@@ -167,14 +154,11 @@
             <span>Rope pull stiffness <output id="pullStiffValue"></output></span>
             <input id="pullStiff" type="range" min="0.2" max="1.0" step="0.05" value="0.8" />
           </label>
-
-          <p class="note">Original Verlet physics: low air friction (0.989), relative displacement from neutral pose, slack strings, and floor contact.</p>
         </fieldset>
 
         <fieldset>
           <legend>Debug</legend>
           <div id="stats">Manual input</div>
-          <p class="note">Camera processing stays local. Requires HTTPS or localhost.</p>
         </fieldset>
       </aside>
     </main>
@@ -221,7 +205,6 @@
       const NAMES = ["thumb", "index", "middle", "ring", "pinky"];
       const PARTS = [7, 11, 0, 12, 8];
 
-      // Original anchor base stations at the top
       const BASE = [
         { x: 270, y: 195 },
         { x: 385, y: 160 },
@@ -230,21 +213,20 @@
         { x: 730, y: 195 },
       ];
 
-      // Original stick puppet skeleton
       const INITIAL = [
-        [500, 365], // 0: head
-        [500, 405], // 1: neck
-        [500, 505], // 2: pelvis
+        [500, 365],
+        [500, 405],
+        [500, 505],
         [472, 415],
-        [528, 415], // 3,4: shoulders
+        [528, 415],
         [442, 455],
-        [558, 455], // 5,6: elbows
+        [558, 455],
         [420, 497],
-        [580, 497], // 7,8: hands
+        [580, 497],
         [475, 555],
-        [525, 555], // 9,10: knees
+        [525, 555],
         [458, 610],
-        [542, 610], // 11,12: feet
+        [542, 610],
       ];
 
       const BONES = [
@@ -306,7 +288,6 @@
       let bones = [];
       let ropes = [];
 
-      // Reference 1 Euro Filter Implementation
       class LowPassFilter {
         constructor() {
           this.y = null;
@@ -384,10 +365,6 @@
       let dragged = -1;
       let pointerId = null;
 
-      function setStatus(text) {
-        if ($("status").textContent !== text) $("status").textContent = text;
-      }
-
       function savedCamera() {
         try {
           return localStorage.getItem("puppet_camera") || "";
@@ -448,14 +425,12 @@
         if (!landmarks || !tracked) return;
         neutral = TIPS.map((i) => ({ x: landmarks[i].x, y: landmarks[i].y }));
         $("calibrateButton").disabled = false;
-        setStatus("Neutral hand pose set. Strings respond to finger motions.");
       }
 
       function updateTargets() {
         if (cameraOn && tracked && neutral) {
           for (let i = 0; i < 5; i++) {
             const pt = landmarks[TIPS[i]];
-            // Mirrored horizontally: invert delta-X
             const dx = -(pt.x - neutral[i].x);
             const dy = pt.y - neutral[i].y;
             anchors[i].tx = Math.max(65, Math.min(935, BASE[i].x + dx * 800 * params.sensitivity));
@@ -469,7 +444,6 @@
         }
       }
 
-      // Original constraint resolution
       function solveBone(b) {
         const a = particles[b.a],
           c = particles[b.b];
@@ -490,7 +464,6 @@
           a.y += (a.ty - a.y) * blend;
         });
 
-        // Original Verlet integration: 0.989 velocity damping, 1050 gravity
         for (const p of particles) {
           const vx = (p.x - p.px) * 0.989;
           const vy = (p.y - p.py) * 0.989;
@@ -502,7 +475,6 @@
 
         for (const r of ropes) r.tension = 0;
 
-        // 9 solver iterations with unilateral tension-only strings
         for (let iter = 0; iter < 9; iter++) {
           for (const b of bones) solveBone(b);
 
@@ -589,11 +561,9 @@
             landmarks = null;
             neutral = null;
             $("calibrateButton").disabled = true;
-            setStatus("Show one hand in camera view.");
           }
-        } catch (err) {
+        } catch {
           disableCamera();
-          setStatus("Tracking error: " + err.message);
         }
       }
 
@@ -619,7 +589,6 @@
         ctx.fillStyle = "#fff";
         ctx.fillRect(0, 0, W, H);
 
-        // Render camera feed at 50% opacity, mirrored horizontally
         if (cameraOn && video.readyState >= 2) {
           const t = cameraTransform();
           ctx.save();
@@ -635,10 +604,8 @@
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
-        // Floor line
         drawLine({ x: 0, y: FLOOR }, { x: W, y: FLOOR }, 1);
 
-        // Mirrored hand skeleton on top of video feed
         if ($("showHand").checked && landmarks && tracked) {
           const t = cameraTransform();
           const mapPt = (p) => ({
@@ -658,7 +625,6 @@
           ctx.restore();
         }
 
-        // Strings (Verlet slack curves)
         if ($("showStrings").checked) {
           for (let i = 0; i < 5; i++) {
             const a = anchors[i];
@@ -674,11 +640,9 @@
           }
         }
 
-        // Minimal Stick Figure
         for (const [a, b] of VISIBLE_BONES) drawLine(particles[a], particles[b], 6);
         drawLine(particles[0], particles[1], 6);
 
-        // Head with face orientation
         const head = particles[0];
         const neck = particles[1];
         const tilt = Math.atan2(neck.y - head.y, neck.x - head.x) - Math.PI / 2;
@@ -692,12 +656,10 @@
         drawLine({ x: -6, y: 9 }, { x: 6, y: 9 }, 1.5);
         ctx.restore();
 
-        // Puppet joints
         for (let i = 1; i < particles.length; i++) {
           circle(particles[i].x, particles[i].y, [1, 2, 3, 4].includes(i) ? 3.2 : 4.2, true, 1.8);
         }
 
-        // Interactive control points at anchors
         ctx.font = "12px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -870,7 +832,6 @@
         track.addEventListener("ended", () => {
           if (stream === activeStream && !busy) {
             disableCamera();
-            setStatus("Camera disconnected.");
           }
         });
 
@@ -914,12 +875,10 @@
       $("cameraButton").addEventListener("click", async () => {
         if (cameraOn) {
           disableCamera();
-          setStatus("Camera off. Drag the numbered controls.");
           return;
         }
 
         if (!isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-          setStatus("Camera requires HTTPS or localhost.");
           return;
         }
 
@@ -927,18 +886,14 @@
         releasePointer();
 
         try {
-          setStatus("Loading hand tracker…");
           await loadModel();
-          setStatus("Requesting camera…");
           const id = await startStream(savedCamera());
 
           cameraOn = true;
           $("cameraButton").textContent = "Disable camera";
           await populateCameras(id);
-          setStatus("Show hand in view. Hold neutral pose, then calibrate.");
-        } catch (err) {
+        } catch {
           disableCamera();
-          setStatus("Camera error: " + err.message);
         } finally {
           setBusy(false);
         }
@@ -950,14 +905,11 @@
         cameraOn = false;
 
         try {
-          setStatus("Switching camera…");
           const id = await startStream($("cameraSelect").value);
           cameraOn = true;
           await populateCameras(id);
-          setStatus("Show hand in view.");
-        } catch (err) {
+        } catch {
           disableCamera();
-          setStatus("Error: " + err.message);
         } finally {
           setBusy(false);
         }
