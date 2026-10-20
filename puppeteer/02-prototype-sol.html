@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hand puppet prototype</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 16px;
+        color: #000;
+        background: #fff;
+        font: 12px monospace;
+      }
+      button,
+      select,
+      input {
+        font: inherit;
+      }
+      button,
+      select {
+        color: #000;
+        background: #fff;
+        border: 1px solid #000;
+        padding: 5px;
+      }
+      button {
+        cursor: pointer;
+      }
+      header,
+      .row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      h1 {
+        margin: 0 12px 0 0;
+        font-size: 14px;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 240px;
+        gap: 16px;
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        border: 1px solid #000;
+        touch-action: none;
+      }
+      video {
+        display: none;
+      }
+      fieldset {
+        margin: 0 0 12px;
+        border: 1px solid #000;
+        padding: 10px;
+      }
+      label.setting {
+        display: block;
+        margin-bottom: 12px;
+      }
+      .setting span {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      input[type="range"] {
+        width: 100%;
+        accent-color: #000;
+      }
+      input[type="checkbox"] {
+        accent-color: #000;
+      }
+      p {
+        margin: 8px 0;
+      }
+      #status {
+        min-height: 2em;
+      }
+      .note {
+        line-height: 1.6;
+      }
+      @media (max-width: 760px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>HAND PUPPET / PROTOTYPE</h1>
+      <button id="cameraButton">Enable camera</button>
+      <select id="cameraSelect" aria-label="Camera" disabled>
+        <option>Camera source</option>
+      </select>
+      <button id="resetButton">Reset puppet</button>
+      <button id="calibrateButton" disabled>Recalibrate neutral</button>
+    </header>
+
+    <p id="status" role="status">Drag the numbered controls, or enable your camera.</p>
+
+    <main>
+      <section>
+        <canvas id="canvas" aria-label="Mirrored camera with puppet, finger controls and strings"></canvas>
+        <video id="video" autoplay playsinline muted></video>
+        <p>1 thumb → left arm / 2 index → left leg / 3 middle → head / 4 ring → right leg / 5 pinky → right arm</p>
+        <p class="note">
+          Controls are anchored at the top. Moving fingers relative to neutral pose pulls the puppet strings. Camera and landmarks are mirrored horizontally at
+          50% opacity under the puppet.
+        </p>
+      </section>
+
+      <aside>
+        <fieldset>
+          <legend>Tracking</legend>
+
+          <label class="setting">
+            <span>Hand sensitivity <output id="sensitivityValue"></output></span>
+            <input id="sensitivity" type="range" min="0.4" max="2.5" step="0.1" value="1.0" />
+          </label>
+
+          <label class="setting">
+            <span>1€ filter beta <output id="filterBetaValue"></output></span>
+            <input id="filterBeta" type="range" min="0.1" max="25" step="0.5" value="10.0" />
+          </label>
+
+          <label class="setting">
+            <span>1€ min cutoff <output id="filterCutoffValue"></output></span>
+            <input id="filterCutoff" type="range" min="0.1" max="5" step="0.1" value="1.0" />
+          </label>
+
+          <label><input id="showHand" type="checkbox" checked /> Hand landmarks</label>
+          <p>
+            <label><input id="showStrings" type="checkbox" checked /> Strings</label>
+          </p>
+          <p>
+            <label><input id="showLabels" type="checkbox" checked /> Control labels</label>
+          </p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Physics (Original)</legend>
+
+          <label class="setting">
+            <span>Gravity scale <output id="gravityValue"></output></span>
+            <input id="gravity" type="range" min="0.2" max="2.5" step="0.1" value="1.0" />
+          </label>
+
+          <label class="setting">
+            <span>Anchor follow speed <output id="anchorFollowValue"></output></span>
+            <input id="anchorFollow" type="range" min="4" max="30" step="1" value="14" />
+          </label>
+
+          <label class="setting">
+            <span>Rope pull stiffness <output id="pullStiffValue"></output></span>
+            <input id="pullStiff" type="range" min="0.2" max="1.0" step="0.05" value="0.8" />
+          </label>
+
+          <p class="note">Original Verlet physics: low air friction (0.989), relative displacement from neutral pose, slack strings, and floor contact.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Debug</legend>
+          <div id="stats">Manual input</div>
+          <p class="note">Camera processing stays local. Requires HTTPS or localhost.</p>
+        </fieldset>
+      </aside>
+    </main>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const canvas = $("canvas");
+      const ctx = canvas.getContext("2d");
+      const video = $("video");
+
+      const W = 1000;
+      const H = 760;
+      const FLOOR = 682;
+      const STEP = 1 / 120;
+
+      const params = {
+        sensitivity: 1.0,
+        filterBeta: 10.0,
+        filterCutoff: 1.0,
+        gravity: 1.0,
+        anchorFollow: 14,
+        pullStiff: 0.8,
+      };
+
+      const format = {
+        sensitivity: (v) => `${v.toFixed(1)}×`,
+        filterBeta: (v) => `${v.toFixed(1)}`,
+        filterCutoff: (v) => `${v.toFixed(1)} Hz`,
+        gravity: (v) => `${v.toFixed(1)}×`,
+        anchorFollow: (v) => `${v} /s`,
+        pullStiff: (v) => `${v.toFixed(2)}`,
+      };
+
+      for (const key of Object.keys(params)) {
+        function update() {
+          params[key] = Number($(key).value);
+          $(key + "Value").value = format[key](params[key]);
+        }
+        $(key).addEventListener("input", update);
+        update();
+      }
+
+      const TIPS = [4, 8, 12, 16, 20];
+      const NAMES = ["thumb", "index", "middle", "ring", "pinky"];
+      const PARTS = [7, 11, 0, 12, 8];
+
+      // Original anchor base stations at the top
+      const BASE = [
+        { x: 270, y: 195 },
+        { x: 385, y: 160 },
+        { x: 500, y: 130 },
+        { x: 615, y: 160 },
+        { x: 730, y: 195 },
+      ];
+
+      // Original stick puppet skeleton
+      const INITIAL = [
+        [500, 365], // 0: head
+        [500, 405], // 1: neck
+        [500, 505], // 2: pelvis
+        [472, 415],
+        [528, 415], // 3,4: shoulders
+        [442, 455],
+        [558, 455], // 5,6: elbows
+        [420, 497],
+        [580, 497], // 7,8: hands
+        [475, 555],
+        [525, 555], // 9,10: knees
+        [458, 610],
+        [542, 610], // 11,12: feet
+      ];
+
+      const BONES = [
+        [0, 1],
+        [1, 3],
+        [1, 4],
+        [3, 4],
+        [1, 2],
+        [3, 2],
+        [4, 2],
+        [3, 5],
+        [5, 7],
+        [4, 6],
+        [6, 8],
+        [2, 9],
+        [9, 11],
+        [2, 10],
+        [10, 12],
+      ];
+      const VISIBLE_BONES = [
+        [1, 2],
+        [3, 4],
+        [3, 5],
+        [5, 7],
+        [4, 6],
+        [6, 8],
+        [2, 9],
+        [9, 11],
+        [2, 10],
+        [10, 12],
+      ];
+
+      const HAND_LINKS = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [0, 5],
+        [5, 6],
+        [6, 7],
+        [7, 8],
+        [5, 9],
+        [9, 10],
+        [10, 11],
+        [11, 12],
+        [9, 13],
+        [13, 14],
+        [14, 15],
+        [15, 16],
+        [13, 17],
+        [0, 17],
+        [17, 18],
+        [18, 19],
+        [19, 20],
+      ];
+
+      const anchors = BASE.map((p) => ({ ...p, tx: p.x, ty: p.y }));
+      let particles = [];
+      let bones = [];
+      let ropes = [];
+
+      // Reference 1 Euro Filter Implementation
+      class LowPassFilter {
+        constructor() {
+          this.y = null;
+          this.s = null;
+        }
+        filter(value, alpha) {
+          if (this.y === null) this.s = value;
+          else this.s = alpha * value + (1.0 - alpha) * this.s;
+          this.y = value;
+          return this.s;
+        }
+        hasLastRawValue() {
+          return this.y !== null;
+        }
+        lastRawValue() {
+          return this.y;
+        }
+        reset() {
+          this.y = null;
+          this.s = null;
+        }
+      }
+
+      class OneEuroFilter {
+        constructor() {
+          this.x = new LowPassFilter();
+          this.dx = new LowPassFilter();
+          this.lastTime = null;
+        }
+        alpha(cutoff, te) {
+          const r = 2 * Math.PI * cutoff * te;
+          return r / (r + 1);
+        }
+        filter(value, timestamp) {
+          if (this.lastTime !== null && timestamp !== undefined) {
+            const te = timestamp - this.lastTime;
+            if (te <= 0) return this.x.s !== null ? this.x.s : value;
+            if (te > 1.0) this.reset();
+          }
+          const te = this.lastTime ? timestamp - this.lastTime : 1 / 60;
+          this.lastTime = timestamp;
+
+          const dvalue = this.x.hasLastRawValue() ? (value - this.x.lastRawValue()) / te : 0.0;
+          const edvalue = this.dx.filter(dvalue, this.alpha(1.0, te));
+          const cutoff = params.filterCutoff + params.filterBeta * Math.abs(edvalue);
+          return this.x.filter(value, this.alpha(cutoff, te));
+        }
+        reset() {
+          this.x.reset();
+          this.dx.reset();
+          this.lastTime = null;
+        }
+      }
+
+      const filters = Array.from({ length: 21 }, () => ({
+        x: new OneEuroFilter(),
+        y: new OneEuroFilter(),
+      }));
+
+      let model = null;
+      let modelPromise = null;
+      let stream = null;
+      let cameraOn = false;
+      let busy = false;
+      let tracked = false;
+      let landmarks = null;
+      let neutral = null;
+      let lastSeen = -Infinity;
+      let lastVideoTime = -1;
+      let lastInference = -Infinity;
+      let inferenceMs = 0;
+      let inferenceCount = 0;
+      let measuredRate = 0;
+
+      let dragged = -1;
+      let pointerId = null;
+
+      function setStatus(text) {
+        if ($("status").textContent !== text) $("status").textContent = text;
+      }
+
+      function savedCamera() {
+        try {
+          return localStorage.getItem("puppet_camera") || "";
+        } catch {
+          return "";
+        }
+      }
+
+      function saveCamera(id) {
+        try {
+          localStorage.setItem("puppet_camera", id);
+        } catch {}
+      }
+
+      function resetPuppet() {
+        particles = INITIAL.map(([x, y], i) => ({
+          x,
+          y,
+          px: x,
+          py: y,
+          invMass: i === 2 ? 0.55 : i <= 4 ? 0.8 : 1.0,
+        }));
+        bones = BONES.map(([a, b]) => ({
+          a,
+          b,
+          length: Math.hypot(particles[b].x - particles[a].x, particles[b].y - particles[a].y),
+        }));
+        ropes = PARTS.map((part, i) => ({
+          part,
+          length: Math.hypot(INITIAL[part][0] - BASE[i].x, INITIAL[part][1] - BASE[i].y),
+          tension: 0,
+        }));
+        anchors.forEach((a, i) => {
+          a.x = BASE[i].x;
+          a.y = BASE[i].y;
+          a.tx = BASE[i].x;
+          a.ty = BASE[i].y;
+        });
+        if (cameraOn && tracked) calibrateNeutral();
+      }
+      resetPuppet();
+
+      function clearTracking() {
+        filters.forEach((f) => {
+          f.x.reset();
+          f.y.reset();
+        });
+        tracked = false;
+        landmarks = null;
+        neutral = null;
+        lastSeen = -Infinity;
+        lastVideoTime = -1;
+        lastInference = -Infinity;
+        $("calibrateButton").disabled = true;
+      }
+
+      function calibrateNeutral() {
+        if (!landmarks || !tracked) return;
+        neutral = TIPS.map((i) => ({ x: landmarks[i].x, y: landmarks[i].y }));
+        $("calibrateButton").disabled = false;
+        setStatus("Neutral hand pose set. Strings respond to finger motions.");
+      }
+
+      function updateTargets() {
+        if (cameraOn && tracked && neutral) {
+          for (let i = 0; i < 5; i++) {
+            const pt = landmarks[TIPS[i]];
+            // Mirrored horizontally: invert delta-X
+            const dx = -(pt.x - neutral[i].x);
+            const dy = pt.y - neutral[i].y;
+            anchors[i].tx = Math.max(65, Math.min(935, BASE[i].x + dx * 800 * params.sensitivity));
+            anchors[i].ty = Math.max(75, Math.min(360, BASE[i].y + dy * 640 * params.sensitivity));
+          }
+        } else if (cameraOn) {
+          anchors.forEach((a, i) => {
+            a.tx = BASE[i].x;
+            a.ty = BASE[i].y;
+          });
+        }
+      }
+
+      // Original constraint resolution
+      function solveBone(b) {
+        const a = particles[b.a],
+          c = particles[b.b];
+        const dx = c.x - a.x,
+          dy = c.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        const k = (d - b.length) / d / (a.invMass + c.invMass);
+        a.x += dx * k * a.invMass;
+        a.y += dy * k * a.invMass;
+        c.x -= dx * k * c.invMass;
+        c.y -= dy * k * c.invMass;
+      }
+
+      function physicsStep(dt) {
+        const blend = 1 - Math.exp(-params.anchorFollow * dt);
+        anchors.forEach((a) => {
+          a.x += (a.tx - a.x) * blend;
+          a.y += (a.ty - a.y) * blend;
+        });
+
+        // Original Verlet integration: 0.989 velocity damping, 1050 gravity
+        for (const p of particles) {
+          const vx = (p.x - p.px) * 0.989;
+          const vy = (p.y - p.py) * 0.989;
+          p.px = p.x;
+          p.py = p.y;
+          p.x += vx;
+          p.y += vy + 1050 * params.gravity * dt * dt;
+        }
+
+        for (const r of ropes) r.tension = 0;
+
+        // 9 solver iterations with unilateral tension-only strings
+        for (let iter = 0; iter < 9; iter++) {
+          for (const b of bones) solveBone(b);
+
+          for (let i = 0; i < 5; i++) {
+            const r = ropes[i],
+              p = particles[r.part],
+              a = anchors[i];
+            const dx = p.x - a.x,
+              dy = p.y - a.y;
+            const d = Math.hypot(dx, dy);
+            if (d > r.length) {
+              const excess = d - r.length;
+              const corr = (excess / d) * params.pullStiff;
+              p.x -= dx * corr;
+              p.y -= dy * corr;
+              r.tension = Math.max(r.tension, excess);
+            }
+          }
+
+          for (let i = 0; i < particles.length; i++) {
+            const p = particles[i];
+            const radius = i === 0 ? 24 : 5;
+            p.x = Math.max(radius + 40, Math.min(W - 40 - radius, p.x));
+            if (p.y > FLOOR - radius) {
+              p.y = FLOOR - radius;
+              p.px = p.x + (p.px - p.x) * 0.7;
+              if (p.py < p.y) p.py = p.y;
+            }
+          }
+        }
+      }
+
+      function cameraTransform() {
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        const scale = Math.max(W / vw, H / vh);
+        return {
+          width: vw * scale,
+          height: vh * scale,
+          x: (W - vw * scale) / 2,
+          y: (H - vh * scale) / 2,
+        };
+      }
+
+      function processCamera(now) {
+        if (!cameraOn || !model || video.readyState < 2) return;
+        if (video.currentTime === lastVideoTime) return;
+
+        lastVideoTime = video.currentTime;
+        lastInference = now;
+        const nowSec = now / 1000;
+
+        try {
+          const started = performance.now();
+          const results = model.detectForVideo(video, now);
+          inferenceMs = performance.now() - started;
+          inferenceCount++;
+
+          const hand = results.landmarks?.[0];
+
+          if (hand) {
+            const reacquired = !tracked || now - lastSeen > 650;
+            if (reacquired) {
+              filters.forEach((f) => {
+                f.x.reset();
+                f.y.reset();
+              });
+            }
+
+            landmarks = hand.map((p, i) => ({
+              x: filters[i].x.filter(p.x, nowSec),
+              y: filters[i].y.filter(p.y, nowSec),
+            }));
+
+            tracked = true;
+            lastSeen = now;
+            $("calibrateButton").disabled = false;
+
+            if (!neutral || reacquired) {
+              calibrateNeutral();
+            }
+          } else if (now - lastSeen > 500 && tracked) {
+            tracked = false;
+            landmarks = null;
+            neutral = null;
+            $("calibrateButton").disabled = true;
+            setStatus("Show one hand in camera view.");
+          }
+        } catch (err) {
+          disableCamera();
+          setStatus("Tracking error: " + err.message);
+        }
+      }
+
+      function drawLine(a, b, width = 1) {
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      function circle(x, y, radius, fill = true, width = 1) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        if (fill) ctx.fill();
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+
+      function draw() {
+        ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, W, H);
+
+        // Render camera feed at 50% opacity, mirrored horizontally
+        if (cameraOn && video.readyState >= 2) {
+          const t = cameraTransform();
+          ctx.save();
+          ctx.globalAlpha = 0.5;
+          ctx.translate(W, 0);
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, t.x, t.y, t.width, t.height);
+          ctx.restore();
+        }
+
+        ctx.strokeStyle = "#000";
+        ctx.fillStyle = "#fff";
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        // Floor line
+        drawLine({ x: 0, y: FLOOR }, { x: W, y: FLOOR }, 1);
+
+        // Mirrored hand skeleton on top of video feed
+        if ($("showHand").checked && landmarks && tracked) {
+          const t = cameraTransform();
+          const mapPt = (p) => ({
+            x: t.x + (1 - p.x) * t.width,
+            y: t.y + p.y * t.height,
+          });
+
+          ctx.save();
+          ctx.globalAlpha = 0.55;
+          for (const [a, b] of HAND_LINKS) {
+            drawLine(mapPt(landmarks[a]), mapPt(landmarks[b]), 1.3);
+          }
+          for (const p of landmarks) {
+            const pt = mapPt(p);
+            circle(pt.x, pt.y, 2.5);
+          }
+          ctx.restore();
+        }
+
+        // Strings (Verlet slack curves)
+        if ($("showStrings").checked) {
+          for (let i = 0; i < 5; i++) {
+            const a = anchors[i];
+            const p = particles[ropes[i].part];
+            const d = Math.hypot(p.x - a.x, p.y - a.y);
+            const slack = Math.min(55, Math.max(0, ropes[i].length - d) * 0.55);
+
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.quadraticCurveTo((a.x + p.x) / 2 + slack, (a.y + p.y) / 2 + slack, p.x, p.y);
+            ctx.stroke();
+          }
+        }
+
+        // Minimal Stick Figure
+        for (const [a, b] of VISIBLE_BONES) drawLine(particles[a], particles[b], 6);
+        drawLine(particles[0], particles[1], 6);
+
+        // Head with face orientation
+        const head = particles[0];
+        const neck = particles[1];
+        const tilt = Math.atan2(neck.y - head.y, neck.x - head.x) - Math.PI / 2;
+        ctx.save();
+        ctx.translate(head.x, head.y);
+        ctx.rotate(tilt);
+        circle(0, 0, 24, true, 4);
+        ctx.fillStyle = "#000";
+        circle(-7, -2, 1.5);
+        circle(7, -2, 1.5);
+        drawLine({ x: -6, y: 9 }, { x: 6, y: 9 }, 1.5);
+        ctx.restore();
+
+        // Puppet joints
+        for (let i = 1; i < particles.length; i++) {
+          circle(particles[i].x, particles[i].y, [1, 2, 3, 4].includes(i) ? 3.2 : 4.2, true, 1.8);
+        }
+
+        // Interactive control points at anchors
+        ctx.font = "12px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        anchors.forEach((a, i) => {
+          ctx.fillStyle = "#fff";
+          circle(a.x, a.y, dragged === i ? 15 : 12, true, 1.8);
+          ctx.fillStyle = "#000";
+          ctx.fillText(String(i + 1), a.x, a.y);
+
+          if ($("showLabels").checked) {
+            ctx.textBaseline = "bottom";
+            ctx.fillText(NAMES[i], a.x, a.y - 19);
+            ctx.textBaseline = "middle";
+          }
+        });
+      }
+
+      function resize() {
+        const rect = canvas.getBoundingClientRect();
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        canvas.width = Math.round(rect.width * dpr);
+        canvas.height = Math.round(rect.height * dpr);
+      }
+      new ResizeObserver(resize).observe(canvas);
+      resize();
+
+      function pointerPosition(event) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: ((event.clientX - rect.left) / rect.width) * W,
+          y: ((event.clientY - rect.top) / rect.height) * H,
+        };
+      }
+
+      canvas.addEventListener("pointerdown", (event) => {
+        if (cameraOn || busy) return;
+        const p = pointerPosition(event);
+        let dist = 35;
+        dragged = -1;
+
+        anchors.forEach((a, i) => {
+          const d = Math.hypot(a.x - p.x, a.y - p.y);
+          if (d < dist) {
+            dist = d;
+            dragged = i;
+          }
+        });
+
+        if (dragged >= 0) {
+          pointerId = event.pointerId;
+          canvas.setPointerCapture(pointerId);
+        }
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (dragged < 0 || event.pointerId !== pointerId) return;
+        const p = pointerPosition(event);
+        anchors[dragged].tx = Math.max(60, Math.min(940, p.x));
+        anchors[dragged].ty = Math.max(75, Math.min(360, p.y));
+      });
+
+      function releasePointer() {
+        dragged = -1;
+        pointerId = null;
+      }
+      canvas.addEventListener("pointerup", releasePointer);
+      canvas.addEventListener("pointercancel", releasePointer);
+      canvas.addEventListener("lostpointercapture", releasePointer);
+
+      async function loadModel() {
+        if (model) return model;
+
+        if (!modelPromise) {
+          modelPromise = (async () => {
+            const version = "0.10.32";
+            const { FilesetResolver, HandLandmarker } = await import(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${version}/vision_bundle.mjs`);
+
+            const fileset = await FilesetResolver.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${version}/wasm`);
+
+            const options = {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                delegate: "GPU",
+              },
+              runningMode: "VIDEO",
+              numHands: 1,
+              minHandDetectionConfidence: 0.5,
+              minHandPresenceConfidence: 0.5,
+              minTrackingConfidence: 0.5,
+            };
+
+            try {
+              model = await HandLandmarker.createFromOptions(fileset, options);
+            } catch {
+              options.baseOptions.delegate = "CPU";
+              model = await HandLandmarker.createFromOptions(fileset, options);
+            }
+            return model;
+          })().catch((err) => {
+            modelPromise = null;
+            throw err;
+          });
+        }
+        return modelPromise;
+      }
+
+      function stopStream() {
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+        video.srcObject = null;
+      }
+
+      async function startStream(deviceId) {
+        stopStream();
+        clearTracking();
+
+        const constraints = {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 60, max: 60 },
+        };
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: deviceId ? { ...constraints, deviceId: { exact: deviceId } } : { ...constraints, facingMode: "user" },
+          });
+        } catch (err) {
+          if (deviceId && ["NotFoundError", "OverconstrainedError"].includes(err.name)) {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: constraints,
+            });
+          } else throw err;
+        }
+
+        const activeStream = stream;
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error("Camera startup timed out."));
+          }, 15000);
+
+          function cleanup() {
+            clearTimeout(timeout);
+            video.removeEventListener("loadedmetadata", ready);
+            video.removeEventListener("error", failed);
+          }
+          function ready() {
+            cleanup();
+            resolve();
+          }
+          function failed() {
+            cleanup();
+            reject(new Error("Could not read camera."));
+          }
+
+          video.addEventListener("loadedmetadata", ready);
+          video.addEventListener("error", failed);
+          video.srcObject = activeStream;
+        });
+
+        await video.play();
+
+        const track = activeStream.getVideoTracks()[0];
+        const id = track.getSettings().deviceId;
+        if (id) saveCamera(id);
+
+        track.addEventListener("ended", () => {
+          if (stream === activeStream && !busy) {
+            disableCamera();
+            setStatus("Camera disconnected.");
+          }
+        });
+
+        return id;
+      }
+
+      async function populateCameras(activeId) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        $("cameraSelect").replaceChildren();
+
+        devices
+          .filter((d) => d.kind === "videoinput")
+          .forEach((device, i) => {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.textContent = device.label || `Camera ${i + 1}`;
+            $("cameraSelect").append(option);
+          });
+
+        if (activeId) $("cameraSelect").value = activeId;
+      }
+
+      function setBusy(value) {
+        busy = value;
+        $("cameraButton").disabled = value;
+        $("cameraSelect").disabled = value || !cameraOn;
+      }
+
+      function disableCamera() {
+        cameraOn = false;
+        stopStream();
+        clearTracking();
+        $("cameraButton").textContent = "Enable camera";
+        $("cameraSelect").disabled = true;
+        anchors.forEach((a, i) => {
+          a.tx = BASE[i].x;
+          a.ty = BASE[i].y;
+        });
+      }
+
+      $("cameraButton").addEventListener("click", async () => {
+        if (cameraOn) {
+          disableCamera();
+          setStatus("Camera off. Drag the numbered controls.");
+          return;
+        }
+
+        if (!isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+          setStatus("Camera requires HTTPS or localhost.");
+          return;
+        }
+
+        setBusy(true);
+        releasePointer();
+
+        try {
+          setStatus("Loading hand tracker…");
+          await loadModel();
+          setStatus("Requesting camera…");
+          const id = await startStream(savedCamera());
+
+          cameraOn = true;
+          $("cameraButton").textContent = "Disable camera";
+          await populateCameras(id);
+          setStatus("Show hand in view. Hold neutral pose, then calibrate.");
+        } catch (err) {
+          disableCamera();
+          setStatus("Camera error: " + err.message);
+        } finally {
+          setBusy(false);
+        }
+      });
+
+      $("cameraSelect").addEventListener("change", async () => {
+        if (busy || !cameraOn) return;
+        setBusy(true);
+        cameraOn = false;
+
+        try {
+          setStatus("Switching camera…");
+          const id = await startStream($("cameraSelect").value);
+          cameraOn = true;
+          await populateCameras(id);
+          setStatus("Show hand in view.");
+        } catch (err) {
+          disableCamera();
+          setStatus("Error: " + err.message);
+        } finally {
+          setBusy(false);
+        }
+      });
+
+      $("resetButton").addEventListener("click", resetPuppet);
+      $("calibrateButton").addEventListener("click", calibrateNeutral);
+
+      navigator.mediaDevices?.addEventListener?.("devicechange", () => {
+        if (cameraOn && !busy) {
+          const id = stream?.getVideoTracks()[0]?.getSettings().deviceId;
+          populateCameras(id).catch(() => {});
+        }
+      });
+
+      let previousTime = performance.now();
+      let accumulator = 0;
+      let lastStatsTime = previousTime;
+
+      function frame(now) {
+        const elapsed = Math.min((now - previousTime) / 1000, 0.05);
+        previousTime = now;
+
+        processCamera(now);
+        updateTargets();
+
+        accumulator += elapsed;
+        let steps = 0;
+        while (accumulator >= STEP && steps < 6) {
+          physicsStep(STEP);
+          accumulator -= STEP;
+          steps++;
+        }
+        if (steps === 6) accumulator = 0;
+
+        draw();
+
+        if (now - lastStatsTime >= 1000) {
+          measuredRate = (inferenceCount * 1000) / (now - lastStatsTime);
+          inferenceCount = 0;
+          lastStatsTime = now;
+
+          const cameraFps = stream?.getVideoTracks()[0]?.getSettings().frameRate;
+          $("stats").textContent = cameraOn
+            ? `Tracking: ${measuredRate.toFixed(0)} fps | inference: ${inferenceMs.toFixed(1)} ms | cam: ${cameraFps ? cameraFps.toFixed(0) : "?"} fps`
+            : "Manual input | physics: 120 Hz";
+        }
+
+        requestAnimationFrame(frame);
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        previousTime = performance.now();
+        accumulator = 0;
+        particles.forEach((p) => {
+          p.px = p.x;
+          p.py = p.y;
+        });
+      });
+
+      window.addEventListener("pagehide", () => {
+        disableCamera();
+      });
+
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Puppet Prototype</title>
+    <style>
+      body,
+      select,
+      button,
+      input {
+        font-family: monospace;
+        font-size: 12px;
+        background: white;
+        color: black;
+        margin: 0;
+        padding: 0;
+      }
+      #ui {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid black;
+        padding: 8px;
+        z-index: 10;
+        width: 282px;
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .row input[type="range"] {
+        width: 115px;
+      }
+      .btn-row {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .btn-row button {
+        flex: 1;
+        border: 1px solid black;
+        padding: 3px 4px;
+        cursor: pointer;
+        background: white;
+      }
+      .btn-row button:hover {
+        background: #f0f0f0;
+      }
+      #cam-box {
+        position: relative;
+        width: 160px;
+        height: 120px;
+        border: 1px solid black;
+        margin-top: 6px;
+        overflow: hidden;
+      }
+      video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .dot {
+        position: absolute;
+        width: 5px;
+        height: 5px;
+        background: black;
+        border: 1px solid white;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        display: none;
+      }
+      #perf-bar {
+        font-size: 11px;
+        background: #f4f4f4;
+        border: 1px solid #000;
+        padding: 2px 4px;
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: space-between;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
+      <div class="row">
+        <b>PUPPET_SIM</b>
+        <span id="status">Loading...</span>
+      </div>
+
+      <div id="perf-bar">
+        <span id="fps-stat">FPS: --</span>
+        <span id="mp-stat">CamHz: --</span>
+        <span id="dt-stat">Inf: --ms</span>
+      </div>
+
+      <div class="row">
+        <label for="camera-select">Cam:</label>
+        <select id="camera-select" style="width: 195px"></select>
+      </div>
+
+      <div class="row">
+        <label for="mirror">Mirror X:</label>
+        <input type="checkbox" id="mirror" checked />
+      </div>
+
+      <div class="row">
+        <label for="mapping">Mapping:</label>
+        <select id="mapping">
+          <option value="spatial">Spatial (L->R)</option>
+          <option value="anatomical">Thumb->Pinky</option>
+        </select>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid black" />
+
+      <div class="row">
+        <label>Gravity:<span id="v-grav">2.60</span></label>
+        <input type="range" id="p-grav" min="0.5" max="6.0" step="0.1" value="2.60" />
+      </div>
+      <div class="row">
+        <label>Sim Speed:<span id="v-speed">1.35</span></label>
+        <input type="range" id="p-speed" min="0.5" max="2.5" step="0.05" value="1.35" />
+      </div>
+      <div class="row">
+        <label>Air Drag:<span id="v-damp">0.004</span></label>
+        <input type="range" id="p-damp" min="0.000" max="0.050" step="0.001" value="0.004" />
+      </div>
+      <div class="row">
+        <label>Tautness:<span id="v-stiff">0.88</span></label>
+        <input type="range" id="p-stiff" min="0.10" max="1.00" step="0.02" value="0.88" />
+      </div>
+      <div class="row">
+        <label>Str Scale:<span id="v-scale">1.00</span></label>
+        <input type="range" id="p-scale" min="0.4" max="2.2" step="0.05" value="1.00" />
+      </div>
+
+      <hr style="border: 0; border-top: 1px dashed black" />
+      <div style="margin-bottom: 4px"><b>String Lengths (px)</b></div>
+
+      <div class="row">
+        <label>Head:<span id="v-lenHead">110</span></label>
+        <input type="range" id="p-lenHead" min="40" max="450" step="5" value="110" />
+      </div>
+      <div class="row">
+        <label>L_Hand:<span id="v-lenLHand">150</span></label>
+        <input type="range" id="p-lenLHand" min="40" max="450" step="5" value="150" />
+      </div>
+      <div class="row">
+        <label>R_Hand:<span id="v-lenRHand">150</span></label>
+        <input type="range" id="p-lenRHand" min="40" max="450" step="5" value="150" />
+      </div>
+      <div class="row">
+        <label>L_Foot:<span id="v-lenLFoot">370</span></label>
+        <input type="range" id="p-lenLFoot" min="80" max="650" step="5" value="370" />
+      </div>
+      <div class="row">
+        <label>R_Foot:<span id="v-lenRFoot">370</span></label>
+        <input type="range" id="p-lenRFoot" min="80" max="650" step="5" value="370" />
+      </div>
+
+      <hr style="border: 0; border-top: 1px dashed black" />
+
+      <div class="row">
+        <label>Filter Cut:<span id="v-cut">3.5</span></label>
+        <input type="range" id="p-cut" min="0.5" max="25.0" step="0.5" value="3.5" />
+      </div>
+      <div class="row">
+        <label>Filter Beta:<span id="v-beta">25.0</span></label>
+        <input type="range" id="p-beta" min="0" max="120" step="1" value="25.0" />
+      </div>
+
+      <div class="btn-row">
+        <button id="reset-btn">Reset Puppet</button>
+        <button id="defaults-btn">Reset Defaults</button>
+      </div>
+
+      <div id="cam-box">
+        <video id="video" autoplay playsinline muted></video>
+        <div id="dots"></div>
+      </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script type="module">
+      import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+      import Matter from "https://esm.sh/matter-js@0.19.0";
+
+      const { Engine, Bodies, Body, Composite, Constraint, Vector } = Matter;
+
+      // --- 1 Euro Filter ---
+      class LowPassFilter {
+        constructor() {
+          this.y = null;
+          this.s = null;
+        }
+        filter(value, alpha) {
+          this.s = this.y === null ? value : alpha * value + (1.0 - alpha) * this.s;
+          this.y = value;
+          return this.s;
+        }
+        hasLastRawValue() {
+          return this.y !== null;
+        }
+        lastRawValue() {
+          return this.y;
+        }
+        reset() {
+          this.y = null;
+          this.s = null;
+        }
+      }
+
+      class OneEuroFilter {
+        constructor(minCutoff = 3.5, beta = 25.0, dcutoff = 1.0) {
+          this.minCutoff = minCutoff;
+          this.beta = beta;
+          this.dcutoff = dcutoff;
+          this.x = new LowPassFilter();
+          this.dx = new LowPassFilter();
+          this.lastTime = null;
+        }
+        alpha(cutoff, te) {
+          const r = 2 * Math.PI * cutoff * te;
+          return r / (r + 1);
+        }
+        filter(value, timestamp) {
+          if (this.lastTime !== null && timestamp !== undefined) {
+            const te = timestamp - this.lastTime;
+            if (te <= 0) return this.x.s;
+            if (te > 1.0) this.reset();
+          }
+          const te = this.lastTime ? timestamp - this.lastTime : 1 / 60;
+          this.lastTime = timestamp;
+          const dvalue = this.x.hasLastRawValue() ? (value - this.x.lastRawValue()) / te : 0.0;
+          const edvalue = this.dx.filter(dvalue, this.alpha(this.dcutoff, te));
+          const cutoff = this.minCutoff + this.beta * Math.abs(edvalue);
+          return this.x.filter(value, this.alpha(cutoff, te));
+        }
+        reset() {
+          this.x.reset();
+          this.dx.reset();
+          this.lastTime = null;
+        }
+      }
+
+      // --- UI, Defaults & LocalStorage Persistence ---
+      const status = document.getElementById("status");
+      const fpsStat = document.getElementById("fps-stat");
+      const mpStat = document.getElementById("mp-stat");
+      const dtStat = document.getElementById("dt-stat");
+      const video = document.getElementById("video");
+      const dotsContainer = document.getElementById("dots");
+      const cameraSelect = document.getElementById("camera-select");
+      const mirrorCheck = document.getElementById("mirror");
+      const mappingSelect = document.getElementById("mapping");
+      const resetBtn = document.getElementById("reset-btn");
+      const defaultsBtn = document.getElementById("defaults-btn");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      // Pre-allocate 21 DOM dots to avoid GC/reflow thrashing every frame
+      const dotElements = Array.from({ length: 21 }, () => {
+        const el = document.createElement("div");
+        el.className = "dot";
+        dotsContainer.appendChild(el);
+        return el;
+      });
+
+      const STORAGE_KEY = "selected_camera_id";
+      const SETTINGS_KEY = "puppet_sim_settings_v3";
+
+      // Tuned for heavy, snappy, zero-moonwalk physical response
+      const DEFAULT_SETTINGS = {
+        mirror: true,
+        mapping: "spatial",
+        grav: 2.6,
+        speed: 1.35,
+        damp: 0.004,
+        stiff: 0.88,
+        scale: 1.0,
+        lenHead: 110,
+        lenLHand: 150,
+        lenRHand: 150,
+        lenLFoot: 370,
+        lenRFoot: 370,
+        cut: 3.5,
+        beta: 25.0,
+      };
+
+      const SLIDER_KEYS = ["grav", "speed", "damp", "stiff", "scale", "lenHead", "lenLHand", "lenRHand", "lenLFoot", "lenRFoot", "cut", "beta"];
+
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(SETTINGS_KEY);
+          if (raw) {
+            return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+          }
+        } catch (e) {
+          console.warn("Could not read settings from localStorage:", e);
+        }
+        return { ...DEFAULT_SETTINGS };
+      }
+
+      const params = loadSettings();
+
+      function saveSettings() {
+        try {
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(params));
+        } catch (e) {
+          console.warn("Could not save settings to localStorage:", e);
+        }
+      }
+
+      const FINGER_TIPS = [4, 8, 12, 16, 20];
+      const FINGER_NAMES = ["Thumb", "Index", "Middle", "Ring", "Pinky"];
+      const CHANNELS = [
+        { name: "L_Hand", partKey: "leftHand", lenKey: "lenLHand" },
+        { name: "L_Foot", partKey: "leftFoot", lenKey: "lenLFoot" },
+        { name: "Head", partKey: "head", lenKey: "lenHead" },
+        { name: "R_Foot", partKey: "rightFoot", lenKey: "lenRFoot" },
+        { name: "R_Hand", partKey: "rightHand", lenKey: "lenRHand" },
+      ];
+
+      const filters = Array.from({ length: 21 }, () => ({
+        x: new OneEuroFilter(params.cut, params.beta),
+        y: new OneEuroFilter(params.cut, params.beta),
+      }));
+
+      // --- Physics Engine Setup (High-iter solver for crisp joints) ---
+      const engine = Engine.create({
+        gravity: { x: 0, y: params.grav },
+        positionIterations: 10,
+        velocityIterations: 8,
+      });
+      const world = engine.world;
+
+      let puppet = null;
+      let ground = null;
+      let leftWall = null;
+      let rightWall = null;
+      let handDetected = false;
+      let handJoints = null;
+
+      const controlPoints = CHANNELS.map((_, i) => ({
+        x: window.innerWidth * 0.5 + (i - 2) * 70,
+        y: window.innerHeight * 0.22,
+        targetX: window.innerWidth * 0.5 + (i - 2) * 70,
+        targetY: window.innerHeight * 0.22,
+        fingerName: FINGER_NAMES[i],
+        lmIdx: FINGER_TIPS[i],
+      }));
+
+      function applyLiveParams() {
+        engine.gravity.y = params.grav;
+        for (const f of filters) {
+          f.x.minCutoff = params.cut;
+          f.y.minCutoff = params.cut;
+          f.x.beta = params.beta;
+          f.y.beta = params.beta;
+        }
+        if (puppet) {
+          for (const b of puppet.bodies) {
+            b.frictionAir = params.damp;
+          }
+        }
+      }
+
+      function syncUIFromParams() {
+        mirrorCheck.checked = Boolean(params.mirror);
+        video.style.transform = params.mirror ? "scaleX(-1)" : "none";
+        mappingSelect.value = params.mapping;
+
+        SLIDER_KEYS.forEach((key) => {
+          const input = document.getElementById(`p-${key}`);
+          const label = document.getElementById(`v-${key}`);
+          if (input && label) {
+            input.value = params[key];
+            label.textContent = params[key];
+          }
+        });
+      }
+
+      function bindSlider(key) {
+        const input = document.getElementById(`p-${key}`);
+        const label = document.getElementById(`v-${key}`);
+        input.oninput = () => {
+          params[key] = parseFloat(input.value);
+          label.textContent = input.value;
+          applyLiveParams();
+          saveSettings();
+        };
+      }
+
+      SLIDER_KEYS.forEach(bindSlider);
+
+      mirrorCheck.onchange = () => {
+        params.mirror = mirrorCheck.checked;
+        video.style.transform = params.mirror ? "scaleX(-1)" : "none";
+        saveSettings();
+      };
+
+      mappingSelect.onchange = () => {
+        params.mapping = mappingSelect.value;
+        saveSettings();
+      };
+
+      defaultsBtn.onclick = () => {
+        Object.assign(params, DEFAULT_SETTINGS);
+        syncUIFromParams();
+        applyLiveParams();
+        saveSettings();
+      };
+
+      syncUIFromParams();
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        if (ground) Composite.remove(world, [ground, leftWall, rightWall]);
+        const w = canvas.width;
+        const h = canvas.height;
+        const wallOpts = { isStatic: true, friction: 0.85, restitution: 0.05 };
+        ground = Bodies.rectangle(w / 2, h - 20, w * 2, 40, wallOpts);
+        leftWall = Bodies.rectangle(-20, h / 2, 40, h * 2, wallOpts);
+        rightWall = Bodies.rectangle(w + 20, h / 2, 40, h * 2, wallOpts);
+        Composite.add(world, [ground, leftWall, rightWall]);
+      }
+
+      function createStickPuppet(cx, cy) {
+        if (puppet) Composite.remove(world, puppet.composite);
+
+        const group = Body.nextGroup(true);
+        const limbOpts = {
+          collisionFilter: { group },
+          frictionAir: params.damp,
+          friction: 0.8,
+          density: 0.004,
+          restitution: 0.05,
+        };
+
+        // Weighted distribution: heavier feet & lower body so limbs drop fast like wood/lead weights
+        const head = Bodies.circle(cx, cy - 110, 20, { ...limbOpts, density: 0.003 });
+        const upperTorso = Bodies.rectangle(cx, cy - 55, 12, 55, { ...limbOpts, density: 0.005 });
+        const lowerTorso = Bodies.rectangle(cx, cy, 12, 55, { ...limbOpts, density: 0.006 });
+
+        const leftUpperArm = Bodies.rectangle(cx - 32, cy - 75, 48, 8, limbOpts);
+        const leftForearm = Bodies.rectangle(cx - 76, cy - 75, 48, 8, { ...limbOpts, density: 0.005 });
+
+        const rightUpperArm = Bodies.rectangle(cx + 32, cy - 75, 48, 8, limbOpts);
+        const rightForearm = Bodies.rectangle(cx + 76, cy - 75, 48, 8, { ...limbOpts, density: 0.005 });
+
+        const leftThigh = Bodies.rectangle(cx - 14, cy + 55, 10, 60, { ...limbOpts, density: 0.005 });
+        const leftCalf = Bodies.rectangle(cx - 14, cy + 115, 10, 60, { ...limbOpts, density: 0.008 });
+
+        const rightThigh = Bodies.rectangle(cx + 14, cy + 55, 10, 60, { ...limbOpts, density: 0.005 });
+        const rightCalf = Bodies.rectangle(cx + 14, cy + 115, 10, 60, { ...limbOpts, density: 0.008 });
+
+        const joint = (bodyA, bodyB, pointA, pointB, stiffness = 0.98) => Constraint.create({ bodyA, bodyB, pointA, pointB, stiffness, length: 0 });
+
+        const joints = [
+          joint(head, upperTorso, { x: 0, y: 20 }, { x: 0, y: -27 }, 0.99),
+          joint(upperTorso, lowerTorso, { x: 0, y: 27 }, { x: 0, y: -27 }, 0.99),
+          joint(upperTorso, leftUpperArm, { x: -6, y: -22 }, { x: 22, y: 0 }),
+          joint(leftUpperArm, leftForearm, { x: -22, y: 0 }, { x: 22, y: 0 }),
+          joint(upperTorso, rightUpperArm, { x: 6, y: -22 }, { x: -22, y: 0 }),
+          joint(rightUpperArm, rightForearm, { x: 22, y: 0 }, { x: -22, y: 0 }),
+          joint(lowerTorso, leftThigh, { x: -8, y: 26 }, { x: 0, y: -28 }),
+          joint(leftThigh, leftCalf, { x: 0, y: 28 }, { x: 0, y: -28 }),
+          joint(lowerTorso, rightThigh, { x: 8, y: 26 }, { x: 0, y: -28 }),
+          joint(rightThigh, rightCalf, { x: 0, y: 28 }, { x: 0, y: -28 }),
+        ];
+
+        const bodies = [head, upperTorso, lowerTorso, leftUpperArm, leftForearm, rightUpperArm, rightForearm, leftThigh, leftCalf, rightThigh, rightCalf];
+
+        const composite = Composite.create();
+        Composite.add(composite, [...bodies, ...joints]);
+        Composite.add(world, composite);
+
+        const attachMap = {
+          head: { body: head, offset: { x: 0, y: -18 } },
+          leftHand: { body: leftForearm, offset: { x: -22, y: 0 } },
+          rightHand: { body: rightForearm, offset: { x: 22, y: 0 } },
+          leftFoot: { body: leftCalf, offset: { x: 0, y: 26 } },
+          rightFoot: { body: rightCalf, offset: { x: 0, y: 26 } },
+        };
+
+        puppet = {
+          composite,
+          bodies,
+          head,
+          upperTorso,
+          lowerTorso,
+          leftUpperArm,
+          leftForearm,
+          rightUpperArm,
+          rightForearm,
+          leftThigh,
+          leftCalf,
+          rightThigh,
+          rightCalf,
+          attachMap,
+        };
+      }
+
+      // Direct Position & Velocity Projection for Inextensible Strings (Zero Moonwalk)
+      function solvePullStrings() {
+        if (!puppet) return;
+
+        const tautness = params.stiff; // [0.1 .. 1.0]
+
+        for (let i = 0; i < CHANNELS.length; i++) {
+          const ch = CHANNELS[i];
+          const cp = controlPoints[i];
+
+          // Direct tracking (no secondary lerp lag)
+          cp.x = cp.targetX;
+          cp.y = cp.targetY;
+
+          const target = puppet.attachMap[ch.partKey];
+          const body = target.body;
+          const r = Vector.rotate(target.offset, body.angle);
+          const attachWorld = Vector.add(body.position, r);
+
+          const dx = cp.x - attachWorld.x;
+          const dy = cp.y - attachWorld.y;
+          const dist = Math.hypot(dx, dy) || 0.0001;
+          const restLen = params[ch.lenKey] * params.scale;
+
+          cp.attachX = attachWorld.x;
+          cp.attachY = attachWorld.y;
+          cp.restLen = restLen;
+          cp.currentDist = dist;
+
+          // Unilateral inextensible string constraint: only active when stretched past restLen
+          if (dist > restLen) {
+            const excess = dist - restLen;
+            const nx = dx / dist;
+            const ny = dy / dist;
+
+            // 1. Immediate position projection (snaps limb onto string radius without spongy lag)
+            const pull = excess * tautness * 0.45;
+            Body.setPosition(body, {
+              x: body.position.x + nx * pull,
+              y: body.position.y + ny * pull,
+            });
+
+            // 2. Cancel outward velocity along string normal (without damping perpendicular swing!)
+            const vn = body.velocity.x * nx + body.velocity.y * ny;
+            if (vn < 0) {
+              Body.setVelocity(body, {
+                x: body.velocity.x - nx * vn * tautness,
+                y: body.velocity.y - ny * vn * tautness,
+              });
+            }
+
+            // 3. Rotational torque so off-center attachment points naturally orient the limb
+            const cross = r.x * ny - r.y * nx;
+            Body.setAngularVelocity(body, (body.angularVelocity + cross * excess * 0.000035 * tautness) * 0.92);
+          }
+        }
+      }
+
+      function getWorldPoint(body, localOffset) {
+        return Vector.add(body.position, Vector.rotate(localOffset, body.angle));
+      }
+
+      function line(p1, p2, width = 3, dash = []) {
+        ctx.beginPath();
+        ctx.setLineDash(dash);
+        ctx.lineWidth = width;
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "black";
+        ctx.fillStyle = "black";
+        ctx.lineCap = "round";
+
+        // Floor
+        line({ x: 0, y: canvas.height - 40 }, { x: canvas.width, y: canvas.height - 40 }, 2);
+
+        // Debug: Hand skeleton in stage space
+        if (handDetected && handJoints) {
+          const bones = [
+            [0, 1],
+            [1, 2],
+            [2, 3],
+            [3, 4],
+            [0, 5],
+            [5, 6],
+            [6, 7],
+            [7, 8],
+            [5, 9],
+            [9, 10],
+            [10, 11],
+            [11, 12],
+            [9, 13],
+            [13, 14],
+            [14, 15],
+            [15, 16],
+            [13, 17],
+            [0, 17],
+            [17, 18],
+            [18, 19],
+            [19, 20],
+          ];
+          for (const [a, b] of bones) {
+            line(handJoints[a], handJoints[b], 1, [2, 3]);
+          }
+          ctx.setLineDash([]);
+          for (const pt of handJoints) {
+            ctx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
+          }
+        }
+
+        // Debug: Pull strings
+        CHANNELS.forEach((ch, i) => {
+          const cp = controlPoints[i];
+          if (cp.attachX === undefined) return;
+          const isTaut = cp.currentDist >= cp.restLen * 0.98;
+
+          ctx.beginPath();
+          if (isTaut) {
+            ctx.setLineDash([]);
+            ctx.lineWidth = 1.5;
+            ctx.moveTo(cp.x, cp.y);
+            ctx.lineTo(cp.attachX, cp.attachY);
+          } else {
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1;
+            const midX = (cp.x + cp.attachX) / 2;
+            const slackSag = Math.min(70, (cp.restLen - cp.currentDist) * 0.45);
+            const midY = (cp.y + cp.attachY) / 2 + slackSag;
+            ctx.moveTo(cp.x, cp.y);
+            ctx.quadraticCurveTo(midX, midY, cp.attachX, cp.attachY);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Finger node
+          ctx.beginPath();
+          ctx.arc(cp.x, cp.y, 5, 0, Math.PI * 2);
+          ctx.fillStyle = isTaut ? "black" : "white";
+          ctx.fill();
+          ctx.stroke();
+
+          // Attachment dot
+          ctx.fillStyle = "black";
+          ctx.fillRect(cp.attachX - 2.5, cp.attachY - 2.5, 5, 5);
+
+          // Label
+          ctx.fillText(`${cp.fingerName}->${ch.name} (${Math.round(cp.restLen)}px)`, cp.x - 36, cp.y - 9);
+        });
+
+        // Stick Figure
+        if (puppet) {
+          const neck = getWorldPoint(puppet.upperTorso, { x: 0, y: -27 });
+          const waist = getWorldPoint(puppet.upperTorso, { x: 0, y: 27 });
+          const pelvis = getWorldPoint(puppet.lowerTorso, { x: 0, y: 26 });
+
+          const lShoulder = getWorldPoint(puppet.upperTorso, { x: -6, y: -22 });
+          const lElbow = getWorldPoint(puppet.leftUpperArm, { x: -22, y: 0 });
+          const lHand = getWorldPoint(puppet.leftForearm, { x: -22, y: 0 });
+
+          const rShoulder = getWorldPoint(puppet.upperTorso, { x: 6, y: -22 });
+          const rElbow = getWorldPoint(puppet.rightUpperArm, { x: 22, y: 0 });
+          const rHand = getWorldPoint(puppet.rightForearm, { x: 22, y: 0 });
+
+          const lHip = getWorldPoint(puppet.lowerTorso, { x: -8, y: 26 });
+          const lKnee = getWorldPoint(puppet.leftThigh, { x: 0, y: 28 });
+          const lFoot = getWorldPoint(puppet.leftCalf, { x: 0, y: 26 });
+
+          const rHip = getWorldPoint(puppet.lowerTorso, { x: 8, y: 26 });
+          const rKnee = getWorldPoint(puppet.rightThigh, { x: 0, y: 28 });
+          const rFoot = getWorldPoint(puppet.rightCalf, { x: 0, y: 26 });
+
+          line(neck, waist, 5);
+          line(waist, pelvis, 5);
+          line(lShoulder, lElbow, 4);
+          line(lElbow, lHand, 4);
+          line(rShoulder, rElbow, 4);
+          line(rElbow, rHand, 4);
+          line(lHip, lKnee, 4);
+          line(lKnee, lFoot, 4);
+          line(rHip, rKnee, 4);
+          line(rKnee, rFoot, 4);
+
+          // Head
+          ctx.save();
+          ctx.translate(puppet.head.position.x, puppet.head.position.y);
+          ctx.rotate(puppet.head.angle);
+          ctx.beginPath();
+          ctx.arc(0, 0, 20, 0, Math.PI * 2);
+          ctx.fillStyle = "white";
+          ctx.fill();
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          ctx.fillStyle = "black";
+          ctx.beginPath();
+          ctx.arc(-6, -3, 2, 0, Math.PI * 2);
+          ctx.arc(6, -3, 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // --- Camera & MediaPipe (Low-latency 640x480@60fps capture) ---
+      let handLandmarker;
+      let currentStream;
+      let lastVideoTime = -1;
+
+      async function startCamera(deviceId) {
+        if (currentStream) currentStream.getTracks().forEach((t) => t.stop());
+        const videoConstraints = {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 60, min: 30 },
+        };
+        if (deviceId) videoConstraints.deviceId = { exact: deviceId };
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+        } catch (err) {
+          currentStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+        video.srcObject = currentStream;
+        await new Promise((r) => (video.onloadeddata = r));
+        const activeId = currentStream.getVideoTracks()[0]?.getSettings()?.deviceId;
+        if (activeId) localStorage.setItem(STORAGE_KEY, activeId);
+        return activeId;
+      }
+
+      async function populateCameraList(activeId) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+        cameraSelect.innerHTML = "";
+        videoDevices.forEach((d, i) => {
+          const opt = document.createElement("option");
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `Camera ${i + 1}`;
+          cameraSelect.appendChild(opt);
+        });
+        if (activeId) cameraSelect.value = activeId;
+      }
+
+      // Mouse fallback when hand is not in frame
+      window.addEventListener("pointermove", (e) => {
+        if (handDetected) return;
+        const cx = e.clientX;
+        const cy = Math.min(e.clientY, canvas.height * 0.65);
+        CHANNELS.forEach((_, i) => {
+          controlPoints[i].targetX = cx + (i - 2) * 58;
+          controlPoints[i].targetY = cy + Math.abs(i - 2) * 12;
+          controlPoints[i].fingerName = `F${i + 1}`;
+        });
+      });
+
+      // --- Telemetry & Sub-stepped Physics Loop ---
+      let lastFrameMs = performance.now();
+      let renderFrames = 0;
+      let camFrames = 0;
+      let lastTelemetryMs = performance.now();
+      let lastInferenceMs = 0;
+
+      function render(nowMs) {
+        renderFrames++;
+        const rawDtMs = Math.min(nowMs - lastFrameMs, 33.3); // Cap delta at 30fps minimum
+        lastFrameMs = nowMs;
+        const nowSec = nowMs / 1000;
+
+        // 1. Hand Tracking on New Video Frame
+        if (handLandmarker && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          camFrames++;
+
+          const t0 = performance.now();
+          const results = handLandmarker.detectForVideo(video, nowMs);
+          lastInferenceMs = performance.now() - t0;
+
+          if (results.landmarks && results.landmarks.length > 0) {
+            handDetected = true;
+            const hand = results.landmarks[0];
+            const mirror = params.mirror;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            handJoints = hand.map((pt, idx) => {
+              const fx = filters[idx].x.filter(pt.x, nowSec);
+              const fy = filters[idx].y.filter(pt.y, nowSec);
+              const mx = mirror ? 1.0 - fx : fx;
+
+              const dot = dotElements[idx];
+              dot.style.display = "block";
+              dot.style.left = `${mx * 100}%`;
+              dot.style.top = `${fy * 100}%`;
+
+              return {
+                x: w * 0.15 + mx * (w * 0.7),
+                y: h * 0.05 + fy * (h * 0.65),
+              };
+            });
+
+            const tips = FINGER_TIPS.map((lmIdx, i) => ({
+              lmIdx,
+              fingerName: FINGER_NAMES[i],
+              x: handJoints[lmIdx].x,
+              y: handJoints[lmIdx].y,
+            }));
+
+            if (params.mapping === "spatial") {
+              tips.sort((a, b) => a.x - b.x);
+            }
+
+            for (let i = 0; i < 5; i++) {
+              controlPoints[i].targetX = tips[i].x;
+              controlPoints[i].targetY = tips[i].y;
+              controlPoints[i].fingerName = tips[i].fingerName;
+            }
+          } else {
+            if (handDetected) {
+              filters.forEach((f) => {
+                f.x.reset();
+                f.y.reset();
+              });
+              dotElements.forEach((d) => {
+                d.style.display = "none";
+              });
+            }
+            handDetected = false;
+            handJoints = null;
+          }
+        }
+
+        // 2. Sub-stepped Physics + Taut String Projection (3 substeps for rock-solid, heavy feel)
+        const SUBSTEPS = 3;
+        const stepDt = (rawDtMs * params.speed) / SUBSTEPS;
+        for (let s = 0; s < SUBSTEPS; s++) {
+          solvePullStrings();
+          Engine.update(engine, stepDt);
+        }
+        solvePullStrings(); // Final projection pass before drawing so strings never look over-stretched
+
+        // 3. Render Scene
+        draw();
+
+        // 4. Update Performance Telemetry every 500ms
+        if (nowMs - lastTelemetryMs >= 500) {
+          const elapsedSec = (nowMs - lastTelemetryMs) / 1000;
+          fpsStat.textContent = `FPS:${Math.round(renderFrames / elapsedSec)}`;
+          mpStat.textContent = `Cam:${Math.round(camFrames / elapsedSec)}Hz`;
+          dtStat.textContent = `Inf:${lastInferenceMs.toFixed(1)}ms`;
+          renderFrames = 0;
+          camFrames = 0;
+          lastTelemetryMs = nowMs;
+        }
+
+        requestAnimationFrame(render);
+      }
+
+      resetBtn.onclick = () => createStickPuppet(canvas.width / 2, canvas.height * 0.55);
+      window.addEventListener("resize", resize);
+
+      async function init() {
+        resize();
+        createStickPuppet(canvas.width / 2, canvas.height * 0.55);
+        applyLiveParams();
+        requestAnimationFrame(render);
+
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            delegate: "GPU",
+          },
+          runningMode: "VIDEO",
+          numHands: 1,
+        });
+
+        status.textContent = "Camera...";
+        const savedId = localStorage.getItem(STORAGE_KEY);
+        const activeId = await startCamera(savedId);
+        await populateCameraList(activeId);
+
+        cameraSelect.onchange = async () => {
+          status.textContent = "Switching...";
+          dotElements.forEach((d) => {
+            d.style.display = "none";
+          });
+          await startCamera(cameraSelect.value);
+          status.textContent = "Ready";
+        };
+
+        status.textContent = "Ready";
+      }
+
+      init().catch((err) => {
+        status.textContent = "Err: " + err.message;
+      });
+    </script>
+  </body>
+</html>
