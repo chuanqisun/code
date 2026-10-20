@@ -115,6 +115,7 @@
 - [Phorm](./phorm/)
 - [Photon Grammar](./photon-grammar/)
 - [Planetary Gear](./planetary-gear/)
+- [Put that there](./put-that-there/)
 - [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Ramiel](./ramiel/)

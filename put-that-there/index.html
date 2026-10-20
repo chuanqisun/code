@@ -1,0 +1,1524 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paper-to-Screen Spatial Continuum (4:3 Prototype)</title>
+    <style>
+      :root {
+        --bg-dark: #0f172a;
+        --panel-bg: #1e293b;
+        --accent: #38bdf8;
+        --accent-glow: rgba(56, 189, 248, 0.35);
+        --emerald: #10b981;
+        --emerald-bright: #34d399;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --paper-bg: #ffffff;
+        --transition-speed: 0.72s;
+        --transition-curve: cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        user-select: none;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background-color: var(--bg-dark);
+        color: var(--text-main);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 18px 20px;
+        overflow-x: hidden;
+      }
+
+      /* Header & Stepper Controls */
+      header {
+        width: 100%;
+        max-width: 980px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      h1 {
+        font-size: 1.3rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .badge {
+        font-size: 0.72rem;
+        background: rgba(56, 189, 248, 0.15);
+        color: var(--accent);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-weight: 600;
+      }
+
+      .stepper {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        background: var(--panel-bg);
+        padding: 8px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .step-btn {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-muted);
+        padding: 10px 14px;
+        border-radius: 10px;
+        cursor: pointer;
+        text-align: left;
+        transition: all 0.25s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .step-btn:hover {
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text-main);
+      }
+
+      .step-btn.active {
+        background: rgba(56, 189, 248, 0.12);
+        border-color: var(--accent);
+        color: var(--text-main);
+        box-shadow: 0 4px 20px var(--accent-glow);
+      }
+
+      .step-num {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--accent);
+      }
+
+      .step-title {
+        font-size: 0.94rem;
+        font-weight: 600;
+      }
+
+      .step-desc {
+        font-size: 0.76rem;
+        color: var(--text-muted);
+        line-height: 1.3;
+      }
+
+      /* Main Interactive Stage */
+      .stage-container {
+        width: 100%;
+        max-width: 980px;
+        display: grid;
+        grid-template-columns: 1fr 290px;
+        gap: 20px;
+        align-items: start;
+      }
+
+      @media (max-width: 860px) {
+        .stage-container {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .hardware-rig {
+        background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 18px;
+        padding: 24px 24px 32px 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+      }
+
+      /* Section Labels */
+      .zone-label {
+        position: absolute;
+        left: 16px;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        background: rgba(15, 23, 42, 0.82);
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        pointer-events: none;
+        z-index: 30;
+      }
+      .zone-label.screen-label {
+        top: 16px;
+      }
+      .zone-label.desk-label {
+        top: 432px;
+      }
+
+      /* Laptop Assembly */
+      .laptop-assembly {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 480px;
+        position: relative;
+      }
+
+      /* Top-mounted Webcam */
+      .webcam {
+        width: 44px;
+        height: 16px;
+        background: #334155;
+        border: 2px solid #475569;
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        z-index: 25;
+      }
+
+      .webcam-lens {
+        width: 8px;
+        height: 8px;
+        background: #0ea5e9;
+        border-radius: 50%;
+        box-shadow: 0 0 8px #38bdf8;
+        animation: pulse 2s infinite;
+      }
+
+      /* Webcam FOV Cone */
+      .webcam-fov {
+        position: absolute;
+        top: 16px;
+        width: 540px;
+        height: 600px;
+        background: linear-gradient(180deg, rgba(56, 189, 248, 0.13) 0%, rgba(56, 189, 248, 0.02) 75%, transparent 100%);
+        clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+        pointer-events: none;
+        z-index: 5;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      /* Laptop Screen Bezel & Viewport — 4:3 Aspect Ratio (480 x 360) */
+      .laptop-bezel {
+        width: 480px;
+        height: 360px;
+        max-width: 100%;
+        background: #090d16;
+        border: 8px solid #334155;
+        border-radius: 12px 12px 4px 4px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.65);
+        perspective: 800px;
+        z-index: 10;
+      }
+
+      /* Screen Spatial Workspace (Revealed when paper docks at bottom) */
+      .screen-workspace-bg {
+        position: absolute;
+        inset: 0;
+        background-color: #0f172a;
+        background-image: linear-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(56, 189, 248, 0.08) 1px, transparent 1px);
+        background-size: 24px 24px;
+        z-index: 1;
+        cursor: crosshair;
+      }
+
+      .stage-mode-placed .screen-workspace-bg {
+        cursor: default;
+      }
+
+      /* Canvas that holds dropped shapes in Screen Space */
+      #workspaceDropCanvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .workspace-header {
+        position: absolute;
+        top: 10px;
+        left: 12px;
+        right: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: var(--accent);
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: all 0.4s ease;
+        background: rgba(15, 23, 42, 0.88);
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        pointer-events: none;
+        z-index: 4;
+      }
+
+      .stage-mode-position .workspace-header,
+      .stage-mode-placed .workspace-header {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .stage-mode-placed .workspace-header {
+        border-color: rgba(52, 211, 153, 0.45);
+        color: var(--emerald-bright);
+      }
+
+      /* Digital Twin Paper inside the 4:3 Screen */
+      .screen-paper-twin {
+        position: absolute;
+        inset: 0;
+        background: var(--paper-bg);
+        transform-origin: bottom center;
+        transform: translate3d(0, 0, 0) rotateX(0deg) scale(1);
+        transition:
+          transform var(--transition-speed) var(--transition-curve),
+          box-shadow var(--transition-speed) var(--transition-curve),
+          border-radius var(--transition-speed) var(--transition-curve);
+        z-index: 6;
+        cursor: pointer;
+        overflow: hidden;
+      }
+
+      /* DOCKED PERSPECTIVE VIEW (during Placement & Post-Placement) */
+      .stage-mode-position .screen-paper-twin,
+      .stage-mode-placed .screen-paper-twin {
+        transform: translate3d(0, 22px, 0) rotateX(62deg) scale(0.68);
+        border-radius: 14px;
+        box-shadow:
+          0 -10px 30px rgba(15, 23, 42, 0.8),
+          0 0 0 3px rgba(56, 189, 248, 0.65);
+      }
+
+      /* Hovering on the Virtual Paper in Screen Space shows Selectable Indicator */
+      .stage-mode-position .screen-paper-twin:hover,
+      .stage-mode-placed .screen-paper-twin:hover {
+        transform: translate3d(0, 16px, 0) rotateX(58deg) scale(0.71);
+        box-shadow:
+          0 -14px 40px rgba(16, 185, 129, 0.5),
+          0 0 0 4px var(--emerald-bright);
+      }
+
+      /* Selectable Indicator Overlay inside the Virtual Paper when Docked */
+      .virtual-paper-selectable-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(16, 185, 129, 0.14);
+        border: 5px dashed var(--emerald-bright);
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.22s ease;
+        z-index: 25;
+      }
+
+      /* Corner Selection Brackets on Virtual Paper Overlay */
+      .vp-bracket {
+        position: absolute;
+        width: 28px;
+        height: 28px;
+        border-color: #059669;
+        border-style: solid;
+      }
+      .vp-bracket.tl {
+        top: 14px;
+        left: 14px;
+        border-width: 5px 0 0 5px;
+      }
+      .vp-bracket.tr {
+        top: 14px;
+        right: 14px;
+        border-width: 5px 5px 0 0;
+      }
+      .vp-bracket.bl {
+        bottom: 14px;
+        left: 14px;
+        border-width: 0 0 5px 5px;
+      }
+      .vp-bracket.br {
+        bottom: 14px;
+        right: 14px;
+        border-width: 0 5px 5px 0;
+      }
+
+      .vp-select-badge {
+        background: #065f46;
+        color: #ffffff;
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        padding: 10px 22px;
+        border-radius: 999px;
+        border: 2px solid var(--emerald-bright);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        transform: scale(0.92);
+        transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      /* Trigger Selectable Indicator on Hover in Screen Space */
+      .stage-mode-position .screen-paper-twin:hover .virtual-paper-selectable-overlay,
+      .stage-mode-placed .screen-paper-twin:hover .virtual-paper-selectable-overlay {
+        opacity: 1;
+      }
+
+      .stage-mode-position .screen-paper-twin:hover .vp-select-badge,
+      .stage-mode-placed .screen-paper-twin:hover .vp-select-badge {
+        transform: scale(1);
+      }
+
+      /* Subtle bottom caption under the docked paper */
+      .dock-return-hint {
+        position: absolute;
+        bottom: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: #e2e8f0;
+        background: rgba(15, 23, 42, 0.9);
+        padding: 4px 12px;
+        border-radius: 99px;
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        z-index: 15;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.3s ease;
+        white-space: nowrap;
+      }
+
+      .stage-mode-position .dock-return-hint,
+      .stage-mode-placed .dock-return-hint {
+        opacity: 1;
+      }
+
+      .stage-mode-placed .dock-return-hint {
+        border-color: var(--emerald-bright);
+        color: var(--emerald-bright);
+        box-shadow: 0 0 15px rgba(52, 211, 153, 0.25);
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ArUco Fiducial Markers */
+      .aruco {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        border: 2.5px solid #0f172a;
+        background: #fff;
+        padding: 2px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+        gap: 1px;
+        pointer-events: none;
+        z-index: 8;
+      }
+      .aruco span {
+        background: #0f172a;
+      }
+      .aruco span.w {
+        background: transparent;
+      }
+
+      .aruco.tl {
+        top: 10px;
+        left: 10px;
+      }
+      .aruco.tr {
+        top: 10px;
+        right: 10px;
+      }
+      .aruco.bl {
+        bottom: 10px;
+        left: 10px;
+      }
+      .aruco.br {
+        bottom: 10px;
+        right: 10px;
+      }
+
+      /* Dynamic Selection Bounding Box on Full-Screen Paper */
+      .selection-box {
+        position: absolute;
+        width: 104px;
+        height: 94px;
+        left: 30%;
+        top: 32%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        transition:
+          left 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+          top 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 0.25s ease;
+        z-index: 12;
+      }
+
+      .stage-mode-position .selection-box,
+      .stage-mode-placed .selection-box {
+        opacity: 0;
+      }
+
+      .selection-label {
+        position: absolute;
+        top: -22px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #0284c7;
+        color: #fff;
+        font-size: 0.62rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 4px;
+        white-space: nowrap;
+        letter-spacing: 0.03em;
+      }
+
+      /* Corner ticks of bounding box */
+      .reticle-corner {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border-color: #0284c7;
+        border-style: solid;
+      }
+      .reticle-corner.tl {
+        top: 0;
+        left: 0;
+        border-width: 3px 0 0 3px;
+      }
+      .reticle-corner.tr {
+        top: 0;
+        right: 0;
+        border-width: 3px 3px 0 0;
+      }
+      .reticle-corner.bl {
+        bottom: 0;
+        left: 0;
+        border-width: 0 0 3px 3px;
+      }
+      .reticle-corner.br {
+        bottom: 0;
+        right: 0;
+        border-width: 0 3px 3px 0;
+      }
+
+      /* Floating Virtual Shape in Screen Space (Only visible while actively positioning) */
+      .floating-virtual-shape {
+        position: absolute;
+        width: 96px;
+        height: 86px;
+        left: 50%;
+        top: 36%;
+        transform: translate(-50%, -50%) scale(0.7);
+        opacity: 0;
+        pointer-events: none;
+        z-index: 14;
+        transition:
+          opacity 0.25s ease,
+          transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5));
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 8px;
+      }
+
+      .stage-mode-position .floating-virtual-shape {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      /* Once placed, hide the floating shape immediately */
+      .stage-mode-placed .floating-virtual-shape {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
+
+      .floating-virtual-shape .reticle-corner {
+        border-color: var(--accent);
+      }
+
+      .drop-prompt-tag {
+        position: absolute;
+        bottom: -22px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(15, 23, 42, 0.92);
+        color: var(--accent);
+        border: 1px solid rgba(56, 189, 248, 0.45);
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 4px;
+        white-space: nowrap;
+      }
+
+      /* Screen Cursor / Finger Projection */
+      .screen-hand-cursor {
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 20;
+        transition:
+          left 0.06s linear,
+          top 0.06s linear,
+          opacity 0.25s ease;
+      }
+
+      .cursor-ring {
+        width: 22px;
+        height: 22px;
+        border: 2px solid var(--accent);
+        background: rgba(56, 189, 248, 0.25);
+        border-radius: 50%;
+        box-shadow: 0 0 12px var(--accent);
+      }
+
+      /* Laptop Hinge / Base */
+      .laptop-base {
+        width: 106%;
+        height: 16px;
+        background: linear-gradient(90deg, #334155, #64748b, #334155);
+        border-radius: 2px 2px 10px 10px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+        margin-bottom: 20px;
+        z-index: 12;
+      }
+
+      /* Physical Desk Space & 4:3 Landscape Paper */
+      .desk-surface {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        perspective: 650px;
+        position: relative;
+        z-index: 15;
+      }
+
+      .physical-paper-wrapper {
+        width: 340px;
+        height: 255px; /* 4:3 Aspect Ratio matching the 480x360 screen */
+        background: var(--paper-bg);
+        border-radius: 6px;
+        position: relative;
+        transform: rotateX(28deg);
+        transform-style: preserve-3d;
+        box-shadow:
+          0 22px 35px rgba(0, 0, 0, 0.65),
+          0 0 0 1px #cbd5e1;
+        cursor: pointer;
+        transition:
+          box-shadow 0.3s ease,
+          transform 0.3s ease;
+      }
+
+      .physical-paper-wrapper:hover {
+        box-shadow:
+          0 22px 40px rgba(56, 189, 248, 0.35),
+          0 0 0 2.5px var(--accent);
+      }
+
+      /* Speech Bubble Overlay */
+      .speech-bubble {
+        position: absolute;
+        background: #ffffff;
+        color: #0f172a;
+        font-weight: 700;
+        font-size: 0.88rem;
+        padding: 8px 14px;
+        border-radius: 14px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+        border: 2px solid #0f172a;
+        pointer-events: none;
+        z-index: 40;
+        transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .speech-bubble::after {
+        content: "";
+        position: absolute;
+        bottom: -8px;
+        left: 20px;
+        border-width: 8px 8px 0;
+        border-style: solid;
+        border-color: #ffffff transparent;
+        display: block;
+        width: 0;
+      }
+
+      .mic-icon {
+        width: 9px;
+        height: 9px;
+        background: #ef4444;
+        border-radius: 50%;
+        display: inline-block;
+        animation: pulse 1s infinite;
+      }
+
+      /* Illustrated User Hand (SVG) */
+      .physical-hand {
+        position: absolute;
+        width: 86px;
+        height: 115px;
+        pointer-events: none;
+        z-index: 35;
+        transition:
+          transform 0.35s ease,
+          filter 0.35s ease,
+          top 0.07s linear,
+          left 0.07s linear;
+        filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.45));
+      }
+
+      /* In Positioning mode, hand raises up into mid-air */
+      .stage-mode-position .physical-hand,
+      .stage-mode-placed .physical-hand {
+        filter: drop-shadow(0 38px 20px rgba(0, 0, 0, 0.65));
+        transform: scale(1.1) translateY(-14px);
+      }
+
+      /* Right Sidebar: Controls & Instructions */
+      .info-sidebar {
+        background: var(--panel-bg);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .sidebar-section {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .sidebar-section h3 {
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--accent);
+      }
+
+      .sidebar-section p {
+        font-size: 0.84rem;
+        color: #cbd5e1;
+        line-height: 1.48;
+      }
+
+      .interaction-hint-box {
+        background: rgba(15, 23, 42, 0.65);
+        border-left: 3px solid var(--accent);
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        color: #e2e8f0;
+        line-height: 1.45;
+      }
+
+      /* Quick shape picker pills in sidebar */
+      .shape-pills {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+        margin-top: 4px;
+      }
+
+      .shape-pill {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: var(--text-main);
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+
+      .shape-pill:hover {
+        background: rgba(56, 189, 248, 0.15);
+        border-color: var(--accent);
+      }
+
+      .shape-pill.selected {
+        background: rgba(56, 189, 248, 0.22);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .btn-secondary {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: var(--text-main);
+        padding: 9px 12px;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        width: 100%;
+      }
+
+      .btn-secondary:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.25);
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: rgba(16, 185, 129, 0.12);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="title-row">
+        <h1>
+          <span>Paper-to-Screen Spatial Continuum</span>
+          <span class="badge">4:3 Interactive Prototype</span>
+        </h1>
+        <div class="status-pill">
+          <span>●</span>
+          <span id="modeStatusText">Paper Mode: Select an Object</span>
+        </div>
+      </div>
+
+      <!-- 2-Step Interactive Flow -->
+      <div class="stepper">
+        <button class="step-btn active" onclick="setMode('select')" id="btnModeSelect">
+          <span class="step-num">Step 1 • Paper Mode ("Put that...")</span>
+          <span class="step-title">Full-Screen 4:3 Paper View</span>
+          <span class="step-desc">Hover & click any shape on the paper to grab it and lift your hand.</span>
+        </button>
+        <button class="step-btn" onclick="setMode('position')" id="btnModePosition">
+          <span class="step-num">Step 2 • Screen Placement ("...There!")</span>
+          <span class="step-title">Perspective Dock & Single-Click Drop</span>
+          <span class="step-desc">Click once on screen to place the object. Hover & click docked paper to return.</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="stage-container">
+      <!-- Interactive Hardware Simulation Rig -->
+      <div class="hardware-rig stage-mode-select" id="hardwareRig">
+        <div class="zone-label screen-label">Laptop Screen Space (4:3 Display)</div>
+        <div class="zone-label desk-label">Physical Desk Space (ArUco Tracked)</div>
+
+        <div class="laptop-assembly">
+          <!-- Top-Mounted Downward Webcam -->
+          <div class="webcam" title="Top-mounted downward tracking webcam">
+            <div class="webcam-lens"></div>
+          </div>
+          <div class="webcam-fov"></div>
+
+          <!-- Laptop 4:3 Display (480 x 360) -->
+          <div class="laptop-bezel" id="laptopBezel">
+            <!-- Upper 3D Spatial Workspace (Revealed when paper docks at bottom) -->
+            <div class="screen-workspace-bg" id="screenWorkspaceBg">
+              <div class="workspace-header" id="workspaceHeader">
+                <span id="workspaceBannerText">CLICK ANYWHERE IN WORKSPACE TO PLACE OBJECT</span>
+                <span id="placedCounter">PLACED: 0</span>
+              </div>
+              <!-- Holds all dropped shapes on the 4:3 screen -->
+              <canvas id="workspaceDropCanvas" width="480" height="360"></canvas>
+            </div>
+
+            <!-- Digital Twin of the 4:3 Paper -->
+            <div class="screen-paper-twin" id="screenPaperTwin">
+              <div class="aruco tl"><span></span><span class="w"></span><span class="w"></span><span></span></div>
+              <div class="aruco tr"><span class="w"></span><span></span><span></span><span class="w"></span></div>
+              <div class="aruco bl"><span></span><span></span><span class="w"></span><span class="w"></span></div>
+              <div class="aruco br"><span class="w"></span><span class="w"></span><span></span><span></span></div>
+
+              <!-- Digital Twin Canvas (480 x 360) -->
+              <canvas id="screenCanvas" width="480" height="360"></canvas>
+
+              <!-- Dynamic Target Selection Bounding Box on Paper (Step 1) -->
+              <div class="selection-box" id="paperSelectionBox">
+                <div class="selection-label" id="selectionLabel">CLICK TO GRAB: MUG</div>
+                <div class="reticle-corner tl"></div>
+                <div class="reticle-corner tr"></div>
+                <div class="reticle-corner bl"></div>
+                <div class="reticle-corner br"></div>
+              </div>
+
+              <!-- Selectable Hover Indicator when Virtual Paper is Docked in Perspective -->
+              <div class="virtual-paper-selectable-overlay">
+                <div class="vp-bracket tl"></div>
+                <div class="vp-bracket tr"></div>
+                <div class="vp-bracket bl"></div>
+                <div class="vp-bracket br"></div>
+                <div class="vp-select-badge">
+                  <span>⤢</span>
+                  <span>CLICK TO FOCUS PAPER</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Floating Extracted Shape in Screen Space (Active only before drop) -->
+            <div class="floating-virtual-shape" id="floatingShapeBox">
+              <div class="reticle-corner tl"></div>
+              <div class="reticle-corner tr"></div>
+              <div class="reticle-corner bl"></div>
+              <div class="reticle-corner br"></div>
+              <canvas id="floatingShapeCanvas" width="96" height="86"></canvas>
+              <div class="drop-prompt-tag">CLICK ONCE TO PLACE</div>
+            </div>
+
+            <!-- Projected Hand Cursor on Screen -->
+            <div class="screen-hand-cursor" id="screenCursor" style="left: 30%; top: 32%">
+              <div class="cursor-ring"></div>
+            </div>
+
+            <div class="dock-return-hint" id="dockReturnHint">↓ Hover & click docked virtual paper to return to Paper Mode</div>
+          </div>
+
+          <div class="laptop-base"></div>
+        </div>
+
+        <!-- Physical Desk & 4:3 Paper -->
+        <div class="desk-surface" id="deskSurface">
+          <div class="physical-paper-wrapper" id="physicalPaper" title="Click any shape on the physical paper to select it!">
+            <!-- 4 Corner ArUco Markers -->
+            <div class="aruco tl"><span></span><span class="w"></span><span class="w"></span><span></span></div>
+            <div class="aruco tr"><span class="w"></span><span></span><span></span><span class="w"></span></div>
+            <div class="aruco bl"><span></span><span></span><span class="w"></span><span class="w"></span></div>
+            <div class="aruco br"><span class="w"></span><span class="w"></span><span></span><span></span></div>
+
+            <!-- Physical Paper Canvas (480 x 360) with 4 Shapes -->
+            <canvas id="deskCanvas" width="480" height="360"></canvas>
+          </div>
+        </div>
+
+        <!-- Voice Command Speech Bubble -->
+        <div class="speech-bubble" id="speechBubble" style="left: 60%; top: 470px">
+          <span class="mic-icon"></span>
+          <span id="speechText">"Put that mug..."</span>
+        </div>
+
+        <!-- Animated Pointing User Hand SVG -->
+        <div class="physical-hand" id="physicalHand" style="left: 42%; top: 490px">
+          <svg viewBox="0 0 100 130" width="100%" height="100%">
+            <g>
+              <path
+                d="M32,8 C32,2 44,2 44,8 L44,48 C50,46 56,48 58,54 C64,53 70,56 72,62 C78,63 82,68 82,76 L80,98 L68,115 L68,128 L34,128 L34,112 C22,102 18,86 18,70 C18,58 26,54 32,56 Z"
+                fill="#f8fafc"
+                stroke="#0f172a"
+                stroke-width="3.5"
+                stroke-linejoin="round"
+              />
+              <path d="M35,10 L41,10" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" />
+              <path d="M44,48 L44,66 M58,54 L58,70 M72,62 L72,76" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" />
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Sidebar: Instructions & Quick Controls -->
+      <aside class="info-sidebar">
+        <div class="sidebar-section">
+          <h3 id="sidebarStepHeading">Step 1: Select on Paper</h3>
+          <p id="sidebarStepBody">The 4:3 paper fills the entire screen in 1:1 orientation. Hover over any of the 4 shapes and click to grab it.</p>
+        </div>
+
+        <div class="interaction-hint-box" id="interactionHint">
+          <strong>Try it now:</strong> Click any shape on the paper to enter placement mode. Once you place it on the screen, placement stops—hover over the
+          docked virtual paper at the bottom to see its selectable indicator and click to return!
+        </div>
+
+        <div class="sidebar-section">
+          <h3>Shapes on Paper (Click to Grab)</h3>
+          <div class="shape-pills" id="shapePillsContainer">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h3>Workspace Actions</h3>
+          <button class="btn-secondary" onclick="clearPlacedShapes()">✕ Clear Placed Screen Shapes</button>
+        </div>
+      </aside>
+    </main>
+
+    <script>
+      // --- Shape Definitions on the 480x360 (4:3) Paper ---
+      const SHAPES = [
+        {
+          id: "mug",
+          name: "Coffee Mug",
+          x: 150,
+          y: 110,
+          draw: (ctx, x, y, scale = 1) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 3;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+
+            // Mug body
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.moveTo(-22, -20);
+            ctx.lineTo(-19, 22);
+            ctx.quadraticCurveTo(0, 27, 19, 22);
+            ctx.lineTo(22, -20);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Top rim
+            ctx.beginPath();
+            ctx.ellipse(0, -20, 22, 6, 0, 0, Math.PI * 2);
+            ctx.fillStyle = "#e2e8f0";
+            ctx.fill();
+            ctx.stroke();
+
+            // Handle
+            ctx.beginPath();
+            ctx.moveTo(21, -12);
+            ctx.bezierCurveTo(38, -14, 38, 14, 20, 12);
+            ctx.stroke();
+            ctx.restore();
+          },
+        },
+        {
+          id: "star",
+          name: "Star",
+          x: 330,
+          y: 110,
+          draw: (ctx, x, y, scale = 1) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.strokeStyle = "#0f172a";
+            ctx.fillStyle = "#fef08a";
+            ctx.lineWidth = 3;
+            ctx.lineJoin = "round";
+
+            const spikes = 5;
+            const outerR = 28;
+            const innerR = 13;
+            let rot = (Math.PI / 2) * 3;
+            const step = Math.PI / spikes;
+
+            ctx.beginPath();
+            ctx.moveTo(0, -outerR);
+            for (let i = 0; i < spikes; i++) {
+              ctx.lineTo(Math.cos(rot) * outerR, Math.sin(rot) * outerR);
+              rot += step;
+              ctx.lineTo(Math.cos(rot) * innerR, Math.sin(rot) * innerR);
+              rot += step;
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          },
+        },
+        {
+          id: "cube",
+          name: "3D Cube",
+          x: 150,
+          y: 250,
+          draw: (ctx, x, y, scale = 1) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 2.8;
+            ctx.lineJoin = "round";
+
+            // Top face
+            ctx.fillStyle = "#bae6fd";
+            ctx.beginPath();
+            ctx.moveTo(0, -26);
+            ctx.lineTo(25, -13);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(-25, -13);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Left face
+            ctx.fillStyle = "#7dd3fc";
+            ctx.beginPath();
+            ctx.moveTo(-25, -13);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(0, 26);
+            ctx.lineTo(-25, 13);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Right face
+            ctx.fillStyle = "#38bdf8";
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(25, -13);
+            ctx.lineTo(25, 13);
+            ctx.lineTo(0, 26);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          },
+        },
+        {
+          id: "plant",
+          name: "Houseplant",
+          x: 330,
+          y: 250,
+          draw: (ctx, x, y, scale = 1) => {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 2.8;
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+
+            // Leaves
+            ctx.fillStyle = "#86efac";
+            ctx.beginPath();
+            ctx.ellipse(-11, -12, 12, 6, -0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(11, -12, 12, 6, 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = "#4ade80";
+            ctx.beginPath();
+            ctx.ellipse(0, -20, 7, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Terracotta Pot
+            ctx.fillStyle = "#fdba74";
+            ctx.beginPath();
+            ctx.moveTo(-16, -2);
+            ctx.lineTo(16, -2);
+            ctx.lineTo(12, 22);
+            ctx.lineTo(-12, 22);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          },
+        },
+      ];
+
+      // --- Application State ---
+      // Modes:
+      // 'select'   -> Full-screen paper mode, selecting a shape
+      // 'position' -> Paper docked in perspective, actively carrying a shape in mid-air
+      // 'placed'   -> Object placed once; placement stopped, waiting for user to click docked paper to return
+      let currentMode = "select";
+      let hoveredShape = SHAPES[0];
+      let selectedShape = SHAPES[0];
+      let placedShapes = [];
+
+      // --- DOM References ---
+      const hardwareRig = document.getElementById("hardwareRig");
+      const deskCanvas = document.getElementById("deskCanvas");
+      const screenCanvas = document.getElementById("screenCanvas");
+      const floatingShapeCanvas = document.getElementById("floatingShapeCanvas");
+      const workspaceDropCanvas = document.getElementById("workspaceDropCanvas");
+
+      const deskCtx = deskCanvas.getContext("2d");
+      const screenCtx = screenCanvas.getContext("2d");
+      const floatingCtx = floatingShapeCanvas.getContext("2d");
+      const dropCtx = workspaceDropCanvas.getContext("2d");
+
+      const physicalPaper = document.getElementById("physicalPaper");
+      const screenPaperTwin = document.getElementById("screenPaperTwin");
+      const screenWorkspaceBg = document.getElementById("screenWorkspaceBg");
+      const laptopBezel = document.getElementById("laptopBezel");
+
+      const paperSelectionBox = document.getElementById("paperSelectionBox");
+      const selectionLabel = document.getElementById("selectionLabel");
+      const floatingShapeBox = document.getElementById("floatingShapeBox");
+      const screenCursor = document.getElementById("screenCursor");
+      const physicalHand = document.getElementById("physicalHand");
+      const speechBubble = document.getElementById("speechBubble");
+      const speechText = document.getElementById("speechText");
+      const workspaceBannerText = document.getElementById("workspaceBannerText");
+      const dockReturnHint = document.getElementById("dockReturnHint");
+
+      // --- Render All 4 Shapes on the 480x360 Paper & Mirror to Screen ---
+      function renderPaperShapes() {
+        deskCtx.clearRect(0, 0, deskCanvas.width, deskCanvas.height);
+
+        SHAPES.forEach((shape) => {
+          deskCtx.save();
+          deskCtx.fillStyle = "#f8fafc";
+          deskCtx.strokeStyle = "#cbd5e1";
+          deskCtx.lineWidth = 1.5;
+          deskCtx.setLineDash([4, 4]);
+          ctxArc(deskCtx, shape.x, shape.y, 44);
+          deskCtx.fill();
+          deskCtx.stroke();
+          deskCtx.restore();
+
+          shape.draw(deskCtx, shape.x, shape.y, 1.05);
+        });
+
+        // Mirror onto the Laptop Screen's Digital Twin Paper
+        screenCtx.clearRect(0, 0, screenCanvas.width, screenCanvas.height);
+        screenCtx.drawImage(deskCanvas, 0, 0);
+      }
+
+      function ctxArc(ctx, x, y, r) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+      }
+
+      // --- Render Selected Shape Inside Floating Box ---
+      function renderFloatingShape(shape) {
+        floatingCtx.clearRect(0, 0, floatingShapeCanvas.width, floatingShapeCanvas.height);
+        shape.draw(floatingCtx, 48, 44, 1.05);
+      }
+
+      // --- Render Dropped Shapes in 4:3 Screen Workspace ---
+      function renderDroppedWorkspaceShapes() {
+        dropCtx.clearRect(0, 0, workspaceDropCanvas.width, workspaceDropCanvas.height);
+
+        placedShapes.forEach((item) => {
+          dropCtx.save();
+          dropCtx.fillStyle = "rgba(255, 255, 255, 0.95)";
+          dropCtx.strokeStyle = "#38bdf8";
+          dropCtx.lineWidth = 2.5;
+          dropCtx.shadowColor = "rgba(0, 0, 0, 0.35)";
+          dropCtx.shadowBlur = 12;
+          dropCtx.shadowOffsetY = 6;
+          dropCtx.beginPath();
+          dropCtx.roundRect(item.x - 42, item.y - 38, 84, 76, 10);
+          dropCtx.fill();
+          dropCtx.stroke();
+          dropCtx.restore();
+
+          item.shape.draw(dropCtx, item.x, item.y, 0.95);
+        });
+
+        document.getElementById("placedCounter").textContent = `PLACED: ${placedShapes.length}`;
+      }
+
+      function clearPlacedShapes() {
+        placedShapes = [];
+        renderDroppedWorkspaceShapes();
+      }
+
+      // --- Highlight & Position Bounding Box Around Target Shape on Paper ---
+      function focusShapeOnPaper(shape) {
+        hoveredShape = shape;
+        const normX = shape.x / deskCanvas.width;
+        const normY = shape.y / deskCanvas.height;
+
+        paperSelectionBox.style.left = `${normX * 100}%`;
+        paperSelectionBox.style.top = `${normY * 100}%`;
+        selectionLabel.textContent = `CLICK TO GRAB: ${shape.name.toUpperCase()}`;
+
+        if (currentMode === "select") {
+          speechText.textContent = `"Put that ${shape.name.toLowerCase()}..."`;
+        }
+        renderPills();
+      }
+
+      // --- Mode Transitions ('select' | 'position' | 'placed') ---
+      function setMode(mode, chosenShape = null) {
+        currentMode = mode;
+        if (chosenShape) {
+          selectedShape = chosenShape;
+          focusShapeOnPaper(chosenShape);
+        }
+
+        document.getElementById("btnModeSelect").classList.toggle("active", mode === "select");
+        document.getElementById("btnModePosition").classList.toggle("active", mode === "position" || mode === "placed");
+
+        if (mode === "select") {
+          hardwareRig.className = "hardware-rig stage-mode-select";
+          document.getElementById("modeStatusText").textContent = "Paper Mode: Select an Object";
+          document.getElementById("sidebarStepHeading").textContent = "Step 1: Select a Shape on Paper";
+          document.getElementById("sidebarStepBody").textContent =
+            "The 4:3 paper fills 100% of the laptop screen in the same orientation. Point at any shape on the paper and click to grab it.";
+          document.getElementById("interactionHint").innerHTML =
+            "<strong>Try it now:</strong> Hover over any of the 4 shapes on the paper (mug, star, cube, plant) and <strong>click it</strong> to lift it into screen space!";
+
+          speechBubble.style.left = "60%";
+          speechBubble.style.top = "470px";
+          speechText.textContent = `"Put that ${hoveredShape.name.toLowerCase()}..."`;
+
+          const normX = hoveredShape.x / deskCanvas.width;
+          const normY = hoveredShape.y / deskCanvas.height;
+          updateHandAndCursor(normX, normY, false);
+        } else if (mode === "position") {
+          hardwareRig.className = "hardware-rig stage-mode-position";
+          renderFloatingShape(selectedShape);
+
+          workspaceBannerText.textContent = `CLICK ONCE IN WORKSPACE TO PLACE "${selectedShape.name.toUpperCase()}"`;
+          dockReturnHint.textContent = "↓ Hover & click docked virtual paper to return to Paper Mode";
+
+          document.getElementById("modeStatusText").textContent = `Placement Mode: Carrying ${selectedShape.name}`;
+          document.getElementById("sidebarStepHeading").textContent = `Step 2: Place "${selectedShape.name}"`;
+          document.getElementById("sidebarStepBody").textContent =
+            "The paper has slid down into a 3D perspective dock. Move your cursor in the upper 4:3 workspace and click once to place the object.";
+          document.getElementById("interactionHint").innerHTML =
+            "<strong>Try it now:</strong> <strong>Click once in the upper screen</strong> to place the shape. Placement mode will stop automatically after 1 drop!";
+
+          speechBubble.style.left = "64%";
+          speechBubble.style.top = "95px";
+          speechText.textContent = '"...There!"';
+
+          updateHandAndCursor(0.5, 0.35, true);
+        } else if (mode === "placed") {
+          // Placement completed after 1 drop: floating object stops following cursor
+          hardwareRig.className = "hardware-rig stage-mode-placed";
+
+          workspaceBannerText.textContent = `✓ ${selectedShape.name.toUpperCase()} PLACED — CLICK DOCKED PAPER BELOW TO SELECT ANOTHER`;
+          dockReturnHint.textContent = "↓ Hover & click the glowing virtual paper to return to Paper Mode";
+
+          document.getElementById("modeStatusText").textContent = "Object Placed (Click Paper to Return)";
+          document.getElementById("sidebarStepHeading").textContent = "Placement Complete";
+          document.getElementById("sidebarStepBody").textContent =
+            "Placement mode has stopped after placing your object. Hover over the docked virtual paper at the bottom of the screen to see its selectable indicator.";
+          document.getElementById("interactionHint").innerHTML =
+            "<strong>Next step:</strong> Move your cursor over the <strong>docked perspective paper</strong> at the bottom of the screen and <strong>click it</strong> to return to Paper Mode!";
+
+          speechText.textContent = `"Placed ${selectedShape.name}!"`;
+        }
+
+        renderPills();
+      }
+
+      // --- Update Hand & Cursor Positions ---
+      function updateHandAndCursor(normX, normY, isMidAir = false) {
+        normX = Math.max(0.06, Math.min(0.94, normX));
+        normY = Math.max(0.06, Math.min(0.94, normY));
+
+        screenCursor.style.left = `${normX * 100}%`;
+        screenCursor.style.top = `${normY * 100}%`;
+
+        if (!isMidAir) {
+          const deskRect = physicalPaper.getBoundingClientRect();
+          const rigRect = hardwareRig.getBoundingClientRect();
+          const handX = deskRect.left - rigRect.left + normX * deskRect.width - 30;
+          const handY = deskRect.top - rigRect.top + normY * deskRect.height - 8;
+
+          physicalHand.style.left = `${handX}px`;
+          physicalHand.style.top = `${handY}px`;
+        } else {
+          const bezelRect = laptopBezel.getBoundingClientRect();
+          const rigRect = hardwareRig.getBoundingClientRect();
+          const handX = bezelRect.left - rigRect.left + normX * bezelRect.width - 34;
+          const handY = bezelRect.top - rigRect.top + normY * bezelRect.height + 50;
+
+          physicalHand.style.left = `${handX}px`;
+          physicalHand.style.top = `${handY}px`;
+
+          if (currentMode === "position") {
+            floatingShapeBox.style.left = `${normX * 100}%`;
+            floatingShapeBox.style.top = `${normY * 100}%`;
+          }
+        }
+      }
+
+      // --- Find Nearest Shape on Paper ---
+      function getNearestShape(canvasX, canvasY) {
+        let best = SHAPES[0];
+        let minDist = Infinity;
+        SHAPES.forEach((s) => {
+          const d = Math.hypot(s.x - canvasX, s.y - canvasY);
+          if (d < minDist) {
+            minDist = d;
+            best = s;
+          }
+        });
+        return best;
+      }
+
+      // --- Pointer Tracking & Click Interactions ---
+      window.addEventListener("pointermove", (e) => {
+        if (currentMode === "select") {
+          // Check if hovering over physical paper OR full-screen digital paper
+          const deskRect = physicalPaper.getBoundingClientRect();
+          const screenRect = screenPaperTwin.getBoundingClientRect();
+
+          let activeRect = null;
+          if (e.clientX >= deskRect.left && e.clientX <= deskRect.right && e.clientY >= deskRect.top && e.clientY <= deskRect.bottom) {
+            activeRect = deskRect;
+          } else if (e.clientX >= screenRect.left && e.clientX <= screenRect.right && e.clientY >= screenRect.top && e.clientY <= screenRect.bottom) {
+            activeRect = screenRect;
+          }
+
+          if (activeRect) {
+            const normX = (e.clientX - activeRect.left) / activeRect.width;
+            const normY = (e.clientY - activeRect.top) / activeRect.height;
+            updateHandAndCursor(normX, normY, false);
+
+            const nearest = getNearestShape(normX * deskCanvas.width, normY * deskCanvas.height);
+            if (nearest.id !== hoveredShape.id) {
+              focusShapeOnPaper(nearest);
+            }
+          }
+        } else if (currentMode === "position" || currentMode === "placed") {
+          // Track cursor inside the 4:3 laptop screen bezel
+          const bezelRect = laptopBezel.getBoundingClientRect();
+          if (e.clientX >= bezelRect.left && e.clientX <= bezelRect.right && e.clientY >= bezelRect.top && e.clientY <= bezelRect.bottom) {
+            const normX = (e.clientX - bezelRect.left) / bezelRect.width;
+            const normY = (e.clientY - bezelRect.top) / bezelRect.height;
+
+            // While actively positioning, clamp floating shape to upper workspace above dock
+            const clampedY = currentMode === "position" ? Math.min(0.64, normY) : normY;
+            updateHandAndCursor(normX, clampedY, true);
+          }
+        }
+      });
+
+      // Clicking on Physical Paper
+      physicalPaper.addEventListener("click", (e) => {
+        if (currentMode === "select") {
+          const rect = physicalPaper.getBoundingClientRect();
+          const normX = (e.clientX - rect.left) / rect.width;
+          const normY = (e.clientY - rect.top) / rect.height;
+          const picked = getNearestShape(normX * deskCanvas.width, normY * deskCanvas.height);
+          setMode("position", picked);
+        } else {
+          // Clicking physical paper while in placement or post-placement returns to Paper Mode
+          setMode("select");
+        }
+      });
+
+      // Clicking on Screen Virtual Paper (Full-Screen in Step 1, Docked Perspective in Step 2)
+      screenPaperTwin.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (currentMode === "select") {
+          const rect = screenPaperTwin.getBoundingClientRect();
+          const normX = (e.clientX - rect.left) / rect.width;
+          const normY = (e.clientY - rect.top) / rect.height;
+          const picked = getNearestShape(normX * deskCanvas.width, normY * deskCanvas.height);
+          setMode("position", picked);
+        } else {
+          // Clicking the docked perspective paper transitions back to Full-Screen Paper Mode
+          setMode("select");
+        }
+      });
+
+      // Clicking in the Upper Screen Workspace Places the Object ONCE and Stops Placement Mode
+      screenWorkspaceBg.addEventListener("click", (e) => {
+        // Only allow dropping while in active 'position' mode
+        if (currentMode !== "position") return;
+
+        const bezelRect = laptopBezel.getBoundingClientRect();
+        const normX = (e.clientX - bezelRect.left) / bezelRect.width;
+        const normY = Math.min(0.64, (e.clientY - bezelRect.top) / bezelRect.height);
+
+        placedShapes.push({
+          shape: selectedShape,
+          x: normX * workspaceDropCanvas.width,
+          y: normY * workspaceDropCanvas.height,
+        });
+
+        renderDroppedWorkspaceShapes();
+
+        // Immediately stop placement mode after placing the object once
+        setMode("placed");
+      });
+
+      // --- Sidebar Shape Pills ---
+      function renderPills() {
+        const container = document.getElementById("shapePillsContainer");
+        container.innerHTML = SHAPES.map(
+          (s) => `
+      <button class="shape-pill ${(currentMode === "position" || currentMode === "placed" ? selectedShape.id : hoveredShape.id) === s.id ? "selected" : ""}"
+              onclick="setMode('position', SHAPES.find(item => item.id === '${s.id}'))">
+        ${s.name}
+      </button>
+    `,
+        ).join("");
+      }
+
+      // --- Initialize ---
+      renderPaperShapes();
+      renderDroppedWorkspaceShapes();
+      focusShapeOnPaper(SHAPES[0]);
+      setMode("select", SHAPES[0]);
+    </script>
+  </body>
+</html>

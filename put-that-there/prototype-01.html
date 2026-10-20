@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Paper-to-Screen Spatial Interaction Prototype</title>
+  <style>
+    :root {
+      --blue: #2563eb;
+      --blue-light: #60a5fa;
+      --bg-wood: #dfcbb2;
+      --bg-wood-line: #d4bda1;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #1e293b;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Top Control Bar */
+    .hud-header {
+      width: 100%;
+      max-width: 1020px;
+      margin-top: 12px;
+      padding: 10px 18px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #f8fafc;
+      z-index: 100;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+    }
+
+    .steps-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .step-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .step-pill:hover {
+      color: #e2e8f0;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .step-pill.active {
+      color: #ffffff;
+      background: var(--blue);
+      border-color: var(--blue-light);
+      box-shadow: 0 0 16px rgba(37, 99, 235, 0.5);
+    }
+
+    .step-arrow {
+      color: #64748b;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .hint-banner {
+      font-size: 13px;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .kbd {
+      background: #334155;
+      border: 1px solid #475569;
+      border-radius: 5px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #f8fafc;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-action:hover {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    /* Main Interactive Scene */
+    .scene-viewport {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      perspective: 1100px;
+      cursor: none;
+      overflow: hidden;
+    }
+
+    /* Desk Surface */
+    .desk-surface {
+      position: absolute;
+      bottom: -80px;
+      width: 130%;
+      height: 62%;
+      background-color: var(--bg-wood);
+      background-image: 
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 18px,
+          rgba(160, 120, 80, 0.08) 18px,
+          rgba(160, 120, 80, 0.08) 20px
+        ),
+        linear-gradient(180deg, #bfa68a 0%, #dfcbb2 18%, #ead8c3 100%);
+      border-top: 4px solid #a88d70;
+      transform: rotateX(28deg);
+      transform-origin: top center;
+      box-shadow: inset 0 25px 40px rgba(0,0,0,0.18), 0 -10px 30px rgba(0,0,0,0.4);
+      z-index: 1;
+    }
+
+    /* Laptop Assembly */
+    .laptop-assembly {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    /* Webcam */
+    .webcam-unit {
+      position: relative;
+      width: 58px;
+      height: 24px;
+      background: #1e293b;
+      border: 2px solid #475569;
+      border-radius: 7px 7px 3px 3px;
+      margin-bottom: -5px;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    .webcam-lens {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #60a5fa, #0f172a 70%);
+      border: 2px solid #334155;
+    }
+
+    .webcam-led {
+      position: absolute;
+      right: 7px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+    }
+
+    /* Webcam FOV Rays */
+    .fov-rays {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 780px;
+      height: 540px;
+      pointer-events: none;
+      z-index: 30;
+    }
+
+    /* Laptop Screen Bezel */
+    .laptop-lid {
+      width: 500px;
+      height: 310px;
+      background: #1e293b;
+      border: 4px solid #334155;
+      border-radius: 16px 16px 6px 6px;
+      padding: 12px;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.55);
+      position: relative;
+    }
+
+    /* Screen Display */
+    .screen-display {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(180deg, #dbeafe 0%, #eff6ff 55%, #f8fafc 100%);
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      perspective: 750px;
+      box-shadow: inset 0 0 12px rgba(0,0,0,0.12);
+    }
+
+    /* Upper Workspace UI (Visible when paper docks) */
+    .screen-workspace-grid {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(to right, rgba(37, 99, 235, 0.07) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(37, 99, 235, 0.07) 1px, transparent 1px);
+      background-size: 24px 24px;
+      opacity: 0;
+      transition: opacity 0.45s ease;
+    }
+
+    .screen-display.docked-mode .screen-workspace-grid {
+      opacity: 1;
+    }
+
+    /* Downward Transition Arrows (like Panel 3) */
+    .dock-arrows {
+      position: absolute;
+      bottom: 92px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 190px;
+      display: flex;
+      justify-content: space-between;
+      opacity: 0;
+      transition: opacity 0.35s ease, transform 0.35s ease;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .screen-display.docked-mode .dock-arrows {
+      opacity: 0.9;
+      transform: translateX(-50%) translateY(6px);
+    }
+
+    /* Digital Twin Paper inside Laptop Screen */
+    .digital-paper-container {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+      transform-origin: bottom center;
+      transition: 
+        transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+        border-color 0.4s ease;
+      border: 2px solid #93c5fd;
+      z-index: 5;
+    }
+
+    .screen-display.docked-mode .digital-paper-container {
+      transform: translateY(34%) scaleX(0.76) scaleY(0.56) rotateX(54deg);
+      box-shadow: 0 -10px 25px rgba(30, 58, 138, 0.18), 0 8px 20px rgba(0,0,0,0.25);
+      border-color: #3b82f6;
+      border-radius: 4px;
+    }
+
+    .digital-paper-container.hover-return {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.25), 0 -10px 25px rgba(30, 58, 138, 0.25);
+    }
+
+    #screenPaperCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Selection Reticle on Digital Paper (Step 2) */
+    .paper-selection-reticle {
+      position: absolute;
+      pointer-events: none;
+      border: 2px dashed rgba(37, 99, 235, 0.35);
+      opacity: 0;
+      transform: scale(0.92);
+      transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+      z-index: 8;
+    }
+
+    .paper-selection-reticle.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .reticle-corner {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: var(--blue);
+      border-style: solid;
+      border-width: 0;
+    }
+    .reticle-corner.tl { top: -3px; left: -3px; border-top-width: 3.5px; border-left-width: 3.5px; }
+    .reticle-corner.tr { top: -3px; right: -3px; border-top-width: 3.5px; border-right-width: 3.5px; }
+    .reticle-corner.bl { bottom: -3px; left: -3px; border-bottom-width: 3.5px; border-left-width: 3.5px; }
+    .reticle-corner.br { bottom: -3px; right: -3px; border-bottom-width: 3.5px; border-right-width: 3.5px; }
+
+    /* Floating Virtual Object Layer on Upper Screen (Step 3) */
+    .floating-objects-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 12;
+    }
+
+    .floating-virtual-item {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      transition: transform 0.06s linear;
+      filter: drop-shadow(0 8px 14px rgba(37, 99, 235, 0.22));
+    }
+
+    .floating-virtual-item.placed {
+      filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.12));
+    }
+
+    /* Digital Twin Hand Mirror inside Screen */
+    .screen-hand-mirror {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 180px;
+      height: 220px;
+      pointer-events: none;
+      z-index: 15;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    /* Screen Space Cursor Ring when pointing in mid-air */
+    .screen-air-cursor {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border: 2.5px solid var(--blue);
+      background: rgba(59, 130, 246, 0.2);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .screen-air-cursor::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: var(--blue);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Dock Return Callout Badge */
+    .dock-return-badge {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.78);
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      z-index: 18;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      white-space: nowrap;
+    }
+
+    .screen-display.docked-mode .dock-return-badge {
+      opacity: 1;
+    }
+
+    /* Laptop Keyboard Base */
+    .laptop-base {
+      width: 550px;
+      height: 92px;
+      background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 85%, #64748b 100%);
+      border: 3px solid #334155;
+      border-top: 2px solid #475569;
+      border-radius: 6px 6px 18px 18px;
+      transform: rotateX(42deg);
+      transform-origin: top center;
+      margin-top: -3px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 8px;
+      box-shadow: 0 20px 30px rgba(0,0,0,0.35);
+    }
+
+    .keyboard-well {
+      width: 86%;
+      height: 46px;
+      background: #1e293b;
+      border-radius: 4px;
+      padding: 4px;
+      display: grid;
+      grid-template-columns: repeat(14, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 2.5px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+    }
+
+    .key-cap {
+      background: #334155;
+      border-radius: 1.5px;
+    }
+
+    .trackpad {
+      width: 130px;
+      height: 26px;
+      margin-top: 6px;
+      background: #94a3b8;
+      border: 1.5px solid #64748b;
+      border-radius: 4px;
+    }
+
+    /* Physical Landscape Paper on Desk */
+    .physical-paper-wrapper {
+      position: relative;
+      z-index: 15;
+      width: 470px;
+      height: 225px;
+      margin-top: -12px;
+      transform: rotateX(26deg);
+      transform-origin: top center;
+      background: #ffffff;
+      border: 2.5px solid #1e293b;
+      box-shadow: 0 18px 32px rgba(0,0,0,0.28);
+      transition: box-shadow 0.3s ease;
+    }
+
+    .physical-paper-wrapper:hover {
+      box-shadow: 0 20px 36px rgba(37, 99, 235, 0.22);
+    }
+
+    #physicalPaperCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* ArUco Fiducial Markers */
+    .aruco-marker {
+      position: absolute;
+      width: 28px;
+      height: 28px;
+      background: #0f172a;
+      padding: 3px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 1px;
+      pointer-events: none;
+    }
+    .aruco-marker.tl { top: 10px; left: 12px; }
+    .aruco-marker.tr { top: 10px; right: 12px; }
+    .aruco-marker.bl { bottom: 10px; left: 12px; }
+    .aruco-marker.br { bottom: 10px; right: 12px; }
+
+    .aruco-bit { background: #0f172a; }
+    .aruco-bit.w { background: #ffffff; }
+
+    /* Foreground User Silhouette (Left Shoulder/Head like Reference Image) */
+    .user-foreground-left {
+      position: absolute;
+      bottom: -20px;
+      left: -20px;
+      width: 240px;
+      height: 520px;
+      pointer-events: none;
+      z-index: 40;
+      opacity: 0.92;
+    }
+
+    /* Interactive User Right Hand & Arm Overlay */
+    .user-hand-rig {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 380px;
+      height: 580px;
+      pointer-events: none;
+      z-index: 60;
+      transform-origin: 65px 45px;
+      will-change: transform;
+      filter: drop-shadow(-6px 12px 18px rgba(0,0,0,0.32));
+    }
+
+    /* Comic Speech Bubble ("Put that" / "There") */
+    .speech-bubble {
+      position: fixed;
+      top: 0;
+      left: 0;
+      background: #ffffff;
+      border: 3px solid #0f172a;
+      border-radius: 50%;
+      padding: 12px 24px;
+      font-family: "Comic Sans MS", "Chalkboard SE", "Bradley Hand", cursive, sans-serif;
+      font-size: 21px;
+      font-weight: 700;
+      color: #0f172a;
+      pointer-events: none;
+      z-index: 75;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+      opacity: 0;
+      transform: translate(-50%, -100%) scale(0.6);
+      transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.18, 1.25, 0.4, 1);
+      white-space: nowrap;
+    }
+
+    .speech-bubble.show {
+      opacity: 1;
+      transform: translate(-50%, -100%) scale(1);
+    }
+
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -14px;
+      left: 24px;
+      width: 0;
+      height: 0;
+      border-left: 10px solid transparent;
+      border-right: 14px solid transparent;
+      border-top: 16px solid #0f172a;
+      transform: rotate(18deg);
+    }
+
+    .speech-bubble::before {
+      content: '';
+      position: absolute;
+      bottom: -9px;
+      left: 26px;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 11px solid transparent;
+      border-top: 13px solid #ffffff;
+      transform: rotate(18deg);
+      z-index: 1;
+    }
+
+    /* Status Pill on Paper */
+    .zone-indicator {
+      position: absolute;
+      bottom: 8px;
+      right: 50px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Interactive Mode Bar -->
+  <header class="hud-header">
+    <div class="steps-bar">
+      <div class="step-pill" id="pillStep1" data-step="1">
+        <span>1. Drawing</span>
+      </div>
+      <span class="step-arrow">➔</span>
+      <div class="step-pill" id="pillStep2" data-step="2">
+        <span>2. Selecting</span>
+      </div>
+      <span class="step-arrow">➔</span>
+      <div class="step-pill" id="pillStep3" data-step="3">
+        <span>3. Positioning</span>
+      </div>
+    </div>
+
+    <div class="hint-banner" id="hintBanner">
+      <span>Move hand on <b>Physical Paper</b> &amp; click to point ("Put that"), or hold <span class="kbd">Shift</span> / choose <b>1. Drawing</b> to sketch.</span>
+    </div>
+
+    <div style="display:flex; gap:8px;">
+      <button class="btn-action" id="btnTogglePen" title="Toggle Pen vs Pointing Finger on Paper">✒️ Pen Mode: Off</button>
+      <button class="btn-action" id="btnReset">↺ Reset Mug</button>
+    </div>
+  </header>
+
+  <!-- Main Workspace Viewport -->
+  <main class="scene-viewport" id="sceneViewport">
+
+    <!-- Wooden Desk Surface -->
+    <div class="desk-surface"></div>
+
+    <!-- Laptop Assembly (Top) -->
+    <div class="laptop-assembly">
+      <!-- Top Mounted Webcam -->
+      <div class="webcam-unit">
+        <div class="webcam-lens"></div>
+        <div class="webcam-led"></div>
+      </div>
+
+      <!-- Webcam Field-of-View Blue Lines -->
+      <svg class="fov-rays" viewBox="0 0 780 540">
+        <line x1="390" y1="0" x2="25" y2="310" stroke="#60a5fa" stroke-width="1.8" stroke-opacity="0.65" />
+        <line x1="390" y1="0" x2="755" y2="310" stroke="#60a5fa" stroke-width="1.8" stroke-opacity="0.65" />
+      </svg>
+
+      <!-- Laptop Screen -->
+      <div class="laptop-lid">
+        <div class="screen-display" id="screenDisplay">
+          
+          <!-- Upper Screen Workspace Grid (Revealed in Step 3) -->
+          <div class="screen-workspace-grid"></div>
+
+          <!-- Blue Downward Arrows showing Paper Sliding Down to Dock (Step 3) -->
+          <div class="dock-arrows">
+            <svg width="26" height="44" viewBox="0 0 26 44">
+              <line x1="13" y1="2" x2="13" y2="32" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/>
+              <polygon points="5,28 21,28 13,41" fill="#2563eb"/>
+            </svg>
+            <svg width="26" height="44" viewBox="0 0 26 44">
+              <line x1="13" y1="2" x2="13" y2="32" stroke="#2563eb" stroke-width="3.5" stroke-linecap="round"/>
+              <polygon points="5,28 21,28 13,41" fill="#2563eb"/>
+            </svg>
+          </div>
+
+          <!-- Floating Virtual Objects Layer in Screen Space (Step 3) -->
+          <div class="floating-objects-layer" id="floatingObjectsLayer"></div>
+
+          <!-- Digital Twin of the Landscape Paper -->
+          <div class="digital-paper-container" id="digitalPaperContainer">
+            <canvas id="screenPaperCanvas" width="470" height="225"></canvas>
+
+            <!-- Four ArUco Corner Markers on Digital Paper -->
+            <div class="aruco-marker tl"><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div></div>
+            <div class="aruco-marker tr"><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit w"></div></div>
+            <div class="aruco-marker bl"><div class="aruco-bit w"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div></div>
+            <div class="aruco-marker br"><div class="aruco-bit"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div></div>
+
+            <!-- Blue 4-Corner Selection Reticle on Digital Paper (Step 2) -->
+            <div class="paper-selection-reticle" id="paperSelectionReticle">
+              <div class="reticle-corner tl"></div>
+              <div class="reticle-corner tr"></div>
+              <div class="reticle-corner bl"></div>
+              <div class="reticle-corner br"></div>
+            </div>
+
+            <!-- Real-time Mirrored Hand inside Digital Paper (Steps 1 & 2) -->
+            <svg class="screen-hand-mirror" id="screenHandMirror" viewBox="0 0 180 220"></svg>
+          </div>
+
+          <!-- Mid-Air Screen Pointing Target Reticle -->
+          <div class="screen-air-cursor" id="screenAirCursor"></div>
+
+          <!-- Callout at bottom when docked -->
+          <div class="dock-return-badge" id="dockReturnBadge">
+            ↓ Move hand down to paper or docked trapezoid to focus on paper again
+          </div>
+        </div>
+      </div>
+
+      <!-- Laptop Keyboard Base -->
+      <div class="laptop-base">
+        <div class="keyboard-well" id="keyboardWell"></div>
+        <div class="trackpad"></div>
+      </div>
+    </div>
+
+    <!-- Physical Landscape Paper on Desk (Bottom) -->
+    <div class="physical-paper-wrapper" id="physicalPaperWrapper">
+      <canvas id="physicalPaperCanvas" width="470" height="225"></canvas>
+
+      <!-- Four ArUco Corner Markers on Physical Paper -->
+      <div class="aruco-marker tl"><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div></div>
+      <div class="aruco-marker tr"><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit w"></div></div>
+      <div class="aruco-marker bl"><div class="aruco-bit w"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div></div>
+      <div class="aruco-marker br"><div class="aruco-bit"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div><div class="aruco-bit w"></div><div class="aruco-bit"></div></div>
+
+      <div class="zone-indicator" id="paperZoneLabel">Landscape Paper (ArUco Tracked)</div>
+    </div>
+
+    <!-- Left Foreground User Head & Shoulder Silhouette (Matches Storyboard Angle) -->
+    <svg class="user-foreground-left" viewBox="0 0 240 520">
+      <!-- Grey Sweater Shoulder -->
+      <path d="M -20 520 L -20 310 Q 55 320 130 375 L 210 520 Z" fill="#6b7280" stroke="#1f2937" stroke-width="4"/>
+      <path d="M -10 345 Q 50 365 95 435" fill="none" stroke="#4b5563" stroke-width="3"/>
+      <!-- Neck & Ear -->
+      <path d="M 10 250 L 35 335 L -20 325 L -20 250 Z" fill="#f5d0b5" stroke="#1f2937" stroke-width="3.5"/>
+      <path d="M 22 215 Q 46 218 42 252 Q 38 278 18 272" fill="#f5d0b5" stroke="#1f2937" stroke-width="3.5"/>
+      <!-- Hair / Head Back -->
+      <path d="M -25 75 Q 55 90 48 195 Q 44 235 18 255 Q 5 290 -25 295 Z" fill="#27272a" stroke="#18181b" stroke-width="4"/>
+      <path d="M -5 115 Q 28 145 22 205" fill="none" stroke="#3f3f46" stroke-width="3"/>
+    </svg>
+
+    <!-- Dynamic Speech Bubble ("Put that" / "There") -->
+    <div class="speech-bubble" id="speechBubble">Put that</div>
+
+    <!-- Interactive User Right Hand & Sleeve Rig -->
+    <svg class="user-hand-rig" id="userHandRig" viewBox="0 0 380 580"></svg>
+
+  </main>
+
+  <script>
+    (function() {
+      // Populate keyboard keys
+      const keyboardWell = document.getElementById('keyboardWell');
+      for (let i = 0; i < 56; i++) {
+        const key = document.createElement('div');
+        key.className = 'key-cap';
+        keyboardWell.appendChild(key);
+      }
+
+      // DOM Elements
+      const sceneViewport = document.getElementById('sceneViewport');
+      const screenDisplay = document.getElementById('screenDisplay');
+      const digitalPaperContainer = document.getElementById('digitalPaperContainer');
+      const physicalPaperWrapper = document.getElementById('physicalPaperWrapper');
+      const physicalCanvas = document.getElementById('physicalPaperCanvas');
+      const screenCanvas = document.getElementById('screenPaperCanvas');
+      const physCtx = physicalCanvas.getContext('2d');
+      const scrCtx = screenCanvas.getContext('2d');
+
+      const paperSelectionReticle = document.getElementById('paperSelectionReticle');
+      const floatingObjectsLayer = document.getElementById('floatingObjectsLayer');
+      const screenHandMirror = document.getElementById('screenHandMirror');
+      const screenAirCursor = document.getElementById('screenAirCursor');
+      const userHandRig = document.getElementById('userHandRig');
+      const speechBubble = document.getElementById('speechBubble');
+      const hintBanner = document.getElementById('hintBanner');
+      const btnTogglePen = document.getElementById('btnTogglePen');
+      const btnReset = document.getElementById('btnReset');
+
+      const pillStep1 = document.getElementById('pillStep1');
+      const pillStep2 = document.getElementById('pillStep2');
+      const pillStep3 = document.getElementById('pillStep3');
+
+      // Application State
+      const state = {
+        step: 2,                  // 1: Drawing, 2: Selecting, 3: Positioning
+        penMode: false,           // Whether hand holds pen on paper
+        isDrawingStroke: false,
+        mugSelected: true,        // Whether mug on paper is selected ("Put that")
+        hasFloatingMug: false,    // Whether virtual mug is attached to finger in Step 3
+        activeFloatingEl: null,
+        customStrokes: [],        // Extra ink strokes drawn by user in Step 1
+        currentStroke: null,
+        mugBounds: { x: 178, y: 54, w: 114, h: 116 }, // Mug bounding box on 470x225 canvas
+        speechTimer: null
+      };
+
+      // SVG Templates for Hand Poses (Pen vs Pointing Finger)
+      function getHandRigSVG(pose) {
+        if (pose === 'pen') {
+          // Hand holding black sketch pen + grey long sleeve
+          return `
+            <g>
+              <!-- Black Pen (Behind & In Front of Fingers) -->
+              <line x1="25" y1="35" x2="155" y2="62" stroke="#1e293b" stroke-width="11" stroke-linecap="round" />
+              <polygon points="15,33 28,30 26,40" fill="#0f172a" />
+              <!-- Hand Base & Fingers -->
+              <path d="M 85 170 
+                       C 68 145, 55 118, 48 92
+                       C 44 76, 36 56, 42 46
+                       C 48 37, 64 46, 74 58
+                       C 64 40, 52 24, 62 16
+                       C 72 8, 95 22, 112 38
+                       C 126 30, 142 36, 150 52
+                       C 162 72, 162 115, 148 158 Z" 
+                    fill="#f7d3ba" stroke="#1e293b" stroke-width="3.2" stroke-linejoin="round" />
+              <!-- Finger Creases -->
+              <path d="M 74 58 C 86 68, 96 76, 104 82" fill="none" stroke="#1e293b" stroke-width="2.6" stroke-linecap="round"/>
+              <path d="M 105 35 C 118 48, 128 62, 132 76" fill="none" stroke="#1e293b" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- Pen Nib Tip Highlight -->
+              <circle cx="17" cy="33" r="2.5" fill="#2563eb" />
+              <!-- Grey Sweater Sleeve Cuff & Arm -->
+              <path d="M 78 162 C 105 152, 136 150, 156 160 L 295 520 L 165 550 Z" 
+                    fill="#7c8594" stroke="#1e293b" stroke-width="3.5" stroke-linejoin="round"/>
+              <path d="M 82 178 C 108 168, 134 166, 154 176" fill="none" stroke="#4b5563" stroke-width="3"/>
+            </g>
+          `;
+        } else {
+          // Hand pointing with index finger + grey long sleeve
+          return `
+            <g>
+              <!-- Pointing Hand -->
+              <path d="M 92 182
+                       C 74 155, 62 132, 58 106
+                       C 45 98, 42 82, 54 75
+                       C 62 70, 74 76, 80 84
+                       L 54 32
+                       C 48 18, 56 8, 68 12
+                       C 76 15, 84 28, 95 54
+                       C 102 46, 114 48, 120 58
+                       C 130 52, 142 56, 146 68
+                       C 156 64, 166 72, 166 86
+                       C 168 116, 160 148, 152 174 Z"
+                    fill="#f7d3ba" stroke="#1e293b" stroke-width="3.2" stroke-linejoin="round" />
+              <!-- Index Fingernail & Knuckle Details -->
+              <path d="M 55 21 C 59 16, 65 16, 68 22" fill="none" stroke="#1e293b" stroke-width="2"/>
+              <path d="M 95 54 L 104 76" fill="none" stroke="#1e293b" stroke-width="2.6" stroke-linecap="round"/>
+              <path d="M 120 58 L 128 80" fill="none" stroke="#1e293b" stroke-width="2.6" stroke-linecap="round"/>
+              <path d="M 146 68 L 150 88" fill="none" stroke="#1e293b" stroke-width="2.6" stroke-linecap="round"/>
+              <!-- Grey Sweater Sleeve Cuff & Arm -->
+              <path d="M 86 172 C 112 162, 140 162, 158 172 L 305 530 L 175 560 Z" 
+                    fill="#7c8594" stroke="#1e293b" stroke-width="3.5" stroke-linejoin="round"/>
+              <path d="M 90 188 C 115 178, 138 178, 156 188" fill="none" stroke="#4b5563" stroke-width="3"/>
+            </g>
+          `;
+        }
+      }
+
+      // Shorter Hand SVG for the Digital Twin Mirror on the Laptop Screen
+      function getScreenMirrorHandSVG(pose) {
+        if (pose === 'pen') {
+          return `
+            <g>
+              <line x1="25" y1="35" x2="145" y2="60" stroke="#1e293b" stroke-width="9" stroke-linecap="round" />
+              <polygon points="15,33 27,30 25,39" fill="#0f172a" />
+              <path d="M 85 170 C 68 145, 55 118, 48 92 C 44 76, 36 56, 42 46 C 48 37, 64 46, 74 58 C 64 40, 52 24, 62 16 C 72 8, 95 22, 112 38 C 126 30, 142 36, 150 52 C 162 72, 162 115, 148 168 Z" 
+                    fill="#f7d3ba" stroke="#1e293b" stroke-width="3" stroke-linejoin="round" />
+            </g>
+          `;
+        } else {
+          return `
+            <g>
+              <path d="M 92 190 C 74 155, 62 132, 58 106 C 45 98, 42 82, 54 75 C 62 70, 74 76, 80 84 L 54 32 C 48 18, 56 8, 68 12 C 76 15, 84 28, 95 54 C 102 46, 114 48, 120 58 C 130 52, 142 56, 146 68 C 156 64, 166 72, 166 86 C 168 116, 160 155, 152 190 Z"
+                    fill="#f7d3ba" stroke="#1e293b" stroke-width="3" stroke-linejoin="round" />
+              <path d="M 95 54 L 104 76 M 120 58 L 128 80" fill="none" stroke="#1e293b" stroke-width="2.4" stroke-linecap="round"/>
+            </g>
+          `;
+        }
+      }
+
+      // Create SVG for a Floating Virtual Mug in Screen Space (Step 3)
+      function createVirtualMugElement() {
+        const el = document.createElement('div');
+        el.className = 'floating-virtual-item';
+        el.innerHTML = `
+          <svg width="110" height="105" viewBox="0 0 120 115">
+            <!-- Blue 4-Corner Selection Reticle -->
+            <g class="reticle-group" stroke="#2563eb" stroke-width="3.2" fill="none">
+              <path d="M 8 22 L 8 8 L 22 8" />
+              <path d="M 98 8 L 112 8 L 112 22" />
+              <path d="M 8 93 L 8 107 L 22 107" />
+              <path d="M 98 107 L 112 107 L 112 93" />
+            </g>
+            <!-- Mug Handle -->
+            <path d="M 76 38 C 98 38, 98 78, 76 78" stroke="#0f172a" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+            <path d="M 76 46 C 90 46, 90 70, 76 70" stroke="#0f172a" stroke-width="3" fill="none" stroke-linecap="round"/>
+            <!-- Mug Body Cylinder -->
+            <path d="M 28 30 L 28 78 C 28 89, 76 89, 76 78 L 76 30 Z" fill="#ffffff" stroke="#0f172a" stroke-width="3.5" stroke-linejoin="round"/>
+            <!-- Mug Top Rim Ellipse -->
+            <ellipse cx="52" cy="30" rx="24" ry="7.5" fill="#f8fafc" stroke="#0f172a" stroke-width="3.5"/>
+          </svg>
+        `;
+        return el;
+      }
+
+      // Draw Mug + User Custom Ink Strokes onto both Physical and Digital Canvases
+      function renderCanvases() {
+        [physCtx, scrCtx].forEach(ctx => {
+          ctx.clearRect(0, 0, 470, 225);
+
+          ctx.save();
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+
+          // 1. Draw the Base Mug in the Center of the Paper
+          const cx = 225;
+          const cy = 112;
+
+          // Mug Handle
+          ctx.beginPath();
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 4.5;
+          ctx.moveTo(cx + 30, cy - 22);
+          ctx.bezierCurveTo(cx + 58, cy - 22, cx + 58, cy + 26, cx + 30, cy + 26);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.lineWidth = 2.8;
+          ctx.moveTo(cx + 30, cy - 13);
+          ctx.bezierCurveTo(cx + 47, cy - 13, cx + 47, cy + 17, cx + 30, cy + 17);
+          ctx.stroke();
+
+          // Mug Body
+          ctx.beginPath();
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 3.8;
+          ctx.moveTo(cx - 32, cy - 32);
+          ctx.lineTo(cx - 32, cy + 26);
+          ctx.bezierCurveTo(cx - 32, cy + 42, cx + 32, cy + 42, cx + 32, cy + 26);
+          ctx.lineTo(cx + 32, cy - 32);
+          ctx.fill();
+          ctx.stroke();
+
+          // Mug Top Ellipse
+          ctx.beginPath();
+          ctx.fillStyle = '#ffffff';
+          ctx.ellipse(cx, cy - 32, 32, 9.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          // 2. Draw any user custom strokes (from Step 1 Drawing mode)
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 3.5;
+          state.customStrokes.forEach(stroke => {
+            if (stroke.length < 2) return;
+            ctx.beginPath();
+            ctx.moveTo(stroke[0].x, stroke[0].y);
+            for (let i = 1; i < stroke.length; i++) {
+              ctx.lineTo(stroke[i].x, stroke[i].y);
+            }
+            ctx.stroke();
+          });
+
+          ctx.restore();
+        });
+
+        // Position the selection reticle box around the mug on the digital paper
+        paperSelectionReticle.style.left = state.mugBounds.x + 'px';
+        paperSelectionReticle.style.top = state.mugBounds.y + 'px';
+        paperSelectionReticle.style.width = state.mugBounds.w + 'px';
+        paperSelectionReticle.style.height = state.mugBounds.h + 'px';
+      }
+
+      // Trigger Speech Bubble ("Put that" or "There")
+      function triggerSpeechBubble(text, x, y, duration = 1400) {
+        speechBubble.textContent = text;
+        speechBubble.style.left = (x + 75) + 'px';
+        speechBubble.style.top = (y - 25) + 'px';
+        speechBubble.classList.add('show');
+
+        if (state.speechTimer) clearTimeout(state.speechTimer);
+        state.speechTimer = setTimeout(() => {
+          speechBubble.classList.remove('show');
+        }, duration);
+      }
+
+      // Update Step UI Pills & Banner Hints
+      function updateStepUI(step) {
+        state.step = step;
+        pillStep1.classList.toggle('active', step === 1);
+        pillStep2.classList.toggle('active', step === 2);
+        pillStep3.classList.toggle('active', step === 3);
+
+        if (step === 1) {
+          hintBanner.innerHTML = `<span><b>1. Drawing:</b> Full-screen 1:1 paper view. Drag on the physical paper to sketch on the mug! Click <b>2. Selecting</b> or toggle Pen off to point.</span>`;
+        } else if (step === 2) {
+          hintBanner.innerHTML = `<span><b>2. Selecting:</b> Point at the mug on the paper &amp; click to say <b>"Put that"</b>. Then <b>raise your hand up</b> to the laptop screen!</span>`;
+        } else if (step === 3) {
+          hintBanner.innerHTML = `<span><b>3. Positioning:</b> Paper docked in 3D perspective! Move your finger in mid-air &amp; <b>click on the screen</b> to place the mug (<b>"There"</b>), or move hand back down to paper.</span>`;
+        }
+      }
+
+      // Ensure a floating virtual mug exists when entering Step 3 with a selected mug
+      function ensureFloatingMug(screenX, screenY) {
+        if (!state.activeFloatingEl) {
+          const el = createVirtualMugElement();
+          floatingObjectsLayer.appendChild(el);
+          state.activeFloatingEl = el;
+        }
+        state.activeFloatingEl.style.left = screenX + 'px';
+        state.activeFloatingEl.style.top = screenY + 'px';
+      }
+
+      // Update Hand Pose SVG when switching between Pen and Pointing Finger
+      function refreshHandPose(pose) {
+        if ( userHandRig.dataset.pose !== pose ) {
+          userHandRig.innerHTML = getHandRigSVG(pose);
+          screenHandMirror.innerHTML = getScreenMirrorHandSVG(pose);
+          userHandRig.dataset.pose = pose;
+        }
+      }
+
+      // Set Pen Mode Explicitly
+      function setPenMode(enabled) {
+        state.penMode = enabled;
+        btnTogglePen.innerHTML = enabled ? '✒️ Pen Mode: On' : '👆 Point Mode: On';
+        btnTogglePen.style.background = enabled ? '#2563eb' : 'rgba(255, 255, 255, 0.08)';
+        if (enabled) {
+          updateStepUI(1);
+        } else if (state.step === 1) {
+          updateStepUI(2);
+        }
+      }
+
+      // Coordinate Mapping Helper: Check where cursor is relative to Physical Paper & Laptop Screen
+      function handlePointerMove(clientX, clientY, isShiftHeld) {
+        const effectivePen = state.penMode || isShiftHeld;
+        const paperRect = physicalPaperWrapper.getBoundingClientRect();
+        const screenRect = screenDisplay.getBoundingClientRect();
+
+        // Offset so index finger tip (60, 14) or pen tip (17, 33) aligns with cursor
+        const tipOffsetX = effectivePen ? 17 : 60;
+        const tipOffsetY = effectivePen ? 33 : 14;
+        userHandRig.style.transform = `translate3d(${clientX - tipOffsetX}px, ${clientY - tipOffsetY}px, 0)`;
+
+        // Keep speech bubble near hand if visible
+        if (speechBubble.classList.contains('show')) {
+          speechBubble.style.left = (clientX + 85) + 'px';
+          speechBubble.style.top = (clientY - 22) + 'px';
+        }
+
+        // Check if hand is over Physical Paper area (with generous padding)
+        const inPaperZone = (
+          clientY >= paperRect.top - 25 &&
+          clientY <= paperRect.bottom + 40 &&
+          clientX >= paperRect.left - 40 &&
+          clientX <= paperRect.right + 40
+        );
+
+        // Check if hand is over the Laptop Screen area (Mid-Air Pointing Zone)
+        const inScreenZone = (
+          clientY >= screenRect.top - 20 &&
+          clientY <= screenRect.bottom + 15 &&
+          clientX >= screenRect.left - 30 &&
+          clientX <= screenRect.right + 30
+        );
+
+        // Check if hand moved down into the docked perspective paper area at the bottom of the screen
+        const inDockedPaperZone = (
+          state.step === 3 &&
+          inScreenZone &&
+          clientY >= screenRect.bottom - (screenRect.height * 0.34)
+        );
+
+        digitalPaperContainer.classList.toggle('hover-return', inDockedPaperZone);
+
+        if (inPaperZone) {
+          // --- USER HAND IS ON PHYSICAL PAPER (Steps 1 or 2) ---
+          screenDisplay.classList.remove('docked-mode');
+          screenAirCursor.style.opacity = '0';
+
+          // Hide floating mug while back in full-screen paper focus
+          if (state.activeFloatingEl) {
+            state.activeFloatingEl.style.opacity = '0';
+          }
+
+          // Map physical paper coordinates (0..470, 0..225)
+          const normX = Math.max(0, Math.min(1, (clientX - paperRect.left) / paperRect.width));
+          const normY = Math.max(0, Math.min(1, (clientY - paperRect.top) / paperRect.height));
+          const canvasX = normX * 470;
+          const canvasY = normY * 225;
+
+          // Position mirrored hand on the full-screen digital paper
+          const screenPaperW = screenRect.width;
+          const screenPaperH = screenRect.height;
+          const mirrorX = normX * screenPaperW - tipOffsetX;
+          const mirrorY = normY * screenPaperH - tipOffsetY;
+
+          screenHandMirror.style.opacity = '1';
+          screenHandMirror.style.transform = `translate3d(${mirrorX}px, ${mirrorY}px, 0)`;
+
+          if (effectivePen) {
+            // STEP 1: DRAWING MODE
+            refreshHandPose('pen');
+            updateStepUI(1);
+            paperSelectionReticle.classList.remove('visible');
+
+            if (state.isDrawingStroke && state.currentStroke) {
+              state.currentStroke.push({ x: canvasX, y: canvasY });
+              renderCanvases();
+            }
+          } else {
+            // STEP 2: SELECTING MODE ON PAPER
+            refreshHandPose('point');
+            updateStepUI(2);
+
+            // Check if pointing near the mug in the center of the paper
+            const nearMug = (
+              canvasX >= state.mugBounds.x - 20 &&
+              canvasX <= state.mugBounds.x + state.mugBounds.w + 20 &&
+              canvasY >= state.mugBounds.y - 20 &&
+              canvasY <= state.mugBounds.y + state.mugBounds.h + 20
+            );
+
+            if (nearMug || state.mugSelected) {
+              paperSelectionReticle.classList.add('visible');
+            } else {
+              paperSelectionReticle.classList.remove('visible');
+            }
+          }
+
+        } else if (inScreenZone) {
+          // --- USER HAS RAISED HAND TO POINT AT SCREEN SPACE (Step 3) ---
+          refreshHandPose('point');
+          updateStepUI(3);
+
+          // Slide digital paper down into 3D perspective dock at bottom of screen
+          screenDisplay.classList.add('docked-mode');
+          screenHandMirror.style.opacity = '0';
+          paperSelectionReticle.classList.remove('visible');
+
+          // Compute screen coordinates inside laptop display
+          const relX = Math.max(45, Math.min(screenRect.width - 45, clientX - screenRect.left));
+          const relY = Math.max(45, Math.min(screenRect.height - 95, clientY - screenRect.top));
+
+          screenAirCursor.style.opacity = '1';
+          screenAirCursor.style.left = relX + 'px';
+          screenAirCursor.style.top = relY + 'px';
+
+          // Move virtual mug along with the user's mid-air finger
+          ensureFloatingMug(relX, relY);
+          if (state.activeFloatingEl) {
+            state.activeFloatingEl.style.opacity = '1';
+          }
+        } else {
+          // Hand is in neutral transition area between desk and screen
+          screenHandMirror.style.opacity = '0';
+          screenAirCursor.style.opacity = '0';
+          refreshHandPose(effectivePen ? 'pen' : 'point');
+        }
+      }
+
+      // Mouse Move Listener
+      window.addEventListener('mousemove', (e) => {
+        handlePointerMove(e.clientX, e.clientY, e.shiftKey);
+      });
+
+      // Mouse Down Listener (Drawing strokes, Selecting "Put that", or Placing "There")
+      sceneViewport.addEventListener('mousedown', (e) => {
+        const effectivePen = state.penMode || e.shiftKey;
+        const paperRect = physicalPaperWrapper.getBoundingClientRect();
+        const screenRect = screenDisplay.getBoundingClientRect();
+
+        const inPaperZone = (
+          e.clientY >= paperRect.top - 20 &&
+          e.clientY <= paperRect.bottom + 30 &&
+          e.clientX >= paperRect.left - 30 &&
+          e.clientX <= paperRect.right + 30
+        );
+
+        const inScreenZone = (
+          e.clientY >= screenRect.top - 10 &&
+          e.clientY <= screenRect.bottom + 10 &&
+          e.clientX >= screenRect.left - 20 &&
+          e.clientX <= screenRect.right + 20
+        );
+
+        if (inPaperZone) {
+          const normX = Math.max(0, Math.min(1, (e.clientX - paperRect.left) / paperRect.width));
+          const normY = Math.max(0, Math.min(1, (e.clientY - paperRect.top) / paperRect.height));
+          const canvasX = normX * 470;
+          const canvasY = normY * 225;
+
+          if (effectivePen) {
+            // Start drawing ink stroke on physical paper
+            state.isDrawingStroke = true;
+            state.currentStroke = [{ x: canvasX, y: canvasY }];
+            state.customStrokes.push(state.currentStroke);
+            renderCanvases();
+          } else {
+            // Pointing selection on paper -> Trigger "Put that"
+            state.mugSelected = true;
+            paperSelectionReticle.classList.add('visible');
+            triggerSpeechBubble('Put that', e.clientX, e.clientY, 1600);
+          }
+        } else if (inScreenZone && state.step === 3) {
+          // Check if user clicked on the docked paper area at bottom to return to full-screen paper focus
+          const clickedDockedPaper = e.clientY >= screenRect.bottom - (screenRect.height * 0.32);
+          if (clickedDockedPaper) {
+            screenDisplay.classList.remove('docked-mode');
+            if (state.activeFloatingEl) state.activeFloatingEl.style.opacity = '0';
+            paperSelectionReticle.classList.add('visible');
+            updateStepUI(2);
+            return;
+          }
+
+          // Clicking in upper screen space -> Trigger "There" & stamp/bounce virtual mug
+          triggerSpeechBubble('There', e.clientX, e.clientY, 1500);
+          if (state.activeFloatingEl) {
+            state.activeFloatingEl.animate([
+              { transform: 'translate(-50%, -50%) scale(1.18)' },
+              { transform: 'translate(-50%, -50%) scale(1.0)' }
+            ], { duration: 240, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1.3)' });
+          }
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        state.isDrawingStroke = false;
+        state.currentStroke = null;
+      });
+
+      // Step Pills Click Demo Triggers (Allow clicking 1, 2, 3 at top to preview each panel state)
+      [pillStep1, pillStep2, pillStep3].forEach(pill => {
+        pill.addEventListener('click', () => {
+          const targetStep = parseInt(pill.dataset.step, 10);
+          const paperRect = physicalPaperWrapper.getBoundingClientRect();
+          const screenRect = screenDisplay.getBoundingClientRect();
+
+          if (targetStep === 1) {
+            setPenMode(true);
+            const demoX = paperRect.left + paperRect.width * 0.56;
+            const demoY = paperRect.top + paperRect.height * 0.48;
+            handlePointerMove(demoX, demoY, false);
+          } else if (targetStep === 2) {
+            setPenMode(false);
+            const demoX = paperRect.left + paperRect.width * 0.53;
+            const demoY = paperRect.top + paperRect.height * 0.52;
+            handlePointerMove(demoX, demoY, false);
+            triggerSpeechBubble('Put that', demoX, demoY, 1800);
+          } else if (targetStep === 3) {
+            setPenMode(false);
+            const demoX = screenRect.left + screenRect.width * 0.52;
+            const demoY = screenRect.top + screenRect.height * 0.34;
+            handlePointerMove(demoX, demoY, false);
+            triggerSpeechBubble('There', demoX, demoY, 1800);
+          }
+        });
+      });
+
+      // Toggle Pen Mode Button
+      btnTogglePen.addEventListener('click', () => {
+        setPenMode(!state.penMode);
+      });
+
+      // Reset Button
+      btnReset.addEventListener('click', () => {
+        state.customStrokes = [];
+        renderCanvases();
+        setPenMode(false);
+        screenDisplay.classList.remove('docked-mode');
+        if (state.activeFloatingEl) {
+          state.activeFloatingEl.style.opacity = '0';
+        }
+        paperSelectionReticle.classList.add('visible');
+        updateStepUI(2);
+      });
+
+      // Initial Boot
+      refreshHandPose('point');
+      renderCanvases();
+      paperSelectionReticle.classList.add('visible');
+      updateStepUI(2);
+
+      // Place initial hand over the mug on the physical paper (Panel 2 Pose)
+      requestAnimationFrame(() => {
+        const paperRect = physicalPaperWrapper.getBoundingClientRect();
+        const initX = paperRect.left + paperRect.width * 0.54;
+        const initY = paperRect.top + paperRect.height * 0.52;
+        handlePointerMove(initX, initY, false);
+        triggerSpeechBubble('Put that', initX, initY, 2200);
+      });
+    })();
+  </script>
+</body>
+</html>
