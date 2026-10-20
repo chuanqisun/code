@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Hand-Tracked Marionette Prototype</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #141418;
+        font-family: system-ui, sans-serif;
+        color: #eee;
+      }
+      #status {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+        background: rgba(0, 0, 0, 0.75);
+        padding: 10px 14px;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.5;
+        pointer-events: none;
+        border: 1px solid #333;
+      }
+      #cam-container {
+        position: absolute;
+        bottom: 12px;
+        left: 12px;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 210px;
+      }
+      #camera-select {
+        background: rgba(20, 20, 24, 0.9);
+        color: #eee;
+        border: 1px solid #555;
+        padding: 6px 8px;
+        border-radius: 5px;
+        font-size: 12px;
+        cursor: pointer;
+        outline: none;
+        width: 100%;
+      }
+      #camera-select:hover {
+        border-color: #888;
+      }
+      #webcam {
+        width: 100%;
+        height: 155px;
+        object-fit: cover;
+        transform: scaleX(-1);
+        border-radius: 6px;
+        border: 2px solid #444;
+        opacity: 0.85;
+        background: #000;
+      }
+      .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Initializing Rapier3D & MediaPipe Vision...</div>
+
+    <div id="cam-container">
+      <select id="camera-select" title="Switch Webcam Device">
+        <option value="">Loading cameras...</option>
+      </select>
+      <video id="webcam" autoplay playsinline muted></video>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://esm.sh/three@0.162.0";
+      import { OrbitControls } from "https://esm.sh/three@0.162.0/examples/jsm/controls/OrbitControls.js";
+      import RAPIER from "https://esm.sh/@dimforge/rapier3d-compat@0.12.0";
+      import { HandLandmarker, FilesetResolver } from "https://esm.sh/@mediapipe/tasks-vision@0.10.12";
+      import GUI from "https://esm.sh/lil-gui@0.19.1";
+
+      // ==========================================
+      // 1. 1-EURO FILTER (Zero-Lag Jitter Removal)
+      // ==========================================
+      class OneEuroFilter {
+        constructor(minCutoff = 1.0, beta = 0.05, dCutoff = 1.0) {
+          this.minCutoff = minCutoff;
+          this.beta = beta;
+          this.dCutoff = dCutoff;
+          this.xPrev = null;
+          this.dxPrev = 0;
+          this.tPrev = null;
+        }
+        alpha(cutoff, dt) {
+          const tau = 1.0 / (2 * Math.PI * cutoff);
+          return 1.0 / (1.0 + tau / dt);
+        }
+        filter(x, tMs) {
+          if (this.tPrev === null) {
+            this.xPrev = x;
+            this.tPrev = tMs;
+            return x;
+          }
+          const dt = Math.max((tMs - this.tPrev) / 1000.0, 0.001);
+          this.tPrev = tMs;
+          const dx = (x - this.xPrev) / dt;
+          const edx = this.dxPrev + this.alpha(this.dCutoff, dt) * (dx - this.dxPrev);
+          this.dxPrev = edx;
+          const cutoff = this.minCutoff + this.beta * Math.abs(edx);
+          const result = this.xPrev + this.alpha(cutoff, dt) * (x - this.xPrev);
+          this.xPrev = result;
+          return result;
+        }
+        reset() {
+          this.xPrev = null;
+          this.dxPrev = 0;
+          this.tPrev = null;
+        }
+      }
+
+      // ==========================================
+      // 2. TUNABLE CONFIGURATION
+      // ==========================================
+      const CONFIG = {
+        gravityY: -14.0,
+        stageWidth: 3.5,
+        stageDepth: 3.0,
+        baseHeight: 2.35, // Rest height of palm control plane
+        scaleMin: 0.1, // Hand far from camera (Jump / High)
+        scaleMax: 0.32, // Hand close to camera (Crouch / Low)
+        heightMin: 1.75,
+        heightMax: 3.3,
+        fingerPullMultiplier: 3.2, // Amplifies finger vertical lift
+        yawStiffness: 12.0, // How strongly torso aligns with hand yaw
+        filterBeta: 0.06,
+        filterMinCutoff: 1.2,
+      };
+
+      const statusEl = document.getElementById("status");
+      const videoEl = document.getElementById("webcam");
+      const cameraSelectEl = document.getElementById("camera-select");
+
+      // ==========================================
+      // 3. THREE.JS SCENE & STAGE SETUP
+      // ==========================================
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x141418);
+      scene.fog = new THREE.Fog(0x141418, 6, 16);
+
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 50);
+      camera.position.set(0, 1.8, 4.8);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 1.1, 0);
+      controls.update();
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const spotLight = new THREE.SpotLight(0xfff4e0, 25);
+      spotLight.position.set(1.5, 5.5, 2.5);
+      spotLight.angle = Math.PI / 3;
+      spotLight.penumbra = 0.5;
+      spotLight.castShadow = true;
+      spotLight.shadow.mapSize.set(2048, 2048);
+      scene.add(spotLight);
+
+      // Stage Floor
+      const floorMesh = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.2, 48), new THREE.MeshStandardMaterial({ color: 0x3a2d24, roughness: 0.85 }));
+      floorMesh.position.y = -0.1;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+      scene.add(new THREE.GridHelper(5, 20, 0x555555, 0x2a2a2a));
+
+      // ==========================================
+      // 4. RAPIER 3D PHYSICS & RAGDOLL CREATION
+      // ==========================================
+      await RAPIER.init();
+      const world = new RAPIER.World({ x: 0.0, y: CONFIG.gravityY, z: 0.0 });
+
+      // High-friction stage floor collider
+      const floorBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.1, 0));
+      world.createCollider(RAPIER.ColliderDesc.cylinder(0.1, 3.2).setFriction(1.5), floorBody);
+
+      const syncedBodies = [];
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0xd9a066, roughness: 0.55 });
+      const jointMat = new THREE.MeshStandardMaterial({ color: 0x8c5a32, roughness: 0.7 });
+
+      // Group index 0x00010002 prevents puppet limbs from colliding with each other
+      const PUPPET_COLLISION_GROUP = 0x00010002;
+
+      function createPart(type, size, pos, mass, linDamp = 0.8, angDamp = 1.5, mat = woodMat) {
+        const rbDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(pos.x, pos.y, pos.z).setLinearDamping(linDamp).setAngularDamping(angDamp);
+        const body = world.createRigidBody(rbDesc);
+
+        let colDesc, geom;
+        if (type === "sphere") {
+          colDesc = RAPIER.ColliderDesc.ball(size.r);
+          geom = new THREE.SphereGeometry(size.r, 20, 20);
+        } else {
+          colDesc = RAPIER.ColliderDesc.capsule(size.halfH, size.r);
+          geom = new THREE.CapsuleGeometry(size.r, size.halfH * 2, 12, 20);
+        }
+        colDesc.setMass(mass).setFriction(1.4).setCollisionGroups(PUPPET_COLLISION_GROUP);
+        world.createCollider(colDesc, body);
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+
+        syncedBodies.push({ body, mesh });
+        return { body, mesh };
+      }
+
+      // Build 10-Part Ragdoll
+      const head = createPart("sphere", { r: 0.12 }, { x: 0, y: 1.24, z: 0 }, 0.4, 1.0, 3.0);
+      const torso = createPart("capsule", { halfH: 0.18, r: 0.1 }, { x: 0, y: 0.9, z: 0 }, 2.0, 1.0, 5.0, jointMat);
+
+      const uArmL = createPart("capsule", { halfH: 0.09, r: 0.035 }, { x: -0.17, y: 0.96, z: 0 }, 0.25);
+      const lArmL = createPart("capsule", { halfH: 0.09, r: 0.03 }, { x: -0.17, y: 0.72, z: 0 }, 0.25);
+
+      const uArmR = createPart("capsule", { halfH: 0.09, r: 0.035 }, { x: 0.17, y: 0.96, z: 0 }, 0.25);
+      const lArmR = createPart("capsule", { halfH: 0.09, r: 0.03 }, { x: 0.17, y: 0.72, z: 0 }, 0.25);
+
+      const uLegL = createPart("capsule", { halfH: 0.11, r: 0.045 }, { x: -0.08, y: 0.52, z: 0 }, 0.6);
+      const lLegL = createPart("capsule", { halfH: 0.11, r: 0.04 }, { x: -0.08, y: 0.22, z: 0 }, 1.1); // Heavy boots
+
+      const uLegR = createPart("capsule", { halfH: 0.11, r: 0.045 }, { x: 0.08, y: 0.52, z: 0 }, 0.6);
+      const lLegR = createPart("capsule", { halfH: 0.11, r: 0.04 }, { x: 0.08, y: 0.22, z: 0 }, 1.1); // Heavy boots
+
+      // Add Eyes to Head so Facing Direction (Yaw) is clear
+      const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+      [-0.045, 0.045].forEach((xOffset) => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 8), eyeMat);
+        eye.position.set(xOffset, 0.02, 0.105);
+        head.mesh.add(eye);
+      });
+
+      // Connect Ragdoll Joints
+      const sph = (a, b) => RAPIER.JointData.spherical(a, b);
+      const rev = (a, b, axis) => RAPIER.JointData.revolute(a, b, axis);
+
+      // Neck, Shoulders, Hips (Ball joints)
+      world.createImpulseJoint(sph({ x: 0, y: 0.27, z: 0 }, { x: 0, y: -0.13, z: 0 }), torso.body, head.body, true);
+      world.createImpulseJoint(sph({ x: -0.15, y: 0.18, z: 0 }, { x: 0, y: 0.12, z: 0 }), torso.body, uArmL.body, true);
+      world.createImpulseJoint(sph({ x: 0.15, y: 0.18, z: 0 }, { x: 0, y: 0.12, z: 0 }), torso.body, uArmR.body, true);
+      world.createImpulseJoint(sph({ x: -0.07, y: -0.25, z: 0 }, { x: 0, y: 0.15, z: 0 }), torso.body, uLegL.body, true);
+      world.createImpulseJoint(sph({ x: 0.07, y: -0.25, z: 0 }, { x: 0, y: 0.15, z: 0 }), torso.body, uLegR.body, true);
+
+      // Elbows & Knees (Hinge joints along X-axis)
+      const xAxis = { x: 1, y: 0, z: 0 };
+      world.createImpulseJoint(rev({ x: 0, y: -0.12, z: 0 }, { x: 0, y: 0.12, z: 0 }, xAxis), uArmL.body, lArmL.body, true);
+      world.createImpulseJoint(rev({ x: 0, y: -0.12, z: 0 }, { x: 0, y: 0.12, z: 0 }, xAxis), uArmR.body, lArmR.body, true);
+      world.createImpulseJoint(rev({ x: 0, y: -0.15, z: 0 }, { x: 0, y: 0.15, z: 0 }, xAxis), uLegL.body, lLegL.body, true);
+      world.createImpulseJoint(rev({ x: 0, y: -0.15, z: 0 }, { x: 0, y: 0.15, z: 0 }, xAxis), uLegR.body, lLegR.body, true);
+
+      // ==========================================
+      // 5. THE 5 STRINGS (Kinematic Anchors + RopeJoints)
+      // ==========================================
+      const STRING_DEFS = [
+        { name: "Palm (Core)", color: 0xffffff, target: head, local: { x: 0, y: 0.11, z: 0 }, len: 1.0, offset: { x: 0, y: 0, z: 0 } },
+        { name: "Thumb (L-Arm)", color: 0xff5555, target: lArmL, local: { x: 0, y: -0.1, z: 0 }, len: 1.72, offset: { x: -0.35, y: 0, z: 0.15 } },
+        { name: "Index (L-Leg)", color: 0x55ff55, target: uLegL, local: { x: 0, y: -0.12, z: 0.04 }, len: 1.97, offset: { x: -0.14, y: 0, z: 0.3 } },
+        { name: "Middle (R-Leg)", color: 0x5599ff, target: uLegR, local: { x: 0, y: -0.12, z: 0.04 }, len: 1.97, offset: { x: 0.14, y: 0, z: 0.3 } },
+        { name: "Pinky (R-Arm)", color: 0xffcc44, target: lArmR, local: { x: 0, y: -0.1, z: 0 }, len: 1.72, offset: { x: 0.35, y: 0, z: 0.15 } },
+      ];
+
+      const stringControllers = STRING_DEFS.map((def) => {
+        const startPos = {
+          x: def.offset.x,
+          y: CONFIG.baseHeight + def.offset.y,
+          z: def.offset.z,
+        };
+
+        const anchorBody = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(startPos.x, startPos.y, startPos.z));
+
+        const ropeData = RAPIER.JointData.rope(def.len, { x: 0, y: 0, z: 0 }, def.local);
+        world.createImpulseJoint(ropeData, anchorBody, def.target.body, true);
+
+        const gizmo = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 12), new THREE.MeshBasicMaterial({ color: def.color }));
+        scene.add(gizmo);
+
+        const lineGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+        const lineMat = new THREE.LineBasicMaterial({ color: def.color, transparent: true, opacity: 0.85 });
+        const line = new THREE.Line(lineGeom, lineMat);
+        scene.add(line);
+
+        return {
+          ...def,
+          anchorBody,
+          gizmo,
+          line,
+          lineMat,
+          filters: {
+            x: new OneEuroFilter(CONFIG.filterMinCutoff, CONFIG.filterBeta),
+            y: new OneEuroFilter(CONFIG.filterMinCutoff, CONFIG.filterBeta),
+            z: new OneEuroFilter(CONFIG.filterMinCutoff, CONFIG.filterBeta),
+          },
+        };
+      });
+
+      const yawFilter = new OneEuroFilter(1.0, 0.03);
+      let targetTorsoYaw = 0;
+
+      // Crossbar visual connecting Palm Anchor to Finger Anchors
+      const perchLinesGeom = new THREE.BufferGeometry().setFromPoints(new Array(8).fill(new THREE.Vector3()));
+      const perchLines = new THREE.LineSegments(perchLinesGeom, new THREE.LineBasicMaterial({ color: 0x666666, transparent: true, opacity: 0.4 }));
+      scene.add(perchLines);
+
+      // ==========================================
+      // 6. WEBCAM SWITCHING & MEDIAPIPE INITIALIZATION
+      // ==========================================
+      let handLandmarker = null;
+      let activeStream = null;
+      let lastVideoTime = -1;
+
+      async function populateCameraList(activeDeviceId = "") {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((d) => d.kind === "videoinput");
+
+        cameraSelectEl.innerHTML = "";
+        videoDevices.forEach((dev, idx) => {
+          const opt = document.createElement("option");
+          opt.value = dev.deviceId;
+          opt.textContent = dev.label || `Camera ${idx + 1}`;
+          if (dev.deviceId === activeDeviceId) opt.selected = true;
+          cameraSelectEl.appendChild(opt);
+        });
+      }
+
+      async function startCamera(deviceId = "") {
+        try {
+          if (activeStream) {
+            activeStream.getTracks().forEach((track) => track.stop());
+          }
+
+          const videoConstraints = {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 60 },
+          };
+          if (deviceId) {
+            videoConstraints.deviceId = { exact: deviceId };
+          }
+
+          activeStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+          videoEl.srcObject = activeStream;
+          await videoEl.play();
+          lastVideoTime = -1;
+
+          // Reset smoothing filters on camera change
+          stringControllers.forEach((c) => {
+            c.filters.x.reset();
+            c.filters.y.reset();
+            c.filters.z.reset();
+          });
+          yawFilter.reset();
+
+          const currentTrack = activeStream.getVideoTracks()[0];
+          const currentDeviceId = currentTrack?.getSettings()?.deviceId || deviceId;
+          await populateCameraList(currentDeviceId);
+
+          statusEl.innerHTML = `
+          <div><b>Bottom-Up Hand Control Active</b></div>
+          <div><span class="dot" style="background:#fff"></span>Palm: Move / Jump (Height) / Turn</div>
+          <div><span class="dot" style="background:#55ff55"></span>Index & <span class="dot" style="background:#5599ff"></span>Middle: Left & Right Knees (Walk)</div>
+          <div><span class="dot" style="background:#ff5555"></span>Thumb & <span class="dot" style="background:#ffcc44"></span>Pinky: Left & Right Arms</div>
+        `;
+        } catch (err) {
+          statusEl.innerHTML = `<span style="color:#ff6666">Camera Error: ${err.message}</span>`;
+        }
+      }
+
+      cameraSelectEl.addEventListener("change", (e) => {
+        if (e.target.value) startCamera(e.target.value);
+      });
+
+      navigator.mediaDevices?.addEventListener("devicechange", async () => {
+        const currentId = cameraSelectEl.value;
+        await populateCameraList(currentId);
+      });
+
+      async function initVision() {
+        try {
+          const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm");
+          handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+              delegate: "GPU",
+            },
+            runningMode: "VIDEO",
+            numHands: 1,
+          });
+          await startCamera();
+        } catch (err) {
+          statusEl.innerHTML = `<span style="color:#ff6666">Vision Init Error: ${err.message}</span>`;
+        }
+      }
+      initVision();
+
+      // ==========================================
+      // 7. HAND COORDINATE MAPPING (Palm Crutch + 4 Fingers)
+      // ==========================================
+      function processHandLandmarks(L, WL, nowMs) {
+        // 1. Palm Center in Normalized 2D Camera Space (Average of Wrist 0, Index MCP 5, Pinky MCP 17)
+        const palmNormX = (L[0].x + L[5].x + L[17].x) / 3;
+        const palmNormY = (L[0].y + L[5].y + L[17].y) / 3;
+
+        // 2. Apparent Hand Size -> Vertical Height (Jumping / Crouching)
+        const handScale = Math.hypot(L[9].x - L[0].x, L[9].y - L[0].y);
+        const tScale = THREE.MathUtils.clamp((handScale - CONFIG.scaleMin) / (CONFIG.scaleMax - CONFIG.scaleMin), 0, 1);
+        const rawPalmY = THREE.MathUtils.lerp(CONFIG.heightMax, CONFIG.heightMin, tScale);
+        const rawPalmX = (0.5 - palmNormX) * CONFIG.stageWidth; // Mirrored X
+        const rawPalmZ = (palmNormY - 0.5) * CONFIG.stageDepth;
+
+        const palmCtrl = stringControllers[0];
+        const palmPos = {
+          x: palmCtrl.filters.x.filter(rawPalmX, nowMs),
+          y: palmCtrl.filters.y.filter(rawPalmY, nowMs),
+          z: palmCtrl.filters.z.filter(rawPalmZ, nowMs),
+        };
+        palmCtrl.anchorBody.setNextKinematicTranslation(palmPos);
+
+        // 3. Hand Facing Yaw (Wrist 0 -> Middle MCP 9)
+        const rawYaw = Math.atan2(0.5 - L[9].x - (0.5 - L[0].x), L[9].y - L[0].y);
+        targetTorsoYaw = yawFilter.filter(rawYaw, nowMs);
+
+        // 4. 4 Fingertip Strings (Thumb 4, Index 8, Middle 12, Pinky 20)
+        const fingerSpecs = [
+          { ctrlIdx: 1, tip: 4, mcp: 2 }, // Thumb -> Left Arm
+          { ctrlIdx: 2, tip: 8, mcp: 5 }, // Index -> Left Leg
+          { ctrlIdx: 3, tip: 12, mcp: 9 }, // Middle -> Right Leg
+          { ctrlIdx: 4, tip: 20, mcp: 17 }, // Pinky -> Right Arm
+        ];
+
+        const wlPalm = {
+          x: (WL[0].x + WL[5].x + WL[17].x) / 3,
+          y: (WL[0].y + WL[5].y + WL[17].y) / 3,
+          z: (WL[0].z + WL[5].z + WL[17].z) / 3,
+        };
+
+        fingerSpecs.forEach(({ ctrlIdx, tip, mcp }) => {
+          const ctrl = stringControllers[ctrlIdx];
+
+          const dx = (palmNormX - L[tip].x) * CONFIG.stageWidth * 0.85;
+          const dz = (L[tip].y - palmNormY) * CONFIG.stageDepth * 0.85;
+
+          const fingerExtension2D = Math.hypot(L[tip].x - L[mcp].x, L[tip].y - L[mcp].y) / (handScale + 0.001);
+          const curlLift = THREE.MathUtils.clamp(1.1 - fingerExtension2D, -0.2, 0.8) * 0.12;
+          const metricLift = -(WL[tip].z - wlPalm.z) * 0.6;
+          const dy = (curlLift + metricLift) * CONFIG.fingerPullMultiplier;
+
+          const fx = ctrl.filters.x.filter(palmPos.x + dx, nowMs);
+          const fy = ctrl.filters.y.filter(palmPos.y + dy, nowMs);
+          const fz = ctrl.filters.z.filter(palmPos.z + dz, nowMs);
+
+          ctrl.anchorBody.setNextKinematicTranslation({ x: fx, y: fy, z: fz });
+        });
+      }
+
+      // ==========================================
+      // 8. LIL-GUI TUNING PANEL
+      // ==========================================
+      const gui = new GUI({ title: "Marionette Tuning" });
+      gui
+        .add(CONFIG, "gravityY", -25, -5, 0.5)
+        .name("Gravity Y")
+        .onChange((v) => {
+          world.gravity.y = v;
+        });
+      gui.add(CONFIG, "fingerPullMultiplier", 1.0, 6.0, 0.1).name("Finger Pull Mult");
+      gui.add(CONFIG, "scaleMin", 0.05, 0.25, 0.01).name("Jump Hand Scale");
+      gui.add(CONFIG, "scaleMax", 0.2, 0.5, 0.01).name("Floor Hand Scale");
+      gui.add(CONFIG, "yawStiffness", 0.0, 25.0, 0.5).name("Torso Yaw Lock");
+      gui
+        .add(CONFIG, "filterBeta", 0.005, 0.2, 0.005)
+        .name("1€ Responsiveness")
+        .onChange((v) => {
+          stringControllers.forEach((c) => {
+            c.filters.x.beta = v;
+            c.filters.y.beta = v;
+            c.filters.z.beta = v;
+          });
+        });
+
+      // ==========================================
+      // 9. MAIN SIMULATION & RENDER LOOP
+      // ==========================================
+      const tmpVecA = new THREE.Vector3();
+      const tmpVecB = new THREE.Vector3();
+      const tmpQuat = new THREE.Quaternion();
+      const euler = new THREE.Euler();
+
+      function animate(nowMs) {
+        requestAnimationFrame(animate);
+
+        // 1. Vision Step
+        if (handLandmarker && videoEl.readyState >= 2 && videoEl.currentTime !== lastVideoTime) {
+          lastVideoTime = videoEl.currentTime;
+          const res = handLandmarker.detectForVideo(videoEl, nowMs);
+          if (res.landmarks && res.landmarks.length > 0) {
+            processHandLandmarks(res.landmarks[0], res.worldLandmarks[0], nowMs);
+          }
+        }
+
+        // 2. Stabilize Torso Yaw to match Player's Hand Rotation
+        const tRot = torso.body.rotation();
+        tmpQuat.set(tRot.x, tRot.y, tRot.z, tRot.w);
+        euler.setFromQuaternion(tmpQuat, "YXZ");
+        let yawError = targetTorsoYaw - euler.y;
+        while (yawError > Math.PI) yawError -= Math.PI * 2;
+        while (yawError < -Math.PI) yawError += Math.PI * 2;
+
+        const angVel = torso.body.angvel();
+        torso.body.setAngvel(
+          {
+            x: angVel.x * 0.9,
+            y: yawError * CONFIG.yawStiffness,
+            z: angVel.z * 0.9,
+          },
+          true,
+        );
+
+        // 3. Step Rapier Physics
+        world.step();
+
+        // 4. Sync Ragdoll RigidBodies -> Three.js Meshes
+        for (const item of syncedBodies) {
+          const pos = item.body.translation();
+          const rot = item.body.rotation();
+          item.mesh.position.set(pos.x, pos.y, pos.z);
+          item.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+        }
+
+        // 5. Sync String Lines & Slack Opacity Feedback
+        const perchPosArr = perchLines.geometry.attributes.position.array;
+        const palmWorld = stringControllers[0].anchorBody.translation();
+
+        stringControllers.forEach((ctrl, idx) => {
+          const aPos = ctrl.anchorBody.translation();
+          ctrl.gizmo.position.set(aPos.x, aPos.y, aPos.z);
+
+          tmpVecA.set(ctrl.local.x, ctrl.local.y, ctrl.local.z);
+          tmpVecA.applyQuaternion(ctrl.target.mesh.quaternion).add(ctrl.target.mesh.position);
+
+          const posArr = ctrl.line.geometry.attributes.position.array;
+          posArr[0] = aPos.x;
+          posArr[1] = aPos.y;
+          posArr[2] = aPos.z;
+          posArr[3] = tmpVecA.x;
+          posArr[4] = tmpVecA.y;
+          posArr[5] = tmpVecA.z;
+          ctrl.line.geometry.attributes.position.needsUpdate = true;
+
+          const dist = tmpVecB.set(aPos.x, aPos.y, aPos.z).distanceTo(tmpVecA);
+          ctrl.lineMat.opacity = dist >= ctrl.len - 0.04 ? 0.95 : 0.25;
+
+          if (idx > 0) {
+            const base = (idx - 1) * 6;
+            perchPosArr[base] = palmWorld.x;
+            perchPosArr[base + 1] = palmWorld.y;
+            perchPosArr[base + 2] = palmWorld.z;
+            perchPosArr[base + 3] = aPos.x;
+            perchPosArr[base + 4] = aPos.y;
+            perchPosArr[base + 5] = aPos.z;
+          }
+        });
+        perchLines.geometry.attributes.position.needsUpdate = true;
+
+        renderer.render(scene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      requestAnimationFrame(animate);
+    </script>
+  </body>
+</html>
