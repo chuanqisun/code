@@ -250,7 +250,9 @@
         small {
           display: block;
           margin-top: 8px;
-          font: 700 9px "Chakra Petch", sans-serif;
+          font:
+            700 9px "Chakra Petch",
+            sans-serif;
           letter-spacing: 0.4em;
           opacity: 0.45;
         }
@@ -316,12 +318,16 @@
 
     <div id="hud">
       <div class="fighter" data-side="0">
-        <div class="meta"><span class="name"></span><span class="pips"><b></b><b></b></span></div>
+        <div class="meta">
+          <span class="name"></span><span class="pips"><b></b><b></b></span>
+        </div>
         <div class="bar"><i class="lag"></i><i class="hp"></i></div>
       </div>
       <div id="clock"><span id="timer">60</span><small id="roundLabel">Round 1</small></div>
       <div class="fighter" data-side="1">
-        <div class="meta"><span class="name"></span><span class="pips"><b></b><b></b></span></div>
+        <div class="meta">
+          <span class="name"></span><span class="pips"><b></b><b></b></span>
+        </div>
         <div class="bar"><i class="lag"></i><i class="hp"></i></div>
       </div>
     </div>
@@ -489,6 +495,7 @@
       const PUPPET_OFFSETS = [-220, 220];
 
       const MAX_HP = 140;
+      const FACE_TIME = 0.45;
       const ROUND_TIME = 60;
       const ROUNDS_TO_WIN = 2;
       // Head, hands and feet can strike; arm segments of the target count as a guard.
@@ -547,6 +554,7 @@
         lastSeenTime: -Infinity,
         hp: MAX_HP,
         flash: 0,
+        face: null,
         cooldowns: {},
       }));
 
@@ -868,6 +876,8 @@
         A.cooldowns[i] = HIT_COOLDOWN;
         B.hp = Math.max(0, B.hp - damage);
         B.flash = isGuard ? 0.4 : 1;
+        A.face = { mood: "attack", time: FACE_TIME };
+        B.face = { mood: "hurt", time: FACE_TIME };
         game.hitStop = isGuard ? 0.02 : 0.045 + damage * 0.004;
         game.shake = Math.max(game.shake, damage * 1.3);
         spawnSparks(hit, FIGHTERS[puppets.indexOf(A)].color, damage);
@@ -965,7 +975,7 @@
 
       function startRound() {
         resetPuppets();
-        puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, cooldowns: {} }));
+        puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, face: null, cooldowns: {} }));
         setPhase("intro");
         game.timer = ROUND_TIME;
         const isFinal = game.wins.every((w) => w === ROUNDS_TO_WIN - 1);
@@ -980,7 +990,10 @@
       function updateGame(dt) {
         game.phaseTime += dt;
         game.shake *= Math.exp(-10 * dt);
-        puppets.forEach((pp) => (pp.flash = Math.max(0, pp.flash - dt * 5)));
+        puppets.forEach((pp) => {
+          pp.flash = Math.max(0, pp.flash - dt * 5);
+          if (pp.face && (pp.face.time -= dt) <= 0) pp.face = null;
+        });
 
         const t = game.phaseTime;
         switch (game.phase) {
@@ -1012,6 +1025,7 @@
         const [a, b] = puppets.map((pp) => pp.hp);
         const winner = loser ? 1 - puppets.indexOf(loser) : a === b ? -1 : a > b ? 0 : 1;
         if (winner >= 0) game.wins[winner]++;
+        if (winner >= 0) puppets[winner].face = { mood: "win", time: Infinity };
         if (loser) shatterPuppet(loser);
         if (loser) playSfx(sfx.ko);
         fadeBgm();
@@ -1264,7 +1278,7 @@
 
         for (const [a, b] of [...VISIBLE_BONES, [0, 1]]) drawLine(particles[a], particles[b], 6);
 
-        renderHead(particles, ink);
+        renderHead(particles, ink, pp.face?.mood);
         particles.slice(1).forEach(({ x, y }, i) => drawCircle(x, y, i < 4 ? 3.2 : 4.2, true, 1.8));
 
         if (lift) return;
@@ -1292,18 +1306,33 @@
         }
         for (const { a, b } of bones) drawLine(a, b, 6);
         for (const { a, b } of bones) [a, b].forEach(({ x, y }) => drawCircle(x, y, 3.6, true, 1.8));
-        renderHead([head, { x: head.x - Math.sin(headAngle), y: head.y + Math.cos(headAngle) }], ink);
+        renderHead([head, { x: head.x - Math.sin(headAngle), y: head.y + Math.cos(headAngle) }], ink, "dead");
       }
 
-      function renderHead([head, neck], ink) {
+      // mood: undefined (neutral) | "attack" | "hurt" | "win" | "dead"
+      function renderHead([head, neck], ink, mood) {
         ctx.save();
         ctx.translate(head.x, head.y);
         ctx.rotate(Math.atan2(neck.y - head.y, neck.x - head.x) - Math.PI / 2);
         drawCircle(0, 0, HEAD_RADIUS, true, 4);
         ctx.fillStyle = ink;
-        drawCircle(-7, -2, 1.5);
-        drawCircle(7, -2, 1.5);
-        drawLine({ x: -6, y: 9 }, { x: 6, y: 9 }, 1.5);
+        if (mood === "dead") {
+          for (const ex of [-7, 7]) {
+            drawLine({ x: ex - 3, y: -5 }, { x: ex + 3, y: 1 }, 1.5);
+            drawLine({ x: ex + 3, y: -5 }, { x: ex - 3, y: 1 }, 1.5);
+          }
+        } else {
+          drawCircle(-7, -2, 1.5);
+          drawCircle(7, -2, 1.5);
+        }
+        if (mood === "hurt") drawCircle(0, 9, 3.5, false, 1.5);
+        else if (mood === "win") {
+          ctx.beginPath();
+          ctx.arc(0, 5, 6, 0.15 * Math.PI, 0.85 * Math.PI);
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else if (mood === "attack") drawLine({ x: -6, y: 11 }, { x: 6, y: 7 }, 1.5);
+        else drawLine({ x: -6, y: 9 }, { x: 6, y: 9 }, 1.5);
         ctx.restore();
       }
 
@@ -1406,9 +1435,9 @@
           baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.6,
+          minHandPresenceConfidence: 0.6,
+          minTrackingConfidence: 0.6,
         });
         try {
           return (model = await HandLandmarker.createFromOptions(fileset, options("GPU")));
