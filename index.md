@@ -116,6 +116,7 @@
 - [Photon Grammar](./photon-grammar/)
 - [Planetary Gear](./planetary-gear/)
 - [Put that there](./put-that-there/)
+- [Puppet Fighter](./puppet-fighter/)
 - [Quantum Tunnel](https://chuanqisun.github.io/quantum-tunnel/)
 - [Rain Analyzer](./rain-analyzer/)
 - [Ramiel](./ramiel/)
