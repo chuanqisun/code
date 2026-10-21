@@ -116,7 +116,7 @@
       <select id="cameraSelect" aria-label="Camera" disabled>
         <option>Camera source</option>
       </select>
-      <button id="resetButton">Reset puppet</button>
+      <button id="resetButton">Reset puppets</button>
       <button id="calibrateButton" disabled>Recalibrate neutral</button>
     </header>
 
@@ -141,7 +141,7 @@
             <span>1€ min cutoff <output id="filterCutoffValue"></output></span>
             <input id="filterCutoff" type="range" min="0.1" max="5" step="0.1" value="1.0" />
           </label>
-          <label><input id="showHand" type="checkbox" /> Hand landmarks</label>
+          <label><input id="debugMode" type="checkbox" /> Debug</label>
           <p>
             <label><input id="showStrings" type="checkbox" checked /> Strings</label>
           </p>
@@ -219,7 +219,7 @@
       const LIMB_ROPE_LENGTH = Math.hypot(INITIAL_POSE[7][0] - 270, INITIAL_POSE[7][1] - (195 + POSE_DROP));
       const INDEX_RING_Y = Math.round(INITIAL_POSE[11][1] - Math.sqrt(LIMB_ROPE_LENGTH ** 2 - (INITIAL_POSE[11][0] - 385) ** 2));
 
-      // Visual-only lift so control points and string tops render above the viewport unless hand landmarks are shown (physics unaffected).
+      // Visual-only lift so control points and string tops render above the viewport unless in debug mode (physics unaffected).
       const ANCHOR_RENDER_LIFT = 500;
 
       const BASE_ANCHORS = [
@@ -299,25 +299,38 @@
 
       const params = Object.fromEntries(Object.entries(PARAM_CONFIG).map(([k, v]) => [k, v.val]));
 
-      let particles = [];
-      let bones = [];
-      let ropes = [];
-      const anchors = BASE_ANCHORS.map((p) => ({ ...p, tx: p.x, ty: p.y }));
+      // One puppet per tracked hand; offsets only set the resting/manual placement (camera x is absolute).
+      const PUPPET_OFFSETS = [-220, 220];
+      const BONE_RADIUS = 3;
+      const COLLISION_SEGMENTS = [[0, 1], ...VISIBLE_BONES];
+      const particleRadius = (i) => (i === 0 ? 24 : 6);
+
+      // Filters are created in resetPuppets (OneEuroFilter is declared further down).
+      const createFilters = () => Array.from({ length: 21 }, () => ({ x: new OneEuroFilter(), y: new OneEuroFilter() }));
+
+      const puppets = PUPPET_OFFSETS.map((offsetX) => ({
+        offsetX,
+        particles: [],
+        bones: [],
+        ropes: [],
+        anchors: BASE_ANCHORS.map((p) => ({ x: p.x + offsetX, y: p.y, tx: p.x + offsetX, ty: p.y })),
+        isTracked: false,
+        landmarks: null,
+        neutralPose: null,
+        lastSeenTime: -Infinity,
+        filters: null,
+      }));
 
       let model = null;
       let modelPromise = null;
       let stream = null;
       let isCameraActive = false;
       let isBusy = false;
-      let isTracked = false;
-      let landmarks = null;
-      let neutralPose = null;
-      let lastSeenTime = -Infinity;
       let lastVideoTime = -1;
       let inferenceMs = 0;
       let inferenceCount = 0;
 
-      let draggedAnchor = -1;
+      let dragged = null;
       let activePointerId = null;
 
       let previousTime = performance.now();
@@ -329,7 +342,7 @@
         previousTime = now;
 
         processCameraFrame(now);
-        updateAnchorTargets();
+        puppets.forEach(updateAnchorTargets);
 
         accumulator += elapsed;
         let steps = 0;
@@ -352,155 +365,317 @@
         lastStatsTime = now;
 
         const camFps = stream?.getVideoTracks()[0]?.getSettings().frameRate;
+        const hands = puppets.filter((pp) => pp.isTracked).length;
         $("stats").textContent = isCameraActive
-          ? `Tracking: ${rate.toFixed(0)} fps | inference: ${inferenceMs.toFixed(1)} ms | cam: ${camFps ? camFps.toFixed(0) : "?"} fps`
+          ? `Tracking: ${rate.toFixed(0)} fps | hands: ${hands} | inference: ${inferenceMs.toFixed(1)} ms | cam: ${camFps ? camFps.toFixed(0) : "?"} fps`
           : "Manual input | physics: 120 Hz";
       }
 
-      function resetPuppet() {
-        particles = INITIAL_POSE.map(([x, y]) => ({ x, y, px: x, py: y, invMass: 1.0 }));
-        updateParticleMasses();
+      const baseAnchor = (pp, i) => ({ x: BASE_ANCHORS[i].x + pp.offsetX, y: BASE_ANCHORS[i].y });
 
-        bones = BONE_PAIRS.map(([a, b]) => ({
-          a,
-          b,
-          length: dist(particles[a], particles[b]),
-        }));
-
-        ropes = ROPE_ATTACHMENTS.map((part, i) => ({
-          part,
-          length: i === 2 ? Math.hypot(INITIAL_POSE[part][0] - BASE_ANCHORS[i].x, INITIAL_POSE[part][1] - BASE_ANCHORS[i].y) : LIMB_ROPE_LENGTH,
-          tension: 0,
-          slack: 0,
-        }));
-
-        anchors.forEach((a, i) => Object.assign(a, BASE_ANCHORS[i], { tx: BASE_ANCHORS[i].x, ty: BASE_ANCHORS[i].y }));
-        if (isCameraActive && isTracked) calibrateNeutral();
-      }
-
-      function updateParticleMasses() {
-        particles.forEach((p, i) => {
-          p.invMass = i === 2 ? params.torsoMass : i <= 4 ? Math.min(1.0, params.torsoMass + 0.15) : 1.0;
+      function resetAnchors(pp) {
+        pp.anchors.forEach((a, i) => {
+          const b = baseAnchor(pp, i);
+          Object.assign(a, { tx: b.x, ty: b.y });
         });
       }
 
-      function updateAnchorTargets() {
-        if (isCameraActive && isTracked && neutralPose) {
+      function resetPuppets() {
+        for (const pp of puppets) {
+          pp.filters ??= createFilters();
+          pp.particles = INITIAL_POSE.map(([x, y]) => ({ x: x + pp.offsetX, y, px: x + pp.offsetX, py: y, invMass: 1.0 }));
+
+          pp.bones = BONE_PAIRS.map(([a, b]) => ({
+            a,
+            b,
+            length: dist(pp.particles[a], pp.particles[b]),
+          }));
+
+          pp.ropes = ROPE_ATTACHMENTS.map((part, i) => ({
+            part,
+            length: i === 2 ? Math.hypot(INITIAL_POSE[part][0] - BASE_ANCHORS[i].x, INITIAL_POSE[part][1] - BASE_ANCHORS[i].y) : LIMB_ROPE_LENGTH,
+            tension: 0,
+            slack: 0,
+          }));
+
+          pp.anchors.forEach((a, i) => Object.assign(a, baseAnchor(pp, i)));
+          resetAnchors(pp);
+          if (isCameraActive && pp.isTracked) calibrateNeutral(pp);
+        }
+        updateParticleMasses();
+      }
+
+      function updateParticleMasses() {
+        for (const pp of puppets) {
+          pp.particles.forEach((p, i) => {
+            p.invMass = i === 2 ? params.torsoMass : i <= 4 ? Math.min(1.0, params.torsoMass + 0.15) : 1.0;
+          });
+        }
+      }
+
+      function updateAnchorTargets(pp) {
+        if (isCameraActive && pp.isTracked && pp.neutralPose) {
           FINGER_TIPS.forEach((tipIdx, i) => {
-            const pt = landmarks[tipIdx];
-            const dx = pt.x - neutralPose[i].x;
-            const dy = pt.y - neutralPose[i].y;
-            anchors[i].tx = clamp(BASE_ANCHORS[i].x + dx * 800 * params.sensitivity, 65, 935);
-            anchors[i].ty = clamp(BASE_ANCHORS[i].y + dy * 640 * params.sensitivity, 75, 480);
+            const pt = pp.landmarks[tipIdx];
+            const dx = pt.x - pp.neutralPose[i].x;
+            const dy = pt.y - pp.neutralPose[i].y;
+            pp.anchors[i].tx = clamp(BASE_ANCHORS[i].x + dx * 800 * params.sensitivity, 65, 935);
+            pp.anchors[i].ty = clamp(BASE_ANCHORS[i].y + dy * 640 * params.sensitivity, 75, 480);
           });
         } else if (isCameraActive) {
-          anchors.forEach((a, i) => Object.assign(a, { tx: BASE_ANCHORS[i].x, ty: BASE_ANCHORS[i].y }));
+          resetAnchors(pp);
         }
       }
 
       function stepPhysics(dt) {
         const blend = 1 - Math.exp(-params.anchorFollow * dt);
-        anchors.forEach((a, i) => {
-          a.x = draggedAnchor === i ? a.tx : a.x + (a.tx - a.x) * blend;
-          a.y = draggedAnchor === i ? a.ty : a.y + (a.ty - a.y) * blend;
-        });
 
-        for (const p of particles) {
-          const vx = (p.x - p.px) * params.damping;
-          const vy = (p.y - p.py) * params.damping;
-          p.px = p.x;
-          p.py = p.y;
-          p.x += vx;
-          p.y += vy + 1050 * params.gravity * dt * dt;
-        }
+        for (const pp of puppets) {
+          pp.anchors.forEach((a, i) => {
+            const isDragged = dragged?.pp === pp && dragged.i === i;
+            a.x = isDragged ? a.tx : a.x + (a.tx - a.x) * blend;
+            a.y = isDragged ? a.ty : a.y + (a.ty - a.y) * blend;
+          });
 
-        // With the camera on but no hand, the puppeteer has let go: release all strings so the puppet collapses.
-        // When the hand returns, strings re-grip at their current length and reel in gradually (no snap).
-        const isHeld = !isCameraActive || isTracked;
-        ropes.forEach((r, i) => {
-          r.tension = 0;
-          if (!isHeld) r.slack = Infinity;
-          else if (r.slack === Infinity) r.slack = Math.max(0, dist(anchors[i], particles[r.part]) - r.length);
-          else r.slack = Math.max(0, r.slack * Math.exp(-2.5 * dt) - 60 * dt);
-        });
-
-        for (let iter = 0; iter < params.iterations; iter++) {
-          for (const b of bones) {
-            const a = particles[b.a];
-            const c = particles[b.b];
-            const dx = c.x - a.x;
-            const dy = c.y - a.y;
-            const d = Math.hypot(dx, dy) || 0.0001;
-            const k = (d - b.length) / d / (a.invMass + c.invMass);
-            a.x += dx * k * a.invMass;
-            a.y += dy * k * a.invMass;
-            c.x -= dx * k * c.invMass;
-            c.y -= dy * k * c.invMass;
+          for (const p of pp.particles) {
+            const vx = (p.x - p.px) * params.damping;
+            const vy = (p.y - p.py) * params.damping;
+            p.px = p.x;
+            p.py = p.y;
+            p.x += vx;
+            p.y += vy + 1050 * params.gravity * dt * dt;
           }
 
-          ropes.forEach((r, i) => {
-            const p = particles[r.part];
-            const a = anchors[i];
-            const dx = p.x - a.x;
-            const dy = p.y - a.y;
-            const d = Math.hypot(dx, dy);
-            if (d > r.length + r.slack) {
-              const excess = d - r.length - r.slack;
-              const corr = (excess / d) * params.pullStiff;
-              p.x -= dx * corr;
-              p.y -= dy * corr;
-              r.tension = Math.max(r.tension, excess);
-            }
+          // With the camera on but no hand, the puppeteer has let go: release all strings so the puppet collapses.
+          // When the hand returns, strings re-grip at their current length and reel in gradually (no snap).
+          const isHeld = !isCameraActive || pp.isTracked;
+          pp.ropes.forEach((r, i) => {
+            r.tension = 0;
+            if (!isHeld) r.slack = Infinity;
+            else if (r.slack === Infinity) r.slack = Math.max(0, dist(pp.anchors[i], pp.particles[r.part]) - r.length);
+            else r.slack = Math.max(0, r.slack * Math.exp(-2.5 * dt) - 60 * dt);
           });
+        }
 
-          particles.forEach((p, i) => {
-            const radius = i === 0 ? 24 : 5;
-            p.x = clamp(p.x, radius + 40, WIDTH - 40 - radius);
-            if (p.y > FLOOR - radius) {
-              p.y = FLOOR - radius;
-              p.px = p.x + (p.px - p.x) * 0.7;
-              if (p.py < p.y) p.py = p.y;
+        for (let iter = 0; iter < params.iterations; iter++) {
+          for (const pp of puppets) {
+            const particles = pp.particles;
+            for (const b of pp.bones) {
+              const a = particles[b.a];
+              const c = particles[b.b];
+              const dx = c.x - a.x;
+              const dy = c.y - a.y;
+              const d = Math.hypot(dx, dy) || 0.0001;
+              const k = (d - b.length) / d / (a.invMass + c.invMass);
+              a.x += dx * k * a.invMass;
+              a.y += dy * k * a.invMass;
+              c.x -= dx * k * c.invMass;
+              c.y -= dy * k * c.invMass;
             }
-          });
+
+            pp.ropes.forEach((r, i) => {
+              const p = particles[r.part];
+              const a = pp.anchors[i];
+              const dx = p.x - a.x;
+              const dy = p.y - a.y;
+              const d = Math.hypot(dx, dy);
+              if (d > r.length + r.slack) {
+                const excess = d - r.length - r.slack;
+                const corr = (excess / d) * params.pullStiff;
+                p.x -= dx * corr;
+                p.y -= dy * corr;
+                r.tension = Math.max(r.tension, excess);
+              }
+            });
+          }
+
+          for (let i = 0; i < puppets.length; i++) {
+            for (let j = i + 1; j < puppets.length; j++) collidePuppets(puppets[i], puppets[j]);
+          }
+
+          for (const pp of puppets) {
+            pp.particles.forEach((p, i) => {
+              const radius = i === 0 ? 24 : 5;
+              p.x = clamp(p.x, radius + 40, WIDTH - 40 - radius);
+              if (p.y > FLOOR - radius) {
+                p.y = FLOOR - radius;
+                p.px = p.x + (p.px - p.x) * 0.7;
+                if (p.py < p.y) p.py = p.y;
+              }
+            });
+          }
         }
       }
 
+      function collidePuppets(A, B) {
+        // Joint vs joint (covers head-to-head), then joints vs the other puppet's bone capsules, both ways.
+        A.particles.forEach((p, i) => {
+          B.particles.forEach((q, j) => {
+            const dx = p.x - q.x;
+            const dy = p.y - q.y;
+            const d = Math.hypot(dx, dy);
+            const overlap = particleRadius(i) + particleRadius(j) - d;
+            if (overlap <= 0 || d < 1e-6) return;
+            const s = overlap / d / (p.invMass + q.invMass);
+            p.x += dx * s * p.invMass;
+            p.y += dy * s * p.invMass;
+            q.x -= dx * s * q.invMass;
+            q.y -= dy * s * q.invMass;
+          });
+        });
+        collideJointsWithBones(A, B);
+        collideJointsWithBones(B, A);
+        collideBones(A, B);
+      }
+
+      const centroid = (particles) => {
+        const c = { x: 0, y: 0 };
+        for (const p of particles) ((c.x += p.x), (c.y += p.y));
+        return { x: c.x / particles.length, y: c.y / particles.length };
+      };
+
+      // Closest points between segments p1-q1 and p2-q2 as parameters (s, t) in [0, 1].
+      function closestSegmentParams(p1, q1, p2, q2) {
+        const d1x = q1.x - p1.x, d1y = q1.y - p1.y;
+        const d2x = q2.x - p2.x, d2y = q2.y - p2.y;
+        const rx = p1.x - p2.x, ry = p1.y - p2.y;
+        const a = d1x * d1x + d1y * d1y || 1e-9;
+        const e = d2x * d2x + d2y * d2y || 1e-9;
+        const f = d2x * rx + d2y * ry;
+        const c = d1x * rx + d1y * ry;
+        const b = d1x * d2x + d1y * d2y;
+        const denom = a * e - b * b;
+        let s = denom > 1e-9 ? clamp((b * f - c * e) / denom, 0, 1) : 0;
+        let t = (b * s + f) / e;
+        if (t < 0) ((t = 0), (s = clamp(-c / a, 0, 1)));
+        else if (t > 1) ((t = 1), (s = clamp((b - c) / a, 0, 1)));
+        return [s, t];
+      }
+
+      const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      const segmentsCross = (p1, q1, p2, q2) =>
+        cross(p1, q1, p2) * cross(p1, q1, q2) < 0 && cross(p2, q2, p1) * cross(p2, q2, q1) < 0;
+
+      // Limb-vs-limb: keeps bones from passing through each other. If two bones have already crossed,
+      // the closest-point normal is meaningless, so push them apart along the puppets' side-to-side axis
+      // (each puppet back toward its own side) instead of letting the solver lock them together.
+      function collideBones(A, B) {
+        const ca = centroid(A.particles);
+        const cb = centroid(B.particles);
+        const sideX = ca.x - cb.x || 1;
+        const side = { x: Math.sign(sideX), y: 0 };
+        const minDist = 2 * BONE_RADIUS + 2;
+
+        for (const [i1, j1] of COLLISION_SEGMENTS) {
+          const a0 = A.particles[i1];
+          const a1 = A.particles[j1];
+          for (const [i2, j2] of COLLISION_SEGMENTS) {
+            const b0 = B.particles[i2];
+            const b1 = B.particles[j2];
+            const [s, t] = closestSegmentParams(a0, a1, b0, b1);
+            const pa = { x: a0.x + (a1.x - a0.x) * s, y: a0.y + (a1.y - a0.y) * s };
+            const pb = { x: b0.x + (b1.x - b0.x) * t, y: b0.y + (b1.y - b0.y) * t };
+            let nx = pa.x - pb.x;
+            let ny = pa.y - pb.y;
+            let d = Math.hypot(nx, ny);
+            let overlap = minDist - d;
+
+            if (segmentsCross(a0, a1, b0, b1) || d < 1e-6) {
+              ({ x: nx, y: ny } = side);
+              const proj = (p) => p.x * nx + p.y * ny;
+              // Depth needed for A's bone to sit entirely on its side of B's bone; resolved gradually.
+              overlap = 0.25 * (Math.max(proj(b0), proj(b1)) - Math.min(proj(a0), proj(a1)) + minDist);
+              d = 1;
+            } else if (overlap <= 0) continue;
+            else ((nx /= d), (ny /= d));
+
+            const wa0 = a0.invMass * (1 - s), wa1 = a1.invMass * s;
+            const wb0 = b0.invMass * (1 - t), wb1 = b1.invMass * t;
+            const k = overlap / (wa0 * (1 - s) + wa1 * s + wb0 * (1 - t) + wb1 * t || 1);
+            a0.x += nx * k * wa0, a0.y += ny * k * wa0;
+            a1.x += nx * k * wa1, a1.y += ny * k * wa1;
+            b0.x -= nx * k * wb0, b0.y -= ny * k * wb0;
+            b1.x -= nx * k * wb1, b1.y -= ny * k * wb1;
+          }
+        }
+      }
+
+      function collideJointsWithBones(A, B) {
+        A.particles.forEach((p, i) => {
+          const minDist = particleRadius(i) + BONE_RADIUS;
+          for (const [s, t] of COLLISION_SEGMENTS) {
+            const a = B.particles[s];
+            const b = B.particles[t];
+            const ex = b.x - a.x;
+            const ey = b.y - a.y;
+            const u = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / (ex * ex + ey * ey || 1), 0, 1);
+            const nx = p.x - (a.x + ex * u);
+            const ny = p.y - (a.y + ey * u);
+            const d = Math.hypot(nx, ny);
+            const overlap = minDist - d;
+            if (overlap <= 0 || d < 1e-6) continue;
+            const wa = a.invMass * (1 - u);
+            const wb = b.invMass * u;
+            const s2 = overlap / d / (p.invMass + wa * (1 - u) + wb * u);
+            p.x += nx * s2 * p.invMass;
+            p.y += ny * s2 * p.invMass;
+            a.x -= nx * s2 * wa;
+            a.y -= ny * s2 * wa;
+            b.x -= nx * s2 * wb;
+            b.y -= ny * s2 * wb;
+          }
+        });
+      }
+
+      // Play mode: black stage, colored puppets + strings only. Debug mode: camera feed, hand landmarks, floor, control points.
+      const PLAY_COLORS = ["hsl(330 100% 80%)", "hsl(200 100% 80%)"];
+
       function render() {
+        const isDebug = $("debugMode").checked;
         ctx.setTransform(canvas.width / WIDTH, 0, 0, canvas.height / HEIGHT, 0, 0);
         ctx.globalAlpha = 1;
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle = isDebug ? "#fff" : "#000";
         ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-        if (isCameraActive && video.readyState >= 2) {
-          const t = getCameraTransform();
-          ctx.save();
-          ctx.globalAlpha = 0.5;
-          ctx.drawImage(video, t.x, t.y, t.width, t.height);
-          ctx.restore();
-        }
-
-        ctx.strokeStyle = "#000";
-        ctx.fillStyle = "#fff";
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
-        drawLine({ x: 0, y: FLOOR }, { x: WIDTH, y: FLOOR }, 1);
+        if (isDebug) {
+          if (isCameraActive && video.readyState >= 2) {
+            const t = getCameraTransform();
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.drawImage(video, t.x, t.y, t.width, t.height);
+            ctx.restore();
+          }
 
-        if ($("showHand").checked && landmarks && isTracked) {
+          ctx.strokeStyle = "#000";
+          ctx.fillStyle = "#fff";
+          drawLine({ x: 0, y: FLOOR }, { x: WIDTH, y: FLOOR }, 1);
+
           const t = getCameraTransform();
           const mapPt = (p) => ({ x: t.x + p.x * t.width, y: t.y + p.y * t.height });
 
           ctx.save();
           ctx.globalAlpha = 0.55;
-          for (const [a, b] of HAND_CONNECTIONS) drawLine(mapPt(landmarks[a]), mapPt(landmarks[b]), 1.3);
-          for (const p of landmarks) {
-            const pt = mapPt(p);
-            drawCircle(pt.x, pt.y, 2.5);
+          for (const { landmarks, isTracked } of puppets) {
+            if (!landmarks || !isTracked) continue;
+            for (const [a, b] of HAND_CONNECTIONS) drawLine(mapPt(landmarks[a]), mapPt(landmarks[b]), 1.3);
+            for (const p of landmarks) {
+              const pt = mapPt(p);
+              drawCircle(pt.x, pt.y, 2.5);
+            }
           }
           ctx.restore();
         }
 
-        const lift = $("showHand").checked ? 0 : ANCHOR_RENDER_LIFT;
+        puppets.forEach((pp, i) =>
+          renderPuppet(pp, isDebug ? { ink: "#000", paper: "#fff", lift: 0 } : { ink: PLAY_COLORS[i], paper: "#000", lift: ANCHOR_RENDER_LIFT }),
+        );
+      }
+
+      function renderPuppet({ particles, ropes, anchors }, { ink, paper, lift }) {
+        ctx.strokeStyle = ink;
+        ctx.fillStyle = paper;
 
         if ($("showStrings").checked) {
           ropes.forEach((r, i) => {
@@ -524,7 +699,7 @@
         ctx.translate(head.x, head.y);
         ctx.rotate(Math.atan2(neck.y - head.y, neck.x - head.x) - Math.PI / 2);
         drawCircle(0, 0, 24, true, 4);
-        ctx.fillStyle = "#000";
+        ctx.fillStyle = ink;
         drawCircle(-7, -2, 1.5);
         drawCircle(7, -2, 1.5);
         drawLine({ x: -6, y: 9 }, { x: 6, y: 9 }, 1.5);
@@ -534,17 +709,29 @@
           drawCircle(particles[i].x, particles[i].y, i <= 4 ? 3.2 : 4.2, true, 1.8);
         }
 
+        if (lift) return;
+
         ctx.font = "12px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
         anchors.forEach(({ x, y }, i) => {
-          const a = { x, y: y - lift };
-          ctx.fillStyle = "#fff";
-          drawCircle(a.x, a.y, draggedAnchor === i ? 15 : 12, true, 1.8);
-          ctx.fillStyle = "#000";
-          ctx.fillText(String(i + 1), a.x, a.y);
+          ctx.fillStyle = paper;
+          drawCircle(x, y, dragged?.pp.anchors === anchors && dragged.i === i ? 15 : 12, true, 1.8);
+          ctx.fillStyle = ink;
+          ctx.fillText(String(i + 1), x, y);
         });
+      }
+
+      // MediaPipe labels handedness for a mirrored (selfie) image; on our unmirrored feed "Left" sits on screen left.
+      function assignHands(hands, handedness) {
+        const slots = new Array(puppets.length).fill(null);
+        const labeled = hands.map((hand, k) => ({ hand, slot: handedness?.[k]?.[0]?.categoryName === "Right" ? 1 : 0 }));
+        if (labeled.length === 2 && labeled[0].slot === labeled[1].slot) {
+          labeled.sort((a, b) => a.hand[0].x - b.hand[0].x).forEach((h, k) => (h.slot = k));
+        }
+        for (const { hand, slot } of labeled) slots[slot] = hand;
+        return slots;
       }
 
       function processCameraFrame(now) {
@@ -554,48 +741,56 @@
 
         try {
           const t0 = performance.now();
-          const hand = model.detectForVideo(video, now).landmarks?.[0];
+          const result = model.detectForVideo(video, now);
           inferenceMs = performance.now() - t0;
           inferenceCount++;
 
-          if (hand) {
-            const reacquired = !isTracked || now - lastSeenTime > 650;
-            if (reacquired) resetFilters();
+          const slots = assignHands(result.landmarks ?? [], result.handedness ?? result.handednesses);
 
-            landmarks = hand.map((p, i) => ({
-              x: filters[i].x.filter(p.x, nowSec),
-              y: filters[i].y.filter(p.y, nowSec),
-            }));
+          puppets.forEach((pp, k) => {
+            const hand = slots[k];
+            if (hand) {
+              const reacquired = !pp.isTracked || now - pp.lastSeenTime > 650;
+              if (reacquired) resetFilters(pp);
 
-            isTracked = true;
-            lastSeenTime = now;
-            $("calibrateButton").disabled = false;
+              pp.landmarks = hand.map((p, i) => ({
+                x: pp.filters[i].x.filter(p.x, nowSec),
+                y: pp.filters[i].y.filter(p.y, nowSec),
+              }));
 
-            if (!neutralPose || reacquired) calibrateNeutral();
-          } else if (now - lastSeenTime > 500 && isTracked) {
-            clearTrackingState();
-          }
+              pp.isTracked = true;
+              pp.lastSeenTime = now;
+
+              if (!pp.neutralPose || reacquired) calibrateNeutral(pp);
+            } else if (now - pp.lastSeenTime > 500 && pp.isTracked) {
+              clearHand(pp);
+            }
+          });
+          $("calibrateButton").disabled = !puppets.some((pp) => pp.isTracked);
         } catch {
           disableCamera();
         }
       }
 
+      function clearHand(pp) {
+        resetFilters(pp);
+        pp.isTracked = false;
+        pp.landmarks = null;
+        pp.neutralPose = null;
+        pp.lastSeenTime = -Infinity;
+      }
+
       function clearTrackingState() {
-        resetFilters();
-        isTracked = false;
-        landmarks = null;
-        neutralPose = null;
-        lastSeenTime = -Infinity;
+        puppets.forEach(clearHand);
         lastVideoTime = -1;
         $("calibrateButton").disabled = true;
       }
 
-      function calibrateNeutral() {
-        if (!landmarks || !isTracked) return;
+      function calibrateNeutral(pp) {
+        if (!pp.landmarks || !pp.isTracked) return;
         // Keep only finger spread horizontally: re-center x on the frame so absolute hand position drives placement.
-        const meanX = FINGER_TIPS.reduce((sum, i) => sum + landmarks[i].x, 0) / FINGER_TIPS.length;
-        neutralPose = FINGER_TIPS.map((i) => ({ x: landmarks[i].x - meanX + 0.5, y: landmarks[i].y }));
-        $("calibrateButton").disabled = false;
+        const meanX = FINGER_TIPS.reduce((sum, i) => sum + pp.landmarks[i].x, 0) / FINGER_TIPS.length;
+        pp.neutralPose = FINGER_TIPS.map((i) => ({ x: pp.landmarks[i].x - meanX + 0.5, y: pp.landmarks[i].y }));
       }
 
       async function loadModel() {
@@ -611,7 +806,7 @@
                 delegate: "GPU",
               },
               runningMode: "VIDEO",
-              numHands: 1,
+              numHands: 2,
               minHandDetectionConfidence: 0.5,
               minHandPresenceConfidence: 0.5,
               minTrackingConfidence: 0.5,
@@ -683,7 +878,7 @@
         clearTrackingState();
         $("cameraButton").textContent = "Enable camera";
         $("cameraSelect").disabled = true;
-        anchors.forEach((a, i) => Object.assign(a, { tx: BASE_ANCHORS[i].x, ty: BASE_ANCHORS[i].y }));
+        puppets.forEach(resetAnchors);
       }
 
       async function populateCameras(activeId) {
@@ -791,8 +986,7 @@
         }
       }
 
-      const filters = Array.from({ length: 21 }, () => ({ x: new OneEuroFilter(), y: new OneEuroFilter() }));
-      const resetFilters = () => filters.forEach((f) => (f.x.reset(), f.y.reset()));
+      const resetFilters = (pp) => pp.filters.forEach((f) => (f.x.reset(), f.y.reset()));
 
       // --- Initialization & Event Listeners ---
 
@@ -818,28 +1012,30 @@
         if (isCameraActive || isBusy) return;
         const p = getPointerPos(e);
         let minDist = 35;
-        draggedAnchor = -1;
+        dragged = null;
 
-        anchors.forEach((a, i) => {
-          const d = dist(a, p);
-          if (d < minDist) ((minDist = d), (draggedAnchor = i));
-        });
+        for (const pp of puppets) {
+          pp.anchors.forEach((a, i) => {
+            const d = dist(a, p);
+            if (d < minDist) ((minDist = d), (dragged = { pp, i }));
+          });
+        }
 
-        if (draggedAnchor >= 0) {
+        if (dragged) {
           activePointerId = e.pointerId;
           canvas.setPointerCapture(activePointerId);
         }
       });
 
       canvas.addEventListener("pointermove", (e) => {
-        if (draggedAnchor < 0 || e.pointerId !== activePointerId) return;
+        if (!dragged || e.pointerId !== activePointerId) return;
         const p = getPointerPos(e);
-        const a = anchors[draggedAnchor];
+        const a = dragged.pp.anchors[dragged.i];
         a.x = a.tx = clamp(p.x, 60, 940);
         a.y = a.ty = clamp(p.y, 75, 480);
       });
 
-      const releasePointer = () => ((draggedAnchor = -1), (activePointerId = null));
+      const releasePointer = () => ((dragged = null), (activePointerId = null));
       ["pointerup", "pointercancel", "lostpointercapture"].forEach((evt) => canvas.addEventListener(evt, releasePointer));
 
       $("cameraButton").addEventListener("click", async () => {
@@ -880,8 +1076,8 @@
         }
       });
 
-      $("resetButton").addEventListener("click", resetPuppet);
-      $("calibrateButton").addEventListener("click", calibrateNeutral);
+      $("resetButton").addEventListener("click", resetPuppets);
+      $("calibrateButton").addEventListener("click", () => puppets.forEach(calibrateNeutral));
 
       navigator.mediaDevices?.addEventListener?.("devicechange", () => {
         if (isCameraActive && !isBusy) {
@@ -892,12 +1088,12 @@
       document.addEventListener("visibilitychange", () => {
         previousTime = performance.now();
         accumulator = 0;
-        particles.forEach((p) => ((p.px = p.x), (p.py = p.y)));
+        puppets.forEach((pp) => pp.particles.forEach((p) => ((p.px = p.x), (p.py = p.y))));
       });
 
       window.addEventListener("pagehide", disableCamera);
 
-      resetPuppet();
+      resetPuppets();
       requestAnimationFrame(mainLoop);
       $("cameraButton").click();
     </script>
