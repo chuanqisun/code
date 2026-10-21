@@ -280,6 +280,10 @@
           animation-duration: 0.9s;
         }
 
+        &.count {
+          animation-duration: 1s;
+        }
+
         &.ko {
           --c: hsl(10 100% 60%);
           animation-duration: 2.8s;
@@ -498,6 +502,27 @@
       const FACE_TIME = 0.45;
       const ROUND_TIME = 60;
       const ROUNDS_TO_WIN = 2;
+      // Ready check: each palm must sit inside its target ring (world px) and hold still before the countdown.
+      const READY_TARGET_Y = 0.5;
+      const READY_RADIUS = 80;
+      const READY_LEAVE_RADIUS = 150;
+      const READY_STEADY_SPEED = 140;
+      const READY_HOLD = 0.6;
+      // Pushes the rings past the puppets' start spots so the hands sit comfortably apart.
+      const READY_SPREAD = 1.6;
+      // Rings are drawn this much closer to centre than the physical targets; the palm marker shifts with its ring.
+      const READY_DISPLAY_SCALE = 0.6;
+      // An open hand: each fingertip well beyond its middle knuckle, and index-to-pinky wider than the palm.
+      const OPEN_FINGERS = [
+        [8, 6],
+        [12, 10],
+        [16, 14],
+        [20, 18],
+      ];
+      const OPEN_EXTEND_RATIO = 1.15;
+      const OPEN_SPREAD_RATIO = 1.05;
+      const COUNTDOWN = 3;
+      const PALM_LANDMARKS = [0, 5, 9, 13, 17];
       // Head, hands and feet can strike; arm segments of the target count as a guard.
       const STRIKERS = [0, 7, 8, 11, 12];
       const GUARD_SEGMENTS = new Set([3, 4, 5, 6]);
@@ -558,7 +583,7 @@
         cooldowns: {},
       }));
 
-      const game = { phase: "intro", phaseTime: 0, round: 1, timer: ROUND_TIME, wins: [0, 0], cue: 0, hitStop: 0, timeScale: 1, shake: 0 };
+      const game = { isCalibrated: false, phase: "intro", phaseTime: 0, round: 1, timer: ROUND_TIME, wins: [0, 0], cue: 0, hitStop: 0, timeScale: 1, shake: 0 };
       const sparks = [];
 
       let model = null;
@@ -639,6 +664,8 @@
       function updateAnchorTargets(pp) {
         if (!isCameraActive) return;
         if (!pp.isTracked || !pp.neutralPose) return resetAnchorTargets(pp);
+        // Puppets hang still until their hand locks in during the ready check.
+        if (!game.isCalibrated && !pp.ready?.isLocked) return resetAnchorTargets(pp);
 
         FINGER_TIPS.forEach((tip, i) => {
           const { x, y } = pp.landmarks[tip];
@@ -972,11 +999,17 @@
       function startMatch() {
         game.wins = [0, 0];
         game.round = 1;
-        startRound();
+        resetPuppets();
+        puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, face: null, cooldowns: {} }));
+        game.timer = ROUND_TIME;
+        // The ready check only runs once per app session.
+        if (game.isCalibrated) startRound();
+        else setPhase("ready");
       }
 
-      function startRound() {
-        resetPuppets();
+      // keepPose leaves puppets where the calibrated hands hold them.
+      function startRound({ keepPose = false } = {}) {
+        if (!keepPose) resetPuppets();
         puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, face: null, cooldowns: {} }));
         setPhase("intro");
         game.timer = ROUND_TIME;
@@ -999,6 +1032,37 @@
 
         const t = game.phaseTime;
         switch (game.phase) {
+          case "ready": {
+            // Manual input needs no hand check.
+            if (!isCameraActive && !isBusy) {
+              game.isCalibrated = true;
+              return startRound();
+            }
+            const ready = puppets.map((pp, k) => updateReadiness(pp, k, dt));
+            if (ready.every((r) => r.isLocked)) {
+              setPhase("countdown");
+              game.cue = 0;
+            }
+            break;
+          }
+          case "countdown": {
+            const ready = puppets.map((pp, k) => updateReadiness(pp, k, dt));
+            if (!ready.every((r) => r.isLocked)) {
+              setPhase("ready");
+              showBanner("");
+              break;
+            }
+            const n = COUNTDOWN - Math.floor(t);
+            if (n > 0 && game.cue !== n) {
+              game.cue = n;
+              showBanner(String(n), "count");
+            }
+            if (t >= COUNTDOWN) {
+              game.isCalibrated = true;
+              startRound({ keepPose: true });
+            }
+            break;
+          }
           case "intro":
             if (t > 1.3 && !game.cue++) showBanner("Fight", "fight");
             if (t > 1.9) setPhase("fight");
@@ -1020,6 +1084,50 @@
             if (t > 5) startMatch();
             break;
         }
+      }
+
+      // Hand position is measured in world space so it lines up with the targets drawn on screen.
+      function readyTarget(k) {
+        const cam = getCameraTransform();
+        // Absolute hand x drives anchor placement, so this is where a hand puts its puppet at its start spot.
+        const x = 0.5 + (PUPPET_OFFSETS[k] * READY_SPREAD) / (HAND_SCALE.x * params.sensitivity);
+        return { x: cam.x + x * cam.width, y: cam.y + READY_TARGET_Y * cam.height };
+      }
+
+      function updateReadiness(pp, k, dt) {
+        const r = (pp.ready ??= { palm: null, speed: Infinity, hold: 0, isLocked: false });
+        const target = readyTarget(k);
+        r.target = target;
+        r.isTracked = isCameraActive && pp.isTracked && !!pp.landmarks;
+        if (!r.isTracked) {
+          Object.assign(r, { palm: null, speed: Infinity, hold: 0, distance: Infinity, isSteady: false, isOpen: false, isLocked: false });
+          return r;
+        }
+
+        const cam = getCameraTransform();
+        const toWorld = ({ x, y }) => ({ x: cam.x + x * cam.width, y: cam.y + y * cam.height });
+        const points = pp.landmarks.map(toWorld);
+        const palm = centroid(PALM_LANDMARKS.map((i) => points[i]));
+        const wrist = points[0];
+        r.isOpen =
+          OPEN_FINGERS.every(([tip, pip]) => dist(wrist, points[tip]) > dist(wrist, points[pip]) * OPEN_EXTEND_RATIO) &&
+          dist(points[8], points[20]) > dist(points[5], points[17]) * OPEN_SPREAD_RATIO;
+        const rawSpeed = r.palm && dt > 0 ? dist(palm, r.palm) / dt : Infinity;
+        r.speed = Number.isFinite(r.speed) && Number.isFinite(rawSpeed) ? lerp(r.speed, rawSpeed, 1 - Math.exp(-8 * dt)) : rawSpeed;
+        r.palm = palm;
+        r.distance = dist(palm, target);
+        r.isSteady = r.isOpen && r.distance < READY_RADIUS && r.speed < READY_STEADY_SPEED;
+        r.hold = r.isSteady ? r.hold + dt : 0;
+
+        if (r.isLocked && r.distance > READY_LEAVE_RADIUS) r.isLocked = false;
+        else if (!r.isLocked && r.hold >= READY_HOLD) {
+          // The hand's current spot becomes the puppet's start spot, so locking in moves nothing.
+          r.isLocked = true;
+          const tips = FINGER_TIPS.map((i) => pp.landmarks[i]);
+          pp.homeX = tips.reduce((sum, { x }) => sum + x, 0) / tips.length;
+          calibrateNeutral(pp);
+        }
+        return r;
       }
 
       // loser is null when the clock runs out.
@@ -1175,6 +1283,77 @@
 
         puppets.forEach(renderFighter);
         renderSparks();
+        renderReadyGuide();
+      }
+
+      function renderReadyGuide() {
+        const isCountdown = game.phase === "countdown";
+        if (game.phase !== "ready" && !isCountdown) return;
+
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        puppets.forEach((pp, k) => {
+          const r = pp.ready;
+          if (!r?.target) return;
+          // Shift the whole guide so the ring sits nearer centre while palm-to-ring offsets stay true.
+          const dx = (WIDTH / 2 - r.target.x) * (1 - READY_DISPLAY_SCALE);
+          const target = { x: r.target.x + dx, y: r.target.y };
+          const palm = r.palm && { x: r.palm.x + dx, y: r.palm.y };
+          const color = FIGHTERS[k].color;
+          const { isLocked } = r;
+
+          // Target ring, dashed until the hand is locked in.
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.setLineDash(isLocked ? [] : [8, 8]);
+          withAlpha(isLocked ? 1 : 0.6, () => drawCircle(target.x, target.y, READY_RADIUS, false, 2));
+          ctx.setLineDash([]);
+
+          // Hold progress sweeps around the ring.
+          const progress = isLocked ? 1 : clamp(r.hold / READY_HOLD, 0, 1);
+          if (progress > 0) {
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(target.x, target.y, READY_RADIUS, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+            ctx.stroke();
+          }
+
+          if (palm) {
+            if (r.distance > READY_RADIUS) withAlpha(0.5, () => drawLine(palm, target, 2));
+            const jitter = r.isSteady || isLocked ? 0 : clamp(r.speed / READY_STEADY_SPEED - 1, 0, 1) * 4;
+            ctx.fillStyle = isLocked ? color : "#fff";
+            drawCircle(palm.x + (Math.random() - 0.5) * jitter, palm.y + (Math.random() - 0.5) * jitter, 12, true, 2);
+          }
+
+          const side = k === 0 ? "left" : "right";
+          const label = !palm
+            ? `Show ${side} hand`
+            : isLocked
+              ? "Ready"
+              : r.distance > READY_RADIUS
+                ? directionHint(palm, target)
+                : !r.isOpen
+                  ? "Spread fingers"
+                  : "Hold steady";
+          ctx.fillStyle = color;
+          ctx.font = '700 18px "Chakra Petch", sans-serif';
+          ctx.fillText(label.toUpperCase(), target.x, target.y + READY_RADIUS + 28);
+        });
+
+        if (!isCountdown) {
+          ctx.fillStyle = "#fff";
+          ctx.font = '42px "Bebas Neue", sans-serif';
+          withAlpha(0.85, () => ctx.fillText("Open both hands inside the rings", WIDTH / 2, 120));
+        }
+        ctx.restore();
+      }
+
+      function directionHint(palm, target) {
+        const dx = target.x - palm.x;
+        const dy = target.y - palm.y;
+        if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "Move right →" : "← Move left";
+        return dy > 0 ? "Move down ↓" : "Move up ↑";
       }
 
       function renderStage(view) {
@@ -1412,12 +1591,14 @@
         $("calibrateButton").disabled = true;
       }
 
-      // Only finger spread is kept horizontally, so absolute hand x drives placement.
+      // Only finger spread is kept horizontally, so absolute hand x (relative to homeX once calibrated) drives placement.
       function calibrateNeutral(pp) {
         if (!pp.landmarks || !pp.isTracked) return;
         const tips = FINGER_TIPS.map((i) => pp.landmarks[i]);
         const meanX = tips.reduce((sum, { x }) => sum + x, 0) / tips.length;
-        pp.neutralPose = tips.map(({ x, y }) => ({ x: x - meanX + 0.5, y }));
+        const offset = pp.offsetX / (HAND_SCALE.x * params.sensitivity);
+        const homeX = pp.homeX ?? 0.5 + offset;
+        pp.neutralPose = tips.map(({ x, y }) => ({ x: x - meanX + homeX - offset, y }));
       }
 
       const resetFilters = (pp) => pp.filters.forEach(({ x, y }) => (x.reset(), y.reset()));
