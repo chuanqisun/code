@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TMG Reunion — Cards</title>
+<style>
+  :root { --fg: #000; --bg: #fff; --mute: #555; --gap: 12px; --bubble: 64px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 13px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; padding: 16px; }
+  a { color: inherit; }
+  button, input, select { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--fg); border-radius: 0; padding: 4px 8px; }
+  button { cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+  input[type=search] { min-width: 0; flex: 1 1 200px; }
+
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; margin-bottom: 12px; }
+  h1 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: .05em; }
+  #count { color: var(--mute); }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 16px; }
+
+  #grid { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .card { border: 1px solid var(--fg); display: flex; flex-direction: column; }
+
+  .img { position: relative; aspect-ratio: 1; border-bottom: 1px solid var(--fg); overflow: hidden; }
+  .img > img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .no { position: absolute; top: 4px; left: 6px; font-size: 11px; background: var(--bg); padding: 0 3px; }
+  .yr { position: absolute; top: 4px; right: 6px; font-size: 11px; background: var(--fg); color: var(--bg); padding: 0 3px; }
+
+  /* profile bubble over the project image. The button is a fixed-size hit target so the hover area
+     never changes; only the inner .face grows (and ignores the pointer), which avoids hover jitter. */
+  .img { container-type: inline-size; }
+  .bubble { position: absolute; left: 8px; bottom: 8px; width: var(--bubble); height: var(--bubble);
+    border: 0; border-radius: 50%; padding: 0; background: none; cursor: zoom-in; }
+  .face { position: absolute; left: 0; bottom: 0; width: var(--bubble); height: var(--bubble);
+    border: 1px solid var(--fg); border-radius: 50%; overflow: hidden; background: var(--bg);
+    pointer-events: none; transition: width .25s, height .25s, opacity .2s; }
+  .face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .face .ini { display: flex; height: 100%; align-items: center; justify-content: center; font-weight: 700; }
+  .img:hover .face { opacity: .35; }
+  .bubble:hover .face, .bubble:focus-visible .face, .bubble.open .face { opacity: 1; width: calc(100cqw - 16px); height: calc(100cqw - 16px); }
+  .bubble.open { cursor: zoom-out; }
+  @media (prefers-reduced-motion: reduce) { .face { transition: none; } }
+
+  .txt { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .t { font-weight: 700; text-transform: uppercase; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .who { font-weight: 700; }
+  .s { color: var(--mute); font-size: 11px; }
+  .blurb { font-size: 11px; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .hl { margin: 0; padding: 0; list-style: none; font-size: 11px; }
+  .hl li::before { content: '› '; }
+  .cta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 6px; }
+  .cta a { font-size: 11px; text-decoration: none; border: 1px solid var(--fg); padding: 1px 5px; }
+  .cta a:hover, .cta a:focus { background: var(--fg); color: var(--bg); }
+  #empty { display: none; padding: 32px 0; }
+  @media (max-width: 480px) {
+    body { padding: 10px; }
+    #grid { grid-template-columns: repeat(2, 1fr); --gap: 8px; }
+    :root { --bubble: 48px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>TMG Reunion · Who's coming</h1>
+  <span id="count"></span>
+</header>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="search name, project, affiliation…" aria-label="Search">
+  <select id="era" aria-label="Era">
+    <option value="">all eras</option>
+    <option value="1990">1990s</option>
+    <option value="2000">2000s</option>
+    <option value="2010">2010s</option>
+    <option value="2020">2020s</option>
+  </select>
+  <select id="sort" aria-label="Sort">
+    <option value="name">sort: name</option>
+    <option value="year">sort: project year</option>
+  </select>
+  <button id="lightning" aria-pressed="false" title="Giving a lightning update">⚡ talks</button>
+</div>
+
+<main id="grid"></main>
+<p id="empty">No match.</p>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = { q: '', era: '', sort: 'name', lightning: false };
+let people = [];
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const initials = n => n.split(/\s+/).map(w => w[0]).join('').slice(0, 3);
+const year = p => p.project?.year || +(p.tmg.match(/(19|20)\d\d/) || [])[0] || null;
+
+function links(p) {
+  const l = [];
+  if (p.profile) l.push(['TMG profile', p.profile]);
+  if (p.website) l.push(['website', p.website]);
+  if (p.project?.url && p.project.url !== p.website) l.push(['project', p.project.url]);
+  return `<div class="cta">${l.map(([t, u]) =>
+    `<a href="${esc(u)}" target="_blank" rel="noopener">${t} ↗</a>`).join('')}</div>`;
+}
+
+function card(p, i) {
+  const pr = p.project;
+  // project image is the hero; with no project image the TMG logo stands in
+  const hero = pr?.image || 'assets/tmg-logo.svg';
+  const bubble = `<button class="bubble" aria-label="Show ${esc(p.name)}'s photo"><span class="face">${p.photo
+    ? `<img src="${esc(p.photo)}" alt="${esc(p.name)}" loading="lazy">`
+    : `<span class="ini">${esc(initials(p.name))}</span>`}</span></button>`;
+  return `<article class="card">
+    <div class="img">
+      <img src="${esc(hero)}" alt="${esc(pr?.image ? pr.name : 'Tangible Media Group')}" loading="lazy">
+      <span class="no">#${String(i + 1).padStart(2, '0')}</span>
+      ${pr?.year ? `<span class="yr">${pr.year}</span>` : ''}
+      ${bubble}
+    </div>
+    <div class="txt">
+      ${pr ? `<div class="t">${esc(pr.name)}</div>` : ''}
+      <div class="who">${esc(p.name)}${p.status === 'maybe' ? ' <span class="s">(maybe)</span>' : ''}</div>
+      <div class="s">${esc(p.tmg)}${p.affiliation ? ' · ' + esc(p.affiliation) : ''}</div>
+      ${pr?.blurb ? `<div class="blurb">${esc(pr.blurb)}</div>` : ''}
+      ${p.highlights?.length ? `<ul class="hl">${p.highlights.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
+      ${links(p)}
+    </div>
+  </article>`;
+}
+
+function render() {
+  const q = state.q.trim().toLowerCase();
+  let list = people.filter(p => {
+    if (state.lightning && !p.lightning) return false;
+    if (state.era) { const y = year(p); if (!y || Math.floor(y / 10) * 10 !== +state.era) return false; }
+    if (!q) return true;
+    return [p.name, p.tmg, p.affiliation, p.project?.name, p.project?.blurb, ...(p.project?.members || []), ...(p.highlights || [])]
+      .join(' ').toLowerCase().includes(q);
+  });
+  // complete cards (project + photo) first, then by the chosen key
+  const done = p => (p.project?.image ? 0 : 2) + (p.photo ? 0 : 1);
+  list.sort((a, b) => done(a) - done(b) || (state.sort === 'year'
+    ? (year(a) || 9999) - (year(b) || 9999) || a.name.localeCompare(b.name)
+    : a.name.localeCompare(b.name)));
+  $('#grid').innerHTML = list.map(card).join('');
+  $('#empty').style.display = list.length ? 'none' : 'block';
+  $('#count').textContent = `${list.length} / ${people.length} attending`;
+  $('#lightning').setAttribute('aria-pressed', state.lightning);
+}
+
+$('#q').oninput = e => { state.q = e.target.value; render(); };
+$('#era').onchange = e => { state.era = e.target.value; render(); };
+$('#sort').onchange = e => { state.sort = e.target.value; render(); };
+$('#lightning').onclick = () => { state.lightning = !state.lightning; render(); };
+// tap/click/keyboard toggles the bubble so nothing depends on hover
+$('#grid').addEventListener('click', e => {
+  const b = e.target.closest('.bubble');
+  document.querySelectorAll('.bubble.open').forEach(o => o !== b && o.classList.remove('open'));
+  b?.classList.toggle('open');
+});
+
+fetch('./data.json').then(r => r.json()).then(d => { people = d.people; render(); })
+  .catch(() => { $('#grid').textContent = 'Could not load data.json — serve this folder over http (e.g. python3 -m http.server).'; });
+</script>
+</body>
+</html>
