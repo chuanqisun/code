@@ -3,15 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hand puppet prototype</title>
+    <title>Puppet Fighter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --fg: #000;
-        --bg: #fff;
-        --stage: #000;
-        --overlay: rgb(255 255 255 / 0.92);
-        --border: 1px solid var(--fg);
-        --font: 12px monospace;
+        --fg: #ece9f5;
+        --bg: rgb(255 255 255 / 0.04);
+        --stage: #05040a;
+        --overlay: rgb(10 8 18 / 0.82);
+        --border: 1px solid rgb(255 255 255 / 0.16);
+        --font: 500 12px "Chakra Petch", sans-serif;
+        --display: "Bebas Neue", sans-serif;
         --gap: 12px;
         --gap-sm: 8px;
         --menu-width: 280px;
@@ -46,6 +50,12 @@
 
       button {
         cursor: pointer;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      option {
+        background: var(--stage);
       }
 
       canvas {
@@ -65,8 +75,11 @@
         position: fixed;
         top: var(--gap);
         right: var(--gap);
-        z-index: 2;
-        opacity: 0.6;
+        z-index: 3;
+        opacity: 0.5;
+        padding: 6px 12px;
+        background: transparent;
+        letter-spacing: 0.25em;
 
         &:hover,
         &[aria-expanded="true"] {
@@ -77,8 +90,9 @@
       #menu {
         position: fixed;
         inset: 0 0 0 auto;
-        z-index: 1;
+        z-index: 2;
         width: var(--menu-width);
+        backdrop-filter: blur(12px);
         max-width: 100vw;
         overflow-y: auto;
         padding: 52px var(--gap) var(--gap);
@@ -121,11 +135,194 @@
           width: 100%;
         }
       }
+
+      #hud {
+        position: fixed;
+        top: 22px;
+        left: 50%;
+        z-index: 1;
+        translate: -50% 0;
+        width: min(880px, calc(100vw - 200px));
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: start;
+        gap: 28px;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .fighter {
+        --dir: 90deg;
+        display: grid;
+        gap: 8px;
+
+        &[data-side="1"] {
+          --dir: 270deg;
+          direction: rtl;
+
+          .bar {
+            transform: skewX(24deg);
+          }
+
+          .bar i {
+            transform-origin: right;
+          }
+        }
+      }
+
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 700;
+        font-size: 11px;
+        letter-spacing: 0.35em;
+        text-transform: uppercase;
+        color: var(--c);
+      }
+
+      .pips {
+        display: flex;
+        gap: 8px;
+
+        b {
+          width: 7px;
+          height: 7px;
+          rotate: 45deg;
+          border: 1px solid rgb(255 255 255 / 0.35);
+          transition: 0.3s;
+
+          &.on {
+            background: var(--c);
+            border-color: var(--c);
+            box-shadow: 0 0 10px var(--c);
+          }
+        }
+      }
+
+      .bar {
+        position: relative;
+        height: 12px;
+        overflow: hidden;
+        transform: skewX(-24deg);
+        background: rgb(255 255 255 / 0.06);
+        box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+        filter: drop-shadow(0 0 10px color-mix(in srgb, var(--c), transparent 50%));
+
+        i {
+          position: absolute;
+          inset: 0;
+          transform-origin: left;
+          transform: scaleX(var(--hp, 1));
+        }
+
+        .lag {
+          background: #fff;
+          transition: transform 0.5s ease-in 0.35s;
+        }
+
+        .hp {
+          background: linear-gradient(var(--dir), color-mix(in srgb, var(--c), #000 45%), var(--c));
+          transition: transform 0.08s;
+        }
+      }
+
+      .low .hp {
+        animation: pulse 0.5s ease-in-out infinite alternate;
+      }
+
+      @keyframes pulse {
+        to {
+          opacity: 0.45;
+        }
+      }
+
+      #clock {
+        min-width: 2.2ch;
+        text-align: center;
+        font: 52px/0.8 var(--display);
+        color: #fff;
+
+        small {
+          display: block;
+          margin-top: 8px;
+          font: 700 9px "Chakra Petch", sans-serif;
+          letter-spacing: 0.4em;
+          opacity: 0.45;
+        }
+      }
+
+      #banner {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+        opacity: 0;
+        font: clamp(64px, 17vmin, 200px) / 1 var(--display);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #fff;
+        text-shadow: 0 0 40px var(--c, rgb(170 140 255));
+
+        &.show {
+          animation: banner 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        &.fight {
+          --c: #fff;
+          animation-duration: 0.9s;
+        }
+
+        &.ko {
+          --c: hsl(10 100% 60%);
+          animation-duration: 2.8s;
+        }
+
+        &.win {
+          color: var(--c);
+          animation-duration: 4.6s;
+        }
+      }
+
+      @keyframes banner {
+        0% {
+          opacity: 0;
+          scale: 1.6;
+          letter-spacing: 0.4em;
+        }
+        14% {
+          opacity: 1;
+          scale: 1;
+          letter-spacing: 0.06em;
+        }
+        80% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          scale: 0.97;
+        }
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
     <video id="video" autoplay playsinline muted></video>
+
+    <div id="hud">
+      <div class="fighter" data-side="0">
+        <div class="meta"><span class="name"></span><span class="pips"><b></b><b></b></span></div>
+        <div class="bar"><i class="lag"></i><i class="hp"></i></div>
+      </div>
+      <div id="clock"><span id="timer">60</span><small id="roundLabel">Round 1</small></div>
+      <div class="fighter" data-side="1">
+        <div class="meta"><span class="name"></span><span class="pips"><b></b><b></b></span></div>
+        <div class="bar"><i class="lag"></i><i class="hp"></i></div>
+      </div>
+    </div>
+    <div id="banner"></div>
 
     <button id="menuButton" aria-controls="menu" aria-expanded="false">Menu</button>
 
@@ -135,6 +332,7 @@
         <select id="cameraSelect" aria-label="Camera" disabled>
           <option>Camera source</option>
         </select>
+        <button id="matchButton">New match</button>
         <button id="resetButton">Reset puppets</button>
         <button id="calibrateButton" disabled>Recalibrate neutral</button>
       </header>
@@ -275,10 +473,27 @@
 
       // Play mode lifts anchors off-screen visually; physics is unaffected.
       const ANCHOR_RENDER_LIFT = 500;
-      const PLAY_COLORS = ["hsl(330 100% 80%)", "hsl(200 100% 80%)"];
+      const FIGHTERS = [
+        { name: "Rose", color: "hsl(330 100% 68%)" },
+        { name: "Azure", color: "hsl(192 100% 60%)" },
+      ];
+      const PUPPET_FILL = "#0b0914";
       const DEBUG_THEME = { ink: "#000", paper: "#fff", lift: 0 };
 
       const PUPPET_OFFSETS = [-220, 220];
+
+      const MAX_HP = 100;
+      const ROUND_TIME = 60;
+      const ROUNDS_TO_WIN = 2;
+      // Head, hands and feet can strike; arm segments of the target count as a guard.
+      const STRIKERS = [0, 7, 8, 11, 12];
+      const GUARD_SEGMENTS = new Set([3, 4, 5, 6]);
+      const ZONE_DAMAGE = { head: 1.5, body: 1, guard: 0.25 };
+      const STRIKE_MIN_SPEED = 380;
+      const STRIKE_REACH = 6;
+      const HIT_COOLDOWN = 0.28;
+      const DEBRIS_ROPE_SEGMENTS = 16;
+      const DEBRIS_ITERATIONS = 6;
       const CAMERA_STORAGE_KEY = "puppet_camera";
       const MEDIAPIPE_VERSION = "0.10.32";
       const MEDIAPIPE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}`;
@@ -323,7 +538,13 @@
         neutralPose: null,
         isTracked: false,
         lastSeenTime: -Infinity,
+        hp: MAX_HP,
+        flash: 0,
+        cooldowns: {},
       }));
+
+      const game = { phase: "intro", phaseTime: 0, round: 1, timer: ROUND_TIME, wins: [0, 0], cue: 0, hitStop: 0, timeScale: 1, shake: 0 };
+      const sparks = [];
 
       let model = null;
       let modelPromise = null;
@@ -345,16 +566,21 @@
 
         processCameraFrame(now);
         puppets.forEach(updateAnchorTargets);
+        updateGame(elapsed);
+        updateSparks(elapsed);
 
-        accumulator += elapsed;
+        // Hit-stop freezes the simulation briefly so strikes land with weight.
+        if (game.hitStop > 0) game.hitStop -= elapsed;
+        else accumulator += elapsed * game.timeScale;
         let steps = 0;
-        for (; accumulator >= TIME_STEP && steps < MAX_STEPS_PER_FRAME; steps++) {
+        for (; accumulator >= TIME_STEP && steps < MAX_STEPS_PER_FRAME && game.hitStop <= 0; steps++) {
           stepPhysics(TIME_STEP);
           accumulator -= TIME_STEP;
         }
         if (steps === MAX_STEPS_PER_FRAME) accumulator = 0;
 
         render();
+        updateHud();
         updateStats(now);
         requestAnimationFrame(mainLoop);
       }
@@ -381,6 +607,7 @@
             slack: 0,
           }));
           pp.anchors.forEach((a, i) => Object.assign(a, baseAnchor(pp, i)));
+          pp.debris = null;
           resetAnchorTargets(pp);
           if (isCameraActive && pp.isTracked) calibrateNeutral(pp);
         }
@@ -410,23 +637,30 @@
 
       function stepPhysics(dt) {
         const blend = 1 - Math.exp(-params.anchorFollow * dt);
-        const isHeld = (pp) => !isCameraActive || pp.isTracked;
+        // A knocked-out puppet has its strings cut.
+        const isHeld = (pp) => pp.hp > 0 && (!isCameraActive || pp.isTracked);
 
-        for (const pp of puppets) {
+        const live = puppets.filter((pp) => !pp.debris);
+        puppets.forEach((pp) => pp.debris && stepDebris(pp.debris, dt));
+
+        for (const pp of live) {
           followAnchors(pp, blend);
           integrate(pp.particles, dt);
           updateRopeSlack(pp, isHeld(pp), dt);
+          for (const k in pp.cooldowns) pp.cooldowns[k] -= dt;
         }
 
+        if (game.phase === "fight") detectStrikes(dt);
+
         for (let iter = 0; iter < params.iterations; iter++) {
-          for (const pp of puppets) {
+          for (const pp of live) {
             solveBones(pp);
             solveRopes(pp);
           }
-          for (let i = 0; i < puppets.length; i++) {
-            for (let j = i + 1; j < puppets.length; j++) collidePuppets(puppets[i], puppets[j]);
+          for (let i = 0; i < live.length; i++) {
+            for (let j = i + 1; j < live.length; j++) collidePuppets(live[i], live[j]);
           }
-          puppets.forEach(({ particles }) => particles.forEach(constrainToStage));
+          live.forEach(({ particles }) => particles.forEach(constrainToStage));
         }
       }
 
@@ -579,22 +813,364 @@
         }
       }
 
+      // ---------- Combat ----------
+
+      // Runs on predicted positions before constraints resolve, so velocities still carry the full swing.
+      function detectStrikes(dt) {
+        puppets.forEach((A, k) => {
+          const B = puppets[1 - k];
+          if (A.hp <= 0 || B.hp <= 0) return;
+          for (const i of STRIKERS) {
+            if (A.cooldowns[i] > 0) continue;
+            const p = A.particles[i];
+            const hit = findContact(p, collisionRadius(i) + STRIKE_REACH, B);
+            if (!hit) continue;
+            const speed = -((p.x - p.px) * hit.nx + (p.y - p.py) * hit.ny) / dt;
+            if (speed >= STRIKE_MIN_SPEED) applyHit(A, B, i, hit, speed);
+          }
+        });
+      }
+
+      // Contact normal points from the target surface toward the striker.
+      function findContact(p, reach, B) {
+        const head = B.particles[0];
+        const dh = dist(p, head) || 1e-6;
+        if (dh < reach + HEAD_RADIUS) {
+          const [nx, ny] = [(p.x - head.x) / dh, (p.y - head.y) / dh];
+          return { x: head.x + nx * HEAD_RADIUS, y: head.y + ny * HEAD_RADIUS, nx, ny, zone: "head" };
+        }
+
+        let best = null;
+        COLLISION_SEGMENTS.forEach(([ia, ib], k) => {
+          const a = B.particles[ia];
+          const b = B.particles[ib];
+          const ex = b.x - a.x;
+          const ey = b.y - a.y;
+          const u = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / (ex * ex + ey * ey || 1), 0, 1);
+          const c = { x: a.x + ex * u, y: a.y + ey * u };
+          const d = dist(p, c) || 1e-6;
+          if (d >= reach + BONE_RADIUS || (best && d >= best.d)) return;
+          best = { ...c, d, nx: (p.x - c.x) / d, ny: (p.y - c.y) / d, zone: GUARD_SEGMENTS.has(k) ? "guard" : "body" };
+        });
+        return best;
+      }
+
+      function applyHit(A, B, i, hit, speed) {
+        const damage = clamp((speed - STRIKE_MIN_SPEED) / 50 + 3, 3, 14) * ZONE_DAMAGE[hit.zone];
+        const isGuard = hit.zone === "guard";
+        A.cooldowns[i] = HIT_COOLDOWN;
+        B.hp = Math.max(0, B.hp - damage);
+        B.flash = isGuard ? 0.4 : 1;
+        game.hitStop = isGuard ? 0.02 : 0.045 + damage * 0.004;
+        game.shake = Math.max(game.shake, damage * 1.3);
+        spawnSparks(hit, FIGHTERS[puppets.indexOf(A)].color, damage);
+        if (B.hp === 0) endRound(B);
+      }
+
+      function spawnSparks({ x, y, nx, ny }, color, power) {
+        sparks.push({ x, y, color, power, life: 1, ring: true });
+        const heading = Math.atan2(-ny, -nx);
+        for (let k = 0; k < 6 + power; k++) {
+          const angle = heading + (Math.random() - 0.5) * 2.2;
+          const speed = 200 + Math.random() * 60 * power;
+          sparks.push({ x, y, color, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.6 + Math.random() * 0.4 });
+        }
+      }
+
+      function updateSparks(dt) {
+        for (const s of sparks) {
+          s.life -= dt * (s.ring ? 3 : 2.4);
+          if (s.ring) continue;
+          s.vx *= Math.exp(-5 * dt);
+          s.vy = s.vy * Math.exp(-5 * dt) + 900 * dt;
+          s.x += s.vx * dt;
+          s.y += s.vy * dt;
+        }
+        for (let k = sparks.length - 1; k >= 0; k--) if (sparks[k].life <= 0) sparks.splice(k, 1);
+      }
+
+      // ---------- Knockout debris ----------
+
+      // Every bone becomes a loose stick and every string a free-falling chain dropped from above the stage.
+      function shatterPuppet(pp) {
+        const kick = () => (Math.random() - 0.5) * 5;
+        const free = (p) => ({ x: p.x, y: p.y, px: p.px + kick(), py: p.py + kick() });
+        const bones = VISIBLE_BONES.map(([a, b]) => {
+          const [pa, pb] = [free(pp.particles[a]), free(pp.particles[b])];
+          return { a: pa, b: pb, length: dist(pa, pb) };
+        });
+        const ropes = pp.ropes.map((r, i) => {
+          const top = { x: pp.anchors[i].x, y: pp.anchors[i].y - ANCHOR_RENDER_LIFT };
+          const end = pp.particles[r.part];
+          const pts = Array.from({ length: DEBRIS_ROPE_SEGMENTS + 1 }, (_, k) => {
+            const p = lerpPoint(top, end, k / DEBRIS_ROPE_SEGMENTS);
+            return { ...p, px: p.x, py: p.y };
+          });
+          return { pts, length: dist(top, end) / DEBRIS_ROPE_SEGMENTS };
+        });
+        pp.debris = { head: free(pp.particles[0]), headAngle: 0, bones, ropes };
+      }
+
+      function stepDebris(d, dt) {
+        const { head, bones, ropes } = d;
+        const joints = bones.flatMap(({ a, b }) => [a, b]);
+        const ropePoints = ropes.flatMap(({ pts }) => pts);
+        integrate([head, ...joints, ...ropePoints], dt);
+
+        for (let iter = 0; iter < DEBRIS_ITERATIONS; iter++) {
+          for (const { a, b, length } of bones) solveStick(a, b, length);
+          for (const { pts, length } of ropes) {
+            for (let k = 1; k < pts.length; k++) solveStick(pts[k - 1], pts[k], length);
+          }
+          groundPoint(head, HEAD_RADIUS, 0.98);
+          joints.forEach((p) => groundPoint(p, FOOT_RADIUS, 0.7));
+          ropePoints.forEach((p) => groundPoint(p, 1, 0.5));
+        }
+        d.headAngle += (head.x - head.px) / HEAD_RADIUS;
+      }
+
+      function solveStick(a, b, length) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        const k = (d - length) / d / 2;
+        shift(a, dx, dy, k);
+        shift(b, dx, dy, -k);
+      }
+
+      // Like constrainToStage, with per-piece friction so the head rolls while limbs skid.
+      function groundPoint(p, radius, friction) {
+        p.x = clamp(p.x, radius + WALL_MARGIN, WIDTH - WALL_MARGIN - radius);
+        if (p.y <= FLOOR - radius) return;
+        p.y = FLOOR - radius;
+        p.px = lerp(p.x, p.px, friction);
+        p.py = Math.max(p.py, p.y);
+      }
+
+      // ---------- Match flow ----------
+
+      function startMatch() {
+        game.wins = [0, 0];
+        game.round = 1;
+        startRound();
+      }
+
+      function startRound() {
+        resetPuppets();
+        puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, cooldowns: {} }));
+        setPhase("intro");
+        game.timer = ROUND_TIME;
+        const isFinal = game.wins.every((w) => w === ROUNDS_TO_WIN - 1);
+        showBanner(isFinal ? "Final round" : `Round ${game.round}`);
+      }
+
+      function setPhase(phase) {
+        Object.assign(game, { phase, phaseTime: 0, cue: 0, timeScale: 1 });
+      }
+
+      function updateGame(dt) {
+        game.phaseTime += dt;
+        game.shake *= Math.exp(-10 * dt);
+        puppets.forEach((pp) => (pp.flash = Math.max(0, pp.flash - dt * 5)));
+
+        const t = game.phaseTime;
+        switch (game.phase) {
+          case "intro":
+            if (t > 1.3 && !game.cue++) showBanner("Fight", "fight");
+            if (t > 1.9) setPhase("fight");
+            break;
+          case "fight":
+            game.timer = Math.max(0, game.timer - dt);
+            if (game.timer === 0) endRound(null);
+            break;
+          case "ko":
+            game.timeScale = t < 1.4 ? 0.3 : 1;
+            if (t < 3.6) break;
+            if (game.wins.some((w) => w >= ROUNDS_TO_WIN)) finishMatch();
+            else {
+              game.round++;
+              startRound();
+            }
+            break;
+          case "over":
+            if (t > 5) startMatch();
+            break;
+        }
+      }
+
+      // loser is null when the clock runs out.
+      function endRound(loser) {
+        const [a, b] = puppets.map((pp) => pp.hp);
+        const winner = loser ? 1 - puppets.indexOf(loser) : a === b ? -1 : a > b ? 0 : 1;
+        if (winner >= 0) game.wins[winner]++;
+        if (loser) shatterPuppet(loser);
+        setPhase("ko");
+        showBanner(loser ? "K.O." : winner < 0 ? "Draw" : "Time", "ko");
+      }
+
+      function finishMatch() {
+        const { name, color } = FIGHTERS[game.wins[0] > game.wins[1] ? 0 : 1];
+        setPhase("over");
+        showBanner(`${name} wins`, "win", color);
+      }
+
+      function showBanner(text, kind = "", color = "") {
+        const el = $("banner");
+        el.textContent = text;
+        el.className = "";
+        el.style.setProperty("--c", color || null);
+        void el.offsetWidth;
+        el.className = `show ${kind}`;
+      }
+
+      const hudFighters = [...document.querySelectorAll(".fighter")];
+
+      function updateHud() {
+        puppets.forEach((pp, i) => {
+          const el = hudFighters[i];
+          el.style.setProperty("--hp", (pp.hp / MAX_HP).toFixed(4));
+          el.classList.toggle("low", pp.hp > 0 && pp.hp < 30);
+          el.querySelectorAll(".pips b").forEach((b, k) => b.classList.toggle("on", k < game.wins[i]));
+        });
+        $("timer").textContent = String(Math.ceil(game.timer)).padStart(2, "0");
+        $("roundLabel").textContent = `Round ${game.round}`;
+      }
+
       // ---------- Rendering ----------
 
       function render() {
         const isDebug = $("debugMode").checked;
         const view = getViewTransform();
+        const shake = () => (Math.random() - 0.5) * game.shake * view.scale;
 
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = 1;
-        ctx.fillStyle = isDebug ? "#fff" : "#000";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
+        if (isDebug) {
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else renderStage(view);
+        ctx.setTransform(view.scale, 0, 0, view.scale, view.x + shake(), view.y + shake());
         ctx.lineCap = ctx.lineJoin = "round";
 
-        if (isDebug) renderDebugLayer();
+        if (isDebug) {
+          renderDebugLayer();
+          return puppets.forEach((pp) => renderPuppet(pp, DEBUG_THEME));
+        }
 
-        puppets.forEach((pp, i) => renderPuppet(pp, isDebug ? DEBUG_THEME : { ink: PLAY_COLORS[i], paper: "#000", lift: ANCHOR_RENDER_LIFT }));
+        puppets.forEach(renderFighter);
+        renderSparks();
+        renderVignette();
+      }
+
+      function renderStage(view) {
+        const { width: w, height: h } = canvas;
+        const floorY = view.y + FLOOR * view.scale;
+
+        const sky = ctx.createLinearGradient(0, 0, 0, floorY);
+        sky.addColorStop(0, "#05040a");
+        sky.addColorStop(1, "#160e2a");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, w, h);
+
+        const glow = ctx.createRadialGradient(w / 2, floorY, 0, w / 2, floorY, Math.max(w, h) * 0.6);
+        glow.addColorStop(0, "rgb(150 100 255 / 0.32)");
+        glow.addColorStop(1, "rgb(150 100 255 / 0)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.fillStyle = "rgb(4 3 9 / 0.88)";
+        ctx.fillRect(0, floorY, w, h - floorY);
+
+        // Perspective grid converging on a vanishing point above the floor line.
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgb(170 140 255 / 0.1)";
+        ctx.beginPath();
+        const spacing = 60 * view.scale;
+        for (let k = -30; k <= 30; k++) {
+          ctx.moveTo(w / 2 + k * spacing, floorY);
+          ctx.lineTo(w / 2 + k * spacing * 6, h);
+        }
+        for (let j = 1; j <= 10; j++) {
+          const y = floorY + (h - floorY) * (j / 10) ** 2;
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+        }
+        ctx.stroke();
+
+        const line = ctx.createLinearGradient(0, 0, w, 0);
+        line.addColorStop(0, "rgb(200 180 255 / 0)");
+        line.addColorStop(0.5, "rgb(220 205 255 / 0.7)");
+        line.addColorStop(1, "rgb(200 180 255 / 0)");
+        ctx.strokeStyle = line;
+        ctx.lineWidth = 1.5 * view.scale;
+        drawLine({ x: 0, y: floorY }, { x: w, y: floorY }, 1.5 * view.scale);
+      }
+
+      function renderFighter(pp, i) {
+        const color = pp.flash > 0.5 ? "#fff" : FIGHTERS[i].color;
+        const theme = { ink: color, paper: PUPPET_FILL, lift: ANCHOR_RENDER_LIFT };
+
+        // Pool of light on the floor beneath the fighter.
+        const cx = pp.debris ? pp.debris.head.x : centroid(pp.particles).x;
+        ctx.save();
+        ctx.translate(cx, FLOOR);
+        ctx.scale(1, 0.12);
+        const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, 160);
+        pool.addColorStop(0, FIGHTERS[i].color);
+        pool.addColorStop(1, "transparent");
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = pool;
+        ctx.fillRect(-160, -160, 320, 320);
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-WIDTH, FLOOR, WIDTH * 3, HEIGHT);
+        ctx.clip();
+        ctx.translate(0, 2 * FLOOR);
+        ctx.scale(1, -1);
+        ctx.globalAlpha = 0.14;
+        renderPuppet(pp, { ...theme, strings: false });
+        ctx.restore();
+
+        ctx.save();
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 18 + pp.flash * 30;
+        renderPuppet(pp, theme);
+        ctx.restore();
+      }
+
+      function renderSparks() {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        for (const s of sparks) {
+          ctx.globalAlpha = clamp(s.life, 0, 1);
+          ctx.strokeStyle = s.color;
+          ctx.shadowColor = s.color;
+          ctx.shadowBlur = 12;
+          if (s.ring) {
+            ctx.lineWidth = 4 * s.life;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, 8 + (1 - s.life) * (20 + s.power * 4), 0, Math.PI * 2);
+            ctx.stroke();
+          } else {
+            ctx.strokeStyle = "#fff";
+            drawLine(s, { x: s.x - s.vx * 0.03, y: s.y - s.vy * 0.03 }, 2.5 * s.life);
+          }
+        }
+        ctx.restore();
+      }
+
+      function renderVignette() {
+        const { width: w, height: h } = canvas;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+        v.addColorStop(0, "rgb(0 0 0 / 0)");
+        v.addColorStop(1, "rgb(0 0 0 / 0.7)");
+        ctx.fillStyle = v;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
       }
 
       function renderDebugLayer() {
@@ -618,12 +1194,13 @@
         });
       }
 
-      function renderPuppet(pp, { ink, paper, lift }) {
+      function renderPuppet(pp, { ink, paper, lift, strings = $("showStrings").checked }) {
         const { particles, ropes, anchors } = pp;
         ctx.strokeStyle = ink;
         ctx.fillStyle = paper;
+        if (pp.debris) return renderDebris(pp.debris, ink, strings);
 
-        if ($("showStrings").checked) {
+        if (strings) {
           ctx.lineWidth = 1.4;
           ropes.forEach((r, i) => {
             const a = { x: anchors[i].x, y: anchors[i].y - lift };
@@ -653,6 +1230,20 @@
           ctx.fillStyle = ink;
           ctx.fillText(String(i + 1), x, y);
         });
+      }
+
+      function renderDebris({ head, headAngle, bones, ropes }, ink, strings) {
+        if (strings) {
+          ctx.lineWidth = 1.4;
+          for (const { pts } of ropes) {
+            ctx.beginPath();
+            pts.forEach(({ x, y }, k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+            ctx.stroke();
+          }
+        }
+        for (const { a, b } of bones) drawLine(a, b, 6);
+        for (const { a, b } of bones) [a, b].forEach(({ x, y }) => drawCircle(x, y, 3.6, true, 1.8));
+        renderHead([head, { x: head.x - Math.sin(headAngle), y: head.y + Math.cos(headAngle) }], ink);
       }
 
       function renderHead([head, neck], ink) {
@@ -906,6 +1497,11 @@
         });
 
         $("resetButton").addEventListener("click", resetPuppets);
+        $("matchButton").addEventListener("click", startMatch);
+        hudFighters.forEach((el, i) => {
+          el.style.setProperty("--c", FIGHTERS[i].color);
+          el.querySelector(".name").textContent = FIGHTERS[i].name;
+        });
         $("calibrateButton").addEventListener("click", () => puppets.forEach(calibrateNeutral));
 
         navigator.mediaDevices?.addEventListener?.("devicechange", () => {
@@ -1126,7 +1722,7 @@
       }
 
       bindUI();
-      resetPuppets();
+      startMatch();
       requestAnimationFrame(mainLoop);
       $("cameraButton").click();
     </script>
