@@ -1,0 +1,1790 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Puppet Fighter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --fg: #ece9f5;
+        --bg: rgb(255 255 255 / 0.04);
+        --stage: #000;
+        --overlay: rgb(10 8 18 / 0.82);
+        --border: 1px solid rgb(255 255 255 / 0.16);
+        --font: 500 12px "Chakra Petch", sans-serif;
+        --display: "Bebas Neue", sans-serif;
+        --gap: 12px;
+        --gap-sm: 8px;
+        --menu-width: 280px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        color: var(--fg);
+        background: var(--stage);
+        font: var(--font);
+      }
+
+      button,
+      select,
+      input {
+        font: inherit;
+        accent-color: var(--fg);
+      }
+
+      button,
+      select {
+        color: var(--fg);
+        background: var(--bg);
+        border: var(--border);
+        padding: 5px;
+      }
+
+      button {
+        cursor: pointer;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      option {
+        background: var(--stage);
+      }
+
+      canvas {
+        position: fixed;
+        inset: 0;
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        touch-action: none;
+      }
+
+      video {
+        display: none;
+      }
+
+      #corner {
+        position: fixed;
+        top: var(--gap);
+        right: var(--gap);
+        z-index: 3;
+        display: flex;
+        gap: var(--gap-sm);
+      }
+
+      #corner button {
+        opacity: 0.5;
+        padding: 6px 12px;
+        background: transparent;
+        letter-spacing: 0.25em;
+
+        &:hover,
+        &[aria-expanded="true"],
+        &[aria-pressed="true"] {
+          opacity: 1;
+        }
+      }
+
+      #menu {
+        position: fixed;
+        inset: 0 0 0 auto;
+        z-index: 2;
+        width: var(--menu-width);
+        backdrop-filter: blur(12px);
+        max-width: 100vw;
+        overflow-y: auto;
+        padding: 52px var(--gap) var(--gap);
+        background: var(--overlay);
+        border-left: var(--border);
+
+        &[hidden] {
+          display: none;
+        }
+
+        header {
+          display: flex;
+          flex-wrap: wrap;
+          gap: var(--gap-sm);
+          margin-bottom: var(--gap);
+        }
+
+        fieldset {
+          margin: 0 0 var(--gap);
+          border: var(--border);
+          padding: 10px;
+
+          p {
+            margin: var(--gap-sm) 0;
+          }
+        }
+      }
+
+      .setting {
+        display: block;
+        margin-bottom: var(--gap);
+
+        span {
+          display: flex;
+          justify-content: space-between;
+          gap: var(--gap-sm);
+        }
+
+        input {
+          width: 100%;
+        }
+      }
+
+      #hud {
+        position: fixed;
+        top: 22px;
+        left: 50%;
+        z-index: 1;
+        translate: -50% 0;
+        width: min(880px, calc(100vw - 200px));
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: start;
+        gap: 28px;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .fighter {
+        --dir: 90deg;
+        display: grid;
+        gap: 8px;
+
+        &[data-side="1"] {
+          --dir: 270deg;
+          direction: rtl;
+
+          .bar {
+            transform: skewX(24deg);
+          }
+
+          .bar i {
+            transform-origin: right;
+          }
+        }
+      }
+
+      .meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 700;
+        font-size: 11px;
+        letter-spacing: 0.35em;
+        text-transform: uppercase;
+        color: var(--c);
+      }
+
+      .pips {
+        display: flex;
+        gap: 8px;
+
+        b {
+          width: 7px;
+          height: 7px;
+          rotate: 45deg;
+          border: 1px solid rgb(255 255 255 / 0.35);
+          transition: 0.3s;
+
+          &.on {
+            background: var(--c);
+            border-color: var(--c);
+          }
+        }
+      }
+
+      .bar {
+        position: relative;
+        height: 12px;
+        overflow: hidden;
+        transform: skewX(-24deg);
+        background: rgb(255 255 255 / 0.06);
+        box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+
+        i {
+          position: absolute;
+          inset: 0;
+          transform-origin: left;
+          transform: scaleX(var(--hp, 1));
+        }
+
+        .lag {
+          background: #fff;
+          transition: transform 0.5s ease-in 0.35s;
+        }
+
+        .hp {
+          background: linear-gradient(var(--dir), color-mix(in srgb, var(--c), #000 45%), var(--c));
+          transition: transform 0.08s;
+        }
+      }
+
+      .low .hp {
+        animation: pulse 0.5s ease-in-out infinite alternate;
+      }
+
+      @keyframes pulse {
+        to {
+          opacity: 0.45;
+        }
+      }
+
+      #clock {
+        min-width: 2.2ch;
+        text-align: center;
+        font: 52px/0.8 var(--display);
+        color: #fff;
+
+        small {
+          display: block;
+          margin-top: 8px;
+          font: 700 9px "Chakra Petch", sans-serif;
+          letter-spacing: 0.4em;
+          opacity: 0.45;
+        }
+      }
+
+      #banner {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+        opacity: 0;
+        font: clamp(64px, 17vmin, 200px) / 1 var(--display);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #fff;
+
+        &.show {
+          animation: banner 1.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        &.fight {
+          --c: #fff;
+          animation-duration: 0.9s;
+        }
+
+        &.ko {
+          --c: hsl(10 100% 60%);
+          animation-duration: 2.8s;
+        }
+
+        &.win {
+          color: var(--c);
+          animation-duration: 4.6s;
+        }
+      }
+
+      @keyframes banner {
+        0% {
+          opacity: 0;
+          scale: 1.6;
+          letter-spacing: 0.4em;
+        }
+        14% {
+          opacity: 1;
+          scale: 1;
+          letter-spacing: 0.06em;
+        }
+        80% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          scale: 0.97;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <video id="video" autoplay playsinline muted></video>
+
+    <div id="hud">
+      <div class="fighter" data-side="0">
+        <div class="meta"><span class="name"></span><span class="pips"><b></b><b></b></span></div>
+        <div class="bar"><i class="lag"></i><i class="hp"></i></div>
+      </div>
+      <div id="clock"><span id="timer">60</span><small id="roundLabel">Round 1</small></div>
+      <div class="fighter" data-side="1">
+        <div class="meta"><span class="name"></span><span class="pips"><b></b><b></b></span></div>
+        <div class="bar"><i class="lag"></i><i class="hp"></i></div>
+      </div>
+    </div>
+    <div id="banner"></div>
+
+    <div id="corner">
+      <button id="musicButton" aria-pressed="false">Music off</button>
+      <button id="menuButton" aria-controls="menu" aria-expanded="false">Menu</button>
+    </div>
+
+    <aside id="menu" hidden>
+      <header>
+        <button id="cameraButton">Enable camera</button>
+        <select id="cameraSelect" aria-label="Camera" disabled>
+          <option>Camera source</option>
+        </select>
+        <button id="matchButton">New match</button>
+        <button id="resetButton">Reset puppets</button>
+        <button id="calibrateButton" disabled>Recalibrate neutral</button>
+      </header>
+
+      <fieldset id="tracking">
+        <legend>Tracking</legend>
+        <label><input id="debugMode" type="checkbox" /> Debug</label>
+        <p>
+          <label><input id="showStrings" type="checkbox" checked /> Strings</label>
+        </p>
+      </fieldset>
+
+      <fieldset id="physics">
+        <legend>Physics</legend>
+      </fieldset>
+
+      <fieldset>
+        <legend>Debug</legend>
+        <div id="stats">Manual input</div>
+      </fieldset>
+    </aside>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const canvas = $("canvas");
+      const ctx = canvas.getContext("2d");
+      const video = $("video");
+
+      const WIDTH = 1000;
+      const HEIGHT = 760;
+      const FLOOR = 682;
+      const WALL_MARGIN = 40;
+      const TIME_STEP = 1 / 120;
+      const MAX_STEPS_PER_FRAME = 6;
+      const GRAVITY = 1050;
+
+      const FINGER_TIPS = [4, 8, 12, 16, 20];
+      const ROPE_ATTACHMENTS = [7, 11, 0, 12, 8];
+      const CENTER_ROPE = 2;
+
+      const DESIGN_POSE = [
+        [500, 377],
+        [500, 415],
+        [500, 505],
+        [472, 415],
+        [528, 415],
+        [442, 455],
+        [558, 455],
+        [420, 497],
+        [580, 497],
+        [475, 555],
+        [525, 555],
+        [458, 610],
+        [542, 610],
+      ];
+
+      const FOOT_RADIUS = 5;
+      const POSE_DROP = FLOOR - FOOT_RADIUS - Math.max(...DESIGN_POSE.map(([, y]) => y));
+      const INITIAL_POSE = DESIGN_POSE.map(([x, y]) => ({ x, y: y + POSE_DROP }));
+
+      const SHOULDER_ANCHOR = { x: 270, y: 195 + POSE_DROP };
+      const LIMB_ROPE_LENGTH = dist(INITIAL_POSE[7], SHOULDER_ANCHOR);
+      const KNEE_ANCHOR_Y = Math.round(INITIAL_POSE[11].y - Math.sqrt(LIMB_ROPE_LENGTH ** 2 - (INITIAL_POSE[11].x - 385) ** 2));
+
+      const BASE_ANCHORS = [
+        SHOULDER_ANCHOR,
+        { x: 385, y: KNEE_ANCHOR_Y },
+        { x: 500, y: 130 + POSE_DROP },
+        { x: 615, y: KNEE_ANCHOR_Y },
+        { x: 730, y: 195 + POSE_DROP },
+      ];
+
+      const VISIBLE_BONES = [
+        [1, 2],
+        [3, 4],
+        [3, 5],
+        [5, 7],
+        [4, 6],
+        [6, 8],
+        [2, 9],
+        [9, 11],
+        [2, 10],
+        [10, 12],
+      ];
+      const BONE_PAIRS = [
+        [0, 1],
+        [1, 3],
+        [1, 4],
+        [3, 4],
+        [1, 2],
+        [3, 2],
+        [4, 2],
+        [3, 5],
+        [5, 7],
+        [4, 6],
+        [6, 8],
+        [2, 9],
+        [9, 11],
+        [2, 10],
+        [10, 12],
+      ];
+      const COLLISION_SEGMENTS = [[0, 1], ...VISIBLE_BONES];
+      const HAND_CONNECTIONS = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 4],
+        [0, 5],
+        [5, 6],
+        [6, 7],
+        [7, 8],
+        [5, 9],
+        [9, 10],
+        [10, 11],
+        [11, 12],
+        [9, 13],
+        [13, 14],
+        [14, 15],
+        [15, 16],
+        [13, 17],
+        [0, 17],
+        [17, 18],
+        [18, 19],
+        [19, 20],
+      ];
+
+      const HEAD_RADIUS = 24;
+      const BONE_RADIUS = 3;
+      const collisionRadius = (i) => (i === 0 ? HEAD_RADIUS : 6);
+      const boundsRadius = (i) => (i === 0 ? HEAD_RADIUS : FOOT_RADIUS);
+
+      const ANCHOR_BOUNDS = { minX: 65, maxX: 935, minY: 75, maxY: 480 };
+      const DRAG_BOUNDS = { ...ANCHOR_BOUNDS, minX: 60, maxX: 940 };
+      const HAND_SCALE = { x: 800, y: 640 };
+      const DRAG_PICK_RADIUS = 35;
+      const HAND_LOST_MS = 500;
+      const HAND_REACQUIRE_MS = 650;
+
+      // Play mode lifts anchors off-screen visually; physics is unaffected.
+      const ANCHOR_RENDER_LIFT = 500;
+      const FIGHTERS = [
+        { name: "Rose", color: "hsl(330 100% 68%)" },
+        { name: "Azure", color: "hsl(192 100% 60%)" },
+      ];
+      const PUPPET_FILL = "#000";
+      const DEBUG_THEME = { ink: "#000", paper: "#fff", lift: 0 };
+
+      const PUPPET_OFFSETS = [-220, 220];
+
+      const MAX_HP = 140;
+      const ROUND_TIME = 60;
+      const ROUNDS_TO_WIN = 2;
+      // Head, hands and feet can strike; arm segments of the target count as a guard.
+      const STRIKERS = [0, 7, 8, 11, 12];
+      const GUARD_SEGMENTS = new Set([3, 4, 5, 6]);
+      const ZONE_DAMAGE = { head: 1.5, body: 1, guard: 0.25 };
+      const STRIKE_MIN_SPEED = 380;
+      const STRIKE_REACH = 6;
+      const HIT_COOLDOWN = 0.28;
+      const DEBRIS_ROPE_SEGMENTS = 16;
+      const DEBRIS_ITERATIONS = 6;
+      const CAMERA_STORAGE_KEY = "puppet_camera";
+      const MUSIC_STORAGE_KEY = "puppet_music";
+      const MEDIAPIPE_VERSION = "0.10.32";
+      const MEDIAPIPE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}`;
+      const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+      const VIDEO_CONSTRAINTS = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60, max: 60 } };
+
+      const fixed =
+        (digits, unit = "") =>
+        (v) =>
+          `${v.toFixed(digits)}${unit}`;
+
+      const SLIDERS = {
+        tracking: [
+          { key: "sensitivity", label: "Hand sensitivity", min: 0.4, max: 2.5, step: 0.1, value: 1, fmt: fixed(1, "×") },
+          { key: "filterBeta", label: "1€ filter beta", min: 0.1, max: 25, step: 0.5, value: 10, fmt: fixed(1) },
+          { key: "filterCutoff", label: "1€ min cutoff", min: 0.1, max: 5, step: 0.1, value: 1, fmt: fixed(1, " Hz") },
+        ],
+        physics: [
+          { key: "gravity", label: "Gravity scale", min: 0.2, max: 2.5, step: 0.1, value: 2, fmt: fixed(1, "×") },
+          { key: "damping", label: "Velocity retention", min: 0.88, max: 0.995, step: 0.005, value: 0.98, fmt: fixed(3) },
+          { key: "anchorFollow", label: "Anchor follow speed", min: 4, max: 60, step: 1, value: 45, fmt: fixed(0, " /s") },
+          { key: "pullStiff", label: "Rope pull stiffness", min: 0.2, max: 1, step: 0.05, value: 1, fmt: fixed(2) },
+          { key: "iterations", label: "Solver iterations", min: 4, max: 24, step: 1, value: 16, fmt: fixed(0) },
+          { key: "torsoMass", label: "Torso lightness", min: 0.4, max: 1.2, step: 0.05, value: 1, fmt: fixed(2) },
+        ],
+      };
+
+      const params = Object.fromEntries(
+        Object.values(SLIDERS)
+          .flat()
+          .map(({ key, value }) => [key, value]),
+      );
+
+      const puppets = PUPPET_OFFSETS.map((offsetX) => ({
+        offsetX,
+        particles: [],
+        bones: [],
+        ropes: [],
+        anchors: BASE_ANCHORS.map(() => ({})),
+        filters: null,
+        landmarks: null,
+        neutralPose: null,
+        isTracked: false,
+        lastSeenTime: -Infinity,
+        hp: MAX_HP,
+        flash: 0,
+        cooldowns: {},
+      }));
+
+      const game = { phase: "intro", phaseTime: 0, round: 1, timer: ROUND_TIME, wins: [0, 0], cue: 0, hitStop: 0, timeScale: 1, shake: 0 };
+      const sparks = [];
+
+      let model = null;
+      let modelPromise = null;
+      let stream = null;
+      let isCameraActive = false;
+      let isBusy = false;
+      let lastVideoTime = -1;
+      let inferenceMs = 0;
+      let inferenceCount = 0;
+      let dragged = null;
+      let activePointerId = null;
+      let previousTime = performance.now();
+      let accumulator = 0;
+      let lastStatsTime = previousTime;
+
+      function mainLoop(now) {
+        const elapsed = Math.min((now - previousTime) / 1000, 0.05);
+        previousTime = now;
+
+        processCameraFrame(now);
+        puppets.forEach(updateAnchorTargets);
+        updateGame(elapsed);
+        updateSparks(elapsed);
+
+        // Hit-stop freezes the simulation briefly so strikes land with weight.
+        if (game.hitStop > 0) game.hitStop -= elapsed;
+        else accumulator += elapsed * game.timeScale;
+        let steps = 0;
+        for (; accumulator >= TIME_STEP && steps < MAX_STEPS_PER_FRAME && game.hitStop <= 0; steps++) {
+          stepPhysics(TIME_STEP);
+          accumulator -= TIME_STEP;
+        }
+        if (steps === MAX_STEPS_PER_FRAME) accumulator = 0;
+
+        render();
+        updateHud();
+        updateStats(now);
+        requestAnimationFrame(mainLoop);
+      }
+
+      // ---------- Puppet state ----------
+
+      const baseAnchor = (pp, i) => ({ x: BASE_ANCHORS[i].x + pp.offsetX, y: BASE_ANCHORS[i].y });
+
+      const resetAnchorTargets = (pp) =>
+        pp.anchors.forEach((a, i) => {
+          const { x, y } = baseAnchor(pp, i);
+          Object.assign(a, { tx: x, ty: y });
+        });
+
+      function resetPuppets() {
+        for (const pp of puppets) {
+          pp.filters ??= Array.from({ length: 21 }, () => ({ x: new OneEuroFilter(), y: new OneEuroFilter() }));
+          pp.particles = INITIAL_POSE.map(({ x, y }) => ({ x: x + pp.offsetX, y, px: x + pp.offsetX, py: y, invMass: 1 }));
+          pp.bones = BONE_PAIRS.map(([a, b]) => ({ a, b, length: dist(pp.particles[a], pp.particles[b]) }));
+          pp.ropes = ROPE_ATTACHMENTS.map((part, i) => ({
+            part,
+            length: i === CENTER_ROPE ? dist(INITIAL_POSE[part], BASE_ANCHORS[i]) : LIMB_ROPE_LENGTH,
+            tension: 0,
+            slack: 0,
+          }));
+          pp.anchors.forEach((a, i) => Object.assign(a, baseAnchor(pp, i)));
+          pp.debris = null;
+          resetAnchorTargets(pp);
+          if (isCameraActive && pp.isTracked) calibrateNeutral(pp);
+        }
+        updateParticleMasses();
+      }
+
+      function updateParticleMasses() {
+        const shoulderMass = Math.min(1, params.torsoMass + 0.15);
+        for (const { particles } of puppets) {
+          particles.forEach((p, i) => (p.invMass = i === 2 ? params.torsoMass : i <= 4 ? shoulderMass : 1));
+        }
+      }
+
+      function updateAnchorTargets(pp) {
+        if (!isCameraActive) return;
+        if (!pp.isTracked || !pp.neutralPose) return resetAnchorTargets(pp);
+
+        FINGER_TIPS.forEach((tip, i) => {
+          const { x, y } = pp.landmarks[tip];
+          const neutral = pp.neutralPose[i];
+          pp.anchors[i].tx = clamp(BASE_ANCHORS[i].x + (x - neutral.x) * HAND_SCALE.x * params.sensitivity, ANCHOR_BOUNDS.minX, ANCHOR_BOUNDS.maxX);
+          pp.anchors[i].ty = clamp(BASE_ANCHORS[i].y + (y - neutral.y) * HAND_SCALE.y * params.sensitivity, ANCHOR_BOUNDS.minY, ANCHOR_BOUNDS.maxY);
+        });
+      }
+
+      // ---------- Physics ----------
+
+      function stepPhysics(dt) {
+        const blend = 1 - Math.exp(-params.anchorFollow * dt);
+        // A knocked-out puppet has its strings cut.
+        const isHeld = (pp) => pp.hp > 0 && (!isCameraActive || pp.isTracked);
+
+        const live = puppets.filter((pp) => !pp.debris);
+        puppets.forEach((pp) => pp.debris && stepDebris(pp.debris, dt));
+
+        for (const pp of live) {
+          followAnchors(pp, blend);
+          integrate(pp.particles, dt);
+          updateRopeSlack(pp, isHeld(pp), dt);
+          for (const k in pp.cooldowns) pp.cooldowns[k] -= dt;
+        }
+
+        if (game.phase === "fight") detectStrikes(dt);
+
+        for (let iter = 0; iter < params.iterations; iter++) {
+          for (const pp of live) {
+            solveBones(pp);
+            solveRopes(pp);
+          }
+          for (let i = 0; i < live.length; i++) {
+            for (let j = i + 1; j < live.length; j++) collidePuppets(live[i], live[j]);
+          }
+          live.forEach(({ particles }) => particles.forEach(constrainToStage));
+        }
+      }
+
+      function followAnchors(pp, blend) {
+        pp.anchors.forEach((a, i) => {
+          const isDragged = dragged?.pp === pp && dragged.i === i;
+          a.x = isDragged ? a.tx : lerp(a.x, a.tx, blend);
+          a.y = isDragged ? a.ty : lerp(a.y, a.ty, blend);
+        });
+      }
+
+      function integrate(particles, dt) {
+        for (const p of particles) {
+          const vx = (p.x - p.px) * params.damping;
+          const vy = (p.y - p.py) * params.damping;
+          Object.assign(p, { px: p.x, py: p.y, x: p.x + vx, y: p.y + vy + GRAVITY * params.gravity * dt * dt });
+        }
+      }
+
+      // Released hand drops strings (infinite slack); on re-grip, slack starts at the current gap and reels in.
+      function updateRopeSlack({ ropes, anchors, particles }, isHeld, dt) {
+        ropes.forEach((r, i) => {
+          r.tension = 0;
+          r.slack = !isHeld
+            ? Infinity
+            : r.slack === Infinity
+              ? Math.max(0, dist(anchors[i], particles[r.part]) - r.length)
+              : Math.max(0, r.slack * Math.exp(-2.5 * dt) - 60 * dt);
+        });
+      }
+
+      function solveBones({ bones, particles }) {
+        for (const bone of bones) {
+          const a = particles[bone.a];
+          const b = particles[bone.b];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) || 0.0001;
+          const k = (d - bone.length) / d / (a.invMass + b.invMass);
+          shift(a, dx, dy, k * a.invMass);
+          shift(b, dx, dy, -k * b.invMass);
+        }
+      }
+
+      function solveRopes({ ropes, anchors, particles }) {
+        ropes.forEach((r, i) => {
+          const p = particles[r.part];
+          const dx = p.x - anchors[i].x;
+          const dy = p.y - anchors[i].y;
+          const d = Math.hypot(dx, dy);
+          const excess = d - r.length - r.slack;
+          if (excess <= 0) return;
+          shift(p, dx, dy, -(excess / d) * params.pullStiff);
+          r.tension = Math.max(r.tension, excess);
+        });
+      }
+
+      function constrainToStage(p, i) {
+        const radius = boundsRadius(i);
+        p.x = clamp(p.x, radius + WALL_MARGIN, WIDTH - WALL_MARGIN - radius);
+        if (p.y <= FLOOR - radius) return;
+        p.y = FLOOR - radius;
+        p.px = lerp(p.x, p.px, 0.7);
+        p.py = Math.max(p.py, p.y);
+      }
+
+      function collidePuppets(A, B) {
+        collideJoints(A, B);
+        collideJointsWithBones(A, B);
+        collideJointsWithBones(B, A);
+        collideBones(A, B);
+      }
+
+      function collideJoints(A, B) {
+        A.particles.forEach((p, i) => {
+          B.particles.forEach((q, j) => {
+            const dx = p.x - q.x;
+            const dy = p.y - q.y;
+            const d = Math.hypot(dx, dy);
+            const overlap = collisionRadius(i) + collisionRadius(j) - d;
+            if (overlap <= 0 || d < 1e-6) return;
+            const k = overlap / d / (p.invMass + q.invMass);
+            shift(p, dx, dy, k * p.invMass);
+            shift(q, dx, dy, -k * q.invMass);
+          });
+        });
+      }
+
+      function collideJointsWithBones(A, B) {
+        A.particles.forEach((p, i) => {
+          const minDist = collisionRadius(i) + BONE_RADIUS;
+          for (const [ia, ib] of COLLISION_SEGMENTS) {
+            const a = B.particles[ia];
+            const b = B.particles[ib];
+            const ex = b.x - a.x;
+            const ey = b.y - a.y;
+            const u = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / (ex * ex + ey * ey || 1), 0, 1);
+            const nx = p.x - (a.x + ex * u);
+            const ny = p.y - (a.y + ey * u);
+            const d = Math.hypot(nx, ny);
+            const overlap = minDist - d;
+            if (overlap <= 0 || d < 1e-6) continue;
+            const wa = a.invMass * (1 - u);
+            const wb = b.invMass * u;
+            const k = overlap / d / (p.invMass + wa * (1 - u) + wb * u);
+            shift(p, nx, ny, k * p.invMass);
+            shift(a, nx, ny, -k * wa);
+            shift(b, nx, ny, -k * wb);
+          }
+        });
+      }
+
+      // Once two bones have crossed, the closest-point normal is meaningless, so push each puppet back toward its own side.
+      function collideBones(A, B) {
+        const sideX = Math.sign(centroid(A.particles).x - centroid(B.particles).x || 1);
+        const minDist = 2 * BONE_RADIUS + 2;
+
+        for (const [ia0, ia1] of COLLISION_SEGMENTS) {
+          const a0 = A.particles[ia0];
+          const a1 = A.particles[ia1];
+          for (const [ib0, ib1] of COLLISION_SEGMENTS) {
+            const b0 = B.particles[ib0];
+            const b1 = B.particles[ib1];
+            const [s, t] = closestSegmentParams(a0, a1, b0, b1);
+            const pa = lerpPoint(a0, a1, s);
+            const pb = lerpPoint(b0, b1, t);
+            let nx = pa.x - pb.x;
+            let ny = pa.y - pb.y;
+            const d = Math.hypot(nx, ny);
+            let overlap = minDist - d;
+
+            if (segmentsCross(a0, a1, b0, b1) || d < 1e-6) {
+              [nx, ny] = [sideX, 0];
+              const minA = Math.min(a0.x * sideX, a1.x * sideX);
+              const maxB = Math.max(b0.x * sideX, b1.x * sideX);
+              overlap = 0.25 * (maxB - minA + minDist);
+            } else if (overlap <= 0) continue;
+            else [nx, ny] = [nx / d, ny / d];
+
+            const wa0 = a0.invMass * (1 - s);
+            const wa1 = a1.invMass * s;
+            const wb0 = b0.invMass * (1 - t);
+            const wb1 = b1.invMass * t;
+            const k = overlap / (wa0 * (1 - s) + wa1 * s + wb0 * (1 - t) + wb1 * t || 1);
+            shift(a0, nx, ny, k * wa0);
+            shift(a1, nx, ny, k * wa1);
+            shift(b0, nx, ny, -k * wb0);
+            shift(b1, nx, ny, -k * wb1);
+          }
+        }
+      }
+
+      // ---------- Combat ----------
+
+      // Runs on predicted positions before constraints resolve, so velocities still carry the full swing.
+      function detectStrikes(dt) {
+        puppets.forEach((A, k) => {
+          const B = puppets[1 - k];
+          if (A.hp <= 0 || B.hp <= 0) return;
+          for (const i of STRIKERS) {
+            if (A.cooldowns[i] > 0) continue;
+            const p = A.particles[i];
+            const hit = findContact(p, collisionRadius(i) + STRIKE_REACH, B);
+            if (!hit) continue;
+            const speed = -((p.x - p.px) * hit.nx + (p.y - p.py) * hit.ny) / dt;
+            if (speed >= STRIKE_MIN_SPEED) applyHit(A, B, i, hit, speed);
+          }
+        });
+      }
+
+      // Contact normal points from the target surface toward the striker.
+      function findContact(p, reach, B) {
+        const head = B.particles[0];
+        const dh = dist(p, head) || 1e-6;
+        if (dh < reach + HEAD_RADIUS) {
+          const [nx, ny] = [(p.x - head.x) / dh, (p.y - head.y) / dh];
+          return { x: head.x + nx * HEAD_RADIUS, y: head.y + ny * HEAD_RADIUS, nx, ny, zone: "head" };
+        }
+
+        let best = null;
+        COLLISION_SEGMENTS.forEach(([ia, ib], k) => {
+          const a = B.particles[ia];
+          const b = B.particles[ib];
+          const ex = b.x - a.x;
+          const ey = b.y - a.y;
+          const u = clamp(((p.x - a.x) * ex + (p.y - a.y) * ey) / (ex * ex + ey * ey || 1), 0, 1);
+          const c = { x: a.x + ex * u, y: a.y + ey * u };
+          const d = dist(p, c) || 1e-6;
+          if (d >= reach + BONE_RADIUS || (best && d >= best.d)) return;
+          best = { ...c, d, nx: (p.x - c.x) / d, ny: (p.y - c.y) / d, zone: GUARD_SEGMENTS.has(k) ? "guard" : "body" };
+        });
+        return best;
+      }
+
+      function applyHit(A, B, i, hit, speed) {
+        const damage = clamp((speed - STRIKE_MIN_SPEED) / 50 + 3, 3, 14) * ZONE_DAMAGE[hit.zone];
+        const isGuard = hit.zone === "guard";
+        A.cooldowns[i] = HIT_COOLDOWN;
+        B.hp = Math.max(0, B.hp - damage);
+        B.flash = isGuard ? 0.4 : 1;
+        game.hitStop = isGuard ? 0.02 : 0.045 + damage * 0.004;
+        game.shake = Math.max(game.shake, damage * 1.3);
+        spawnSparks(hit, FIGHTERS[puppets.indexOf(A)].color, damage);
+        playHit(damage, isGuard);
+        if (B.hp === 0) endRound(B);
+      }
+
+      function spawnSparks({ x, y, nx, ny }, color, power) {
+        sparks.push({ x, y, color, power, life: 1, ring: true });
+        const heading = Math.atan2(-ny, -nx);
+        for (let k = 0; k < 6 + power; k++) {
+          const angle = heading + (Math.random() - 0.5) * 2.2;
+          const speed = 200 + Math.random() * 60 * power;
+          sparks.push({ x, y, color, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.6 + Math.random() * 0.4 });
+        }
+      }
+
+      function updateSparks(dt) {
+        for (const s of sparks) {
+          s.life -= dt * (s.ring ? 3 : 2.4);
+          if (s.ring) continue;
+          s.vx *= Math.exp(-5 * dt);
+          s.vy = s.vy * Math.exp(-5 * dt) + 900 * dt;
+          s.x += s.vx * dt;
+          s.y += s.vy * dt;
+        }
+        for (let k = sparks.length - 1; k >= 0; k--) if (sparks[k].life <= 0) sparks.splice(k, 1);
+      }
+
+      // ---------- Knockout debris ----------
+
+      // Every bone becomes a loose stick and every string a free-falling chain dropped from above the stage.
+      function shatterPuppet(pp) {
+        const kick = () => (Math.random() - 0.5) * 5;
+        const free = (p) => ({ x: p.x, y: p.y, px: p.px + kick(), py: p.py + kick() });
+        const bones = VISIBLE_BONES.map(([a, b]) => {
+          const [pa, pb] = [free(pp.particles[a]), free(pp.particles[b])];
+          return { a: pa, b: pb, length: dist(pa, pb) };
+        });
+        const ropes = pp.ropes.map((r, i) => {
+          const top = { x: pp.anchors[i].x, y: pp.anchors[i].y - ANCHOR_RENDER_LIFT };
+          const end = pp.particles[r.part];
+          const pts = Array.from({ length: DEBRIS_ROPE_SEGMENTS + 1 }, (_, k) => {
+            const p = lerpPoint(top, end, k / DEBRIS_ROPE_SEGMENTS);
+            return { ...p, px: p.x, py: p.y };
+          });
+          return { pts, length: dist(top, end) / DEBRIS_ROPE_SEGMENTS };
+        });
+        pp.debris = { head: free(pp.particles[0]), headAngle: 0, bones, ropes };
+      }
+
+      function stepDebris(d, dt) {
+        const { head, bones, ropes } = d;
+        const joints = bones.flatMap(({ a, b }) => [a, b]);
+        const ropePoints = ropes.flatMap(({ pts }) => pts);
+        integrate([head, ...joints, ...ropePoints], dt);
+
+        for (let iter = 0; iter < DEBRIS_ITERATIONS; iter++) {
+          for (const { a, b, length } of bones) solveStick(a, b, length);
+          for (const { pts, length } of ropes) {
+            for (let k = 1; k < pts.length; k++) solveStick(pts[k - 1], pts[k], length);
+          }
+          groundPoint(head, HEAD_RADIUS, 0.98);
+          joints.forEach((p) => groundPoint(p, FOOT_RADIUS, 0.7));
+          ropePoints.forEach((p) => groundPoint(p, 1, 0.5));
+        }
+        d.headAngle += (head.x - head.px) / HEAD_RADIUS;
+      }
+
+      function solveStick(a, b, length) {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        const k = (d - length) / d / 2;
+        shift(a, dx, dy, k);
+        shift(b, dx, dy, -k);
+      }
+
+      // Like constrainToStage, with per-piece friction so the head rolls while limbs skid.
+      function groundPoint(p, radius, friction) {
+        p.x = clamp(p.x, radius + WALL_MARGIN, WIDTH - WALL_MARGIN - radius);
+        if (p.y <= FLOOR - radius) return;
+        p.y = FLOOR - radius;
+        p.px = lerp(p.x, p.px, friction);
+        p.py = Math.max(p.py, p.y);
+      }
+
+      // ---------- Match flow ----------
+
+      function startMatch() {
+        game.wins = [0, 0];
+        game.round = 1;
+        startRound();
+      }
+
+      function startRound() {
+        resetPuppets();
+        puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, cooldowns: {} }));
+        setPhase("intro");
+        game.timer = ROUND_TIME;
+        const isFinal = game.wins.every((w) => w === ROUNDS_TO_WIN - 1);
+        showBanner(isFinal ? "Final round" : `Round ${game.round}`);
+        playBgm(game.round);
+      }
+
+      function setPhase(phase) {
+        Object.assign(game, { phase, phaseTime: 0, cue: 0, timeScale: 1 });
+      }
+
+      function updateGame(dt) {
+        game.phaseTime += dt;
+        game.shake *= Math.exp(-10 * dt);
+        puppets.forEach((pp) => (pp.flash = Math.max(0, pp.flash - dt * 5)));
+
+        const t = game.phaseTime;
+        switch (game.phase) {
+          case "intro":
+            if (t > 1.3 && !game.cue++) showBanner("Fight", "fight");
+            if (t > 1.9) setPhase("fight");
+            break;
+          case "fight":
+            game.timer = Math.max(0, game.timer - dt);
+            if (game.timer === 0) endRound(null);
+            break;
+          case "ko":
+            game.timeScale = t < 1.4 ? 0.3 : 1;
+            if (t < 3.6) break;
+            if (game.wins.some((w) => w >= ROUNDS_TO_WIN)) finishMatch();
+            else {
+              game.round++;
+              startRound();
+            }
+            break;
+          case "over":
+            if (t > 5) startMatch();
+            break;
+        }
+      }
+
+      // loser is null when the clock runs out.
+      function endRound(loser) {
+        const [a, b] = puppets.map((pp) => pp.hp);
+        const winner = loser ? 1 - puppets.indexOf(loser) : a === b ? -1 : a > b ? 0 : 1;
+        if (winner >= 0) game.wins[winner]++;
+        if (loser) shatterPuppet(loser);
+        if (loser) playSfx(sfx.ko);
+        fadeBgm();
+        setPhase("ko");
+        showBanner(loser ? "K.O." : winner < 0 ? "Draw" : "Time", "ko");
+      }
+
+      function finishMatch() {
+        const winner = game.wins[0] > game.wins[1] ? 0 : 1;
+        const { name, color } = FIGHTERS[winner];
+        setPhase("over");
+        playSfx(sfx.wins[winner]);
+        showBanner(`${name} wins`, "win", color);
+      }
+
+      function showBanner(text, kind = "", color = "") {
+        const el = $("banner");
+        el.textContent = text;
+        el.className = "";
+        el.style.setProperty("--c", color || null);
+        void el.offsetWidth;
+        el.className = `show ${kind}`;
+      }
+
+      const hudFighters = [...document.querySelectorAll(".fighter")];
+
+      function updateHud() {
+        puppets.forEach((pp, i) => {
+          const el = hudFighters[i];
+          el.style.setProperty("--hp", (pp.hp / MAX_HP).toFixed(4));
+          el.classList.toggle("low", pp.hp > 0 && pp.hp < MAX_HP * 0.3);
+          el.querySelectorAll(".pips b").forEach((b, k) => b.classList.toggle("on", k < game.wins[i]));
+        });
+        $("timer").textContent = String(Math.ceil(game.timer)).padStart(2, "0");
+        $("roundLabel").textContent = `Round ${game.round}`;
+      }
+
+      // ---------- Audio ----------
+
+      // Web Audio: each SFX is a fresh BufferSource, so any number overlap with no element reuse or seek lag.
+      const audio = new AudioContext();
+      const sfxBus = audio.createGain();
+      const bgmBus = audio.createGain();
+      sfxBus.connect(audio.destination);
+      bgmBus.connect(audio.destination);
+      bgmBus.gain.value = 0.45;
+
+      const sfx = { hits: [], ko: null, wins: [] };
+      const loadBuffer = (url) =>
+        fetch(url)
+          .then((res) => res.arrayBuffer())
+          .then((data) => audio.decodeAudioData(data))
+          .catch((err) => console.warn("Audio load failed:", url, err));
+      Promise.all([1, 2, 3, 4, 5, 6].map((n) => loadBuffer(`assets/hit-0${n}.mp3`))).then((hits) => (sfx.hits = hits.filter(Boolean)));
+      loadBuffer("assets/ko.mp3").then((buf) => (sfx.ko = buf));
+      FIGHTERS.forEach(({ name }, i) => loadBuffer(`assets/${name.toLowerCase()}-wins.mp3`).then((buf) => (sfx.wins[i] = buf)));
+      let isMusicOn = false;
+
+      // Shuffled once per load; round n plays track n (wrapping).
+      const bgmTracks = shuffle(["assets/bgm-01.mp3", "assets/bgm-02.mp3", "assets/bgm-03.mp3"]).map((src) => {
+        const el = new Audio(src);
+        el.loop = true;
+        el.preload = "auto";
+        audio.createMediaElementSource(el).connect(bgmBus);
+        return el;
+      });
+      let lastHit = -1;
+
+      function playSfx(buffer, { gain = 1, rate = 1 } = {}) {
+        if (!buffer || audio.state !== "running") return;
+        const src = audio.createBufferSource();
+        const vol = audio.createGain();
+        src.buffer = buffer;
+        src.playbackRate.value = rate;
+        vol.gain.value = gain;
+        src.connect(vol).connect(sfxBus);
+        src.start();
+      }
+
+      function playHit(damage, isGuard) {
+        if (!sfx.hits.length) return;
+        // Avoid repeating the same sample back to back.
+        let k = Math.floor(Math.random() * sfx.hits.length);
+        if (k === lastHit && sfx.hits.length > 1) k = (k + 1) % sfx.hits.length;
+        lastHit = k;
+        const gain = isGuard ? 0.45 : clamp(0.55 + damage / 25, 0.55, 1.2);
+        const rate = (isGuard ? 1.25 : 1.1 - damage / 70) * (0.95 + Math.random() * 0.1);
+        playSfx(sfx.hits[k], { gain, rate });
+      }
+
+      function playBgm(round) {
+        if (!isMusicOn) return;
+        const track = bgmTracks[(round - 1) % bgmTracks.length];
+        bgmTracks.forEach((el) => el !== track && el.pause());
+        track.currentTime = 0;
+        bgmBus.gain.cancelScheduledValues(audio.currentTime);
+        bgmBus.gain.setValueAtTime(0.45, audio.currentTime);
+        track.play().catch(() => {});
+      }
+
+      function fadeBgm(seconds = 1.5) {
+        const now = audio.currentTime;
+        bgmBus.gain.cancelScheduledValues(now);
+        bgmBus.gain.setValueAtTime(bgmBus.gain.value, now);
+        bgmBus.gain.linearRampToValueAtTime(0, now + seconds);
+      }
+
+      function setMusic(on) {
+        isMusicOn = on;
+        storage.set(MUSIC_STORAGE_KEY, on ? "on" : "off");
+        $("musicButton").setAttribute("aria-pressed", on);
+        $("musicButton").textContent = on ? "Music on" : "Music off";
+        if (!on) bgmTracks.forEach((el) => el.pause());
+        else if (game.phase === "intro" || game.phase === "fight") playBgm(game.round);
+      }
+
+      // Browsers keep audio suspended until a user gesture.
+      function unlockAudio() {
+        if (audio.state === "running") return;
+        audio.resume().then(() => {
+          if (game.phase === "intro" || game.phase === "fight") playBgm(game.round);
+        });
+      }
+
+      // ---------- Rendering ----------
+
+      function render() {
+        const isDebug = $("debugMode").checked;
+        const view = getViewTransform();
+        const shake = () => (Math.random() - 0.5) * game.shake * view.scale;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1;
+        if (isDebug) {
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else renderStage(view);
+        ctx.setTransform(view.scale, 0, 0, view.scale, view.x + shake(), view.y + shake());
+        ctx.lineCap = ctx.lineJoin = "round";
+
+        if (isDebug) {
+          renderDebugLayer();
+          return puppets.forEach((pp) => renderPuppet(pp, DEBUG_THEME));
+        }
+
+        puppets.forEach(renderFighter);
+        renderSparks();
+      }
+
+      function renderStage(view) {
+        const { width: w, height: h } = canvas;
+        const floorY = view.y + FLOOR * view.scale;
+
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, w, h);
+
+        // Sparse perspective grid converging on a vanishing point above the floor line.
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgb(255 255 255 / 0.2)";
+        ctx.beginPath();
+        const spacing = 125 * view.scale;
+        for (let k = -16; k <= 16; k++) {
+          ctx.moveTo(w / 2 + k * spacing, floorY);
+          ctx.lineTo(w / 2 + k * spacing * 6, h);
+        }
+        for (let j = 1; j <= 4; j++) {
+          const y = floorY + (h - floorY) * (j / 4) ** 2;
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+        }
+        ctx.moveTo(0, floorY);
+        ctx.lineTo(w, floorY);
+        ctx.stroke();
+      }
+
+      function renderFighter(pp, i) {
+        const color = pp.flash > 0.5 ? "#fff" : FIGHTERS[i].color;
+        const theme = { ink: color, paper: PUPPET_FILL, lift: ANCHOR_RENDER_LIFT };
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(-WIDTH, FLOOR, WIDTH * 3, HEIGHT);
+        ctx.clip();
+        ctx.translate(0, 2 * FLOOR);
+        ctx.scale(1, -1);
+        ctx.globalAlpha = 0.14;
+        renderPuppet(pp, { ...theme, strings: false });
+        ctx.restore();
+
+        renderPuppet(pp, theme);
+      }
+
+      function renderSparks() {
+        ctx.save();
+        for (const s of sparks) {
+          ctx.globalAlpha = clamp(s.life, 0, 1);
+          ctx.strokeStyle = s.color;
+          if (s.ring) {
+            ctx.lineWidth = 4 * s.life;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, 8 + (1 - s.life) * (20 + s.power * 4), 0, Math.PI * 2);
+            ctx.stroke();
+          } else {
+            ctx.strokeStyle = "#fff";
+            drawLine(s, { x: s.x - s.vx * 0.03, y: s.y - s.vy * 0.03 }, 2.5 * s.life);
+          }
+        }
+        ctx.restore();
+      }
+
+      function renderDebugLayer() {
+        const cam = getCameraTransform();
+        const toWorld = ({ x, y }) => ({ x: cam.x + x * cam.width, y: cam.y + y * cam.height });
+
+        if (isCameraActive && video.readyState >= 2) {
+          withAlpha(0.5, () => ctx.drawImage(video, cam.x, cam.y, cam.width, cam.height));
+        }
+
+        ctx.strokeStyle = "#000";
+        ctx.fillStyle = "#fff";
+        drawLine({ x: 0, y: FLOOR }, { x: WIDTH, y: FLOOR }, 1);
+
+        withAlpha(0.55, () => {
+          for (const { landmarks, isTracked } of puppets) {
+            if (!landmarks || !isTracked) continue;
+            for (const [a, b] of HAND_CONNECTIONS) drawLine(toWorld(landmarks[a]), toWorld(landmarks[b]), 1.3);
+            for (const { x, y } of landmarks.map(toWorld)) drawCircle(x, y, 2.5);
+          }
+        });
+      }
+
+      function renderPuppet(pp, { ink, paper, lift, strings = $("showStrings").checked }) {
+        const { particles, ropes, anchors } = pp;
+        ctx.strokeStyle = ink;
+        ctx.fillStyle = paper;
+        if (pp.debris) return renderDebris(pp.debris, ink, strings);
+
+        if (strings) {
+          ctx.lineWidth = 1.4;
+          ropes.forEach((r, i) => {
+            const a = { x: anchors[i].x, y: anchors[i].y - lift };
+            const p = particles[r.part];
+            const sag = clamp((r.length + Math.min(r.slack, 1000) - dist(anchors[i], p)) * 0.55, 0, 55);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.quadraticCurveTo((a.x + p.x) / 2 + sag, (a.y + p.y) / 2 + sag, p.x, p.y);
+            ctx.stroke();
+          });
+        }
+
+        for (const [a, b] of [...VISIBLE_BONES, [0, 1]]) drawLine(particles[a], particles[b], 6);
+
+        renderHead(particles, ink);
+        particles.slice(1).forEach(({ x, y }, i) => drawCircle(x, y, i < 4 ? 3.2 : 4.2, true, 1.8));
+
+        if (lift) return;
+
+        ctx.font = "12px monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        anchors.forEach(({ x, y }, i) => {
+          const isDragged = dragged?.pp === pp && dragged.i === i;
+          ctx.fillStyle = paper;
+          drawCircle(x, y, isDragged ? 15 : 12, true, 1.8);
+          ctx.fillStyle = ink;
+          ctx.fillText(String(i + 1), x, y);
+        });
+      }
+
+      function renderDebris({ head, headAngle, bones, ropes }, ink, strings) {
+        if (strings) {
+          ctx.lineWidth = 1.4;
+          for (const { pts } of ropes) {
+            ctx.beginPath();
+            pts.forEach(({ x, y }, k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+            ctx.stroke();
+          }
+        }
+        for (const { a, b } of bones) drawLine(a, b, 6);
+        for (const { a, b } of bones) [a, b].forEach(({ x, y }) => drawCircle(x, y, 3.6, true, 1.8));
+        renderHead([head, { x: head.x - Math.sin(headAngle), y: head.y + Math.cos(headAngle) }], ink);
+      }
+
+      function renderHead([head, neck], ink) {
+        ctx.save();
+        ctx.translate(head.x, head.y);
+        ctx.rotate(Math.atan2(neck.y - head.y, neck.x - head.x) - Math.PI / 2);
+        drawCircle(0, 0, HEAD_RADIUS, true, 4);
+        ctx.fillStyle = ink;
+        drawCircle(-7, -2, 1.5);
+        drawCircle(7, -2, 1.5);
+        drawLine({ x: -6, y: 9 }, { x: 6, y: 9 }, 1.5);
+        ctx.restore();
+      }
+
+      function updateStats(now) {
+        if (now - lastStatsTime < 1000) return;
+        const rate = (inferenceCount * 1000) / (now - lastStatsTime);
+        inferenceCount = 0;
+        lastStatsTime = now;
+
+        const camFps = activeTrack()?.getSettings().frameRate;
+        const hands = puppets.filter((pp) => pp.isTracked).length;
+        $("stats").textContent = isCameraActive
+          ? `Tracking: ${rate.toFixed(0)} fps | hands: ${hands} | inference: ${inferenceMs.toFixed(1)} ms | cam: ${camFps?.toFixed(0) ?? "?"} fps`
+          : "Manual input | physics: 120 Hz";
+      }
+
+      // ---------- Hand tracking ----------
+
+      function processCameraFrame(now) {
+        if (!isCameraActive || !model || video.readyState < 2 || video.currentTime === lastVideoTime) return;
+        lastVideoTime = video.currentTime;
+
+        try {
+          const start = performance.now();
+          const result = model.detectForVideo(video, now);
+          inferenceMs = performance.now() - start;
+          inferenceCount++;
+
+          const hands = assignHands(result.landmarks ?? [], result.handedness ?? result.handednesses);
+          puppets.forEach((pp, k) => (hands[k] ? trackHand(pp, hands[k], now) : loseHand(pp, now)));
+          $("calibrateButton").disabled = !puppets.some((pp) => pp.isTracked);
+        } catch {
+          disableCamera();
+        }
+      }
+
+      // MediaPipe labels handedness for a mirrored image; on our unmirrored feed "Left" sits on screen left.
+      function assignHands(hands, handedness) {
+        const labeled = hands.map((hand, k) => ({ hand, slot: handedness?.[k]?.[0]?.categoryName === "Right" ? 1 : 0 }));
+        if (labeled.length === 2 && labeled[0].slot === labeled[1].slot) {
+          labeled.sort((a, b) => a.hand[0].x - b.hand[0].x).forEach((h, k) => (h.slot = k));
+        }
+        const slots = puppets.map(() => null);
+        for (const { hand, slot } of labeled) slots[slot] = hand;
+        return slots;
+      }
+
+      function trackHand(pp, hand, now) {
+        const isReacquired = !pp.isTracked || now - pp.lastSeenTime > HAND_REACQUIRE_MS;
+        if (isReacquired) resetFilters(pp);
+
+        const nowSec = now / 1000;
+        pp.landmarks = hand.map(({ x, y }, i) => ({
+          x: pp.filters[i].x.filter(x, nowSec),
+          y: pp.filters[i].y.filter(y, nowSec),
+        }));
+        pp.isTracked = true;
+        pp.lastSeenTime = now;
+
+        if (!pp.neutralPose || isReacquired) calibrateNeutral(pp);
+      }
+
+      function loseHand(pp, now) {
+        if (pp.isTracked && now - pp.lastSeenTime > HAND_LOST_MS) clearHand(pp);
+      }
+
+      function clearHand(pp) {
+        resetFilters(pp);
+        Object.assign(pp, { isTracked: false, landmarks: null, neutralPose: null, lastSeenTime: -Infinity });
+      }
+
+      function clearTrackingState() {
+        puppets.forEach(clearHand);
+        lastVideoTime = -1;
+        $("calibrateButton").disabled = true;
+      }
+
+      // Only finger spread is kept horizontally, so absolute hand x drives placement.
+      function calibrateNeutral(pp) {
+        if (!pp.landmarks || !pp.isTracked) return;
+        const tips = FINGER_TIPS.map((i) => pp.landmarks[i]);
+        const meanX = tips.reduce((sum, { x }) => sum + x, 0) / tips.length;
+        pp.neutralPose = tips.map(({ x, y }) => ({ x: x - meanX + 0.5, y }));
+      }
+
+      const resetFilters = (pp) => pp.filters.forEach(({ x, y }) => (x.reset(), y.reset()));
+
+      // ---------- Camera ----------
+
+      const loadModel = () =>
+        (modelPromise ??= createModel().catch((err) => {
+          modelPromise = null;
+          throw err;
+        }));
+
+      async function createModel() {
+        const { FilesetResolver, HandLandmarker } = await import(`${MEDIAPIPE_URL}/vision_bundle.mjs`);
+        const fileset = await FilesetResolver.forVisionTasks(`${MEDIAPIPE_URL}/wasm`);
+        const options = (delegate) => ({
+          baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate },
+          runningMode: "VIDEO",
+          numHands: 2,
+          minHandDetectionConfidence: 0.5,
+          minHandPresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        try {
+          return (model = await HandLandmarker.createFromOptions(fileset, options("GPU")));
+        } catch {
+          return (model = await HandLandmarker.createFromOptions(fileset, options("CPU")));
+        }
+      }
+
+      async function startStream(deviceId) {
+        stopStream();
+        clearTrackingState();
+
+        const getStream = (video) => navigator.mediaDevices.getUserMedia({ audio: false, video });
+        try {
+          stream = await getStream(deviceId ? { ...VIDEO_CONSTRAINTS, deviceId: { exact: deviceId } } : { ...VIDEO_CONSTRAINTS, facingMode: "user" });
+        } catch (err) {
+          if (!deviceId || !["NotFoundError", "OverconstrainedError"].includes(err.name)) throw err;
+          stream = await getStream(VIDEO_CONSTRAINTS);
+        }
+
+        const currentStream = stream;
+        await attachStream(currentStream);
+        await video.play();
+
+        const track = currentStream.getVideoTracks()[0];
+        const { deviceId: activeId } = track.getSettings();
+        if (activeId) storage.set(CAMERA_STORAGE_KEY, activeId);
+        track.addEventListener("ended", () => stream === currentStream && !isBusy && disableCamera());
+        return activeId;
+      }
+
+      const attachStream = (source) =>
+        new Promise((resolve, reject) => {
+          const settle = (fn) => () => {
+            clearTimeout(timer);
+            video.onloadedmetadata = video.onerror = null;
+            fn();
+          };
+          const timer = setTimeout(
+            settle(() => reject(new Error("Timeout"))),
+            15000,
+          );
+          video.onloadedmetadata = settle(resolve);
+          video.onerror = settle(() => reject(new Error("Camera error")));
+          video.srcObject = source;
+        });
+
+      function stopStream() {
+        stream?.getTracks().forEach((t) => t.stop());
+        stream = video.srcObject = null;
+      }
+
+      function disableCamera() {
+        isCameraActive = false;
+        stopStream();
+        clearTrackingState();
+        $("cameraButton").textContent = "Enable camera";
+        $("cameraSelect").disabled = true;
+        puppets.forEach(resetAnchorTargets);
+      }
+
+      async function switchCamera(deviceId) {
+        setBusy(true);
+        try {
+          const activeId = await startStream(deviceId);
+          isCameraActive = true;
+          $("cameraButton").textContent = "Disable camera";
+          await populateCameras(activeId);
+        } catch {
+          disableCamera();
+        } finally {
+          setBusy(false);
+        }
+      }
+
+      async function populateCameras(activeId) {
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+        const select = $("cameraSelect");
+        select.replaceChildren(
+          ...devices.map(({ deviceId, label }, i) =>
+            Object.assign(document.createElement("option"), { value: deviceId, textContent: label || `Camera ${i + 1}` }),
+          ),
+        );
+        if (activeId) select.value = activeId;
+      }
+
+      function setBusy(value) {
+        isBusy = value;
+        $("cameraButton").disabled = value;
+        $("cameraSelect").disabled = value || !isCameraActive;
+      }
+
+      const activeTrack = () => stream?.getVideoTracks()[0];
+
+      // ---------- UI ----------
+
+      function bindUI() {
+        for (const [group, sliders] of Object.entries(SLIDERS)) {
+          $(group)
+            .querySelector("legend")
+            .after(...sliders.map(createSlider));
+        }
+
+        new ResizeObserver(() => {
+          const { width, height } = canvas.getBoundingClientRect();
+          const dpr = Math.min(devicePixelRatio || 1, 2);
+          canvas.width = Math.round(width * dpr);
+          canvas.height = Math.round(height * dpr);
+        }).observe(canvas);
+
+        canvas.addEventListener("pointerdown", startDrag);
+        canvas.addEventListener("pointermove", moveDrag);
+        ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => canvas.addEventListener(type, releaseDrag));
+
+        $("cameraButton").addEventListener("click", () => {
+          if (isCameraActive) return disableCamera();
+          if (!isSecureContext || !navigator.mediaDevices?.getUserMedia) return;
+          releaseDrag();
+          setBusy(true);
+          loadModel()
+            .then(() => switchCamera(storage.get(CAMERA_STORAGE_KEY) || ""), disableCamera)
+            .finally(() => setBusy(false));
+        });
+
+        $("cameraSelect").addEventListener("change", ({ target }) => {
+          if (isBusy || !isCameraActive) return;
+          isCameraActive = false;
+          switchCamera(target.value);
+        });
+
+        setMusic(storage.get(MUSIC_STORAGE_KEY) === "on");
+        $("musicButton").addEventListener("click", () => setMusic(!isMusicOn));
+        $("menuButton").addEventListener("click", ({ currentTarget }) => {
+          const menu = $("menu");
+          menu.hidden = !menu.hidden;
+          currentTarget.setAttribute("aria-expanded", String(!menu.hidden));
+        });
+
+        $("resetButton").addEventListener("click", resetPuppets);
+        $("matchButton").addEventListener("click", startMatch);
+        hudFighters.forEach((el, i) => {
+          el.style.setProperty("--c", FIGHTERS[i].color);
+          el.querySelector(".name").textContent = FIGHTERS[i].name;
+        });
+        $("calibrateButton").addEventListener("click", () => puppets.forEach(calibrateNeutral));
+
+        navigator.mediaDevices?.addEventListener?.("devicechange", () => {
+          if (isCameraActive && !isBusy) populateCameras(activeTrack()?.getSettings().deviceId).catch(() => {});
+        });
+
+        document.addEventListener("visibilitychange", () => {
+          previousTime = performance.now();
+          accumulator = 0;
+          puppets.forEach(({ particles }) => particles.forEach((p) => Object.assign(p, { px: p.x, py: p.y })));
+        });
+
+        window.addEventListener("pagehide", disableCamera);
+        ["pointerdown", "keydown"].forEach((type) => window.addEventListener(type, unlockAudio, { capture: true }));
+      }
+
+      function createSlider({ key, label, min, max, step, value, fmt }) {
+        const wrapper = Object.assign(document.createElement("label"), { className: "setting" });
+        wrapper.innerHTML = `<span>${label} <output></output></span><input type="range" min="${min}" max="${max}" step="${step}" value="${value}" />`;
+        const input = wrapper.querySelector("input");
+        const output = wrapper.querySelector("output");
+        const update = () => {
+          params[key] = Number(input.value);
+          output.value = fmt(params[key]);
+          if (key === "torsoMass") updateParticleMasses();
+        };
+        input.addEventListener("input", update);
+        update();
+        return wrapper;
+      }
+
+      function startDrag(e) {
+        if (isCameraActive || isBusy) return;
+        const pointer = getPointerPos(e);
+        let nearest = DRAG_PICK_RADIUS;
+        dragged = null;
+
+        for (const pp of puppets) {
+          pp.anchors.forEach((a, i) => {
+            const d = dist(a, pointer);
+            if (d < nearest) [nearest, dragged] = [d, { pp, i }];
+          });
+        }
+
+        if (!dragged) return;
+        activePointerId = e.pointerId;
+        canvas.setPointerCapture(activePointerId);
+      }
+
+      function moveDrag(e) {
+        if (!dragged || e.pointerId !== activePointerId) return;
+        const { x, y } = getPointerPos(e);
+        const anchor = dragged.pp.anchors[dragged.i];
+        anchor.x = anchor.tx = clamp(x, DRAG_BOUNDS.minX, DRAG_BOUNDS.maxX);
+        anchor.y = anchor.ty = clamp(y, DRAG_BOUNDS.minY, DRAG_BOUNDS.maxY);
+      }
+
+      function releaseDrag() {
+        dragged = activePointerId = null;
+      }
+
+      // ---------- Pure helpers ----------
+
+      function shuffle(items) {
+        for (let i = items.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [items[i], items[j]] = [items[j], items[i]];
+        }
+        return items;
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function dist(a, b) {
+        return Math.hypot(a.x - b.x, a.y - b.y);
+      }
+
+      function lerp(a, b, t) {
+        return a + (b - a) * t;
+      }
+
+      function lerpPoint(a, b, t) {
+        return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+      }
+
+      function shift(p, dx, dy, k) {
+        p.x += dx * k;
+        p.y += dy * k;
+      }
+
+      function centroid(points) {
+        const sum = points.reduce((acc, { x, y }) => ({ x: acc.x + x, y: acc.y + y }), { x: 0, y: 0 });
+        return { x: sum.x / points.length, y: sum.y / points.length };
+      }
+
+      function cross(o, a, b) {
+        return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      }
+
+      function segmentsCross(p1, q1, p2, q2) {
+        return cross(p1, q1, p2) * cross(p1, q1, q2) < 0 && cross(p2, q2, p1) * cross(p2, q2, q1) < 0;
+      }
+
+      function closestSegmentParams(p1, q1, p2, q2) {
+        const d1x = q1.x - p1.x;
+        const d1y = q1.y - p1.y;
+        const d2x = q2.x - p2.x;
+        const d2y = q2.y - p2.y;
+        const rx = p1.x - p2.x;
+        const ry = p1.y - p2.y;
+        const a = d1x * d1x + d1y * d1y || 1e-9;
+        const e = d2x * d2x + d2y * d2y || 1e-9;
+        const b = d1x * d2x + d1y * d2y;
+        const c = d1x * rx + d1y * ry;
+        const f = d2x * rx + d2y * ry;
+        const denom = a * e - b * b;
+        const s = denom > 1e-9 ? clamp((b * f - c * e) / denom, 0, 1) : 0;
+        const t = (b * s + f) / e;
+        return t < 0 ? [clamp(-c / a, 0, 1), 0] : t > 1 ? [clamp((b - c) / a, 0, 1), 1] : [s, t];
+      }
+
+      function getViewTransform() {
+        const scale = Math.min(canvas.width / WIDTH, canvas.height / HEIGHT);
+        return { scale, x: (canvas.width - WIDTH * scale) / 2, y: (canvas.height - HEIGHT * scale) / 2 };
+      }
+
+      function getCameraTransform() {
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        const scale = Math.max(WIDTH / vw, HEIGHT / vh);
+        const [width, height] = [vw * scale, vh * scale];
+        return { width, height, x: (WIDTH - width) / 2, y: (HEIGHT - height) / 2 };
+      }
+
+      function getPointerPos({ clientX, clientY }) {
+        const rect = canvas.getBoundingClientRect();
+        const view = getViewTransform();
+        return {
+          x: (((clientX - rect.left) / rect.width) * canvas.width - view.x) / view.scale,
+          y: (((clientY - rect.top) / rect.height) * canvas.height - view.y) / view.scale,
+        };
+      }
+
+      function drawLine(a, b, width = 1) {
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+
+      function drawCircle(x, y, radius, fill = true, width = 1) {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        if (fill) ctx.fill();
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+
+      function withAlpha(alpha, draw) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        draw();
+        ctx.restore();
+      }
+
+      const storage = {
+        get: (key) => {
+          try {
+            return localStorage.getItem(key);
+          } catch {}
+        },
+        set: (key, value) => {
+          try {
+            localStorage.setItem(key, value);
+          } catch {}
+        },
+      };
+
+      class LowPassFilter {
+        raw = null;
+        smoothed = null;
+
+        filter(value, alpha) {
+          this.smoothed = this.raw === null ? value : alpha * value + (1 - alpha) * this.smoothed;
+          this.raw = value;
+          return this.smoothed;
+        }
+
+        reset() {
+          this.raw = this.smoothed = null;
+        }
+      }
+
+      class OneEuroFilter {
+        value = new LowPassFilter();
+        velocity = new LowPassFilter();
+        lastTime = null;
+
+        static alpha(cutoff, te) {
+          const r = 2 * Math.PI * cutoff * te;
+          return r / (r + 1);
+        }
+
+        filter(value, timestamp) {
+          if (this.lastTime !== null) {
+            const dt = timestamp - this.lastTime;
+            if (dt <= 0) return this.value.smoothed ?? value;
+            if (dt > 1) this.reset();
+          }
+          const te = this.lastTime ? timestamp - this.lastTime : 1 / 60;
+          this.lastTime = timestamp;
+
+          const rawVelocity = this.value.raw !== null ? (value - this.value.raw) / te : 0;
+          const velocity = this.velocity.filter(rawVelocity, OneEuroFilter.alpha(1, te));
+          const cutoff = params.filterCutoff + params.filterBeta * Math.abs(velocity);
+          return this.value.filter(value, OneEuroFilter.alpha(cutoff, te));
+        }
+
+        reset() {
+          this.value.reset();
+          this.velocity.reset();
+          this.lastTime = null;
+        }
+      }
+
+      bindUI();
+      startMatch();
+      requestAnimationFrame(mainLoop);
+      $("cameraButton").click();
+    </script>
+  </body>
+</html>
