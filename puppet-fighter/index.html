@@ -1161,12 +1161,7 @@
             break;
           }
           case "countdown": {
-            const ready = puppets.map((pp, k) => updateReadiness(pp, k, dt));
-            if (!ready.every((r) => r.isLocked)) {
-              setPhase("ready");
-              showBanner("");
-              break;
-            }
+            // Once both hands lock in, the countdown runs to completion regardless of hand movement.
             // The round call leads in, then 3-2-1.
             if (game.cue === 0) {
               game.cue = COUNTDOWN + 1;
@@ -1416,8 +1411,7 @@
       }
 
       function renderReadyGuide() {
-        const isCountdown = game.phase === "countdown";
-        if (game.phase !== "ready" && !isCountdown) return;
+        if (game.phase !== "ready") return;
 
         ctx.save();
         ctx.textAlign = "center";
@@ -1471,11 +1465,9 @@
           ctx.fillText(label.toUpperCase(), target.x, target.y + READY_RADIUS + 28);
         });
 
-        if (!isCountdown) {
-          ctx.fillStyle = "#fff";
-          ctx.font = '42px "Bebas Neue", sans-serif';
-          withAlpha(0.85, () => ctx.fillText("Open both hands wide", WIDTH / 2, 120));
-        }
+        ctx.fillStyle = "#fff";
+        ctx.font = '42px "Bebas Neue", sans-serif';
+        withAlpha(0.85, () => ctx.fillText("Open both hands wide", WIDTH / 2, 120));
         ctx.restore();
       }
 
