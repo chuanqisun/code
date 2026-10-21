@@ -112,7 +112,6 @@
   </head>
   <body>
     <header>
-      <h1>HAND PUPPET</h1>
       <button id="cameraButton">Enable camera</button>
       <select id="cameraSelect" aria-label="Camera" disabled>
         <option>Camera source</option>
@@ -198,8 +197,8 @@
       const ROPE_ATTACHMENTS = [7, 11, 0, 12, 8];
 
       const DESIGN_POSE = [
-        [500, 365],
-        [500, 405],
+        [500, 377],
+        [500, 415],
         [500, 505],
         [472, 415],
         [528, 415],
@@ -538,7 +537,6 @@
           drawCircle(a.x, a.y, draggedAnchor === i ? 15 : 12, true, 1.8);
           ctx.fillStyle = "#000";
           ctx.fillText(String(i + 1), a.x, a.y);
-
         });
       }
 
@@ -894,6 +892,7 @@
 
       resetPuppet();
       requestAnimationFrame(mainLoop);
+      $("cameraButton").click();
     </script>
   </body>
 </html>
