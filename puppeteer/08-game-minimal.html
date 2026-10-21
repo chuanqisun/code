@@ -4,11 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Puppet Fighter</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👊</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Chakra+Petch:wght@500;700&display=swap" rel="stylesheet" />
     <style>
       :root {
+        color-scheme: dark;
         --fg: #ece9f5;
         --bg: rgb(255 255 255 / 0.04);
         --stage: #000;
@@ -73,11 +75,25 @@
 
       #corner {
         position: fixed;
-        top: var(--gap);
-        right: var(--gap);
+        top: 0;
+        right: 0;
         z-index: 3;
         display: flex;
+        justify-content: flex-end;
         gap: var(--gap-sm);
+        padding: var(--gap);
+        border: 1px solid transparent;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+      }
+
+      /* With the menu open, the corner buttons become the panel's title bar. */
+      body:has(#menu:not([hidden])) #corner {
+        width: min(var(--menu-width), 100vw);
+        justify-content: space-between;
+        background: rgb(10 8 18);
+        border-color: transparent transparent rgb(255 255 255 / 0.16) rgb(255 255 255 / 0.16);
       }
 
       #corner button {
@@ -101,9 +117,10 @@
         backdrop-filter: blur(12px);
         max-width: 100vw;
         overflow-y: auto;
-        padding: 52px var(--gap) var(--gap);
+        padding: 68px var(--gap) var(--gap);
         background: var(--overlay);
         border-left: var(--border);
+        animation: slide-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 
         &[hidden] {
           display: none;
@@ -124,6 +141,68 @@
           p {
             margin: var(--gap-sm) 0;
           }
+        }
+      }
+
+      #setup {
+        max-width: min(560px, calc(100vw - 32px));
+        padding: 28px;
+        color: var(--fg);
+        background: var(--overlay);
+        border: var(--border);
+        text-align: center;
+
+        &::backdrop {
+          background: rgb(0 0 0 / 0.6);
+          backdrop-filter: blur(6px);
+        }
+
+        h2 {
+          margin: 0 0 6px;
+          font: 32px/1 var(--display);
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        p {
+          margin: 0 0 20px;
+          opacity: 0.7;
+        }
+      }
+
+      .mode-choice {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--gap-sm);
+
+        button {
+          padding: 14px 10px;
+          opacity: 0.6;
+
+          small {
+            display: block;
+            margin-top: 6px;
+            text-transform: none;
+            letter-spacing: 0;
+            opacity: 0.7;
+          }
+
+          &:hover,
+          &[aria-pressed="true"] {
+            opacity: 1;
+            border-color: var(--fg);
+          }
+        }
+      }
+
+      #modeFieldset .mode-choice button {
+        padding: 10px 6px;
+      }
+
+      @keyframes slide-in {
+        from {
+          opacity: 0;
+          translate: 24px 0;
         }
       }
 
@@ -342,7 +421,24 @@
       <button id="menuButton" aria-controls="menu" aria-expanded="false">Menu</button>
     </div>
 
+    <dialog id="setup">
+      <h2>Choose setup</h2>
+      <p>Which direction does your camera face?</p>
+      <div class="mode-choice">
+        <button data-mode="behind" aria-pressed="false">Opposite to screen</button>
+        <button data-mode="front" aria-pressed="false">Same as screen</button>
+      </div>
+    </dialog>
+
     <aside id="menu" hidden>
+      <fieldset id="modeFieldset">
+        <legend>Camera direction</legend>
+        <div class="mode-choice">
+          <button data-mode="behind" aria-pressed="false">Opposite to screen</button>
+          <button data-mode="front" aria-pressed="false">Same as screen</button>
+        </div>
+      </fieldset>
+
       <header>
         <button id="cameraButton">Enable camera</button>
         <select id="cameraSelect" aria-label="Camera" disabled>
@@ -522,6 +618,7 @@
       const OPEN_EXTEND_RATIO = 1.15;
       const OPEN_SPREAD_RATIO = 1.05;
       const COUNTDOWN = 3;
+      const ROUND_CALL_TIME = 1.4;
       const PALM_LANDMARKS = [0, 5, 9, 13, 17];
       // Head, hands and feet can strike; arm segments of the target count as a guard.
       const STRIKERS = [0, 7, 8, 11, 12];
@@ -534,6 +631,7 @@
       const DEBRIS_ITERATIONS = 6;
       const CAMERA_STORAGE_KEY = "puppet_camera";
       const MUSIC_STORAGE_KEY = "puppet_music";
+      const MODE_STORAGE_KEY = "puppet_tracking_mode";
       const MEDIAPIPE_VERSION = "0.10.32";
       const MEDIAPIPE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}`;
       const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
@@ -592,6 +690,7 @@
       let isCameraActive = false;
       let isBusy = false;
       let lastVideoTime = -1;
+      let isMirrored = false;
       let inferenceMs = 0;
       let inferenceCount = 0;
       let dragged = null;
@@ -1008,14 +1107,19 @@
       }
 
       // keepPose leaves puppets where the calibrated hands hold them.
-      function startRound({ keepPose = false } = {}) {
+      function startRound({ keepPose = false, announce = true } = {}) {
         if (!keepPose) resetPuppets();
         puppets.forEach((pp) => Object.assign(pp, { hp: MAX_HP, flash: 0, face: null, cooldowns: {} }));
         setPhase("intro");
         game.timer = ROUND_TIME;
-        const isFinal = game.wins.every((w) => w === ROUNDS_TO_WIN - 1);
-        showBanner(isFinal ? "Final round" : `Round ${game.round}`);
+        if (announce) announceRound();
+        else game.phaseTime = 1.1; // skip the announcement lead-in; "Fight" follows the countdown directly
         playBgm(game.round);
+      }
+
+      function announceRound() {
+        showBanner(game.round === 3 ? "Final round" : `Round ${game.round}`);
+        playSfx(sfx.rounds[game.round]);
       }
 
       function setPhase(phase) {
@@ -1052,19 +1156,28 @@
               showBanner("");
               break;
             }
-            const n = COUNTDOWN - Math.floor(t);
-            if (n > 0 && game.cue !== n) {
+            // The round call leads in, then 3-2-1.
+            if (game.cue === 0) {
+              game.cue = COUNTDOWN + 1;
+              announceRound();
+            }
+            const n = Math.min(COUNTDOWN, COUNTDOWN - Math.floor(t - ROUND_CALL_TIME));
+            if (t >= ROUND_CALL_TIME && n > 0 && game.cue !== n) {
               game.cue = n;
               showBanner(String(n), "count");
+              playSfx(sfx.counts[n]);
             }
-            if (t >= COUNTDOWN) {
+            if (t >= ROUND_CALL_TIME + COUNTDOWN) {
               game.isCalibrated = true;
-              startRound({ keepPose: true });
+              startRound({ keepPose: true, announce: false });
             }
             break;
           }
           case "intro":
-            if (t > 1.3 && !game.cue++) showBanner("Fight", "fight");
+            if (t > 1.3 && !game.cue++) {
+              showBanner("Fight", "fight");
+              playSfx(sfx.fight);
+            }
             if (t > 1.9) setPhase("fight");
             break;
           case "fight":
@@ -1183,7 +1296,7 @@
       bgmBus.connect(audio.destination);
       bgmBus.gain.value = 0.45;
 
-      const sfx = { hits: [], ko: null, wins: [] };
+      const sfx = { hits: [], ko: null, wins: [], counts: [], rounds: [], fight: null };
       const loadBuffer = (url) =>
         fetch(url)
           .then((res) => res.arrayBuffer())
@@ -1191,6 +1304,9 @@
           .catch((err) => console.warn("Audio load failed:", url, err));
       Promise.all([1, 2, 3, 4, 5, 6].map((n) => loadBuffer(`assets/hit-0${n}.mp3`))).then((hits) => (sfx.hits = hits.filter(Boolean)));
       loadBuffer("assets/ko.mp3").then((buf) => (sfx.ko = buf));
+      ["round-one", "round-two", "final-round"].forEach((name, i) => loadBuffer(`assets/${name}.mp3`).then((buf) => (sfx.rounds[i + 1] = buf)));
+      loadBuffer("assets/fight.mp3").then((buf) => (sfx.fight = buf));
+      ["one", "two", "three"].forEach((word, i) => loadBuffer(`assets/${word}.mp3`).then((buf) => (sfx.counts[i + 1] = buf)));
       FIGHTERS.forEach(({ name }, i) => loadBuffer(`assets/${name.toLowerCase()}-wins.mp3`).then((buf) => (sfx.wins[i] = buf)));
       let isMusicOn = false;
 
@@ -1422,7 +1538,10 @@
         const toWorld = ({ x, y }) => ({ x: cam.x + x * cam.width, y: cam.y + y * cam.height });
 
         if (isCameraActive && video.readyState >= 2) {
-          withAlpha(0.5, () => ctx.drawImage(video, cam.x, cam.y, cam.width, cam.height));
+          withAlpha(0.5, () => {
+            if (isMirrored) ctx.transform(-1, 0, 0, 1, 2 * cam.x + cam.width, 0);
+            ctx.drawImage(video, cam.x, cam.y, cam.width, cam.height);
+          });
         }
 
         ctx.strokeStyle = "#000";
@@ -1542,7 +1661,8 @@
           inferenceMs = performance.now() - start;
           inferenceCount++;
 
-          const hands = assignHands(result.landmarks ?? [], result.handedness ?? result.handednesses);
+          const landmarks = (result.landmarks ?? []).map((hand) => (isMirrored ? hand.map((p) => ({ ...p, x: 1 - p.x })) : hand));
+          const hands = assignHands(landmarks, result.handedness ?? result.handednesses);
           puppets.forEach((pp, k) => (hands[k] ? trackHand(pp, hands[k], now) : loseHand(pp, now)));
           $("calibrateButton").disabled = !puppets.some((pp) => pp.isTracked);
         } catch {
@@ -1550,11 +1670,12 @@
         }
       }
 
-      // MediaPipe labels handedness for a mirrored image; on our unmirrored feed "Left" sits on screen left.
+      // Handedness label picks the puppet in both modes, so mirroring swaps which screen side drives which puppet.
       function assignHands(hands, handedness) {
         const labeled = hands.map((hand, k) => ({ hand, slot: handedness?.[k]?.[0]?.categoryName === "Right" ? 1 : 0 }));
         if (labeled.length === 2 && labeled[0].slot === labeled[1].slot) {
-          labeled.sort((a, b) => a.hand[0].x - b.hand[0].x).forEach((h, k) => (h.slot = k));
+          const dir = isMirrored ? -1 : 1;
+          labeled.sort((a, b) => dir * (a.hand[0].x - b.hand[0].x)).forEach((h, k) => (h.slot = k));
         }
         const slots = puppets.map(() => null);
         for (const { hand, slot } of labeled) slots[slot] = hand;
@@ -1585,6 +1706,15 @@
         Object.assign(pp, { isTracked: false, landmarks: null, neutralPose: null, lastSeenTime: -Infinity });
       }
 
+      // "front": hands between player and screen, so the feed is mirrored like a selfie view.
+      function setTrackingMode(mode) {
+        isMirrored = mode === "front";
+        storage.set(MODE_STORAGE_KEY, mode);
+        document.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+        puppets.forEach((pp) => (pp.homeX = undefined));
+        clearTrackingState();
+      }
+
       function clearTrackingState() {
         puppets.forEach(clearHand);
         lastVideoTime = -1;
@@ -1601,7 +1731,7 @@
         pp.neutralPose = tips.map(({ x, y }) => ({ x: x - meanX + homeX - offset, y }));
       }
 
-      const resetFilters = (pp) => pp.filters.forEach(({ x, y }) => (x.reset(), y.reset()));
+      const resetFilters = (pp) => pp.filters?.forEach(({ x, y }) => (x.reset(), y.reset()));
 
       // ---------- Camera ----------
 
@@ -1757,7 +1887,19 @@
           const menu = $("menu");
           menu.hidden = !menu.hidden;
           currentTarget.setAttribute("aria-expanded", String(!menu.hidden));
+          currentTarget.textContent = menu.hidden ? "Menu" : "Close";
         });
+
+        document.querySelectorAll("[data-mode]").forEach((b) =>
+          b.addEventListener("click", () => {
+            setTrackingMode(b.dataset.mode);
+            $("setup").close();
+          }),
+        );
+        const savedMode = storage.get(MODE_STORAGE_KEY);
+        if (savedMode === "front" || savedMode === "behind") setTrackingMode(savedMode);
+        else $("setup").showModal();
+        $("setup").addEventListener("cancel", (e) => e.preventDefault());
 
         $("resetButton").addEventListener("click", resetPuppets);
         $("matchButton").addEventListener("click", startMatch);
