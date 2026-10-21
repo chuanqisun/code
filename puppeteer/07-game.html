@@ -142,12 +142,9 @@
             <span>1€ min cutoff <output id="filterCutoffValue"></output></span>
             <input id="filterCutoff" type="range" min="0.1" max="5" step="0.1" value="1.0" />
           </label>
-          <label><input id="showHand" type="checkbox" checked /> Hand landmarks</label>
+          <label><input id="showHand" type="checkbox" /> Hand landmarks</label>
           <p>
             <label><input id="showStrings" type="checkbox" checked /> Strings</label>
-          </p>
-          <p>
-            <label><input id="showLabels" type="checkbox" checked /> Control labels</label>
           </p>
         </fieldset>
 
@@ -198,10 +195,9 @@
       const TIME_STEP = 1 / 120;
 
       const FINGER_TIPS = [4, 8, 12, 16, 20];
-      const FINGER_NAMES = ["thumb", "index", "middle", "ring", "pinky"];
       const ROPE_ATTACHMENTS = [7, 11, 0, 12, 8];
 
-      const INITIAL_POSE = [
+      const DESIGN_POSE = [
         [500, 365],
         [500, 405],
         [500, 505],
@@ -217,15 +213,22 @@
         [542, 610],
       ];
 
-      const LIMB_ROPE_LENGTH = Math.hypot(INITIAL_POSE[7][0] - 270, INITIAL_POSE[7][1] - 195);
+      // Shift the whole rig down so the feet rest exactly on the floor (feet particle radius is 5).
+      const POSE_DROP = FLOOR - 5 - Math.max(...DESIGN_POSE.map(([, y]) => y));
+      const INITIAL_POSE = DESIGN_POSE.map(([x, y]) => [x, y + POSE_DROP]);
+
+      const LIMB_ROPE_LENGTH = Math.hypot(INITIAL_POSE[7][0] - 270, INITIAL_POSE[7][1] - (195 + POSE_DROP));
       const INDEX_RING_Y = Math.round(INITIAL_POSE[11][1] - Math.sqrt(LIMB_ROPE_LENGTH ** 2 - (INITIAL_POSE[11][0] - 385) ** 2));
 
+      // Visual-only lift so control points and string tops render above the viewport unless hand landmarks are shown (physics unaffected).
+      const ANCHOR_RENDER_LIFT = 500;
+
       const BASE_ANCHORS = [
-        { x: 270, y: 195 },
+        { x: 270, y: 195 + POSE_DROP },
         { x: 385, y: INDEX_RING_Y },
-        { x: 500, y: 130 },
+        { x: 500, y: 130 + POSE_DROP },
         { x: 615, y: INDEX_RING_Y },
-        { x: 730, y: 195 },
+        { x: 730, y: 195 + POSE_DROP },
       ];
 
       const BONE_PAIRS = [
@@ -491,9 +494,11 @@
           ctx.restore();
         }
 
+        const lift = $("showHand").checked ? 0 : ANCHOR_RENDER_LIFT;
+
         if ($("showStrings").checked) {
           ropes.forEach((r, i) => {
-            const a = anchors[i];
+            const a = { x: anchors[i].x, y: anchors[i].y - lift };
             const p = particles[r.part];
             const slack = clamp((r.length - dist(a, p)) * 0.55, 0, 55);
 
@@ -527,17 +532,13 @@
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        anchors.forEach((a, i) => {
+        anchors.forEach(({ x, y }, i) => {
+          const a = { x, y: y - lift };
           ctx.fillStyle = "#fff";
           drawCircle(a.x, a.y, draggedAnchor === i ? 15 : 12, true, 1.8);
           ctx.fillStyle = "#000";
           ctx.fillText(String(i + 1), a.x, a.y);
 
-          if ($("showLabels").checked) {
-            ctx.textBaseline = "bottom";
-            ctx.fillText(FINGER_NAMES[i], a.x, a.y - 19);
-            ctx.textBaseline = "middle";
-          }
         });
       }
 
@@ -586,7 +587,9 @@
 
       function calibrateNeutral() {
         if (!landmarks || !isTracked) return;
-        neutralPose = FINGER_TIPS.map((i) => ({ x: landmarks[i].x, y: landmarks[i].y }));
+        // Keep only finger spread horizontally: re-center x on the frame so absolute hand position drives placement.
+        const meanX = FINGER_TIPS.reduce((sum, i) => sum + landmarks[i].x, 0) / FINGER_TIPS.length;
+        neutralPose = FINGER_TIPS.map((i) => ({ x: landmarks[i].x - meanX + 0.5, y: landmarks[i].y }));
         $("calibrateButton").disabled = false;
       }
 
