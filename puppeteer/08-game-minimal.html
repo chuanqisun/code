@@ -835,6 +835,8 @@
         puppets.forEach((A, k) => {
           const B = puppets[1 - k];
           if (A.hp <= 0 || B.hp <= 0) return;
+          // A puppet whose hand has left the camera can't be hit.
+          if (isCameraActive && !B.isTracked) return;
           for (const i of STRIKERS) {
             if (A.cooldowns[i] > 0) continue;
             const p = A.particles[i];
@@ -1435,7 +1437,7 @@
           baseOptions: { modelAssetPath: HAND_MODEL_URL, delegate },
           runningMode: "VIDEO",
           numHands: 2,
-          minHandDetectionConfidence: 0.6,
+          minHandDetectionConfidence: 0.9,
           minHandPresenceConfidence: 0.6,
           minTrackingConfidence: 0.6,
         });
