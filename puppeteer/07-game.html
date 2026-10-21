@@ -371,6 +371,7 @@
           part,
           length: i === 2 ? Math.hypot(INITIAL_POSE[part][0] - BASE_ANCHORS[i].x, INITIAL_POSE[part][1] - BASE_ANCHORS[i].y) : LIMB_ROPE_LENGTH,
           tension: 0,
+          slack: 0,
         }));
 
         anchors.forEach((a, i) => Object.assign(a, BASE_ANCHORS[i], { tx: BASE_ANCHORS[i].x, ty: BASE_ANCHORS[i].y }));
@@ -387,7 +388,7 @@
         if (isCameraActive && isTracked && neutralPose) {
           FINGER_TIPS.forEach((tipIdx, i) => {
             const pt = landmarks[tipIdx];
-            const dx = -(pt.x - neutralPose[i].x);
+            const dx = pt.x - neutralPose[i].x;
             const dy = pt.y - neutralPose[i].y;
             anchors[i].tx = clamp(BASE_ANCHORS[i].x + dx * 800 * params.sensitivity, 65, 935);
             anchors[i].ty = clamp(BASE_ANCHORS[i].y + dy * 640 * params.sensitivity, 75, 480);
@@ -413,7 +414,15 @@
           p.y += vy + 1050 * params.gravity * dt * dt;
         }
 
-        for (const r of ropes) r.tension = 0;
+        // With the camera on but no hand, the puppeteer has let go: release all strings so the puppet collapses.
+        // When the hand returns, strings re-grip at their current length and reel in gradually (no snap).
+        const isHeld = !isCameraActive || isTracked;
+        ropes.forEach((r, i) => {
+          r.tension = 0;
+          if (!isHeld) r.slack = Infinity;
+          else if (r.slack === Infinity) r.slack = Math.max(0, dist(anchors[i], particles[r.part]) - r.length);
+          else r.slack = Math.max(0, r.slack * Math.exp(-2.5 * dt) - 60 * dt);
+        });
 
         for (let iter = 0; iter < params.iterations; iter++) {
           for (const b of bones) {
@@ -435,8 +444,8 @@
             const dx = p.x - a.x;
             const dy = p.y - a.y;
             const d = Math.hypot(dx, dy);
-            if (d > r.length) {
-              const excess = d - r.length;
+            if (d > r.length + r.slack) {
+              const excess = d - r.length - r.slack;
               const corr = (excess / d) * params.pullStiff;
               p.x -= dx * corr;
               p.y -= dy * corr;
@@ -466,8 +475,6 @@
           const t = getCameraTransform();
           ctx.save();
           ctx.globalAlpha = 0.5;
-          ctx.translate(WIDTH, 0);
-          ctx.scale(-1, 1);
           ctx.drawImage(video, t.x, t.y, t.width, t.height);
           ctx.restore();
         }
@@ -481,7 +488,7 @@
 
         if ($("showHand").checked && landmarks && isTracked) {
           const t = getCameraTransform();
-          const mapPt = (p) => ({ x: t.x + (1 - p.x) * t.width, y: t.y + p.y * t.height });
+          const mapPt = (p) => ({ x: t.x + p.x * t.width, y: t.y + p.y * t.height });
 
           ctx.save();
           ctx.globalAlpha = 0.55;
@@ -499,7 +506,7 @@
           ropes.forEach((r, i) => {
             const a = { x: anchors[i].x, y: anchors[i].y - lift };
             const p = particles[r.part];
-            const slack = clamp((r.length - dist(a, p)) * 0.55, 0, 55);
+            const slack = clamp((r.length + Math.min(r.slack, 1000) - dist(anchors[i], p)) * 0.55, 0, 55);
 
             ctx.lineWidth = 1.4;
             ctx.beginPath();
