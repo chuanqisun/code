@@ -18,23 +18,11 @@
       }
 
       body {
-        margin: 16px;
+        margin: 0;
+        overflow: hidden;
         color: var(--fg);
-        background: var(--bg);
+        background: #000;
         font: var(--font);
-      }
-
-      header {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-bottom: 10px;
-
-        h1 {
-          margin: 0 12px 0 0;
-          font-size: 14px;
-        }
       }
 
       button,
@@ -56,32 +44,55 @@
         cursor: pointer;
       }
 
-      main {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 240px;
-        gap: 16px;
-
-        @media (max-width: 760px) {
-          grid-template-columns: 1fr;
-
-          aside {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 10px;
-          }
-        }
-      }
-
       canvas {
+        position: fixed;
+        inset: 0;
         display: block;
-        width: 100%;
-        aspect-ratio: 4 / 3;
-        border: var(--border);
+        width: 100vw;
+        height: 100vh;
         touch-action: none;
       }
 
       video {
         display: none;
+      }
+
+      #menuButton {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 2;
+        opacity: 0.6;
+
+        &:hover,
+        &[aria-expanded="true"] {
+          opacity: 1;
+        }
+      }
+
+      #menu {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1;
+        width: 280px;
+        max-width: 100vw;
+        overflow-y: auto;
+        padding: 52px 12px 12px;
+        background: rgb(255 255 255 / 0.92);
+        border-left: var(--border);
+
+        &[hidden] {
+          display: none;
+        }
+
+        header {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: var(--gap);
+        }
       }
 
       fieldset {
@@ -111,22 +122,21 @@
     </style>
   </head>
   <body>
-    <header>
+    <canvas id="canvas"></canvas>
+    <video id="video" autoplay playsinline muted></video>
+
+    <button id="menuButton" aria-controls="menu" aria-expanded="false">Menu</button>
+
+    <aside id="menu" hidden>
+      <header>
       <button id="cameraButton">Enable camera</button>
       <select id="cameraSelect" aria-label="Camera" disabled>
         <option>Camera source</option>
       </select>
       <button id="resetButton">Reset puppets</button>
       <button id="calibrateButton" disabled>Recalibrate neutral</button>
-    </header>
+      </header>
 
-    <main>
-      <section>
-        <canvas id="canvas"></canvas>
-        <video id="video" autoplay playsinline muted></video>
-      </section>
-
-      <aside>
         <fieldset>
           <legend>Tracking</legend>
           <label class="setting">
@@ -179,8 +189,7 @@
           <legend>Debug</legend>
           <div id="stats">Manual input</div>
         </fieldset>
-      </aside>
-    </main>
+    </aside>
 
     <script type="module">
       const $ = (id) => document.getElementById(id);
@@ -632,10 +641,12 @@
 
       function render() {
         const isDebug = $("debugMode").checked;
-        ctx.setTransform(canvas.width / WIDTH, 0, 0, canvas.height / HEIGHT, 0, 0);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalAlpha = 1;
         ctx.fillStyle = isDebug ? "#fff" : "#000";
-        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const v = getViewTransform();
+        ctx.setTransform(v.scale, 0, 0, v.scale, v.x, v.y);
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
 
@@ -934,11 +945,18 @@
         ctx.stroke();
       }
 
+      // Fit the fixed-size world into the full-screen canvas, uniformly scaled and centered.
+      function getViewTransform() {
+        const scale = Math.min(canvas.width / WIDTH, canvas.height / HEIGHT);
+        return { scale, x: (canvas.width - WIDTH * scale) / 2, y: (canvas.height - HEIGHT * scale) / 2 };
+      }
+
       function getPointerPos(e) {
         const rect = canvas.getBoundingClientRect();
+        const v = getViewTransform();
         return {
-          x: ((e.clientX - rect.left) / rect.width) * WIDTH,
-          y: ((e.clientY - rect.top) / rect.height) * HEIGHT,
+          x: (((e.clientX - rect.left) / rect.width) * canvas.width - v.x) / v.scale,
+          y: (((e.clientY - rect.top) / rect.height) * canvas.height - v.y) / v.scale,
         };
       }
 
@@ -1074,6 +1092,12 @@
         } finally {
           setBusy(false);
         }
+      });
+
+      $("menuButton").addEventListener("click", (e) => {
+        const menu = $("menu");
+        menu.hidden = !menu.hidden;
+        e.currentTarget.setAttribute("aria-expanded", String(!menu.hidden));
       });
 
       $("resetButton").addEventListener("click", resetPuppets);
