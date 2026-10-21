@@ -6,6 +6,7 @@
 - [Master Thesis](./master-thesis/)
 - [Synthetic Memory](./synthetic-memory/simulation-01.md)
 - [Thank You](./thank-you/)
+- [TMG 30](./tmg-30/)
 - [TMG UROP posting](./tmg-urop/)
 - [Trip Reports: 2026 CVPR](./trip-reports/2026-cvpr/)
 - [WebGL2 Shaders](./webgl2-shaders/monochromatic)
