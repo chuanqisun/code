@@ -598,10 +598,11 @@
       const FACE_TIME = 0.45;
       const ROUND_TIME = 60;
       const ROUNDS_TO_WIN = 2;
-      // Ready check: each palm must sit inside its target ring (world px) and hold still before the countdown.
+      // Ready check: each hand must open fully and hold still before the countdown; position doesn't matter.
       const READY_TARGET_Y = 0.5;
       const READY_RADIUS = 80;
-      const READY_LEAVE_RADIUS = 150;
+      // Openness below this drops a locked hand back out of ready.
+      const READY_RELEASE_OPENNESS = 0.6;
       const READY_STEADY_SPEED = 140;
       const READY_HOLD = 0.6;
       // Pushes the rings past the puppets' start spots so the hands sit comfortably apart.
@@ -609,6 +610,7 @@
       // Rings are drawn this much closer to centre than the physical targets; the palm marker shifts with its ring.
       const READY_DISPLAY_SCALE = 0.6;
       // An open hand: each fingertip well beyond its middle knuckle, and index-to-pinky wider than the palm.
+      // Openness ramps from the *_CLOSED ratios (0) up to the open thresholds (1).
       const OPEN_FINGERS = [
         [8, 6],
         [12, 10],
@@ -617,6 +619,8 @@
       ];
       const OPEN_EXTEND_RATIO = 1.15;
       const OPEN_SPREAD_RATIO = 1.05;
+      const CLOSED_EXTEND_RATIO = 0.9;
+      const CLOSED_SPREAD_RATIO = 0.6;
       const COUNTDOWN = 3;
       const ROUND_CALL_TIME = 1.4;
       const PALM_LANDMARKS = [0, 5, 9, 13, 17];
@@ -726,7 +730,13 @@
 
       // ---------- Puppet state ----------
 
-      const baseAnchor = (pp, i) => ({ x: BASE_ANCHORS[i].x + pp.offsetX, y: BASE_ANCHORS[i].y });
+      // Each reset nudges the resting control points so the two puppets don't start as mirror copies.
+      const ANCHOR_JITTER = { x: 30, y: 25 };
+      const randomJitter = () => BASE_ANCHORS.map(() => ({ x: (Math.random() * 2 - 1) * ANCHOR_JITTER.x, y: (Math.random() * 2 - 1) * ANCHOR_JITTER.y }));
+      const baseAnchor = (pp, i) => ({
+        x: BASE_ANCHORS[i].x + pp.offsetX + (pp.jitter?.[i].x ?? 0),
+        y: BASE_ANCHORS[i].y + (pp.jitter?.[i].y ?? 0),
+      });
 
       const resetAnchorTargets = (pp) =>
         pp.anchors.forEach((a, i) => {
@@ -745,6 +755,7 @@
             tension: 0,
             slack: 0,
           }));
+          pp.jitter = randomJitter();
           pp.anchors.forEach((a, i) => Object.assign(a, baseAnchor(pp, i)));
           pp.debris = null;
           resetAnchorTargets(pp);
@@ -1213,7 +1224,7 @@
         r.target = target;
         r.isTracked = isCameraActive && pp.isTracked && !!pp.landmarks;
         if (!r.isTracked) {
-          Object.assign(r, { palm: null, speed: Infinity, hold: 0, distance: Infinity, isSteady: false, isOpen: false, isLocked: false });
+          Object.assign(r, { palm: null, speed: Infinity, hold: 0, openness: 0, isSteady: false, isOpen: false, isLocked: false });
           return r;
         }
 
@@ -1222,17 +1233,19 @@
         const points = pp.landmarks.map(toWorld);
         const palm = centroid(PALM_LANDMARKS.map((i) => points[i]));
         const wrist = points[0];
-        r.isOpen =
-          OPEN_FINGERS.every(([tip, pip]) => dist(wrist, points[tip]) > dist(wrist, points[pip]) * OPEN_EXTEND_RATIO) &&
-          dist(points[8], points[20]) > dist(points[5], points[17]) * OPEN_SPREAD_RATIO;
+        const ramp = (v, lo, hi) => clamp((v - lo) / (hi - lo), 0, 1);
+        const extend = Math.min(...OPEN_FINGERS.map(([tip, pip]) => dist(wrist, points[tip]) / dist(wrist, points[pip])));
+        const spread = dist(points[8], points[20]) / dist(points[5], points[17]);
+        const openness = Math.min(ramp(extend, CLOSED_EXTEND_RATIO, OPEN_EXTEND_RATIO), ramp(spread, CLOSED_SPREAD_RATIO, OPEN_SPREAD_RATIO));
+        r.openness = lerp(r.openness ?? openness, openness, 1 - Math.exp(-15 * dt));
+        r.isOpen = openness >= 1;
         const rawSpeed = r.palm && dt > 0 ? dist(palm, r.palm) / dt : Infinity;
         r.speed = Number.isFinite(r.speed) && Number.isFinite(rawSpeed) ? lerp(r.speed, rawSpeed, 1 - Math.exp(-8 * dt)) : rawSpeed;
         r.palm = palm;
-        r.distance = dist(palm, target);
-        r.isSteady = r.isOpen && r.distance < READY_RADIUS && r.speed < READY_STEADY_SPEED;
+        r.isSteady = r.isOpen && r.speed < READY_STEADY_SPEED;
         r.hold = r.isSteady ? r.hold + dt : 0;
 
-        if (r.isLocked && r.distance > READY_LEAVE_RADIUS) r.isLocked = false;
+        if (r.isLocked && openness < READY_RELEASE_OPENNESS) r.isLocked = false;
         else if (!r.isLocked && r.hold >= READY_HOLD) {
           // The hand's current spot becomes the puppet's start spot, so locking in moves nothing.
           r.isLocked = true;
@@ -1412,10 +1425,10 @@
         puppets.forEach((pp, k) => {
           const r = pp.ready;
           if (!r?.target) return;
-          // Shift the whole guide so the ring sits nearer centre while palm-to-ring offsets stay true.
+          // Shift the whole guide nearer centre; the ring follows the palm once a hand is seen.
           const dx = (WIDTH / 2 - r.target.x) * (1 - READY_DISPLAY_SCALE);
-          const target = { x: r.target.x + dx, y: r.target.y };
           const palm = r.palm && { x: r.palm.x + dx, y: r.palm.y };
+          const target = palm ?? { x: r.target.x + dx, y: r.target.y };
           const color = FIGHTERS[k].color;
           const { isLocked } = r;
 
@@ -1436,10 +1449,13 @@
           }
 
           if (palm) {
-            if (r.distance > READY_RADIUS) withAlpha(0.5, () => drawLine(palm, target, 2));
+            // The inner circle grows with openness and fills the ring once the hand is fully open.
             const jitter = r.isSteady || isLocked ? 0 : clamp(r.speed / READY_STEADY_SPEED - 1, 0, 1) * 4;
-            ctx.fillStyle = isLocked ? color : "#fff";
-            drawCircle(palm.x + (Math.random() - 0.5) * jitter, palm.y + (Math.random() - 0.5) * jitter, 12, true, 2);
+            const radius = 12 + (READY_RADIUS - 12) * (isLocked ? 1 : r.openness);
+            ctx.fillStyle = isLocked || r.isOpen ? color : "#fff";
+            withAlpha(isLocked ? 0.35 : 0.25, () =>
+              drawCircle(palm.x + (Math.random() - 0.5) * jitter, palm.y + (Math.random() - 0.5) * jitter, radius, true, 2),
+            );
           }
 
           const side = k === 0 ? "left" : "right";
@@ -1447,11 +1463,9 @@
             ? `Show ${side} hand`
             : isLocked
               ? "Ready"
-              : r.distance > READY_RADIUS
-                ? directionHint(palm, target)
-                : !r.isOpen
-                  ? "Spread fingers"
-                  : "Hold steady";
+              : !r.isOpen
+                ? `Open hand ${Math.round(r.openness * 100)}%`
+                : "Hold steady";
           ctx.fillStyle = color;
           ctx.font = '700 18px "Chakra Petch", sans-serif';
           ctx.fillText(label.toUpperCase(), target.x, target.y + READY_RADIUS + 28);
@@ -1460,16 +1474,9 @@
         if (!isCountdown) {
           ctx.fillStyle = "#fff";
           ctx.font = '42px "Bebas Neue", sans-serif';
-          withAlpha(0.85, () => ctx.fillText("Open both hands inside the rings", WIDTH / 2, 120));
+          withAlpha(0.85, () => ctx.fillText("Open both hands wide", WIDTH / 2, 120));
         }
         ctx.restore();
-      }
-
-      function directionHint(palm, target) {
-        const dx = target.x - palm.x;
-        const dy = target.y - palm.y;
-        if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? "Move right →" : "← Move left";
-        return dy > 0 ? "Move down ↓" : "Move up ↑";
       }
 
       function renderStage(view) {
