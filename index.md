@@ -128,6 +128,7 @@
 - [Shanshui](./shanshui/)
 - [Shape display](./shape-display/)
 - [Shared Space](./shared-space/)
+- [Skeleton](./skeleton/03-dynamic-canvas.html)
 - [Sketchpad](./sketchpad/)
 - [Spaceship](./spaceship/)
 - [Split-flap](./split-flap/)
