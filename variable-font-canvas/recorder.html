@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Variable Font Sequence Morph</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #0a0a0a;
+        color: #eee;
+        font-family: "Roboto Flex", sans-serif;
+        user-select: none;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(27, 22px);
+        grid-template-rows: repeat(48, 22px);
+        background: #000;
+        outline: 1px solid #222; /* outside the box: 27x48 cells = 9:16 */
+        cursor: crosshair;
+      }
+      .pixel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        line-height: 1;
+        will-change: font-variation-settings, color;
+      }
+      /* Record mode: no outline */
+      #grid.recording {
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+
+    <script>
+      const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const COLS = 27;
+      const ROWS = 48; // 27:48 = 9:16 portrait
+      const N = COLS * ROWS;
+
+      const grid = document.getElementById("grid");
+      const pixels = [];
+      const userInk = new Float32Array(N);
+
+      function randomChar() {
+        return CHARS[Math.floor(Math.random() * CHARS.length)];
+      }
+
+      // Build the COLSxROWS character grid with random initial characters
+      for (let i = 0; i < N; i++) {
+        const span = document.createElement("span");
+        span.className = "pixel";
+        span.textContent = randomChar();
+        grid.appendChild(span);
+        pixels.push(span);
+      }
+
+      // Offscreen canvas to sample character shapes into COLSxROWS bitmaps
+      const canvas = document.createElement("canvas");
+      canvas.width = COLS;
+      canvas.height = ROWS;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+      function getCharBitmap(char) {
+        ctx.clearRect(0, 0, COLS, ROWS);
+        ctx.fillStyle = "#fff";
+        ctx.font = '900 22px "Roboto Flex", sans-serif';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        ctx.shadowColor = "#fff";
+        ctx.shadowBlur = 2.5;
+        ctx.fillText(char, COLS / 2, ROWS / 2 + 1.5);
+
+        const imgData = ctx.getImageData(0, 0, COLS, ROWS).data;
+        const map = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+          map[i] = imgData[i * 4 + 3] / 255;
+        }
+        return map;
+      }
+
+      let bitmaps = [];
+      document.fonts.ready.then(() => {
+        bitmaps = Array.from(CHARS).map(getCharBitmap);
+        requestAnimationFrame(animate);
+      });
+
+      // Set variable font axes based on "ink" intensity (0.0 to 1.0)
+      function setInk(el, val) {
+        const wght = Math.round(100 + val * 900); // Weight: 100 to 1000
+        const wdth = Math.round(25 + val * 126); // Width: 25 to 151
+        const light = Math.round(16 + val * 84); // Lightness: 16% to 100%
+
+        el.style.fontVariationSettings = `'wght' ${wght}, 'wdth' ${wdth}`;
+        el.style.color = `hsl(0, 0%, ${light}%)`;
+      }
+
+      // Interactive mouse drawing
+      let isDown = false;
+      window.addEventListener("mousedown", () => (isDown = true));
+      window.addEventListener("mouseup", () => (isDown = false));
+
+      function paint(index) {
+        if (index < 0) return;
+        const cx = index % COLS,
+          cy = Math.floor(index / COLS);
+        pixels.forEach((_, i) => {
+          const dist = Math.hypot((i % COLS) - cx, Math.floor(i / COLS) - cy);
+          if (dist < 3) {
+            userInk[i] = Math.min(1, userInk[i] + (1 - dist / 3) * 0.6);
+          }
+        });
+      }
+      grid.addEventListener("mousedown", (e) => {
+        freeze();
+        paint(pixels.indexOf(e.target));
+      });
+      grid.addEventListener("mouseover", (e) => {
+        if (isDown) paint(pixels.indexOf(e.target));
+      });
+
+      // Typing renders the typed character as user ink
+      window.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+        freeze();
+        const map = getCharBitmap(e.key.toUpperCase());
+        for (let i = 0; i < N; i++) {
+          userInk[i] = Math.max(userInk[i], map[i]);
+        }
+      });
+
+      // On first interaction, stop the animation and keep the last shown
+      // frame as user ink
+      let frozen = false;
+      const lastShown = new Float32Array(N);
+      function freeze() {
+        if (frozen) return;
+        frozen = true;
+        userInk.set(lastShown);
+      }
+
+      // Animation state
+      let currentIdx = 0;
+      let lastTime = performance.now();
+      let progress = 0;
+
+      const HOLD = 100; // Dwell time
+      const TRANSITION = 1000; // Transition time
+      const DURATION = HOLD + TRANSITION;
+
+      function animate(now) {
+        const dt = now - lastTime;
+        lastTime = now;
+
+        if (!frozen) progress += dt;
+        if (progress >= DURATION) {
+          progress %= DURATION;
+          currentIdx = (currentIdx + 1) % CHARS.length;
+        }
+
+        const nextIdx = (currentIdx + 1) % CHARS.length;
+
+        // Smooth interpolation factor (t: 0.0 -> 1.0)
+        let t = Math.max(0, (progress - HOLD) / TRANSITION);
+        t = t * t * (3 - 2 * t);
+
+        const mapA = bitmaps[currentIdx];
+        const mapB = bitmaps[nextIdx];
+
+        for (let i = 0; i < N; i++) {
+          // 1. Constantly and unsynchronizedly mutate pixel character content
+          if (Math.random() < 0.04) {
+            pixels[i].textContent = randomChar();
+          }
+
+          // 2. Transition variable font metrics & luminosity naturally
+          if (!isDown) userInk[i] *= 0.96;
+          let val = userInk[i];
+          if (!frozen) {
+            lastShown[i] = mapA[i] * (1 - t) + mapB[i] * t;
+            val = Math.min(1, lastShown[i] + val);
+          }
+          setInk(pixels[i], val);
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      // ?record=true: record just the grid (Region Capture + MediaRecorder),
+      // press ESC to stop and download
+      if (new URLSearchParams(location.search).get("record") === "true") {
+        startRecording();
+      }
+
+      async function startRecording() {
+        grid.classList.add("recording");
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 60 },
+          audio: false,
+          preferCurrentTab: true,
+        });
+        const [track] = stream.getVideoTracks();
+        await track.cropTo(await CropTarget.fromElement(grid));
+
+        const mimeType = [
+          "video/webm;codecs=vp9",
+          "video/webm;codecs=vp8",
+          "video/webm",
+        ].find((t) => MediaRecorder.isTypeSupported(t));
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 20_000_000,
+        });
+        const chunks = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+          a.download = `recording-${Date.now()}.webm`;
+          a.click();
+          grid.classList.remove("recording");
+        };
+        recorder.start();
+
+        window.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && recorder.state === "recording") {
+            recorder.stop();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
