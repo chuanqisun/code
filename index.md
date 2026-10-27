@@ -55,6 +55,7 @@
 ## Experiments Feed
 
 - [Wall of Text](./wall-of-text/), infinite fractal canvas displaying texts
+- [Variable Font Canvas](./variable-font-canvas/), drawing with font metrics
 
 ## Experiments Archive
 
@@ -145,7 +146,6 @@
 - [Townsquare](https://chuanqisun.github.io/townsquare/)
 - [Tree of Lives](./tree-of-lives/)
 - [Umbrella](./umbrella/)
-- [Variable Font Canvas](./variable-font-canvas/)
 - [Visual Geiger](./visual-geiger/)
 - [Voxel intersection](./voxel-intersection/)
 - [WASM 3D](./wasm-3d/)
