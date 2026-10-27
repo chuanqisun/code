@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Variable Font Sequence</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&display=swap" rel="stylesheet" />
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        color: #eee;
+        font-family: "Roboto Flex", sans-serif;
+        user-select: none;
+        cursor: none;
+      }
+      #grid {
+        display: grid;
+        background: #000;
+      }
+      .pixel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+
+    <script>
+      const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const BPM = 60;
+      const SCENE_BEATS = 4; // 1 bar of 4/4 per scene
+      const LEVELS = 64; // ink quantization; each level is a CSS class
+      const params = new URLSearchParams(location.search);
+      const START_BEAT = Number(params.get("start")) || 0; // ?start=16 to preview
+
+      const grid = document.getElementById("grid");
+      let COLS, ROWS, N, ASPECT, RMAX;
+      let pixels = [];
+      let X, Y, R, A; // per-cell coordinates: y in [-1, 1], x in [-ASPECT, ASPECT]
+      let shownLevel;
+
+      function randomChar() {
+        return CHARS[Math.floor(Math.random() * CHARS.length)];
+      }
+
+      // One class per ink level, so a frame only swaps classNames
+      const LEVEL_CLASS = [];
+      {
+        let css = "";
+        for (let l = 0; l < LEVELS; l++) {
+          const val = l / (LEVELS - 1);
+          const wght = Math.round(100 + val * 900); // Weight: 100 to 1000
+          const wdth = Math.round(25 + val * 126); // Width: 25 to 151
+          const light = Math.round(16 + val * 84); // Lightness: 16% to 100%
+          css += `.l${l}{font-variation-settings:'wght' ${wght},'wdth' ${wdth};color:hsl(0,0%,${light}%)}\n`;
+          LEVEL_CLASS.push(`pixel l${l}`);
+        }
+        const style = document.createElement("style");
+        style.textContent = css;
+        document.head.appendChild(style);
+      }
+
+      // Fill the viewport with cells, ~48 rows tall
+      function buildGrid() {
+        const cell = Math.max(14, Math.floor(innerHeight / 48));
+        COLS = Math.floor(innerWidth / cell);
+        ROWS = Math.floor(innerHeight / cell);
+        N = COLS * ROWS;
+        ASPECT = COLS / ROWS;
+        RMAX = Math.hypot(ASPECT, 1);
+
+        grid.style.gridTemplateColumns = `repeat(${COLS}, ${cell}px)`;
+        grid.style.gridTemplateRows = `repeat(${ROWS}, ${cell}px)`;
+        grid.style.fontSize = `${Math.round(cell * 0.9)}px`;
+        grid.replaceChildren();
+        pixels = [];
+        X = new Float32Array(N);
+        Y = new Float32Array(N);
+        R = new Float32Array(N);
+        A = new Float32Array(N);
+        shownLevel = new Int16Array(N).fill(-1);
+
+        for (let i = 0; i < N; i++) {
+          const span = document.createElement("span");
+          span.textContent = randomChar();
+          grid.appendChild(span);
+          pixels.push(span);
+          X[i] = ((i % COLS) - COLS / 2 + 0.5) / (ROWS / 2);
+          Y[i] = (Math.floor(i / COLS) - ROWS / 2 + 0.5) / (ROWS / 2);
+          R[i] = Math.hypot(X[i], Y[i]);
+          A[i] = Math.atan2(Y[i], X[i]);
+        }
+      }
+
+      let resizeTimer;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(buildGrid, 200);
+      });
+
+      // ---- Shaping helpers -------------------------------------------------
+      const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+      const fract = (v) => v - Math.floor(v);
+      const smooth = (e0, e1, x) => {
+        const t = clamp01((x - e0) / (e1 - e0));
+        return t * t * (3 - 2 * t);
+      };
+      const line = (d, w) => 1 - smooth(w * 0.4, w, Math.abs(d));
+      const easeOut = (v) => 1 - (1 - v) ** 3;
+      const easeInOut = (v) => (v < 0.5 ? 4 * v * v * v : 1 - (-2 * v + 2) ** 3 / 2);
+      // Sharp attack on every beat, exponential decay
+      const pulseAt = (t) => Math.exp(-fract(t) * 5);
+      // Jump forward one unit on each beat, then hold
+      const snap = (t, k = 4) => Math.floor(t) + easeOut(Math.min(1, fract(t) * k));
+      const hash = (a, b) => fract(Math.sin(a * 127.1 + b * 311.7) * 43758.5453);
+      const TAU = Math.PI * 2;
+
+      // ---- Scenes: (beat) => (x, y, r, a) => ink 0..1 -----------------------
+      const SCENES = [
+        // Shockwave: one ring launched from a throbbing core per beat
+        (t) => {
+          const core = 0.12 + 0.25 * pulseAt(t);
+          return (x, y, r) => {
+            const ring = Math.exp(-fract(t - r * 1.6) * 6) * (1.1 - r * 0.4);
+            return Math.max(ring, 1 - smooth(core * 0.6, core, r));
+          };
+        },
+
+        // Nested squares, alternating layers turn 45° per beat in a cascade
+        (t) => {
+          const w = 0.03 + 0.05 * pulseAt(t);
+          const layers = [];
+          for (let k = 0; k < 8; k++) {
+            const ang = (snap(t - k * 0.05) * Math.PI * (k % 2 ? -1 : 1)) / 4;
+            layers.push([Math.cos(ang), Math.sin(ang), 0.17 * (k + 1)]);
+          }
+          return (x, y) => {
+            let v = 0;
+            for (const [c, s, size] of layers) {
+              const xr = x * c - y * s,
+                yr = x * s + y * c;
+              v = Math.max(v, line(Math.max(Math.abs(xr), Math.abs(yr)) - size, w));
+            }
+            return v;
+          };
+        },
+
+        // Interference of three orbiting wave sources, one crest per beat
+        (t) => {
+          const src = [0, 1, 2].map((k) => {
+            const ang = (t * Math.PI) / 8 + (k * TAU) / 3;
+            return [Math.cos(ang) * 0.7, Math.sin(ang) * 0.7];
+          });
+          const ph = t * TAU;
+          return (x, y) => {
+            let s = 0;
+            for (const [sx, sy] of src) s += Math.cos(Math.hypot(x - sx, y - sy) * 16 - ph);
+            return clamp01((s / 3) * 1.2 + 0.35);
+          };
+        },
+
+        // Checkerboard of diamonds flipping in a wave that leaves the center each beat
+        (t) => {
+          const cs = 0.25;
+          return (x, y) => {
+            const cx = Math.floor(x / cs),
+              cy = Math.floor(y / cs);
+            const ph = t - (Math.abs(cx + 0.5) + Math.abs(cy + 0.5)) * 0.12;
+            const k = easeOut(Math.min(1, fract(ph) * 2.5));
+            const size = (cx + cy + Math.floor(ph)) & 1 ? k : 1 - k;
+            const d = Math.abs(fract(x / cs) - 0.5) + Math.abs(fract(y / cs) - 0.5);
+            return 1 - smooth(size * 0.5 - 0.06, size * 0.5 + 0.04, d);
+          };
+        },
+
+        // Checkered tunnel: a ring rushes past per beat, segments step around
+        (t) => {
+          const rot = (snap(t) * Math.PI) / 6;
+          return (x, y, r, a) => {
+            const z = 0.5 / (r + 0.05) - t;
+            const v = Math.sin(z * TAU) * Math.sin(a * 6 + rot);
+            return clamp01(0.5 + v * 3) * smooth(0.02, 0.3, r);
+          };
+        },
+
+        // Mirrored equalizer: random bar heights hit on every beat, then fall
+        (t) => {
+          const b = Math.floor(t),
+            env = 0.3 + 0.7 * pulseAt(t),
+            bw = 0.1;
+          return (x, y) => {
+            const ci = Math.floor(Math.abs(x) / bw);
+            const lx = fract(Math.abs(x) / bw);
+            const peak = 0.15 + 0.85 * hash(ci, b);
+            const h = peak * env;
+            const gap = smooth(0.08, 0.2, lx) * (1 - smooth(0.8, 0.92, lx));
+            const bar = 1 - smooth(h - 0.04, h, Math.abs(y));
+            return gap * Math.max(bar, line(Math.abs(y) - peak - 0.05, 0.025));
+          };
+        },
+
+        // Log spiral; arms jump half a turn-step per beat, count changes every 2 beats
+        (t) => {
+          const n = [3, 5][Math.floor(t / 2) % 2];
+          const rot = snap(t) * Math.PI;
+          const lo = 0.1 - 0.5 * pulseAt(t);
+          return (x, y, r, a) => {
+            const s = Math.sin(n * a - 6 * Math.log(r + 0.02) + rot);
+            return smooth(lo, 0.9, s) * smooth(0.03, 0.2, r);
+          };
+        },
+
+        // Dot lattice breathing in waves from the center, turning 15° per beat
+        (t) => {
+          const sp = 0.2;
+          const ang = (snap(t) * Math.PI) / 12;
+          const c = Math.cos(ang),
+            s = Math.sin(ang);
+          return (x, y, r) => {
+            const xr = (x * c - y * s) / sp,
+              yr = (x * s + y * c) / sp;
+            const dl = Math.hypot(xr - Math.round(xr), yr - Math.round(yr)) * sp;
+            const rad = sp * (0.08 + 0.38 * (0.5 + 0.5 * Math.cos(r * 6 - t * TAU)));
+            return 1 - smooth(rad - 0.03, rad + 0.01, dl);
+          };
+        },
+      ];
+
+      // Wipe shapes for the last beat of each scene, normalized to 0..1
+      const WIPES = [
+        (x, y, r) => r / RMAX, // radial
+        (x) => Math.abs(x) / ASPECT, // from the vertical center line
+        (x) => (x / ASPECT + 1) / 2, // left to right
+        (x, y) => Math.abs(y), // from the horizontal center line
+      ];
+
+      // ---- Clock & render loop ---------------------------------------------
+      let clockStart = null;
+
+      function animate(now) {
+        if (clockStart === null) clockStart = now;
+        const beat = ((now - clockStart) / 1000) * (BPM / 60) + START_BEAT;
+        const pulse = pulseAt(beat);
+
+        const si = Math.floor(beat / SCENE_BEATS) % SCENES.length;
+        const local = beat % SCENE_BEATS;
+        const field = SCENES[si](beat);
+        let next = null,
+          wipe,
+          W;
+        if (local >= SCENE_BEATS - 1) {
+          next = SCENES[(si + 1) % SCENES.length](beat);
+          wipe = WIPES[si % WIPES.length];
+          W = easeInOut(fract(local)) * 1.1;
+        }
+
+        const gain = 0.85 + 0.15 * pulse;
+        const mutate = 0.015 + 0.25 * pulse ** 3; // characters scramble on the beat
+
+        for (let i = 0; i < N; i++) {
+          const x = X[i],
+            y = Y[i],
+            r = R[i],
+            a = A[i];
+          let val = field(x, y, r, a);
+          if (next) {
+            const m = 1 - smooth(W - 0.1, W, wipe(x, y, r));
+            if (m > 0) val += (next(x, y, r, a) - val) * m;
+          }
+
+          const level = Math.round(clamp01(val * gain) * (LEVELS - 1));
+          if (level !== shownLevel[i]) {
+            shownLevel[i] = level;
+            pixels[i].className = LEVEL_CLASS[level];
+          }
+          if (Math.random() < mutate) pixels[i].textContent = randomChar();
+        }
+
+        requestAnimationFrame(animate);
+      }
+
+      buildGrid();
+      document.fonts.ready.then(() => requestAnimationFrame(animate));
+
+      // ?record=true: record just the grid (Region Capture + MediaRecorder),
+      // press ESC to stop and download. The sequence restarts at beat 0 when
+      // recording begins, so the soundtrack can be aligned to the start.
+      if (params.get("record") === "true") {
+        startRecording();
+      }
+
+      async function startRecording() {
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 60 },
+          audio: false,
+          preferCurrentTab: true,
+        });
+        const [track] = stream.getVideoTracks();
+        await track.cropTo(await CropTarget.fromElement(grid));
+
+        const mimeType = [
+          "video/webm;codecs=vp9",
+          "video/webm;codecs=vp8",
+          "video/webm",
+        ].find((t) => MediaRecorder.isTypeSupported(t));
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 20_000_000,
+        });
+        const chunks = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+          a.download = `recording-${Date.now()}.webm`;
+          a.click();
+        };
+        recorder.start();
+        clockStart = performance.now();
+
+        window.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && recorder.state === "recording") {
+            recorder.stop();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
