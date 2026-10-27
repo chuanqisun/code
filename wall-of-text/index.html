@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Wall of Text</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght,GRAD@8..144,25..151,100..1000,-200..150&display=swap" rel="stylesheet" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+        user-select: none;
+      }
+      canvas {
+        display: block;
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        touch-action: none; /* we handle drag + pinch ourselves */
+        cursor: grab;
+      }
+      canvas.dragging {
+        cursor: grabbing;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport"></canvas>
+
+    <script>
+      "use strict";
+
+      // ============================================================================
+      // CONFIGURATION CONSTANTS
+      // ============================================================================
+      const CONFIG = {
+        CHARS: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+        GRID_SIZE: 61, // 61x61 fractal grid (center is (30,30))
+        WEIGHT_STEPS: 1, // One shared font weight: "off" glyphs differ from "on" only in brightness
+        FONT_WEIGHT: 900,
+        SPRITE_RES: 256, // Power-of-two sprite resolution (drops to 128 if the GPU texture limit is too small)
+        TILE_GAP: 1, // Empty border cells inside each tile (gap between tiles = 2 * TILE_GAP + natural edge)
+        GUTTER_RATIO: 0.12, // 12% gutter between packed characters
+        CYCLE_MS: 5400, // Duration of one 25x fractal zoom & morph cycle
+        MAX_DPR: 2, // Cap device pixel ratio so very dense screens don't over-allocate
+        WHEEL_ZOOM_RATE: 0.0018, // ln(scale) per wheel delta pixel
+        PINCH_WHEEL_RATE: 0.01, // trackpad pinch arrives as ctrl+wheel with small deltas
+        TRANSITION_MS: 220, // Quick cross-blend when a tile's letter (and so its on/off pixels) changes
+        MUTATION_RATE: 0.03, // Chance per frame that a visible glyph re-rolls its character
+        AUTOPLAY_RESUME_MS: 3000, // Auto zoom-out resumes after this long with no interaction
+        MAX_INSTANCES: 400000, // Max simultaneous glyphs per single instanced draw call
+      };
+
+      CONFIG.SPRITE_MARGIN = CONFIG.SPRITE_RES / 16; // Safety margin for mip filtering
+      CONFIG.NUM_CHARS = CONFIG.CHARS.length;
+      // Sprites (one per char x weight) are packed into a square grid so 256px sprites
+      // fit within the common 8192px MAX_TEXTURE_SIZE (a single 36-wide strip would not).
+      CONFIG.ATLAS_COLS = Math.ceil(Math.sqrt(CONFIG.NUM_CHARS * CONFIG.WEIGHT_STEPS));
+      const spriteOrigin = (c, w) => {
+        const i = w * CONFIG.NUM_CHARS + c;
+        return [(i % CONFIG.ATLAS_COLS) * CONFIG.SPRITE_RES, Math.floor(i / CONFIG.ATLAS_COLS) * CONFIG.SPRITE_RES];
+      };
+      CONFIG.CELLS = CONFIG.GRID_SIZE * CONFIG.GRID_SIZE;
+      CONFIG.CENTER = (CONFIG.GRID_SIZE - 1) >> 1; // 12
+      CONFIG.CENTER_IDX = CONFIG.CENTER * CONFIG.GRID_SIZE + CONFIG.CENTER; // 312
+
+      // ============================================================================
+      // MODULE 1: GLYPH RASTERIZER (Computer Graphics, Custom Mipmaps & Tight Layout)
+      // ============================================================================
+      class GlyphRasterizer {
+        constructor(gl) {
+          this.gl = gl;
+          if (gl.getParameter(gl.MAX_TEXTURE_SIZE) < CONFIG.ATLAS_COLS * CONFIG.SPRITE_RES) {
+            CONFIG.SPRITE_RES = 128;
+            CONFIG.SPRITE_MARGIN = CONFIG.SPRITE_RES / 16;
+          }
+          this.floatsPerInstance = 7; // [posX, posY, cellSize, charIdx, weightStep, lum, alpha]
+          this.instanceData = new Float32Array(CONFIG.MAX_INSTANCES * this.floatsPerInstance);
+          this.instanceCount = 0;
+
+          this._initShaders();
+          this._initBuffers();
+        }
+
+        _initShaders() {
+          const gl = this.gl;
+
+          // Vertex Shader: Packs glyphs tightly into cellSize with configurable gutter
+          const vsSource = `#version 300 es
+    layout(location = 0) in vec2 a_quad;       // [-0.5, 0.5] unit quad
+    layout(location = 1) in vec2 a_pos;        // Center position in screen pixels
+    layout(location = 2) in float a_cellSize;  // Full cell pitch in screen pixels
+    layout(location = 3) in vec2 a_glyph;      // (charIdx, weightStep)
+    layout(location = 4) in vec2 a_radiance;   // (luminance, alpha)
+
+    uniform vec2 u_resolution;
+    uniform float u_atlasCols;
+    uniform vec2 u_glyphGrid;                   // (numChars, weightSteps)
+    uniform float u_gutterRatio;
+
+    out vec2 v_uv;
+    out vec2 v_localQuad;
+    out float v_cellPx;
+    out vec2 v_radiance;
+
+    void main() {
+      // Expand heavy weights slightly so 'ON' pixels optically fuse into bold strokes
+      float fillFactor = 1.0 - u_gutterRatio;
+
+      vec2 pixelPos = a_pos + a_quad * (a_cellSize * fillFactor);
+      vec2 clip = (pixelPos / u_resolution) * 2.0 - 1.0;
+      gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+
+      // Inset UV slightly to prevent bleeding across atlas cell borders at low mip levels
+      vec2 uvLocal = (a_quad + 0.5) * 0.94 + 0.03;
+      float spriteIdx = a_glyph.y * u_glyphGrid.x + a_glyph.x;
+      vec2 spriteCell = vec2(mod(spriteIdx, u_atlasCols), floor(spriteIdx / u_atlasCols));
+      v_uv = (spriteCell + uvLocal) / u_atlasCols;
+      v_localQuad = a_quad;
+      v_cellPx = a_cellSize;
+      v_radiance = a_radiance;
+    }
+    `;
+
+          // Fragment Shader: Energy-preserving rendering with sub-pixel brightness guarantee
+          const fsSource = `#version 300 es
+    precision highp float;
+
+    in vec2 v_uv;
+    in vec2 v_localQuad;
+    in float v_cellPx;
+    in vec2 v_radiance;
+
+    uniform sampler2D u_atlas;
+
+    out vec4 outColor;
+
+    void main() {
+      float texVal = texture(u_atlas, v_uv).r;
+
+      // Crisp edge reconstruction when large, soft anti-aliased energy preservation when tiny
+      float edgeLow  = mix(0.05, 0.18, clamp((v_cellPx - 4.0) / 24.0, 0.0, 1.0));
+      float edgeHigh = mix(0.42, 0.72, clamp((v_cellPx - 4.0) / 24.0, 0.0, 1.0));
+      float softMask = smoothstep(edgeLow, edgeHigh, texVal);
+      // When magnified, bilinear filtering smears the edge over many screen pixels.
+      // Threshold at the stroke midpoint with a screen-space (fwidth) ramp instead,
+      // so large glyphs keep a crisp ~1px anti-aliased edge at any zoom.
+      float aa = max(fwidth(texVal), 1e-4);
+      float crispMask = clamp((texVal - 0.607) / aa + 0.5, 0.0, 1.0); // 0.607 = 0.5^0.72: the true 50% coverage edge
+      float glyphMask = mix(softMask, crispMask, smoothstep(10.0, 24.0, v_cellPx));
+
+      // Sub-pixel radiometric floor: when a character shrinks below 6px on screen,
+      // guarantee it maintains solid pixel presence so micro-grids never fade into darkness!
+      float microBoost = 1.0 - smoothstep(2.2, 7.5, v_cellPx);
+      float effectiveMask = mix(glyphMask, max(glyphMask, 0.88), microBoost);
+
+      float alpha = effectiveMask * v_radiance.y;
+      float lum = v_radiance.x * alpha;
+      outColor = vec4(lum, lum, lum, alpha);
+    }
+    `;
+
+          const compile = (type, src) => {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, src);
+            gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+              throw new Error(gl.getShaderInfoLog(s));
+            }
+            return s;
+          };
+
+          this.program = gl.createProgram();
+          gl.attachShader(this.program, compile(gl.VERTEX_SHADER, vsSource));
+          gl.attachShader(this.program, compile(gl.FRAGMENT_SHADER, fsSource));
+          gl.linkProgram(this.program);
+          gl.useProgram(this.program);
+
+          this.uResolution = gl.getUniformLocation(this.program, "u_resolution");
+          this.uAtlasCols = gl.getUniformLocation(this.program, "u_atlasCols");
+          this.uGlyphGrid = gl.getUniformLocation(this.program, "u_glyphGrid");
+          this.uGutterRatio = gl.getUniformLocation(this.program, "u_gutterRatio");
+
+          gl.uniform1f(this.uAtlasCols, CONFIG.ATLAS_COLS);
+          gl.uniform2f(this.uGlyphGrid, CONFIG.NUM_CHARS, CONFIG.WEIGHT_STEPS);
+          gl.uniform1f(this.uGutterRatio, CONFIG.GUTTER_RATIO);
+        }
+
+        _initBuffers() {
+          const gl = this.gl;
+          this.vao = gl.createVertexArray();
+          gl.bindVertexArray(this.vao);
+
+          const quadVBO = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+          gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-0.5, -0.5, 0.5, -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5]), gl.STATIC_DRAW);
+          gl.enableVertexAttribArray(0);
+          gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+          this.instanceVBO = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVBO);
+          gl.bufferData(gl.ARRAY_BUFFER, this.instanceData.byteLength, gl.DYNAMIC_DRAW);
+
+          const stride = this.floatsPerInstance * 4;
+          // a_pos (vec2)
+          gl.enableVertexAttribArray(1);
+          gl.vertexAttribPointer(1, 2, gl.FLOAT, false, stride, 0);
+          gl.vertexAttribDivisor(1, 1);
+          // a_cellSize (float)
+          gl.enableVertexAttribArray(2);
+          gl.vertexAttribPointer(2, 1, gl.FLOAT, false, stride, 8);
+          gl.vertexAttribDivisor(2, 1);
+          // a_glyph (vec2)
+          gl.enableVertexAttribArray(3);
+          gl.vertexAttribPointer(3, 2, gl.FLOAT, false, stride, 12);
+          gl.vertexAttribDivisor(3, 1);
+          // a_radiance (vec2)
+          gl.enableVertexAttribArray(4);
+          gl.vertexAttribPointer(4, 2, gl.FLOAT, false, stride, 20);
+          gl.vertexAttribDivisor(4, 1);
+
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        }
+
+        /**
+         * Builds the variable-font glyph atlas and its mipmap pyramid.
+         * Also returns the GRID_SIZE x GRID_SIZE glyph bitmaps for the World Model.
+         */
+        buildAtlasAndBitmaps() {
+          const S = CONFIG.SPRITE_RES;
+          const atlasW = CONFIG.ATLAS_COLS * S;
+          const atlasH = CONFIG.ATLAS_COLS * S;
+
+          const atlasCanvas = document.createElement("canvas");
+          atlasCanvas.width = atlasW;
+          atlasCanvas.height = atlasH;
+          const aCtx = atlasCanvas.getContext("2d", { willReadFrequently: true });
+          aCtx.fillStyle = "#000";
+          aCtx.fillRect(0, 0, atlasW, atlasH);
+
+          for (let w = 0; w < CONFIG.WEIGHT_STEPS; w++) {
+            // Every glyph uses the same weight; brightness alone encodes on/off. Set the font
+            // explicitly (reading getComputedStyle(el).font returned "" and left the canvas at
+            // "10px sans-serif", so glyphs were upscaled 10px rasters).
+            const wght = CONFIG.FONT_WEIGHT;
+            const stretch = "normal";
+
+            // Pass 1: measure real ink extents at a reference size. One scale per weight
+            // (fit to the widest glyph and the tallest ascent/descent) keeps every glyph's
+            // true size, proportions and shared baseline, exactly as the typeface draws them.
+            const refPx = 100;
+            aCtx.font = `${wght} ${refPx}px "Roboto Flex", sans-serif`;
+            aCtx.fontStretch = stretch;
+            let maxW = 0,
+              maxAsc = 0,
+              maxDesc = 0;
+            const metrics = [];
+            for (let c = 0; c < CONFIG.NUM_CHARS; c++) {
+              const m = aCtx.measureText(CONFIG.CHARS[c]);
+              metrics.push(m);
+              maxW = Math.max(maxW, m.actualBoundingBoxLeft + m.actualBoundingBoxRight);
+              maxAsc = Math.max(maxAsc, m.actualBoundingBoxAscent);
+              maxDesc = Math.max(maxDesc, m.actualBoundingBoxDescent);
+            }
+            const margin = CONFIG.SPRITE_MARGIN;
+            const box = S - margin * 2;
+            const k = box / Math.max(maxW, maxAsc + maxDesc);
+
+            // Pass 2: rasterize each glyph straight into its sprite at final resolution
+            // (no intermediate canvas, no resampling), centered horizontally on its ink.
+            aCtx.font = `${wght} ${refPx * k}px "Roboto Flex", sans-serif`;
+            aCtx.fontStretch = stretch;
+            aCtx.fillStyle = "#fff";
+            aCtx.textAlign = "left";
+            aCtx.textBaseline = "alphabetic";
+            for (let c = 0; c < CONFIG.NUM_CHARS; c++) {
+              const m = metrics[c];
+              const [ox, oy] = spriteOrigin(c, w);
+              const x = ox + S / 2 - ((m.actualBoundingBoxRight - m.actualBoundingBoxLeft) * k) / 2;
+              const y = oy + S / 2 + ((maxAsc - maxDesc) * k) / 2;
+              aCtx.save();
+              aCtx.beginPath();
+              aCtx.rect(ox, oy, S, S);
+              aCtx.clip();
+              aCtx.fillText(CONFIG.CHARS[c], x, y);
+              aCtx.restore();
+            }
+          }
+
+          // Extract Level-0 R8 pixel buffer and boost stroke contrast
+          const rawRGBA = aCtx.getImageData(0, 0, atlasW, atlasH).data;
+          let level0 = new Uint8Array(atlasW * atlasH);
+          for (let i = 0; i < level0.length; i++) {
+            const v = rawRGBA[i * 4] / 255.0;
+            level0[i] = Math.min(255, Math.round(Math.pow(v, 0.72) * 255));
+          }
+
+          // Upload Custom Energy-Preserving Mipmap Chain to WebGL2
+          this._uploadCustomMipmapAtlas(level0, atlasW, atlasH);
+
+          // Build Bold 25x25 World Bitmaps from the Ultra-Black Top Row of the Atlas
+          return this._extractWorldBitmaps(atlasCanvas);
+        }
+
+        /**
+         * CPU Mipmap Generator: 2x2 box filter per level, so every level keeps the
+         * glyph's true coverage and thresholding reproduces the original outline.
+         */
+        _uploadCustomMipmapAtlas(level0Data, width, height) {
+          const gl = this.gl;
+          const tex = gl.createTexture();
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+
+          let w = width;
+          let h = height;
+          let currentData = level0Data;
+          let level = 0;
+
+          // Generate mip levels while individual sprite cells are >= 1x1
+          const maxLevels = Math.log2(CONFIG.SPRITE_RES) + 1;
+
+          while (level < maxLevels && w >= 1 && h >= 1) {
+            gl.texImage2D(gl.TEXTURE_2D, level, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, currentData);
+
+            if (w === 1 && h === 1) break;
+            const nextW = Math.max(1, w >> 1);
+            const nextH = Math.max(1, h >> 1);
+            const nextData = new Uint8Array(nextW * nextH);
+
+            for (let y = 0; y < nextH; y++) {
+              const y0 = Math.min(h - 1, y * 2);
+              const y1 = Math.min(h - 1, y * 2 + 1);
+              for (let x = 0; x < nextW; x++) {
+                const x0 = Math.min(w - 1, x * 2);
+                const x1 = Math.min(w - 1, x * 2 + 1);
+
+                const p00 = currentData[y0 * w + x0];
+                const p10 = currentData[y0 * w + x1];
+                const p01 = currentData[y1 * w + x0];
+                const p11 = currentData[y1 * w + x1];
+
+                // True box filter: preserves each glyph's real coverage, so thresholding any
+                // mip level reproduces the original outline. (Max-pooling fattened and warped
+                // strokes; tiny glyphs are kept visible by the shader's microBoost instead.)
+                nextData[y * nextW + x] = (p00 + p10 + p01 + p11 + 2) >> 2;
+              }
+            }
+
+            currentData = nextData;
+            w = nextW;
+            h = nextH;
+            level++;
+          }
+
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, 0);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, level - 1);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        }
+
+        /**
+         * Extracts bold, high-contrast 25x25 bitmaps for the World Model
+         * so the macroscopic Gestalt character is unmistakably legible.
+         */
+        _extractWorldBitmaps(atlasCanvas) {
+          const N = CONFIG.GRID_SIZE;
+          const S = CONFIG.SPRITE_RES;
+          const margin = CONFIG.SPRITE_MARGIN;
+
+          const c25 = document.createElement("canvas");
+          c25.width = N;
+          c25.height = N;
+          const ctx25 = c25.getContext("2d", { willReadFrequently: true });
+
+          const bitmaps = [];
+
+          for (let c = 0; c < CONFIG.NUM_CHARS; c++) {
+            ctx25.fillStyle = "#000";
+            ctx25.fillRect(0, 0, N, N);
+            // Draw the glyph into an inset box so each tile keeps an empty border ring;
+            // adjacent tiles then show a clear multi-row/column gutter of dim characters.
+            const g = CONFIG.TILE_GAP;
+            const [ox, oy] = spriteOrigin(c, CONFIG.WEIGHT_STEPS - 1);
+            ctx25.drawImage(atlasCanvas, ox + margin, oy + margin, S - margin * 2, S - margin * 2, g, g, N - g * 2, N - g * 2);
+
+            const data = ctx25.getImageData(0, 0, N, N).data;
+            const rawMap = new Float32Array(CONFIG.CELLS);
+            for (let i = 0; i < CONFIG.CELLS; i++) {
+              const v = data[i * 4] / 255.0;
+              // Hard threshold: at 61x61 the grid is fine enough that gray edge cells only read as blur
+              rawMap[i] = v >= 0.5 ? 1.0 : 0.0;
+            }
+
+            const dilated = rawMap;
+
+            // Keep the border ring empty
+            const g2 = CONFIG.TILE_GAP;
+            for (let r = 0; r < N; r++) {
+              for (let col = 0; col < N; col++) {
+                if (r < g2 || r >= N - g2 || col < g2 || col >= N - g2) dilated[r * N + col] = 0;
+              }
+            }
+
+            // The center pixel keeps its natural value: if this character is "off" at the
+            // center, the zoom target must read gray rather than blaze white.
+            bitmaps.push(dilated);
+          }
+
+          return bitmaps;
+        }
+
+        setViewport(width, height, dpr) {
+          const gl = this.gl;
+          gl.canvas.width = Math.round(width * dpr);
+          gl.canvas.height = Math.round(height * dpr);
+          gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+          gl.useProgram(this.program);
+          gl.uniform2f(this.uResolution, width, height);
+        }
+
+        beginFrame() {
+          this.instanceCount = 0;
+        }
+
+        /**
+         * Cell size for a coalesced parent glyph, chosen so its ink box lands exactly on
+         * the ink box of the mosaic letter it replaces (no double outline in the crossfade).
+         * Mirrors the vertex shader's fillFactor and UV inset.
+         */
+        parentCellSize(tilePx) {
+          const fillFactor = 1.0 - CONFIG.GUTTER_RATIO;
+          const S = CONFIG.SPRITE_RES;
+          const inkFracOfQuad = (S - CONFIG.SPRITE_MARGIN * 2) / S / 0.94;
+          const mosaicInkFrac = (CONFIG.GRID_SIZE - CONFIG.TILE_GAP * 2) / CONFIG.GRID_SIZE;
+          return (tilePx * mosaicInkFrac) / (inkFracOfQuad * fillFactor);
+        }
+
+        /**
+         * Emits a single glyph instance with guaranteed background visibility floor.
+         */
+        emitGlyph(charIdx, inkVal, screenX, screenY, cellSize, alpha) {
+          if (this.instanceCount >= CONFIG.MAX_INSTANCES || alpha <= 0.005) return;
+
+          const v = Math.min(1.0, Math.max(0.0, inkVal));
+          const weightStep = 0;
+
+          // Background ("OFF") pixels have a 0.34 luminance floor so the entire 25x25
+          // matrix is a rich, dense typographic tapestry; "ON" pixels blaze at 1.00 white.
+          const lum = 0.34 + 0.66 * Math.pow(v, 0.55);
+
+          const idx = this.instanceCount * this.floatsPerInstance;
+          const data = this.instanceData;
+          data[idx] = screenX;
+          data[idx + 1] = screenY;
+          data[idx + 2] = cellSize;
+          data[idx + 3] = charIdx;
+          data[idx + 4] = weightStep;
+          data[idx + 5] = lum;
+          data[idx + 6] = alpha;
+
+          this.instanceCount++;
+        }
+
+        flushFrame() {
+          const gl = this.gl;
+          gl.clearColor(0.02, 0.02, 0.025, 1.0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+
+          if (this.instanceCount === 0) return;
+
+          gl.bindVertexArray(this.vao);
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVBO);
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.instanceData.subarray(0, this.instanceCount * this.floatsPerInstance));
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, this.instanceCount);
+        }
+      }
+
+      // ============================================================================
+      // MODULE 2: FRACTAL WORLD MODEL (Pure Hierarchy, Morphing & Mutation State)
+      // ============================================================================
+      class FractalWorld {
+        constructor(bitmaps) {
+          this.bitmaps = bitmaps;
+          this.levelIndex = 0;
+
+          // 25x25 Macro Grid characters (each macro cell i forms macroChars[i])
+          this.macroChars = new Uint8Array(CONFIG.CELLS);
+          // 25x25 Super-Macro Grid characters (emerging at periphery)
+          this.superMacroChars = new Uint8Array(CONFIG.CELLS);
+          // Transition state per tile: the letter it had before its last change and how far
+          // (0..1) the blend toward the current letter has progressed. 1 = settled.
+          this.macroPrev = new Uint8Array(CONFIG.CELLS);
+          this.macroMix = new Float32Array(CONFIG.CELLS).fill(1);
+          this.superPrev = new Uint8Array(CONFIG.CELLS);
+          this.superMix = new Float32Array(CONFIG.CELLS).fill(1);
+          // 625 x 625 Sub-Grid characters (25x25 sub-characters inside each macro tile)
+          this.subChars = new Uint8Array(CONFIG.CELLS * CONFIG.CELLS);
+
+          // Interpolated bitmap for the active center 25x25 grid
+          this.activeCenterBitmap = new Float32Array(CONFIG.CELLS);
+
+          this._seedInitialState();
+        }
+
+        _randomChar() {
+          return (Math.random() * CONFIG.NUM_CHARS) | 0;
+        }
+
+        _seedInitialState() {
+          for (let i = 0; i < CONFIG.CELLS; i++) {
+            this.macroChars[i] = this._randomChar();
+            this.superMacroChars[i] = this._randomChar();
+          }
+          for (let i = 0; i < this.subChars.length; i++) {
+            this.subChars[i] = this._randomChar();
+          }
+          this._enforceSelfSimilarCenters();
+        }
+
+        /**
+         * Locks the center cell of each fractal layer to the exact character sequence
+         * so zooming out by 25x lands on the exact same character identity.
+         */
+        _enforceSelfSimilarCenters() {
+          const charA = this.charAt(0);
+          const charB = this.charAt(1);
+          const charC = this.charAt(2);
+
+          const cIdx = CONFIG.CENTER_IDX;
+          this.subChars[cIdx * CONFIG.CELLS + cIdx] = charA;
+          this.macroChars[cIdx] = charB;
+          this.superMacroChars[cIdx] = charC;
+        }
+
+        /**
+         * Called when the camera completes a 25x zoom-out cycle (p wraps 1.0 -> 0.0).
+         * Promotes the 25x25 Macro Grid into the Center Tile's 25x25 Sub-Grid seamlessly!
+         */
+        /** Character index for level (levelIndex + offset); safe for negative levels. */
+        charAt(offset) {
+          const n = CONFIG.NUM_CHARS;
+          return (((this.levelIndex + offset) % n) + n) % n;
+        }
+
+        /**
+         * Inverse of advanceFractalLevel (user zoomed in past the start of a cycle):
+         * the center tile's mosaic becomes the macro grid, the macro grid becomes the
+         * super grid, and the center tile gets a fresh random mosaic.
+         */
+        retreatFractalLevel() {
+          this.levelIndex--;
+          const centerOffset = CONFIG.CENTER_IDX * CONFIG.CELLS;
+
+          for (let i = 0; i < CONFIG.CELLS; i++) {
+            this.superMacroChars[i] = this.macroChars[i];
+            this.superPrev[i] = this.macroPrev[i];
+            this.superMix[i] = this.macroMix[i];
+            this.macroChars[i] = this.subChars[centerOffset + i];
+            this.macroMix[i] = 1;
+            this.subChars[centerOffset + i] = this._randomChar();
+          }
+          this._enforceSelfSimilarCenters();
+        }
+
+        advanceFractalLevel() {
+          this.levelIndex++;
+          const centerOffset = CONFIG.CENTER_IDX * CONFIG.CELLS;
+
+          for (let i = 0; i < CONFIG.CELLS; i++) {
+            this.subChars[centerOffset + i] = this.macroChars[i];
+            this.macroChars[i] = this.superMacroChars[i];
+            this.superMacroChars[i] = this._randomChar();
+            // The old super tiles become the macro tiles: carry their transition state over
+            this.macroPrev[i] = this.superPrev[i];
+            this.macroMix[i] = this.superMix[i];
+            this.superMix[i] = 1;
+          }
+          this._enforceSelfSimilarCenters();
+        }
+
+        /**
+         * Updates unsynchronized character mutations and computes the active morphed bitmap.
+         */
+        update(cycleProgress, dtMs) {
+          const cIdx = CONFIG.CENTER_IDX;
+
+          // 1. Unsynchronized stochastic mutation of the tile-level glyphs. Sub-glyphs inside
+          // each tile are mutated lazily while they are drawn (see FractalMatrixApp._renderTile),
+          // so cost scales with what is on screen, not with the 61^4 character array.
+          const step = dtMs / CONFIG.TRANSITION_MS;
+          for (let i = 0; i < CONFIG.CELLS; i++) {
+            this.macroMix[i] = Math.min(1, this.macroMix[i] + step);
+            this.superMix[i] = Math.min(1, this.superMix[i] + step);
+            if (i !== cIdx) {
+              if (Math.random() < 0.028) {
+                this.macroPrev[i] = this.macroChars[i];
+                this.macroMix[i] = 0;
+                this.macroChars[i] = this._randomChar();
+              }
+              if (Math.random() < 0.028) {
+                this.superPrev[i] = this.superMacroChars[i];
+                this.superMix[i] = 0;
+                this.superMacroChars[i] = this._randomChar();
+              }
+            }
+          }
+
+          this._enforceSelfSimilarCenters();
+
+          // 2. The center tile is the mosaic that glyph charA (level L) lives in. That mosaic
+          // spells charB (level L+1) from the very first frame, so there is no morph: charA is
+          // simply one pixel (on or off) of the larger charB. Zooming out, the mosaic
+          // collapses into the single glyph charB, which in turn sits inside a charC-shaped grid.
+          const charB = this.charAt(1);
+          const mapB = this.bitmaps[charB];
+
+          for (let i = 0; i < CONFIG.CELLS; i++) {
+            this.activeCenterBitmap[i] = mapB[i];
+          }
+        }
+      }
+
+      // ============================================================================
+      // MODULE 3: FRACTAL CAMERA (Scale-Space Zoom, Transforms & LoD Coalescence)
+      // ============================================================================
+      class FractalCamera {
+        constructor() {
+          this.width = 1;
+          this.height = 1;
+          this.centerX = 0.5;
+          this.centerY = 0.5;
+          this.baseGridPx = 1;
+          this.progress = 0;
+          this.macroTilePx = 1;
+        }
+
+        setViewport(width, height) {
+          this.width = width;
+          this.height = height;
+          this.centerX = width * 0.5;
+          this.centerY = height * 0.5;
+          // Fill 94% of the smaller viewport dimension so the 25x25 matrix is bold and immersive
+          this.baseGridPx = Math.min(width, height) * 0.94;
+          // Instance budget: a tile only expands into its 625-glyph mosaic when few enough
+          // tiles are on screen to fit in MAX_INSTANCES (with 30% headroom for edge tiles).
+          const maxMosaicTiles = (CONFIG.MAX_INSTANCES * 0.75) / CONFIG.CELLS;
+          this.mosaicMinPx = Math.max(30, Math.sqrt((width * height) / maxMosaicTiles) * 1.15);
+        }
+
+        /**
+         * Updates exponential zoom scale for cycle progress p in [0, 1).
+         * At p = 0: macroTilePx = baseGridPx (the center 25x25 tile fills the screen).
+         * At p = 1: macroTilePx = baseGridPx / 25 (all 25x25 macro tiles fit inside baseGridPx!).
+         */
+        updateProgress(p) {
+          this.progress = p;
+          const zoomFactor = Math.pow(CONFIG.GRID_SIZE, -p); // 1.0 -> 1/25
+          this.macroTilePx = this.baseGridPx * zoomFactor;
+        }
+
+        isVisible(x, y, sizePx) {
+          const half = sizePx * 0.55;
+          return !(x + half < 0 || x - half > this.width || y + half < 0 || y - half > this.height);
+        }
+
+        /**
+         * Computes continuous Level-of-Detail (LoD) weights for a 25x25 tile of size `tilePx`:
+         * - `subAlpha`: opacity of the 25x25 sub-character mosaic inside the tile.
+         * - `solidAlpha`: opacity of the coalesced single parent glyph.
+         * Overlaps with energy boost so total brightness never dips during coalescence!
+         */
+        computeLoD(tilePx) {
+          const smoothstep = (e0, e1, x) => {
+            const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+            return t * t * (3 - 2 * t);
+          };
+
+          // One shared, strictly complementary crossfade band (subAlpha + solidAlpha === 1)
+          // so the mosaic and the solid parent glyph never double-expose or pop in brightness.
+          const blend = smoothstep(this.mosaicMinPx, this.mosaicMinPx * 2.2, tilePx);
+          const subAlpha = blend;
+          const solidAlpha = 1.0 - blend;
+          // Parent-ink modulation follows the same band so the mosaic dims in lockstep
+          // with the solid glyph arriving (no separate dimming step before the handoff).
+          const parentModulation = solidAlpha;
+
+          return { subAlpha, solidAlpha, parentModulation };
+        }
+      }
+
+      // ============================================================================
+      // MODULE 4: SCENE COMPOSITOR & APPLICATION ORCHESTRATOR
+      // ============================================================================
+      class FractalMatrixApp {
+        constructor(canvas) {
+          this.canvas = canvas;
+          const gl = canvas.getContext("webgl2", {
+            alpha: false,
+            antialias: true,
+            powerPreference: "high-performance",
+          });
+          if (!gl) throw new Error("WebGL2 is required.");
+
+          this.rasterizer = new GlyphRasterizer(gl);
+          const bitmaps = this.rasterizer.buildAtlasAndBitmaps();
+
+          this.world = new FractalWorld(bitmaps);
+          this.camera = new FractalCamera();
+
+          this.elapsedMs = 0;
+          // User pan, in macro-tile units (so it scales with the zoom automatically):
+          // the fractal's center sits at screen center + pan * macroTilePx.
+          this.panX = 0;
+          this.panY = 0;
+          this.pointers = new Map(); // active pointers: id -> {x, y} (canvas-relative px)
+          this.resumeAutoplayAt = 0; // Auto zoom-out is paused until this timestamp (set by user input)
+          this.lastFrameTime = performance.now();
+
+          this._bindEvents();
+          this._onResize();
+        }
+
+        _bindEvents() {
+          const canvas = this.canvas;
+          window.addEventListener("resize", () => this._onResize());
+
+          const local = (e) => {
+            const r = canvas.getBoundingClientRect();
+            return { x: e.clientX - r.left, y: e.clientY - r.top };
+          };
+          // Pinch bookkeeping: distance and midpoint of the two tracked pointers
+          const gesture = () => {
+            const [p, q] = [...this.pointers.values()];
+            return { dist: Math.hypot(p.x - q.x, p.y - q.y), mx: (p.x + q.x) / 2, my: (p.y + q.y) / 2 };
+          };
+          let last = null;
+
+          canvas.addEventListener("pointerdown", (e) => {
+            canvas.setPointerCapture(e.pointerId);
+            this.pointers.set(e.pointerId, local(e));
+            last = this.pointers.size === 2 ? gesture() : null;
+            canvas.classList.add("dragging");
+            this._touchInteraction();
+          });
+
+          canvas.addEventListener("pointermove", (e) => {
+            if (!this.pointers.has(e.pointerId)) return;
+            const prev = this.pointers.get(e.pointerId);
+            const cur = local(e);
+            this.pointers.set(e.pointerId, cur);
+            this._touchInteraction();
+
+            if (this.pointers.size === 1) {
+              this._panByPixels(cur.x - prev.x, cur.y - prev.y); // single finger / mouse drag
+            } else if (this.pointers.size === 2) {
+              const g = gesture();
+              if (last && last.dist > 0 && g.dist > 0) {
+                this._panByPixels(g.mx - last.mx, g.my - last.my); // two-finger drag
+                this._zoomBy(g.dist / last.dist, g.mx, g.my); // pinch
+              }
+              last = g;
+            }
+          });
+
+          const end = (e) => {
+            this.pointers.delete(e.pointerId);
+            // Dropping from two fingers to one: restart the drag from the remaining finger
+            last = this.pointers.size === 2 ? gesture() : null;
+            if (this.pointers.size === 0) canvas.classList.remove("dragging");
+            this._touchInteraction();
+          };
+          canvas.addEventListener("pointerup", end);
+          canvas.addEventListener("pointercancel", end);
+
+          canvas.addEventListener(
+            "wheel",
+            (e) => {
+              e.preventDefault();
+              const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.camera.height : 1;
+              const rate = e.ctrlKey ? CONFIG.PINCH_WHEEL_RATE : CONFIG.WHEEL_ZOOM_RATE;
+              const p = local(e);
+              // Scrolling down (positive deltaY) zooms out
+              this._zoomBy(Math.exp(-e.deltaY * unit * rate), p.x, p.y);
+              this._touchInteraction();
+            },
+            { passive: false },
+          );
+        }
+
+        _touchInteraction() {
+          // The user takes over: pause the animation, resume after AUTOPLAY_RESUME_MS of quiet
+          this.resumeAutoplayAt = performance.now() + CONFIG.AUTOPLAY_RESUME_MS;
+        }
+
+        _clampPan() {
+          const lim = CONFIG.CENTER - 1; // keep the screen center inside the macro grid
+          this.panX = Math.max(-lim, Math.min(lim, this.panX));
+          this.panY = Math.max(-lim, Math.min(lim, this.panY));
+        }
+
+        _panByPixels(dx, dy) {
+          this.panX += dx / this.camera.macroTilePx;
+          this.panY += dy / this.camera.macroTilePx;
+          this._clampPan();
+        }
+
+        /**
+         * Zooms the view by `scale` (>1 = zoom in) keeping the world point under the
+         * screen position (sx, sy) fixed. Zoom is exponential in cycle progress, so it is
+         * expressed as a progress delta and may cross level boundaries either way.
+         */
+        _zoomBy(scale, sx, sy) {
+          const cam = this.camera;
+          const dProgress = -Math.log(scale) / Math.log(CONFIG.GRID_SIZE);
+          const ax = sx - cam.centerX;
+          const ay = sy - cam.centerY;
+
+          this._advanceTime(dProgress * CONFIG.CYCLE_MS);
+
+          // Time advance zooms about the fractal's center (pan scales with the tile size).
+          // Shift pan so the world point under (sx, sy) stays put instead:
+          // panPx' = a + (panPx - a) * scale  =>  extra shift of a * (1 - scale) px.
+          const tile = this.camera.macroTilePx;
+          this.panX += (ax * (1 - scale)) / tile;
+          this.panY += (ay * (1 - scale)) / tile;
+          this._clampPan();
+        }
+
+        /**
+         * Moves virtual time forward/backward, advancing or retreating fractal levels at
+         * cycle boundaries. Pan (in macro-tile units) rescales by GRID_SIZE per level since
+         * a tile of the next level is GRID_SIZE times the size of the previous one.
+         */
+        _advanceTime(deltaMs) {
+          this.elapsedMs += deltaMs;
+          while (this.elapsedMs >= CONFIG.CYCLE_MS) {
+            this.elapsedMs -= CONFIG.CYCLE_MS;
+            this.world.advanceFractalLevel();
+            this.panX /= CONFIG.GRID_SIZE;
+            this.panY /= CONFIG.GRID_SIZE;
+          }
+          while (this.elapsedMs < 0) {
+            this.elapsedMs += CONFIG.CYCLE_MS;
+            this.world.retreatFractalLevel();
+            this.panX *= CONFIG.GRID_SIZE;
+            this.panY *= CONFIG.GRID_SIZE;
+          }
+          this.camera.updateProgress(this.elapsedMs / CONFIG.CYCLE_MS);
+          this._clampPan();
+        }
+
+        _onResize() {
+          const dpr = Math.min(window.devicePixelRatio || 1, CONFIG.MAX_DPR);
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          this.camera.setViewport(w, h);
+          this.rasterizer.setViewport(w, h, dpr);
+        }
+
+        /**
+         * Renders a single Fractal Tile (which is BOTH a 25x25 mosaic of sub-characters
+         * AND a single coalescing parent character of the next level).
+         */
+        _renderTile(charIdx, parentInk, tileX, tileY, tilePx, subCharOffset, customSubBitmap, layerOpacity, prevChar = charIdx, mix = 1) {
+          if (!this.camera.isVisible(tileX, tileY, tilePx)) return;
+
+          const { subAlpha, solidAlpha, parentModulation } = this.camera.computeLoD(tilePx);
+
+          // 1. Render internal 25x25 sub-characters if this tile is large enough
+          if (subAlpha * layerOpacity > 0.005) {
+            const subCellPx = tilePx / CONFIG.GRID_SIZE;
+            const bitmap = customSubBitmap || this.world.bitmaps[charIdx];
+            // While the tile's letter is changing, slide each pixel's brightness from the old
+            // letter's shape to the new one instead of flipping it instantly.
+            const blending = mix < 1 && prevChar !== charIdx;
+            const prevBitmap = blending ? this.world.bitmaps[prevChar] : null;
+            const m = blending ? mix * mix * (3 - 2 * mix) : 1;
+            const finalSubAlpha = subAlpha * layerOpacity;
+            const centerGlyphIdx = CONFIG.CENTER_IDX * CONFIG.CELLS + CONFIG.CENTER_IDX;
+
+            // As the 25x25 tile shrinks toward a single parent pixel, modulate its sub-pixels
+            // toward `parentInk` so "ON" parent tiles stay blazing white and "OFF" parent
+            // tiles settle smoothly into the background matrix luminance!
+            const parentBoost = 0.22 + 0.78 * parentInk;
+
+            for (let sr = 0; sr < CONFIG.GRID_SIZE; sr++) {
+              const sy = tileY + (sr - CONFIG.CENTER) * subCellPx;
+              if (sy + subCellPx < 0 || sy - subCellPx > this.camera.height) continue;
+
+              for (let sc = 0; sc < CONFIG.GRID_SIZE; sc++) {
+                const sx = tileX + (sc - CONFIG.CENTER) * subCellPx;
+                if (sx + subCellPx < 0 || sx - subCellPx > this.camera.width) continue;
+
+                const sIdx = sr * CONFIG.GRID_SIZE + sc;
+                const localInk = blending ? prevBitmap[sIdx] * (1 - m) + bitmap[sIdx] * m : bitmap[sIdx];
+                const blendedInk = localInk * (1.0 - parentModulation) + localInk * parentBoost * parentModulation;
+                const subIdx = subCharOffset + sIdx;
+                // Every visible mosaic cell flickers; the center tile's center glyph is pinned
+                // because it must stay equal to the level's self-similar character.
+                if (Math.random() < CONFIG.MUTATION_RATE && subIdx !== centerGlyphIdx) {
+                  this.world.subChars[subIdx] = this.world._randomChar();
+                }
+                const sChar = this.world.subChars[subIdx];
+
+                this.rasterizer.emitGlyph(sChar, blendedInk, sx, sy, subCellPx, finalSubAlpha);
+              }
+            }
+          }
+
+          // 2. Render coalesced parent character glyph
+          if (solidAlpha * layerOpacity > 0.005) {
+            const parentPx = this.rasterizer.parentCellSize(tilePx);
+            const a = solidAlpha * layerOpacity;
+            if (mix < 1 && prevChar !== charIdx) {
+              const t = mix * mix * (3 - 2 * mix);
+              this.rasterizer.emitGlyph(prevChar, parentInk, tileX, tileY, parentPx, a * (1 - t));
+              this.rasterizer.emitGlyph(charIdx, parentInk, tileX, tileY, parentPx, a * t);
+            } else {
+              this.rasterizer.emitGlyph(charIdx, parentInk, tileX, tileY, parentPx, a);
+            }
+          }
+        }
+
+        frame(now) {
+          const dt = Math.min(100, now - this.lastFrameTime);
+          this.lastFrameTime = now;
+          // Passive while a gesture is active or recent; otherwise auto zoom-out runs
+          if (this.pointers.size === 0 && now >= this.resumeAutoplayAt) this._advanceTime(dt);
+
+          const progress = this.elapsedMs / CONFIG.CYCLE_MS;
+          this.camera.updateProgress(progress);
+
+          this.world.update(progress, dt);
+
+          // --- Compose Hierarchical Scene ---
+          this.rasterizer.beginFrame();
+
+          const macroTilePx = this.camera.macroTilePx;
+          const cx = this.camera.centerX + this.panX * macroTilePx;
+          const cy = this.camera.centerY + this.panY * macroTilePx;
+
+          const charB = this.world.charAt(1);
+          const charC = this.world.charAt(2);
+          const charD = this.world.charAt(3);
+          // The macro grid is the mosaic that glyph charB lives in, so it spells charC;
+          // the super grid is the mosaic that charC lives in, so it spells charD.
+          const macroBitmap = this.world.bitmaps[charC];
+          const superBitmap = this.world.bitmaps[charD];
+
+          // Layer 1: The macro grid of tiles (spelling charC; its center tile is glyph charB)
+          for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
+            const ty = cy + (r - CONFIG.CENTER) * macroTilePx;
+            if (ty + macroTilePx * 0.55 < 0 || ty - macroTilePx * 0.55 > this.camera.height) continue;
+
+            for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
+              const tx = cx + (c - CONFIG.CENTER) * macroTilePx;
+              if (tx + macroTilePx * 0.55 < 0 || tx - macroTilePx * 0.55 > this.camera.width) continue;
+
+              const idx = r * CONFIG.GRID_SIZE + c;
+              const parentInk = macroBitmap[idx];
+
+              if (idx === CONFIG.CENTER_IDX) {
+                this._renderTile(charB, parentInk, tx, ty, macroTilePx, idx * CONFIG.CELLS, this.world.activeCenterBitmap, 1.0);
+              } else {
+                this._renderTile(
+                  this.world.macroChars[idx],
+                  parentInk,
+                  tx,
+                  ty,
+                  macroTilePx,
+                  idx * CONFIG.CELLS,
+                  null,
+                  1.0,
+                  this.world.macroPrev[idx],
+                  this.world.macroMix[idx],
+                );
+              }
+            }
+          }
+
+          // Layer 2: The super-macro grid at the periphery (spelling charD when p > 0.45)
+          const superFade = Math.max(0, Math.min(1, (progress - 0.45) / 0.45));
+          const superOpacity = superFade * superFade * (3 - 2 * superFade);
+
+          if (superOpacity > 0.005) {
+            const superTilePx = macroTilePx * CONFIG.GRID_SIZE;
+            for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
+              const sy = cy + (r - CONFIG.CENTER) * superTilePx;
+              if (sy + superTilePx * 0.55 < 0 || sy - superTilePx * 0.55 > this.camera.height) continue;
+
+              for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
+                const sx = cx + (c - CONFIG.CENTER) * superTilePx;
+                if (sx + superTilePx * 0.55 < 0 || sx - superTilePx * 0.55 > this.camera.width) continue;
+
+                const idx = r * CONFIG.GRID_SIZE + c;
+                if (idx === CONFIG.CENTER_IDX) continue; // Center is already occupied by Layer 1
+
+                this._renderTile(
+                  this.world.superMacroChars[idx],
+                  superBitmap[idx],
+                  sx,
+                  sy,
+                  superTilePx,
+                  idx * CONFIG.CELLS,
+                  null,
+                  superOpacity,
+                  this.world.superPrev[idx],
+                  this.world.superMix[idx],
+                );
+              }
+            }
+          }
+
+          this.rasterizer.flushFrame();
+          requestAnimationFrame((now) => this.frame(now));
+        }
+
+        start() {
+          this.lastFrameTime = performance.now();
+          requestAnimationFrame((now) => this.frame(now));
+        }
+      }
+
+      // ============================================================================
+      // BOOTSTRAP
+      // ============================================================================
+      // Make sure the Roboto Flex face is actually fetched before rasterizing the atlas
+      document.fonts.load('400 100px "Roboto Flex"').then(() => {
+        const app = new FractalMatrixApp(document.getElementById("viewport"));
+        app.start();
+      });
+    </script>
+  </body>
+</html>

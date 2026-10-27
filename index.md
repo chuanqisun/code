@@ -52,7 +52,11 @@
 - [Type bundler](./type-bundler/)
 - [Webcam](./webcam/)
 
-## Experiments
+## Experiments Feed
+
+- [Wall of Text](./wall-of-text/), infinite fractal canvas displaying texts
+
+## Experiments Archive
 
 - [3D Text Editor](./3d-text-editor/)
 - [Acousitc Beacon](./acoustic-beacon/)
