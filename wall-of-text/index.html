@@ -55,7 +55,13 @@
         PINCH_WHEEL_RATE: 0.01, // trackpad pinch arrives as ctrl+wheel with small deltas
         TRANSITION_MS: 220, // Quick cross-blend when a tile's letter (and so its on/off pixels) changes
         MUTATION_RATE: 0.03, // Chance per frame that a visible glyph re-rolls its character
-        AUTOPLAY_RESUME_MS: 3000, // Auto zoom-out resumes after this long with no interaction
+        AUTOPLAY_RESUME_MS: 2000, // Auto zoom-out resumes after this long with no interaction
+        TYPE_TAU_S: 0.12, // Typing zoom: time constant; speed = distance-left / tau, so a backlog of keys is covered in ~tau
+        TYPE_MIN_SPEED: 3, // Typing zoom: minimum speed (fractal levels per second) so the last stretch still finishes
+        TYPE_MAX_SPEED: 40, // Typing zoom: speed cap (levels/s), keeps frames coherent when mashing keys
+        TYPE_MAX_LEAD: 40, // Keys are ignored while this many levels of zoom are already queued
+        TYPE_PAN_TAU_S: 0.08, // Typing zoom: time constant for easing the view back to the fractal's center
+        INK_EASE_S: 0.06, // Time constant for crossfading a letter shape that was changed by typing
         MAX_INSTANCES: 400000, // Max simultaneous glyphs per single instanced draw call
       };
 
@@ -510,8 +516,17 @@
 
           // Interpolated bitmap for the active center 25x25 grid
           this.activeCenterBitmap = new Float32Array(CONFIG.CELLS);
+          // Letter shapes the macro grid and super grid spell (eased so a typed letter fades in)
+          this.macroInk = new Float32Array(CONFIG.CELLS);
+          this.superInk = new Float32Array(CONFIG.CELLS);
+          // Typed letters: absolute level -> char index (levels without one follow the default sequence)
+          this.overrides = new Map();
+          this.anchor = null; // Most recently typed {level, charIdx}
 
           this._seedInitialState();
+          this.activeCenterBitmap.set(this.bitmaps[this.charAt(1)]);
+          this.macroInk.set(this.bitmaps[this.charAt(2)]);
+          this.superInk.set(this.bitmaps[this.charAt(3)]);
         }
 
         _randomChar() {
@@ -550,8 +565,19 @@
          */
         /** Character index for level (levelIndex + offset); safe for negative levels. */
         charAt(offset) {
+          const level = this.levelIndex + offset;
+          const typed = this.overrides.get(level);
+          if (typed !== undefined) return typed;
           const n = CONFIG.NUM_CHARS;
-          return (((this.levelIndex + offset) % n) + n) % n;
+          // Past the last typed letter, the sequence keeps counting up from it
+          const base = this.anchor && level > this.anchor.level ? this.anchor.charIdx - this.anchor.level : 0;
+          return (((level + base) % n) + n) % n;
+        }
+
+        /** Pins the letter spelled at an absolute level (used for typed characters). */
+        setLevelChar(level, charIdx) {
+          this.overrides.set(level, charIdx);
+          this.anchor = { level, charIdx };
         }
 
         /**
@@ -571,6 +597,9 @@
             this.macroMix[i] = 1;
             this.subChars[centerOffset + i] = this._randomChar();
           }
+          this.superInk.set(this.macroInk);
+          this.macroInk.set(this.activeCenterBitmap);
+          this.activeCenterBitmap.set(this.bitmaps[this.charAt(1)]);
           this._enforceSelfSimilarCenters();
         }
 
@@ -587,6 +616,9 @@
             this.macroMix[i] = this.superMix[i];
             this.superMix[i] = 1;
           }
+          this.activeCenterBitmap.set(this.macroInk);
+          this.macroInk.set(this.superInk);
+          this.superInk.set(this.bitmaps[this.charAt(3)]);
           this._enforceSelfSimilarCenters();
         }
 
@@ -623,11 +655,17 @@
           // spells charB (level L+1) from the very first frame, so there is no morph: charA is
           // simply one pixel (on or off) of the larger charB. Zooming out, the mosaic
           // collapses into the single glyph charB, which in turn sits inside a charC-shaped grid.
-          const charB = this.charAt(1);
-          const mapB = this.bitmaps[charB];
-
-          for (let i = 0; i < CONFIG.CELLS; i++) {
-            this.activeCenterBitmap[i] = mapB[i];
+          // The three letter shapes ease toward their targets, so a letter typed ahead of the
+          // camera fades in instead of popping.
+          const k = 1 - Math.exp(-dtMs / 1000 / CONFIG.INK_EASE_S);
+          const targets = [this.bitmaps[this.charAt(1)], this.bitmaps[this.charAt(2)], this.bitmaps[this.charAt(3)]];
+          const inks = [this.activeCenterBitmap, this.macroInk, this.superInk];
+          for (let j = 0; j < 3; j++) {
+            const ink = inks[j];
+            const target = targets[j];
+            for (let i = 0; i < CONFIG.CELLS; i++) {
+              ink[i] += (target[i] - ink[i]) * k;
+            }
           }
         }
       }
@@ -644,6 +682,7 @@
           this.baseGridPx = 1;
           this.progress = 0;
           this.macroTilePx = 1;
+          this.lodScale = 1; // >1 coarsens the mosaic LoD (used while zooming fast, when detail is a blur anyway)
         }
 
         setViewport(width, height) {
@@ -689,7 +728,8 @@
 
           // One shared, strictly complementary crossfade band (subAlpha + solidAlpha === 1)
           // so the mosaic and the solid parent glyph never double-expose or pop in brightness.
-          const blend = smoothstep(this.mosaicMinPx, this.mosaicMinPx * 2.2, tilePx);
+          const minPx = this.mosaicMinPx * this.lodScale;
+          const blend = smoothstep(minPx, minPx * 2.2, tilePx);
           const subAlpha = blend;
           const solidAlpha = 1.0 - blend;
           // Parent-ink modulation follows the same band so the mosaic dims in lockstep
@@ -725,10 +765,13 @@
           this.panX = 0;
           this.panY = 0;
           this.pointers = new Map(); // active pointers: id -> {x, y} (canvas-relative px)
+          this.targetLevel = null; // Absolute level a typed-key zoom is heading to (null = not typing)
+          this.zoomSpeed = 0; // Current typed zoom speed in levels/s
           this.resumeAutoplayAt = 0; // Auto zoom-out is paused until this timestamp (set by user input)
           this.lastFrameTime = performance.now();
 
           this._bindEvents();
+          this._bindKeys();
           this._onResize();
         }
 
@@ -748,6 +791,7 @@
           let last = null;
 
           canvas.addEventListener("pointerdown", (e) => {
+            this.targetLevel = null;
             canvas.setPointerCapture(e.pointerId);
             this.pointers.set(e.pointerId, local(e));
             last = this.pointers.size === 2 ? gesture() : null;
@@ -788,6 +832,7 @@
             "wheel",
             (e) => {
               e.preventDefault();
+              this.targetLevel = null;
               const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.camera.height : 1;
               const rate = e.ctrlKey ? CONFIG.PINCH_WHEEL_RATE : CONFIG.WHEEL_ZOOM_RATE;
               const p = local(e);
@@ -797,6 +842,53 @@
             },
             { passive: false },
           );
+        }
+
+        _bindKeys() {
+          window.addEventListener("keydown", (e) => {
+            if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+            const ch = e.key.toUpperCase();
+            if (ch.length !== 1) return;
+            const charIdx = CONFIG.CHARS.indexOf(ch);
+            if (charIdx >= 0) this._typeChar(charIdx);
+          });
+        }
+
+        /**
+         * A typed letter becomes the shape spelled one level further out: queue one more
+         * level of zoom-out and pin that level's letter. Each key adds a level, so the
+         * remaining distance (and with it the zoom speed) tracks the typing rate.
+         */
+        _typeChar(charIdx) {
+          const world = this.world;
+          const pos = world.levelIndex + this.elapsedMs / CONFIG.CYCLE_MS;
+          const next = this.targetLevel === null ? world.levelIndex + 1 : this.targetLevel + 1;
+          if (next - pos > CONFIG.TYPE_MAX_LEAD) return;
+          this.targetLevel = next;
+          world.setLevelChar(next + 1, charIdx); // the letter on screen once level `next` is reached
+          this._touchInteraction();
+        }
+
+        /** Zooms out toward targetLevel, easing the view back to center; lands exactly on a level boundary. */
+        _stepTyping(dtMs) {
+          const sec = dtMs / 1000;
+          const remaining = this.targetLevel - (this.world.levelIndex + this.elapsedMs / CONFIG.CYCLE_MS);
+          const speed = Math.min(CONFIG.TYPE_MAX_SPEED, Math.max(CONFIG.TYPE_MIN_SPEED, remaining / CONFIG.TYPE_TAU_S));
+          this.zoomSpeed = speed;
+
+          if (speed * sec >= remaining) {
+            // Tiny epsilon so float error can't leave us just short of the boundary
+            this._advanceTime((this.targetLevel - this.world.levelIndex) * CONFIG.CYCLE_MS - this.elapsedMs + 1e-6);
+            this.targetLevel = null;
+            this.zoomSpeed = 0;
+            this._touchInteraction();
+          } else {
+            this._advanceTime(speed * sec * CONFIG.CYCLE_MS);
+          }
+
+          const decay = Math.exp(-sec / CONFIG.TYPE_PAN_TAU_S);
+          this.panX *= decay;
+          this.panY *= decay;
         }
 
         _touchInteraction() {
@@ -937,7 +1029,12 @@
           const dt = Math.min(100, now - this.lastFrameTime);
           this.lastFrameTime = now;
           // Passive while a gesture is active or recent; otherwise auto zoom-out runs
-          if (this.pointers.size === 0 && now >= this.resumeAutoplayAt) this._advanceTime(dt);
+          if (this.targetLevel !== null) this._stepTyping(dt);
+          else if (this.pointers.size === 0 && now >= this.resumeAutoplayAt) this._advanceTime(dt);
+
+          // Fast zoom blurs fine detail away, so draw fewer mosaic glyphs while it lasts
+          const lodTarget = this.targetLevel === null ? 1 : 1 + Math.min(1.5, this.zoomSpeed * 0.12);
+          this.camera.lodScale += (lodTarget - this.camera.lodScale) * (1 - Math.exp(-dt / 80));
 
           const progress = this.elapsedMs / CONFIG.CYCLE_MS;
           this.camera.updateProgress(progress);
@@ -952,12 +1049,10 @@
           const cy = this.camera.centerY + this.panY * macroTilePx;
 
           const charB = this.world.charAt(1);
-          const charC = this.world.charAt(2);
-          const charD = this.world.charAt(3);
           // The macro grid is the mosaic that glyph charB lives in, so it spells charC;
           // the super grid is the mosaic that charC lives in, so it spells charD.
-          const macroBitmap = this.world.bitmaps[charC];
-          const superBitmap = this.world.bitmaps[charD];
+          const macroBitmap = this.world.macroInk;
+          const superBitmap = this.world.superInk;
 
           // Layer 1: The macro grid of tiles (spelling charC; its center tile is glyph charB)
           for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
