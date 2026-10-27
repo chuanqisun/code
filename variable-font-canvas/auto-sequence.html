@@ -38,10 +38,10 @@
 
     <script>
       const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-      const BPM = 60;
+      const params = new URLSearchParams(location.search);
+      const BPM = Number(params.get("bpm")) || 60; // ?bpm=120
       const SCENE_BEATS = 4; // 1 bar of 4/4 per scene
       const LEVELS = 64; // ink quantization; each level is a CSS class
-      const params = new URLSearchParams(location.search);
       const START_BEAT = Number(params.get("start")) || 0; // ?start=16 to preview
 
       const grid = document.getElementById("grid");
@@ -123,7 +123,6 @@
       const pulseAt = (t) => Math.exp(-fract(t) * 5);
       // Jump forward one unit on each beat, then hold
       const snap = (t, k = 4) => Math.floor(t) + easeOut(Math.min(1, fract(t) * k));
-      const hash = (a, b) => fract(Math.sin(a * 127.1 + b * 311.7) * 43758.5453);
       const TAU = Math.PI * 2;
 
       // ---- Scenes: (beat) => (x, y, r, a) => ink 0..1 -----------------------
@@ -191,22 +190,6 @@
             const z = 0.5 / (r + 0.05) - t;
             const v = Math.sin(z * TAU) * Math.sin(a * 6 + rot);
             return clamp01(0.5 + v * 3) * smooth(0.02, 0.3, r);
-          };
-        },
-
-        // Mirrored equalizer: random bar heights hit on every beat, then fall
-        (t) => {
-          const b = Math.floor(t),
-            env = 0.3 + 0.7 * pulseAt(t),
-            bw = 0.1;
-          return (x, y) => {
-            const ci = Math.floor(Math.abs(x) / bw);
-            const lx = fract(Math.abs(x) / bw);
-            const peak = 0.15 + 0.85 * hash(ci, b);
-            const h = peak * env;
-            const gap = smooth(0.08, 0.2, lx) * (1 - smooth(0.8, 0.92, lx));
-            const bar = 1 - smooth(h - 0.04, h, Math.abs(y));
-            return gap * Math.max(bar, line(Math.abs(y) - peak - 0.05, 0.025));
           };
         },
 
