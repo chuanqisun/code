@@ -117,10 +117,33 @@
           }
         });
       }
-      grid.addEventListener("mousedown", (e) => paint(pixels.indexOf(e.target)));
+      grid.addEventListener("mousedown", (e) => {
+        freeze();
+        paint(pixels.indexOf(e.target));
+      });
       grid.addEventListener("mouseover", (e) => {
         if (isDown) paint(pixels.indexOf(e.target));
       });
+
+      // Typing renders the typed character as user ink
+      window.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+        freeze();
+        const map = getCharBitmap(e.key.toUpperCase());
+        for (let i = 0; i < SIZE * SIZE; i++) {
+          userInk[i] = Math.max(userInk[i], map[i]);
+        }
+      });
+
+      // On first interaction, stop the animation and keep the last shown
+      // frame as user ink
+      let frozen = false;
+      const lastShown = new Float32Array(SIZE * SIZE);
+      function freeze() {
+        if (frozen) return;
+        frozen = true;
+        userInk.set(lastShown);
+      }
 
       // Animation state
       let currentIdx = 0;
@@ -135,7 +158,7 @@
         const dt = now - lastTime;
         lastTime = now;
 
-        progress += dt;
+        if (!frozen) progress += dt;
         if (progress >= DURATION) {
           progress %= DURATION;
           currentIdx = (currentIdx + 1) % CHARS.length;
@@ -157,9 +180,13 @@
           }
 
           // 2. Transition variable font metrics & luminosity naturally
-          userInk[i] *= 0.96;
-          const morphedVal = mapA[i] * (1 - t) + mapB[i] * t;
-          setInk(pixels[i], Math.min(1, morphedVal + userInk[i]));
+          if (!isDown) userInk[i] *= 0.96;
+          let val = userInk[i];
+          if (!frozen) {
+            lastShown[i] = mapA[i] * (1 - t) + mapB[i] * t;
+            val = Math.min(1, lastShown[i] + val);
+          }
+          setInk(pixels[i], val);
         }
 
         requestAnimationFrame(animate);
