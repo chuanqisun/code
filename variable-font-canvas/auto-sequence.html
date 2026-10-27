@@ -237,6 +237,14 @@
         },
       ];
 
+      // ?random=true: shuffle the scene order once on start (Fisher-Yates)
+      if (params.get("random") === "true") {
+        for (let i = SCENES.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [SCENES[i], SCENES[j]] = [SCENES[j], SCENES[i]];
+        }
+      }
+
       // Wipe shapes for the last beat of each scene, normalized to 0..1
       const WIPES = [
         (x, y, r) => r / RMAX, // radial
