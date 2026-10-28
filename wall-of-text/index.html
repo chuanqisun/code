@@ -48,8 +48,11 @@
     <script>
       "use strict";
 
-      const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      // Only the leading 36 symbols occur by chance; the space and punctuation after them come
+      // exclusively from dictionary sentences and typing
+      const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ ,.!?-:;";
       const NUM_CHARS = CHARS.length;
+      const NUM_VISIBLE = 36;
       const GRID = 61;
       const CELLS = GRID * GRID;
       const CENTER = (GRID - 1) >> 1;
@@ -333,7 +336,7 @@
           if (typed !== undefined) return typed;
           const { anchor } = this;
           const base = anchor && level > anchor.level ? anchor.charIdx - anchor.level : 0;
-          return mod(level + base, NUM_CHARS);
+          return mod(level + base, NUM_VISIBLE);
         }
 
         setLevelChar(level, charIdx) {
@@ -692,6 +695,7 @@
             const ch = e.key.toUpperCase();
             const charIdx = ch.length === 1 ? CHARS.indexOf(ch) : -1;
             if (charIdx >= 0) this.#typeChar(charIdx);
+            else if (e.key === "Enter") this.#stepSequence();
           });
         }
 
@@ -722,6 +726,16 @@
           // The typed key seeds the dictionary sentence starting with it; zooming out continues it
           if (this.dictionary.seed(charIdx)) this.writtenLevel = next + 1;
           else this.#abortDictionary();
+          this.#logSequence(`typed ${JSON.stringify(CHARS[charIdx])}`);
+          this.#pauseAutoplay();
+        }
+
+        // Zooms out one level, revealing the next dictionary letter (starting a sentence if none is running)
+        #stepSequence() {
+          const next = (this.targetLevel ?? this.world.levelIndex) + 1;
+          if (next - this.#levelPosition > TYPE_MAX_LEAD) return;
+          this.#feedDictionary(next + 1);
+          this.targetLevel = next;
           this.#pauseAutoplay();
         }
 
@@ -767,7 +781,14 @@
           if (this.writtenLevel >= upTo || !dictionary.ready) return;
 
           world.respine(this.sequenceNode ?? this.focus);
-          while (this.writtenLevel < upTo) world.setLevelChar(++this.writtenLevel, dictionary.next());
+          const fresh = !dictionary.status;
+          let written = "";
+          while (this.writtenLevel < upTo) {
+            const sym = dictionary.next();
+            world.setLevelChar(++this.writtenLevel, sym);
+            written += CHARS[sym];
+          }
+          this.#logSequence(`${fresh ? "started, " : ""}wrote ${JSON.stringify(written)}`);
         }
 
         // The user left the displayed sentence: drop it so the next one is drawn fresh
@@ -775,6 +796,12 @@
           this.dictionary.abort();
           this.writtenLevel = -Infinity;
           this.sequenceNode = null;
+          this.#logSequence("aborted");
+        }
+
+        #logSequence(event) {
+          const { sentence, pos } = this.dictionary.status ?? {};
+          console.log(`[sequence] ${event}`, { sentence, pos, writtenLevel: this.writtenLevel, levelIndex: this.world.levelIndex });
         }
 
         // The zoom-center character has grown to fill the viewport: it starts a new sentence
@@ -785,10 +812,12 @@
           const originX = camera.centerX + (this.panX - (col - CENTER)) * camera.macroTilePx;
           const originY = camera.centerY + (this.panY - (row - CENTER)) * camera.macroTilePx;
           const cell = world.neighbor(world.parentOf(this.focus), Math.round((sx - originX) / superTilePx), Math.round((sy - originY) / superTilePx));
-          if (!dictionary.seed(world.kidChar(world.parentOf(cell), cell.idx))) return this.#abortDictionary();
+          const charIdx = world.kidChar(world.parentOf(cell), cell.idx);
+          if (!dictionary.seed(charIdx)) return this.#abortDictionary();
           world.respine(cell);
           this.sequenceNode = cell;
           this.writtenLevel = cell.level;
+          this.#logSequence(`restarted at fill from ${JSON.stringify(CHARS[charIdx])}`);
         }
 
         // Pins the characters under (sx, sy): the macro tile there and the mosaic letter inside it
@@ -850,8 +879,8 @@
         }
       }
 
-      // Endless supply of CHARS symbols read from a { initial: sentence } dictionary. Characters
-      // outside CHARS (spaces, punctuation) are dropped. Knows nothing about the world or camera.
+      // Endless supply of CHARS symbols read from a { initial: sentence } dictionary. Apostrophes
+      // vanish, other unsupported characters become spaces, and runs of spaces collapse to one. Knows nothing about the world or camera.
       class SentenceStream {
         #sentences = [];
         #byInitial = new Map();
@@ -863,7 +892,7 @@
           fetch(url)
             .then((res) => res.json())
             .then((dict) => {
-              const toSymbols = (text) => [...text.toUpperCase()].map((ch) => CHARS.indexOf(ch)).filter((c) => c >= 0);
+              const toSymbols = (text) => [...text.toUpperCase().replace(/['’]/g, "").replace(/[–—]/g, "-").replace(/[^0-9A-Z,.!?:;-]+/g, " ").trim()].map((ch) => CHARS.indexOf(ch));
               this.#sentences = Object.values(dict).map(toSymbols).filter((s) => s.length);
               this.#byInitial = new Map(this.#sentences.map((s, i) => [s[0], i]));
             })
@@ -872,6 +901,11 @@
 
         get ready() {
           return this.#sentences.length > 0;
+        }
+
+        // Current sentence and how many symbols have been consumed, or null between sentences
+        get status() {
+          return this.#current && { sentence: this.#current.map((c) => CHARS[c]).join(""), pos: this.#pos };
         }
 
         // Forget the current sentence; the next symbol comes from a fresh random one
@@ -936,6 +970,7 @@
           ctx.clip();
           const gx = ox + S / 2 - ((m.actualBoundingBoxRight - m.actualBoundingBoxLeft) * k) / 2;
           const gy = oy + S / 2 + ((maxAsc - maxDesc) * k) / 2;
+          if (CHARS[c] === " ") return ctx.restore();
           ctx.fillText(CHARS[c], gx, gy);
           if (CHARS[c] === "0") {
             // Slashed zero, so it reads differently from O
@@ -1045,7 +1080,7 @@
       }
 
       function randomChar() {
-        return (Math.random() * NUM_CHARS) | 0;
+        return (Math.random() * NUM_VISIBLE) | 0;
       }
 
       function mod(a, n) {
