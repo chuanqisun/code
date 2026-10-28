@@ -499,73 +499,128 @@
       class FractalWorld {
         constructor(bitmaps) {
           this.bitmaps = bitmaps;
+          // Absolute level of the sub-glyphs; macro tiles are levelIndex + 1, super tiles + 2
           this.levelIndex = 0;
+          this.clock = 0; // ms, drives letter cross-blends
+          this.frameNo = 0; // used to prune tiles that have not been on screen for a while
 
-          // 25x25 Macro Grid characters (each macro cell i forms macroChars[i])
-          this.macroChars = new Uint8Array(CONFIG.CELLS);
-          // 25x25 Super-Macro Grid characters (emerging at periphery)
-          this.superMacroChars = new Uint8Array(CONFIG.CELLS);
-          // Transition state per tile: the letter it had before its last change and how far
-          // (0..1) the blend toward the current letter has progressed. 1 = settled.
-          this.macroPrev = new Uint8Array(CONFIG.CELLS);
-          this.macroMix = new Float32Array(CONFIG.CELLS).fill(1);
-          this.superPrev = new Uint8Array(CONFIG.CELLS);
-          this.superMix = new Float32Array(CONFIG.CELLS).fill(1);
-          // 625 x 625 Sub-Grid characters (25x25 sub-characters inside each macro tile)
-          this.subChars = new Uint8Array(CONFIG.CELLS * CONFIG.CELLS);
-
-          // Interpolated bitmap for the active center 25x25 grid
-          this.activeCenterBitmap = new Float32Array(CONFIG.CELLS);
-          // Letter shapes the macro grid and super grid spell (eased so a typed letter fades in)
-          this.macroInk = new Float32Array(CONFIG.CELLS);
-          this.superInk = new Float32Array(CONFIG.CELLS);
           // Typed letters: absolute level -> char index (levels without one follow the default sequence)
           this.overrides = new Map();
           this.anchor = null; // Most recently typed {level, charIdx}
 
-          this._seedInitialState();
-          this.activeCenterBitmap.set(this.bitmaps[this.charAt(1)]);
-          this.macroInk.set(this.bitmaps[this.charAt(2)]);
-          this.superInk.set(this.bitmaps[this.charAt(3)]);
+          // The world is an infinite, lazily materialized tree of tiles. Each node is one tile;
+          // its 61x61 children's letters live in kidChars. The "spine" is one chain of nodes
+          // whose letters follow charAt(level) (the self-similar sequence typing writes into).
+          this.root = this._node(null, CONFIG.CENTER_IDX, 1, true);
+
+          // Eased letter shapes of the spine tiles at levels L+1, L+2, L+3 (so a typed letter fades in)
+          this.activeCenterBitmap = Float32Array.from(this.bitmaps[this.charAt(1)]);
+          this.macroInk = Float32Array.from(this.bitmaps[this.charAt(2)]);
+          this.superInk = Float32Array.from(this.bitmaps[this.charAt(3)]);
+          this.inks = [this.activeCenterBitmap, this.macroInk, this.superInk];
         }
 
         _randomChar() {
           return (Math.random() * CONFIG.NUM_CHARS) | 0;
         }
 
-        _seedInitialState() {
-          for (let i = 0; i < CONFIG.CELLS; i++) {
-            this.macroChars[i] = this._randomChar();
-            this.superMacroChars[i] = this._randomChar();
-          }
-          for (let i = 0; i < this.subChars.length; i++) {
-            this.subChars[i] = this._randomChar();
-          }
-          this._enforceSelfSimilarCenters();
+        _node(parent, idx, level, spine) {
+          return {
+            parent,
+            idx, // index within the parent's 61x61 grid
+            level,
+            spine,
+            spineKid: spine ? CONFIG.CENTER_IDX : -1, // child index that continues the spine
+            kidChars: null, // letters of the 61x61 children (allocated on first use)
+            kidPrev: null, // letter each child had before its last change
+            kidT: null, // clock time of each child's last change
+            kids: new Map(), // materialized child nodes
+            seen: this.frameNo,
+          };
         }
 
-        /**
-         * Locks the center cell of each fractal layer to the exact character sequence
-         * so zooming out by 25x lands on the exact same character identity.
-         */
-        _enforceSelfSimilarCenters() {
-          const charA = this.charAt(0);
-          const charB = this.charAt(1);
-          const charC = this.charAt(2);
-
-          const cIdx = CONFIG.CENTER_IDX;
-          this.subChars[cIdx * CONFIG.CELLS + cIdx] = charA;
-          this.macroChars[cIdx] = charB;
-          this.superMacroChars[cIdx] = charC;
+        /** Children letters of `n`, generated at random on first use. */
+        chars(n) {
+          if (!n.kidChars) {
+            n.kidChars = new Uint8Array(CONFIG.CELLS);
+            for (let i = 0; i < CONFIG.CELLS; i++) n.kidChars[i] = this._randomChar();
+            n.kidPrev = n.kidChars.slice();
+            n.kidT = new Float64Array(CONFIG.CELLS).fill(-Infinity);
+          }
+          return n.kidChars;
         }
 
-        /**
-         * Called when the camera completes a 25x zoom-out cycle (p wraps 1.0 -> 0.0).
-         * Promotes the 25x25 Macro Grid into the Center Tile's 25x25 Sub-Grid seamlessly!
-         */
-        /** Character index for level (levelIndex + offset); safe for negative levels. */
-        charAt(offset) {
-          const level = this.levelIndex + offset;
+        /** Parent of `n`; above the top of the tree a new ancestor is created with `n` at its center. */
+        parentOf(n) {
+          if (!n.parent) {
+            const p = this._node(null, CONFIG.CENTER_IDX, n.level + 1, n.spine);
+            p.spineKid = n.spine ? CONFIG.CENTER_IDX : -1;
+            n.idx = CONFIG.CENTER_IDX;
+            p.kids.set(n.idx, n);
+            n.parent = p;
+          }
+          n.parent.seen = this.frameNo;
+          return n.parent;
+        }
+
+        kid(p, i) {
+          let k = p.kids.get(i);
+          if (!k) {
+            k = this._node(p, i, p.level - 1, p.spineKid === i);
+            p.kids.set(i, k);
+          }
+          k.seen = this.frameNo;
+          return k;
+        }
+
+        /** Tile (dx, dy) tiles away from `n` on the same level, crossing parents as needed. */
+        neighbor(n, dx, dy) {
+          if (dx === 0 && dy === 0) {
+            n.seen = this.frameNo;
+            return n;
+          }
+          const G = CONFIG.GRID_SIZE;
+          const p = this.parentOf(n);
+          const r = ((n.idx / G) | 0) + dy;
+          const c = (n.idx % G) + dx;
+          const pr = Math.floor(r / G);
+          const pc = Math.floor(c / G);
+          const q = this.neighbor(p, pc, pr);
+          return this.kid(q, (r - pr * G) * G + (c - pc * G));
+        }
+
+        /** Letter of child i of p (a spine child follows the level sequence). */
+        kidChar(p, i) {
+          return i === p.spineKid ? this.charAt(p.level - 1) : this.chars(p)[i];
+        }
+
+        /** Cross-blend progress (0..1) of child i of p toward its current letter. */
+        kidMix(p, i) {
+          this.chars(p); // allocates kidPrev too, which callers read next
+          if (i === p.spineKid) return 1;
+          return Math.min(1, (this.clock - p.kidT[i]) / CONFIG.TRANSITION_MS);
+        }
+
+        /** Re-rolls the letter of child i of p, starting a cross-blend from the old one. */
+        mutate(p, i) {
+          if (i === p.spineKid) return;
+          const chars = this.chars(p);
+          p.kidPrev[i] = chars[i];
+          chars[i] = this._randomChar();
+          p.kidT[i] = this.clock;
+        }
+
+        /** Letter shape spelled by n's children (eased for the visible spine tiles). */
+        inkOf(n) {
+          if (n.spine) {
+            const off = n.level - this.levelIndex;
+            if (off >= 1 && off <= 3) return this.inks[off - 1];
+          }
+          return this.bitmaps[this.kidChar(this.parentOf(n), n.idx)];
+        }
+
+        /** Character index for an absolute level of the spine; safe for negative levels. */
+        charAt(level) {
           const typed = this.overrides.get(level);
           if (typed !== undefined) return typed;
           const n = CONFIG.NUM_CHARS;
@@ -581,88 +636,109 @@
         }
 
         /**
-         * Inverse of advanceFractalLevel (user zoomed in past the start of a cycle):
-         * the center tile's mosaic becomes the macro grid, the macro grid becomes the
-         * super grid, and the center tile gets a fresh random mosaic.
+         * Reroutes the spine through `focus` (and its ancestors) without changing any
+         * visible letter, so typing spells the letters around wherever the user is looking.
          */
-        retreatFractalLevel() {
-          this.levelIndex--;
-          const centerOffset = CONFIG.CENTER_IDX * CONFIG.CELLS;
-
-          for (let i = 0; i < CONFIG.CELLS; i++) {
-            this.superMacroChars[i] = this.macroChars[i];
-            this.superPrev[i] = this.macroPrev[i];
-            this.superMix[i] = this.macroMix[i];
-            this.macroChars[i] = this.subChars[centerOffset + i];
-            this.macroMix[i] = 1;
-            this.subChars[centerOffset + i] = this._randomChar();
+        respine(focus) {
+          if (focus.spine) return;
+          const path = []; // non-spine nodes from focus upward
+          let n = focus;
+          while (!n.spine && n.parent) {
+            path.push(n);
+            n = n.parent;
           }
-          this.superInk.set(this.macroInk);
-          this.macroInk.set(this.activeCenterBitmap);
-          this.activeCenterBitmap.set(this.bitmaps[this.charAt(1)]);
-          this._enforceSelfSimilarCenters();
-        }
+          if (!n.spine) path.push(n); // pruned top of the tree with no spine: start a fresh one there
 
-        advanceFractalLevel() {
-          this.levelIndex++;
-          const centerOffset = CONFIG.CENTER_IDX * CONFIG.CELLS;
-
-          for (let i = 0; i < CONFIG.CELLS; i++) {
-            this.subChars[centerOffset + i] = this.macroChars[i];
-            this.macroChars[i] = this.superMacroChars[i];
-            this.superMacroChars[i] = this._randomChar();
-            // The old super tiles become the macro tiles: carry their transition state over
-            this.macroPrev[i] = this.superPrev[i];
-            this.macroMix[i] = this.superMix[i];
-            this.superMix[i] = 1;
+          // Old branch below the junction: freeze its letters as plain random letters
+          const freeze = (p) => {
+            const k = p.spineKid;
+            if (k < 0) return null;
+            this.chars(p)[k] = this.charAt(p.level - 1);
+            p.spineKid = -1;
+            const o = p.kids.get(k);
+            if (o) o.spine = false;
+            return o;
+          };
+          if (n.spine) {
+            for (let o = freeze(n); o; o = freeze(o));
+            n.spineKid = path[path.length - 1].idx;
           }
-          this.activeCenterBitmap.set(this.macroInk);
-          this.macroInk.set(this.superInk);
-          this.superInk.set(this.bitmaps[this.charAt(3)]);
-          this._enforceSelfSimilarCenters();
+
+          // New branch: pin each level to the letter it currently shows
+          for (let i = path.length - 1; i >= 0; i--) {
+            const node = path[i];
+            node.spine = true;
+            if (node.parent) this.overrides.set(node.level, this.chars(node.parent)[node.idx]);
+            if (i > 0) node.spineKid = path[i - 1].idx;
+          }
+          for (let d = focus; ; ) {
+            d.spineKid = CONFIG.CENTER_IDX;
+            if (d.kidChars) this.overrides.set(d.level - 1, d.kidChars[CONFIG.CENTER_IDX]);
+            const k = d.kids.get(CONFIG.CENTER_IDX);
+            if (!k) break;
+            k.spine = true;
+            d = k;
+          }
+          for (let k = 0; k < 3; k++) this.inks[k].set(this.bitmaps[this.charAt(this.levelIndex + 1 + k)]);
         }
 
         /**
-         * Updates unsynchronized character mutations and computes the active morphed bitmap.
+         * Drops tiles that have not been on screen for a while (they are regenerated at
+         * random if revisited) and detaches far-above ancestors nobody has navigated through.
          */
-        update(cycleProgress, dtMs) {
-          const cIdx = CONFIG.CENTER_IDX;
-
-          // 1. Unsynchronized stochastic mutation of the tile-level glyphs. Sub-glyphs inside
-          // each tile are mutated lazily while they are drawn (see FractalMatrixApp._renderTile),
-          // so cost scales with what is on screen, not with the 61^4 character array.
-          const step = dtMs / CONFIG.TRANSITION_MS;
-          for (let i = 0; i < CONFIG.CELLS; i++) {
-            this.macroMix[i] = Math.min(1, this.macroMix[i] + step);
-            this.superMix[i] = Math.min(1, this.superMix[i] + step);
-            if (i !== cIdx) {
-              if (Math.random() < 0.028) {
-                this.macroPrev[i] = this.macroChars[i];
-                this.macroMix[i] = 0;
-                this.macroChars[i] = this._randomChar();
-              }
-              if (Math.random() < 0.028) {
-                this.superPrev[i] = this.superMacroChars[i];
-                this.superMix[i] = 0;
-                this.superMacroChars[i] = this._randomChar();
-              }
+        prune(focus) {
+          const stale = this.frameNo - 120;
+          const chain = new Set();
+          let n = focus;
+          for (;;) {
+            chain.add(n);
+            const p = n.parent;
+            if (!p) break;
+            if (n.level >= this.levelIndex + 5 && p.seen < stale) {
+              p.kids.delete(n.idx);
+              n.parent = null;
+              n.idx = CONFIG.CENTER_IDX;
+              break;
             }
+            n = p;
           }
+          const sweep = (node) => {
+            for (const [i, k] of node.kids) {
+              if (k.seen < stale && !chain.has(k)) node.kids.delete(i);
+              else sweep(k);
+            }
+          };
+          sweep(n);
+        }
 
-          this._enforceSelfSimilarCenters();
+        /** Camera completed a 25x zoom-out cycle: the spine's eased shapes shift up a level. */
+        advanceFractalLevel() {
+          this.levelIndex++;
+          this.activeCenterBitmap.set(this.macroInk);
+          this.macroInk.set(this.superInk);
+          this.superInk.set(this.bitmaps[this.charAt(this.levelIndex + 3)]);
+        }
 
-          // 2. The center tile is the mosaic that glyph charA (level L) lives in. That mosaic
-          // spells charB (level L+1) from the very first frame, so there is no morph: charA is
-          // simply one pixel (on or off) of the larger charB. Zooming out, the mosaic
-          // collapses into the single glyph charB, which in turn sits inside a charC-shaped grid.
-          // The three letter shapes ease toward their targets, so a letter typed ahead of the
-          // camera fades in instead of popping.
+        /** Inverse of advanceFractalLevel (user zoomed in past the start of a cycle). */
+        retreatFractalLevel() {
+          this.levelIndex--;
+          this.superInk.set(this.macroInk);
+          this.macroInk.set(this.activeCenterBitmap);
+          this.activeCenterBitmap.set(this.bitmaps[this.charAt(this.levelIndex + 1)]);
+        }
+
+        /**
+         * Advances the clock and eases the spine's letter shapes toward their targets, so a
+         * letter typed ahead of the camera fades in instead of popping. (Letters of tiles
+         * re-roll while they are drawn, see FractalMatrixApp, so cost scales with the screen.)
+         */
+        update(dtMs) {
+          this.clock += dtMs;
+          this.frameNo++;
           const k = 1 - Math.exp(-dtMs / 1000 / CONFIG.INK_EASE_S);
-          const targets = [this.bitmaps[this.charAt(1)], this.bitmaps[this.charAt(2)], this.bitmaps[this.charAt(3)]];
-          const inks = [this.activeCenterBitmap, this.macroInk, this.superInk];
           for (let j = 0; j < 3; j++) {
-            const ink = inks[j];
-            const target = targets[j];
+            const ink = this.inks[j];
+            const target = this.bitmaps[this.charAt(this.levelIndex + 1 + j)];
             for (let i = 0; i < CONFIG.CELLS; i++) {
               ink[i] += (target[i] - ink[i]) * k;
             }
@@ -760,8 +836,10 @@
           this.camera = new FractalCamera();
 
           this.elapsedMs = 0;
-          // User pan, in macro-tile units (so it scales with the zoom automatically):
-          // the fractal's center sits at screen center + pan * macroTilePx.
+          // The macro tile nearest the screen center. Pan is in macro-tile units (so it scales
+          // with the zoom automatically): the focus tile's center sits at screen center +
+          // pan * macroTilePx, and |pan| <= 0.5 because the focus follows the view.
+          this.focus = this.world.root;
           this.panX = 0;
           this.panY = 0;
           this.pointers = new Map(); // active pointers: id -> {x, y} (canvas-relative px)
@@ -861,6 +939,7 @@
          */
         _typeChar(charIdx) {
           const world = this.world;
+          world.respine(this.focus); // typed letters are spelled around wherever the user is
           const pos = world.levelIndex + this.elapsedMs / CONFIG.CYCLE_MS;
           const next = this.targetLevel === null ? world.levelIndex + 1 : this.targetLevel + 1;
           if (next - pos > CONFIG.TYPE_MAX_LEAD) return;
@@ -869,7 +948,7 @@
           this._touchInteraction();
         }
 
-        /** Zooms out toward targetLevel, easing the view back to center; lands exactly on a level boundary. */
+        /** Zooms out toward targetLevel, easing the view onto the focus tile; lands exactly on a level boundary. */
         _stepTyping(dtMs) {
           const sec = dtMs / 1000;
           const remaining = this.targetLevel - (this.world.levelIndex + this.elapsedMs / CONFIG.CYCLE_MS);
@@ -896,16 +975,20 @@
           this.resumeAutoplayAt = performance.now() + CONFIG.AUTOPLAY_RESUME_MS;
         }
 
-        _clampPan() {
-          const lim = CONFIG.CENTER - 1; // keep the screen center inside the macro grid
-          this.panX = Math.max(-lim, Math.min(lim, this.panX));
-          this.panY = Math.max(-lim, Math.min(lim, this.panY));
+        /** Re-anchors the focus to the macro tile under the screen center (pan is unbounded). */
+        _normalizePan() {
+          const dx = Math.round(-this.panX);
+          const dy = Math.round(-this.panY);
+          if (dx === 0 && dy === 0) return;
+          this.focus = this.world.neighbor(this.focus, dx, dy);
+          this.panX += dx;
+          this.panY += dy;
         }
 
         _panByPixels(dx, dy) {
           this.panX += dx / this.camera.macroTilePx;
           this.panY += dy / this.camera.macroTilePx;
-          this._clampPan();
+          this._normalizePan();
         }
 
         /**
@@ -921,36 +1004,45 @@
 
           this._advanceTime(dProgress * CONFIG.CYCLE_MS);
 
-          // Time advance zooms about the fractal's center (pan scales with the tile size).
+          // Time advance zooms about the focus tile's center (pan scales with the tile size).
           // Shift pan so the world point under (sx, sy) stays put instead:
           // panPx' = a + (panPx - a) * scale  =>  extra shift of a * (1 - scale) px.
           const tile = this.camera.macroTilePx;
           this.panX += (ax * (1 - scale)) / tile;
           this.panY += (ay * (1 - scale)) / tile;
-          this._clampPan();
+          this._normalizePan();
         }
 
         /**
          * Moves virtual time forward/backward, advancing or retreating fractal levels at
-         * cycle boundaries. Pan (in macro-tile units) rescales by GRID_SIZE per level since
-         * a tile of the next level is GRID_SIZE times the size of the previous one.
+         * cycle boundaries. Zooming out, the focus becomes its parent tile; zooming in, it
+         * becomes the child tile under the screen center, so the view never jumps. Pan (in
+         * macro-tile units) rescales by GRID_SIZE per level.
          */
         _advanceTime(deltaMs) {
+          const G = CONFIG.GRID_SIZE;
+          const C = CONFIG.CENTER;
           this.elapsedMs += deltaMs;
           while (this.elapsedMs >= CONFIG.CYCLE_MS) {
             this.elapsedMs -= CONFIG.CYCLE_MS;
             this.world.advanceFractalLevel();
-            this.panX /= CONFIG.GRID_SIZE;
-            this.panY /= CONFIG.GRID_SIZE;
+            const f = this.focus;
+            const parent = this.world.parentOf(f);
+            this.panX = (this.panX - ((f.idx % G) - C)) / G;
+            this.panY = (this.panY - (((f.idx / G) | 0) - C)) / G;
+            this.focus = parent;
           }
           while (this.elapsedMs < 0) {
             this.elapsedMs += CONFIG.CYCLE_MS;
             this.world.retreatFractalLevel();
-            this.panX *= CONFIG.GRID_SIZE;
-            this.panY *= CONFIG.GRID_SIZE;
+            const c = Math.max(0, Math.min(G - 1, C + Math.round(-this.panX * G)));
+            const r = Math.max(0, Math.min(G - 1, C + Math.round(-this.panY * G)));
+            this.panX = this.panX * G + (c - C);
+            this.panY = this.panY * G + (r - C);
+            this.focus = this.world.kid(this.focus, r * G + c);
           }
           this.camera.updateProgress(this.elapsedMs / CONFIG.CYCLE_MS);
-          this._clampPan();
+          this._normalizePan();
         }
 
         _onResize() {
@@ -962,27 +1054,33 @@
         }
 
         /**
-         * Renders a single Fractal Tile (which is BOTH a 25x25 mosaic of sub-characters
-         * AND a single coalescing parent character of the next level).
+         * Renders child `i` of super tile `p` as a single Fractal Tile (which is BOTH a
+         * 61x61 mosaic of sub-characters AND a single coalescing parent character).
          */
-        _renderTile(charIdx, parentInk, tileX, tileY, tilePx, subCharOffset, customSubBitmap, layerOpacity, prevChar = charIdx, mix = 1) {
+        _renderTile(p, i, parentInk, tileX, tileY, tilePx) {
           if (!this.camera.isVisible(tileX, tileY, tilePx)) return;
 
+          const world = this.world;
+          const charIdx = world.kidChar(p, i);
+          const mix = world.kidMix(p, i);
+          const prevChar = p.kidPrev[i];
           const { subAlpha, solidAlpha, parentModulation } = this.camera.computeLoD(tilePx);
 
-          // 1. Render internal 25x25 sub-characters if this tile is large enough
-          if (subAlpha * layerOpacity > 0.005) {
+          // 1. Render internal 61x61 sub-characters if this tile is large enough
+          if (subAlpha > 0.005) {
+            const tile = world.kid(p, i);
             const subCellPx = tilePx / CONFIG.GRID_SIZE;
-            const bitmap = customSubBitmap || this.world.bitmaps[charIdx];
+            const bitmap = tile.spine ? world.inkOf(tile) : world.bitmaps[charIdx];
             // While the tile's letter is changing, slide each pixel's brightness from the old
             // letter's shape to the new one instead of flipping it instantly.
             const blending = mix < 1 && prevChar !== charIdx;
-            const prevBitmap = blending ? this.world.bitmaps[prevChar] : null;
+            const prevBitmap = blending ? world.bitmaps[prevChar] : null;
             const m = blending ? mix * mix * (3 - 2 * mix) : 1;
-            const finalSubAlpha = subAlpha * layerOpacity;
-            const centerGlyphIdx = CONFIG.CENTER_IDX * CONFIG.CELLS + CONFIG.CENTER_IDX;
+            const subChars = world.chars(tile);
+            // The spine glyph is pinned because it must stay equal to the level's self-similar character
+            const pinned = tile.spineKid;
 
-            // As the 25x25 tile shrinks toward a single parent pixel, modulate its sub-pixels
+            // As the tile shrinks toward a single parent pixel, modulate its sub-pixels
             // toward `parentInk` so "ON" parent tiles stay blazing white and "OFF" parent
             // tiles settle smoothly into the background matrix luminance!
             const parentBoost = 0.22 + 0.78 * parentInk;
@@ -998,29 +1096,63 @@
                 const sIdx = sr * CONFIG.GRID_SIZE + sc;
                 const localInk = blending ? prevBitmap[sIdx] * (1 - m) + bitmap[sIdx] * m : bitmap[sIdx];
                 const blendedInk = localInk * (1.0 - parentModulation) + localInk * parentBoost * parentModulation;
-                const subIdx = subCharOffset + sIdx;
-                // Every visible mosaic cell flickers; the center tile's center glyph is pinned
-                // because it must stay equal to the level's self-similar character.
-                if (Math.random() < CONFIG.MUTATION_RATE && subIdx !== centerGlyphIdx) {
-                  this.world.subChars[subIdx] = this.world._randomChar();
+                let sChar;
+                if (sIdx === pinned) {
+                  sChar = world.charAt(tile.level - 1);
+                } else {
+                  // Every visible mosaic cell flickers
+                  if (Math.random() < CONFIG.MUTATION_RATE) subChars[sIdx] = world._randomChar();
+                  sChar = subChars[sIdx];
                 }
-                const sChar = this.world.subChars[subIdx];
 
-                this.rasterizer.emitGlyph(sChar, blendedInk, sx, sy, subCellPx, finalSubAlpha);
+                this.rasterizer.emitGlyph(sChar, blendedInk, sx, sy, subCellPx, subAlpha);
               }
             }
           }
 
           // 2. Render coalesced parent character glyph
-          if (solidAlpha * layerOpacity > 0.005) {
+          if (solidAlpha > 0.005) {
             const parentPx = this.rasterizer.parentCellSize(tilePx);
-            const a = solidAlpha * layerOpacity;
+            const a = solidAlpha;
             if (mix < 1 && prevChar !== charIdx) {
               const t = mix * mix * (3 - 2 * mix);
               this.rasterizer.emitGlyph(prevChar, parentInk, tileX, tileY, parentPx, a * (1 - t));
               this.rasterizer.emitGlyph(charIdx, parentInk, tileX, tileY, parentPx, a * t);
             } else {
               this.rasterizer.emitGlyph(charIdx, parentInk, tileX, tileY, parentPx, a);
+            }
+          }
+        }
+
+        /**
+         * Renders the macro tiles of super tile `s` (centered at cx, cy). Their brightness
+         * spells the super tile's letter.
+         */
+        _renderSuperTile(s, cx, cy, macroTilePx) {
+          const world = this.world;
+          const parent = world.parentOf(s);
+          // Super tile letters flicker too (the spine keeps its letter)
+          if (Math.random() < 0.028) world.mutate(parent, s.idx);
+
+          const ink = world.inkOf(s);
+          const mix = world.kidMix(parent, s.idx);
+          const prevChar = parent.kidPrev[s.idx];
+          const blending = mix < 1 && prevChar !== world.kidChar(parent, s.idx);
+          const prevInk = blending ? world.bitmaps[prevChar] : null;
+          const m = mix * mix * (3 - 2 * mix);
+
+          for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
+            const ty = cy + (r - CONFIG.CENTER) * macroTilePx;
+            if (ty + macroTilePx * 0.55 < 0 || ty - macroTilePx * 0.55 > this.camera.height) continue;
+
+            for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
+              const tx = cx + (c - CONFIG.CENTER) * macroTilePx;
+              if (tx + macroTilePx * 0.55 < 0 || tx - macroTilePx * 0.55 > this.camera.width) continue;
+
+              const idx = r * CONFIG.GRID_SIZE + c;
+              if (Math.random() < 0.028) world.mutate(s, idx);
+              const parentInk = blending ? prevInk[idx] * (1 - m) + ink[idx] * m : ink[idx];
+              this._renderTile(s, idx, parentInk, tx, ty, macroTilePx);
             }
           }
         }
@@ -1039,82 +1171,31 @@
           const progress = this.elapsedMs / CONFIG.CYCLE_MS;
           this.camera.updateProgress(progress);
 
-          this.world.update(progress, dt);
+          this.world.update(dt);
+          if (this.world.frameNo % 60 === 0) this.world.prune(this.focus);
 
           // --- Compose Hierarchical Scene ---
+          // Every super tile overlapping the screen is drawn as its grid of macro tiles, found
+          // by walking the tile tree from the focus, so the plane extends forever in all directions.
           this.rasterizer.beginFrame();
 
-          const macroTilePx = this.camera.macroTilePx;
-          const cx = this.camera.centerX + this.panX * macroTilePx;
-          const cy = this.camera.centerY + this.panY * macroTilePx;
+          const G = CONFIG.GRID_SIZE;
+          const cam = this.camera;
+          const macroTilePx = cam.macroTilePx;
+          const superTilePx = macroTilePx * G;
+          const f = this.focus;
+          const superTile = this.world.parentOf(f);
+          const scx = cam.centerX + (this.panX - ((f.idx % G) - CONFIG.CENTER)) * macroTilePx;
+          const scy = cam.centerY + (this.panY - (((f.idx / G) | 0) - CONFIG.CENTER)) * macroTilePx;
+          const kx = Math.ceil(cam.width / superTilePx) + 1;
+          const ky = Math.ceil(cam.height / superTilePx) + 1;
 
-          const charB = this.world.charAt(1);
-          // The macro grid is the mosaic that glyph charB lives in, so it spells charC;
-          // the super grid is the mosaic that charC lives in, so it spells charD.
-          const macroBitmap = this.world.macroInk;
-          const superBitmap = this.world.superInk;
-
-          // Layer 1: The macro grid of tiles (spelling charC; its center tile is glyph charB)
-          for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
-            const ty = cy + (r - CONFIG.CENTER) * macroTilePx;
-            if (ty + macroTilePx * 0.55 < 0 || ty - macroTilePx * 0.55 > this.camera.height) continue;
-
-            for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
-              const tx = cx + (c - CONFIG.CENTER) * macroTilePx;
-              if (tx + macroTilePx * 0.55 < 0 || tx - macroTilePx * 0.55 > this.camera.width) continue;
-
-              const idx = r * CONFIG.GRID_SIZE + c;
-              const parentInk = macroBitmap[idx];
-
-              if (idx === CONFIG.CENTER_IDX) {
-                this._renderTile(charB, parentInk, tx, ty, macroTilePx, idx * CONFIG.CELLS, this.world.activeCenterBitmap, 1.0);
-              } else {
-                this._renderTile(
-                  this.world.macroChars[idx],
-                  parentInk,
-                  tx,
-                  ty,
-                  macroTilePx,
-                  idx * CONFIG.CELLS,
-                  null,
-                  1.0,
-                  this.world.macroPrev[idx],
-                  this.world.macroMix[idx],
-                );
-              }
-            }
-          }
-
-          // Layer 2: The super-macro grid at the periphery (spelling charD when p > 0.45)
-          const superFade = Math.max(0, Math.min(1, (progress - 0.45) / 0.45));
-          const superOpacity = superFade * superFade * (3 - 2 * superFade);
-
-          if (superOpacity > 0.005) {
-            const superTilePx = macroTilePx * CONFIG.GRID_SIZE;
-            for (let r = 0; r < CONFIG.GRID_SIZE; r++) {
-              const sy = cy + (r - CONFIG.CENTER) * superTilePx;
-              if (sy + superTilePx * 0.55 < 0 || sy - superTilePx * 0.55 > this.camera.height) continue;
-
-              for (let c = 0; c < CONFIG.GRID_SIZE; c++) {
-                const sx = cx + (c - CONFIG.CENTER) * superTilePx;
-                if (sx + superTilePx * 0.55 < 0 || sx - superTilePx * 0.55 > this.camera.width) continue;
-
-                const idx = r * CONFIG.GRID_SIZE + c;
-                if (idx === CONFIG.CENTER_IDX) continue; // Center is already occupied by Layer 1
-
-                this._renderTile(
-                  this.world.superMacroChars[idx],
-                  superBitmap[idx],
-                  sx,
-                  sy,
-                  superTilePx,
-                  idx * CONFIG.CELLS,
-                  null,
-                  superOpacity,
-                  this.world.superPrev[idx],
-                  this.world.superMix[idx],
-                );
-              }
+          for (let dy = -ky; dy <= ky; dy++) {
+            for (let dx = -kx; dx <= kx; dx++) {
+              const sx = scx + dx * superTilePx;
+              const sy = scy + dy * superTilePx;
+              if (!cam.isVisible(sx, sy, superTilePx)) continue;
+              this._renderSuperTile(this.world.neighbor(superTile, dx, dy), sx, sy, macroTilePx);
             }
           }
 
