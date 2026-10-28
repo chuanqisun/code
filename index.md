@@ -55,9 +55,9 @@
 ## Experiments Feed
 
 - [Voice keyboard](./voice-keyboard/) simulating human vocal tract
-- [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html) Snake in Chinese characters
-- [Wall of Text](./wall-of-text/) infinite fractal canvas displaying texts
-- [Variable Font Canvas](./variable-font-canvas/) drawing with font metrics
+- [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html) Snake in Chinese characters #typography#game
+- [Wall of Text](./wall-of-text/) infinite fractal canvas displaying texts #typography
+- [Variable Font Canvas](./variable-font-canvas/) drawing with font metrics #typography
 
 ## Experiments Archive
 
