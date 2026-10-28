@@ -120,8 +120,107 @@
         stepAcc = 0;
       }
 
+      // ?auto=true: an AI drives the snake until ESC is pressed
+      const params = new URLSearchParams(location.search);
+      let autoMode = params.get("auto") === "true";
+
+      const inBounds = (x, y) => x >= 0 && x < COLS && y >= 0 && y < ROWS;
+      const NEIGHBORS = [
+        { x: 1, y: 0 },
+        { x: -1, y: 0 },
+        { x: 0, y: 1 },
+        { x: 0, y: -1 },
+      ];
+
+      // Shortest path from `from` to `to` (excluding `from`, including `to`)
+      // that avoids `blocked` cell indices, or null
+      function bfs(from, to, blocked) {
+        const prev = new Map([[idx(from.x, from.y), null]]);
+        const queue = [from];
+        for (let qi = 0; qi < queue.length; qi++) {
+          const p = queue[qi];
+          if (p.x === to.x && p.y === to.y) {
+            const path = [];
+            for (let c = p; prev.get(idx(c.x, c.y)); c = prev.get(idx(c.x, c.y))) path.push(c);
+            return path.reverse();
+          }
+          for (const d of NEIGHBORS) {
+            const n = { x: p.x + d.x, y: p.y + d.y };
+            const i = idx(n.x, n.y);
+            if (!inBounds(n.x, n.y) || prev.has(i) || blocked.has(i)) continue;
+            prev.set(i, p);
+            queue.push(n);
+          }
+        }
+        return null;
+      }
+
+      function reachable(from, blocked) {
+        const seen = new Set([idx(from.x, from.y)]);
+        const queue = [from];
+        for (let qi = 0; qi < queue.length; qi++) {
+          for (const d of NEIGHBORS) {
+            const n = { x: queue[qi].x + d.x, y: queue[qi].y + d.y };
+            const i = idx(n.x, n.y);
+            if (!inBounds(n.x, n.y) || seen.has(i) || blocked.has(i)) continue;
+            seen.add(i);
+            queue.push(n);
+          }
+        }
+        return seen.size;
+      }
+
+      // Go for the food only if the snake could still reach its own tail afterwards;
+      // otherwise chase the tail, otherwise take the roomiest safe neighbor.
+      function autoDir() {
+        const head = snake[0];
+        const tail = snake[snake.length - 1];
+        const blocked = new Set(snake.slice(0, -1).map((p) => idx(p.x, p.y)));
+        const toDir = (c) => ({ x: c.x - head.x, y: c.y - head.y });
+
+        const path = food && bfs(head, food, blocked);
+        if (path) {
+          // Snake after eating along this path (it grows by one)
+          const after = path.slice().reverse().concat(snake).slice(0, snake.length + 1);
+          const afterBlocked = new Set(after.slice(0, -1).map((p) => idx(p.x, p.y)));
+          if (after.length === N || bfs(after[0], after[after.length - 1], afterBlocked)) return toDir(path[0]);
+        }
+
+        // No safe route to the food: stall by stepping to the neighbor with the
+        // longest route back to the tail, which keeps the snake loosening up
+        let stall = null;
+        let stallLen = -1;
+        const withHead = new Set(blocked).add(idx(head.x, head.y));
+        for (const d of NEIGHBORS) {
+          const n = { x: head.x + d.x, y: head.y + d.y };
+          if (!inBounds(n.x, n.y) || blocked.has(idx(n.x, n.y))) continue;
+          const back = n.x === tail.x && n.y === tail.y ? [] : bfs(n, tail, withHead);
+          if (back && back.length > stallLen) {
+            stallLen = back.length;
+            stall = d;
+          }
+        }
+        if (stall) return stall;
+
+        let best = null;
+        let bestSpace = -1;
+        for (const d of NEIGHBORS) {
+          const n = { x: head.x + d.x, y: head.y + d.y };
+          if (!inBounds(n.x, n.y) || blocked.has(idx(n.x, n.y))) continue;
+          const space = reachable(n, blocked);
+          if (space > bestSpace) {
+            bestSpace = space;
+            best = d;
+          }
+        }
+        return best || dir;
+      }
+
       function step() {
-        if (dirQueue.length) dir = dirQueue.shift();
+        if (autoMode) {
+          dirQueue.length = 0;
+          dir = autoDir();
+        } else if (dirQueue.length) dir = dirQueue.shift();
         const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
         const eating = food && head.x === food.x && head.y === food.y;
         // The tail moves away this tick unless we grow
@@ -156,6 +255,7 @@
       };
 
       function turn(d) {
+        if (autoMode) return;
         const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
         if (d.x === -last.x && d.y === -last.y) return; // no reversing
         if (d.x === last.x && d.y === last.y) return;
@@ -163,6 +263,8 @@
       }
 
       window.addEventListener("keydown", (e) => {
+        // While recording, the recorder's own ESC handler also handles this
+        if (e.key === "Escape" && params.get("record") !== "true") autoMode = false;
         const d = DIRS[e.key] || DIRS[e.key.toLowerCase()];
         if (!d) return;
         e.preventDefault();
@@ -239,7 +341,7 @@
 
       // ?record=true: record just the grid (Region Capture + MediaRecorder),
       // press ESC to stop and download
-      if (new URLSearchParams(location.search).get("record") === "true") {
+      if (params.get("record") === "true") {
         startRecording();
       }
 
@@ -271,9 +373,10 @@
         recorder.start();
 
         window.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && recorder.state === "recording") {
-            recorder.stop();
-          }
+          if (e.key !== "Escape") return;
+          // In AI mode the first ESC hands control back to the player
+          if (autoMode) autoMode = false;
+          else if (recorder.state === "recording") recorder.stop();
         });
       }
     </script>
