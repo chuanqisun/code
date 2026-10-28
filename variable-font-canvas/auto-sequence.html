@@ -60,9 +60,9 @@
         let css = "";
         for (let l = 0; l < LEVELS; l++) {
           const val = l / (LEVELS - 1);
-          const wght = Math.round(100 + val * 900); // Weight: 100 to 1000
-          const wdth = Math.round(25 + val * 126); // Width: 25 to 151
-          const light = Math.round(16 + val * 84); // Lightness: 16% to 100%
+          const wght = Math.round(300 + val * 700); // Weight: 300 to 1000
+          const wdth = Math.round(50 + val * 101); // Width: 50 to 151
+          const light = Math.round(22 + val * 78); // Lightness: 22% to 100%
           css += `.l${l}{font-variation-settings:'wght' ${wght},'wdth' ${wdth};color:hsl(0,0%,${light}%)}\n`;
           LEVEL_CLASS.push(`pixel l${l}`);
         }

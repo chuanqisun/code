@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Variable Font Snake</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #0a0a0a;
+        color: #eee;
+        font-family: "Roboto Flex", sans-serif;
+        user-select: none;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(18, 33px);
+        grid-template-rows: repeat(32, 33px);
+        background: #000;
+        outline: 1px solid #222; /* outside the box: 18x32 cells = 9:16 */
+      }
+      .pixel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        line-height: 1;
+        will-change: font-variation-settings, color;
+      }
+      /* Record mode: no outline */
+      #grid.recording {
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+
+    <script>
+      const CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const COLS = 18;
+      const ROWS = 32; // 18:32 = 9:16 portrait
+      const N = COLS * ROWS;
+
+      const STEP = 110; // ms per snake move
+      const RESTART_DELAY = 2000;
+      const RISE = 0.03; // ms time constant to light up a pixel
+      const FALL = 0.03; // ms time constant to dim a pixel
+
+      const grid = document.getElementById("grid");
+      const pixels = [];
+      const ink = new Float32Array(N); // displayed intensity (0..1)
+      const target = new Float32Array(N); // intensity the pixel eases toward
+
+      function randomChar() {
+        return CHARS[Math.floor(Math.random() * CHARS.length)];
+      }
+
+      for (let i = 0; i < N; i++) {
+        const span = document.createElement("span");
+        span.className = "pixel";
+        span.textContent = randomChar();
+        grid.appendChild(span);
+        pixels.push(span);
+      }
+
+      // Set variable font axes based on "ink" intensity (0.0 to 1.0)
+      function setInk(el, val) {
+        const wght = Math.round(250 + val * 750); // Weight: 250 to 1000
+        const wdth = Math.round(25 + val * 126); // Width: 25 to 151
+        const light = Math.round(30 + val * 70); // Lightness: 16% to 100%
+
+        el.style.fontVariationSettings = `'wght' ${wght}, 'wdth' ${wdth}`;
+        el.style.color = `hsl(0, 0%, ${light}%)`;
+      }
+
+      // Game state
+      let snake; // [{x, y}], head first
+      let dir, dirQueue, food;
+      let over = false;
+      let restartAt = 0;
+      let stepAcc = 0;
+
+      const idx = (x, y) => y * COLS + x;
+
+      // Head is "s", tail is "e". Growth adds "a"s.
+      function bodyChar(i, len) {
+        if (i === 0) return "S";
+        if (i === 1) return "N";
+        if (i === len - 1) return "E";
+        if (i === len - 2) return "K";
+        return "A";
+      }
+
+      function placeFood() {
+        const taken = new Set(snake.map((p) => idx(p.x, p.y)));
+        const free = [];
+        for (let i = 0; i < N; i++) if (!taken.has(i)) free.push(i);
+        if (!free.length) return null;
+        const i = free[Math.floor(Math.random() * free.length)];
+        return { x: i % COLS, y: Math.floor(i / COLS) };
+      }
+
+      function reset() {
+        const y = Math.floor(ROWS / 2);
+        snake = [];
+        for (let i = 0; i < 5; i++) snake.push({ x: 9 - i, y });
+        dir = { x: 1, y: 0 };
+        dirQueue = [];
+        food = placeFood();
+        over = false;
+        stepAcc = 0;
+      }
+
+      function step() {
+        if (dirQueue.length) dir = dirQueue.shift();
+        const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+        const eating = food && head.x === food.x && head.y === food.y;
+        // The tail moves away this tick unless we grow
+        const body = eating ? snake : snake.slice(0, -1);
+        if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS || body.some((p) => p.x === head.x && p.y === head.y)) {
+          over = true;
+          restartAt = performance.now() + RESTART_DELAY;
+          return;
+        }
+        snake.unshift(head);
+        if (eating) {
+          food = placeFood();
+          if (!food) {
+            over = true;
+            restartAt = performance.now() + RESTART_DELAY;
+          }
+        } else {
+          snake.pop();
+        }
+      }
+
+      const DIRS = {
+        ArrowUp: { x: 0, y: -1 },
+        w: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        s: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        a: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+        d: { x: 1, y: 0 },
+      };
+
+      function turn(d) {
+        const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
+        if (d.x === -last.x && d.y === -last.y) return; // no reversing
+        if (d.x === last.x && d.y === last.y) return;
+        if (dirQueue.length < 3) dirQueue.push(d);
+      }
+
+      window.addEventListener("keydown", (e) => {
+        const d = DIRS[e.key] || DIRS[e.key.toLowerCase()];
+        if (!d) return;
+        e.preventDefault();
+        turn(d);
+      });
+
+      // Swipe support
+      let touch = null;
+      window.addEventListener("touchstart", (e) => {
+        touch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      });
+      window.addEventListener("touchend", (e) => {
+        if (!touch) return;
+        const dx = e.changedTouches[0].clientX - touch.x;
+        const dy = e.changedTouches[0].clientY - touch.y;
+        touch = null;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+        turn(Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) });
+      });
+
+      reset();
+      let lastTime = performance.now();
+
+      function animate(now) {
+        const dt = Math.min(now - lastTime, 100);
+        lastTime = now;
+
+        // Frozen on game over until the restart timer fires
+        if (over) {
+          if (now >= restartAt) reset();
+          else return requestAnimationFrame(animate);
+        } else {
+          stepAcc += dt;
+          while (stepAcc >= STEP && !over) {
+            stepAcc -= STEP;
+            step();
+          }
+        }
+
+        target.fill(0);
+        const forced = new Map(); // cell index -> fixed character
+        snake.forEach((p, i) => {
+          const c = idx(p.x, p.y);
+          target[c] = 1;
+          forced.set(c, bodyChar(i, snake.length));
+        });
+        if (food) {
+          const c = idx(food.x, food.y);
+          target[c] = 1;
+          forced.set(c, "#");
+        }
+
+        for (let i = 0; i < N; i++) {
+          const el = pixels[i];
+          const ch = forced.get(i);
+          if (ch) {
+            if (el.textContent !== ch) el.textContent = ch;
+          } else if (Math.random() < 0.04) {
+            // Every non-snake, non-food pixel keeps randomly switching
+            el.textContent = randomChar();
+          }
+
+          // Ease intensity: fast light-up, slower dim, driving the font axes
+          const k = target[i] > ink[i] ? RISE : FALL;
+          ink[i] += (target[i] - ink[i]) * (1 - Math.exp(-dt * k));
+          setInk(el, ink[i]);
+        }
+
+        requestAnimationFrame(animate);
+      }
+      document.fonts.ready.then(() => requestAnimationFrame(animate));
+
+      // ?record=true: record just the grid (Region Capture + MediaRecorder),
+      // press ESC to stop and download
+      if (new URLSearchParams(location.search).get("record") === "true") {
+        startRecording();
+      }
+
+      async function startRecording() {
+        grid.classList.add("recording");
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 60 },
+          audio: false,
+          preferCurrentTab: true,
+        });
+        const [track] = stream.getVideoTracks();
+        await track.cropTo(await CropTarget.fromElement(grid));
+
+        const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 20_000_000,
+        });
+        const chunks = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+          a.download = `recording-${Date.now()}.webm`;
+          a.click();
+          grid.classList.remove("recording");
+        };
+        recorder.start();
+
+        window.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && recorder.state === "recording") {
+            recorder.stop();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
