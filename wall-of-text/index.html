@@ -934,7 +934,20 @@
           ctx.beginPath();
           ctx.rect(ox, oy, S, S);
           ctx.clip();
-          ctx.fillText(CHARS[c], ox + S / 2 - ((m.actualBoundingBoxRight - m.actualBoundingBoxLeft) * k) / 2, oy + S / 2 + ((maxAsc - maxDesc) * k) / 2);
+          const gx = ox + S / 2 - ((m.actualBoundingBoxRight - m.actualBoundingBoxLeft) * k) / 2;
+          const gy = oy + S / 2 + ((maxAsc - maxDesc) * k) / 2;
+          ctx.fillText(CHARS[c], gx, gy);
+          if (CHARS[c] === "0") {
+            // Slashed zero, so it reads differently from O
+            const w = (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * k;
+            const x0 = gx - m.actualBoundingBoxLeft * k;
+            ctx.lineWidth = w * 0.14;
+            ctx.beginPath();
+            ctx.moveTo(x0 + w * 0.12, gy + m.actualBoundingBoxDescent * k - w * 0.05);
+            ctx.lineTo(x0 + w * 0.88, gy - m.actualBoundingBoxAscent * k + w * 0.05);
+            ctx.strokeStyle = "#fff";
+            ctx.stroke();
+          }
           ctx.restore();
         });
         return canvas;
