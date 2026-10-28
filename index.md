@@ -54,6 +54,7 @@
 
 ## Experiments Feed
 
+- [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html), Snake in Chinese characters
 - [Wall of Text](./wall-of-text/), infinite fractal canvas displaying texts
 - [Variable Font Canvas](./variable-font-canvas/), drawing with font metrics
 
