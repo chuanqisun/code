@@ -488,6 +488,10 @@
           // Highest spine level already written from the dictionary stream
           this.dictionary = new SentenceStream("dictionary.json");
           this.writtenLevel = -Infinity;
+          // Spine node the current dictionary sentence starts from, when not the focus
+          this.sequenceNode = null;
+          // Cells ([owner, index] into owner's chars) held still until the zoom center moves to other cells
+          this.frozen = [];
 
           this.#bindPointer();
           this.#bindKeys();
@@ -545,7 +549,7 @@
         #renderSuperTile(s, cx, cy, tilePx) {
           const { world, camera } = this;
           const parent = world.parentOf(s);
-          if (Math.random() < TILE_MUTATION_RATE) world.mutate(parent, s.idx);
+          if (Math.random() < TILE_MUTATION_RATE && !this.#isFrozen(parent, s.idx)) world.mutate(parent, s.idx);
 
           const ink = world.inkOf(s);
           const mix = world.kidMix(parent, s.idx);
@@ -563,7 +567,7 @@
               if (x + margin < 0 || x - margin > camera.width) continue;
 
               const idx = r * GRID + c;
-              if (Math.random() < TILE_MUTATION_RATE) world.mutate(s, idx);
+              if (Math.random() < TILE_MUTATION_RATE && !this.#isFrozen(s, idx)) world.mutate(s, idx);
               const parentInk = prevInk ? lerp(prevInk[idx], ink[idx], m) : ink[idx];
               this.#renderTile(s, idx, parentInk, x, y, tilePx);
             }
@@ -604,7 +608,7 @@
                 let subChar;
                 if (idx === tile.spineKid) subChar = world.charAt(tile.level - 1);
                 else {
-                  if (Math.random() < MOSAIC_MUTATION_RATE) subChars[idx] = randomChar();
+                  if (Math.random() < MOSAIC_MUTATION_RATE && !this.#isFrozen(tile, idx)) subChars[idx] = randomChar();
                   subChar = subChars[idx];
                 }
                 renderer.emit(subChar, ink * inkScale, sx, sy, cellPx, mosaicAlpha);
@@ -647,10 +651,8 @@
             pointers.set(e.pointerId, cur);
             this.#pauseAutoplay();
 
-            if (pointers.size === 1) {
-              this.#abortDictionary();
-              this.#panByPixels(cur.x - prev.x, cur.y - prev.y);
-            } else if (pointers.size === 2) {
+            if (pointers.size === 1) this.#panByPixels(cur.x - prev.x, cur.y - prev.y);
+            else if (pointers.size === 2) {
               const g = gesture();
               if (last?.dist > 0 && g.dist > 0) {
                 this.#panByPixels(g.mx - last.mx, g.my - last.my);
@@ -711,6 +713,7 @@
         #typeChar(charIdx) {
           const { world } = this;
           world.respine(this.focus);
+          this.sequenceNode = null;
           const next = (this.targetLevel ?? world.levelIndex) + 1;
           if (next - this.#levelPosition > TYPE_MAX_LEAD) return;
           this.targetLevel = next;
@@ -755,18 +758,15 @@
           this.#normalizePan();
         }
 
-        // Writes dictionary symbols into consecutive spine levels up to `upTo`. The stream continues
-        // while zoom-out stays contiguous with what was written; otherwise it starts fresh.
+        // Writes dictionary symbols into consecutive spine levels up to `upTo`. Zooming out always
+        // continues the current sentence; only a zoom-in fill (or a typed key) starts another.
         #feedDictionary(upTo) {
           const { world, dictionary } = this;
           const first = world.levelIndex + 2;
-          if (this.writtenLevel < first - 1) {
-            dictionary.abort();
-            this.writtenLevel = first - 1;
-          }
+          if (this.writtenLevel < first - 1) this.writtenLevel = first - 1;
           if (this.writtenLevel >= upTo || !dictionary.ready) return;
 
-          world.respine(this.focus);
+          world.respine(this.sequenceNode ?? this.focus);
           while (this.writtenLevel < upTo) world.setLevelChar(++this.writtenLevel, dictionary.next());
         }
 
@@ -774,19 +774,55 @@
         #abortDictionary() {
           this.dictionary.abort();
           this.writtenLevel = -Infinity;
+          this.sequenceNode = null;
+        }
+
+        // The zoom-center character has grown to fill the viewport: it starts a new sentence
+        #restartDictionaryAt(sx, sy) {
+          const { world, camera, dictionary } = this;
+          const superTilePx = camera.macroTilePx * GRID;
+          const [col, row] = cellOf(this.focus.idx);
+          const originX = camera.centerX + (this.panX - (col - CENTER)) * camera.macroTilePx;
+          const originY = camera.centerY + (this.panY - (row - CENTER)) * camera.macroTilePx;
+          const cell = world.neighbor(world.parentOf(this.focus), Math.round((sx - originX) / superTilePx), Math.round((sy - originY) / superTilePx));
+          if (!dictionary.seed(world.kidChar(world.parentOf(cell), cell.idx))) return this.#abortDictionary();
+          world.respine(cell);
+          this.sequenceNode = cell;
+          this.writtenLevel = cell.level;
+        }
+
+        // Pins the characters under (sx, sy): the macro tile there and the mosaic letter inside it
+        #freezeAt(sx, sy) {
+          const { world, camera, focus } = this;
+          const ux = (sx - camera.centerX) / camera.macroTilePx - this.panX;
+          const uy = (sy - camera.centerY) / camera.macroTilePx - this.panY;
+          const dx = Math.round(ux);
+          const dy = Math.round(uy);
+          const tile = world.neighbor(focus, dx, dy);
+          const sub = (u) => clamp(CENTER + Math.round(u * GRID), 0, GRID - 1);
+          this.frozen = [
+            [world.parentOf(tile), tile.idx],
+            [tile, sub(uy - dy) * GRID + sub(ux - dx)],
+          ];
+        }
+
+        #isFrozen(owner, i) {
+          return this.frozen.some(([o, j]) => o === owner && j === i);
         }
 
         // Keeps the world point under (sx, sy) fixed while zooming by `scale` (>1 = in)
         #zoomBy(scale, sx, sy) {
           const { camera } = this;
           if (scale < 1) this.#feedDictionary(Math.floor(this.#levelPosition - Math.log(scale) / Math.log(GRID)) + 3);
-          else if (scale > 1) this.#abortDictionary();
+          const level = this.world.levelIndex;
           const ax = sx - camera.centerX;
           const ay = sy - camera.centerY;
           this.#advanceTime((-Math.log(scale) / Math.log(GRID)) * CYCLE_MS);
           this.panX += (ax * (1 - scale)) / camera.macroTilePx;
           this.panY += (ay * (1 - scale)) / camera.macroTilePx;
           this.#normalizePan();
+          this.#freezeAt(sx, sy);
+          if (scale > 1 && this.world.levelIndex < level) this.#restartDictionaryAt(sx, sy);
         }
 
         #advanceTime(deltaMs) {
