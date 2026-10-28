@@ -485,6 +485,10 @@
           this.resumeAutoplayAt = 0;
           this.lastFrameTime = performance.now();
 
+          // Highest spine level already written from the dictionary stream
+          this.dictionary = new SentenceStream("dictionary.json");
+          this.writtenLevel = -Infinity;
+
           this.#bindPointer();
           this.#bindKeys();
           window.addEventListener("resize", () => this.#resize());
@@ -643,8 +647,10 @@
             pointers.set(e.pointerId, cur);
             this.#pauseAutoplay();
 
-            if (pointers.size === 1) this.#panByPixels(cur.x - prev.x, cur.y - prev.y);
-            else if (pointers.size === 2) {
+            if (pointers.size === 1) {
+              this.#abortDictionary();
+              this.#panByPixels(cur.x - prev.x, cur.y - prev.y);
+            } else if (pointers.size === 2) {
               const g = gesture();
               if (last?.dist > 0 && g.dist > 0) {
                 this.#panByPixels(g.mx - last.mx, g.my - last.my);
@@ -709,6 +715,10 @@
           if (next - this.#levelPosition > TYPE_MAX_LEAD) return;
           this.targetLevel = next;
           world.setLevelChar(next + 1, charIdx);
+
+          // The typed key seeds the dictionary sentence starting with it; zooming out continues it
+          if (this.dictionary.seed(charIdx)) this.writtenLevel = next + 1;
+          else this.#abortDictionary();
           this.#pauseAutoplay();
         }
 
@@ -745,9 +755,32 @@
           this.#normalizePan();
         }
 
+        // Writes dictionary symbols into consecutive spine levels up to `upTo`. The stream continues
+        // while zoom-out stays contiguous with what was written; otherwise it starts fresh.
+        #feedDictionary(upTo) {
+          const { world, dictionary } = this;
+          const first = world.levelIndex + 2;
+          if (this.writtenLevel < first - 1) {
+            dictionary.abort();
+            this.writtenLevel = first - 1;
+          }
+          if (this.writtenLevel >= upTo || !dictionary.ready) return;
+
+          world.respine(this.focus);
+          while (this.writtenLevel < upTo) world.setLevelChar(++this.writtenLevel, dictionary.next());
+        }
+
+        // The user left the displayed sentence: drop it so the next one is drawn fresh
+        #abortDictionary() {
+          this.dictionary.abort();
+          this.writtenLevel = -Infinity;
+        }
+
         // Keeps the world point under (sx, sy) fixed while zooming by `scale` (>1 = in)
         #zoomBy(scale, sx, sy) {
           const { camera } = this;
+          if (scale < 1) this.#feedDictionary(Math.floor(this.#levelPosition - Math.log(scale) / Math.log(GRID)) + 3);
+          else if (scale > 1) this.#abortDictionary();
           const ax = sx - camera.centerX;
           const ay = sy - camera.centerY;
           this.#advanceTime((-Math.log(scale) / Math.log(GRID)) * CYCLE_MS);
@@ -778,6 +811,61 @@
           }
           this.camera.updateProgress(this.elapsedMs / CYCLE_MS);
           this.#normalizePan();
+        }
+      }
+
+      // Endless supply of CHARS symbols read from a { initial: sentence } dictionary. Characters
+      // outside CHARS (spaces, punctuation) are dropped. Knows nothing about the world or camera.
+      class SentenceStream {
+        #sentences = [];
+        #byInitial = new Map();
+        #current = null;
+        #pos = 0;
+        #last = -1;
+
+        constructor(url) {
+          fetch(url)
+            .then((res) => res.json())
+            .then((dict) => {
+              const toSymbols = (text) => [...text.toUpperCase()].map((ch) => CHARS.indexOf(ch)).filter((c) => c >= 0);
+              this.#sentences = Object.values(dict).map(toSymbols).filter((s) => s.length);
+              this.#byInitial = new Map(this.#sentences.map((s, i) => [s[0], i]));
+            })
+            .catch(() => {});
+        }
+
+        get ready() {
+          return this.#sentences.length > 0;
+        }
+
+        // Forget the current sentence; the next symbol comes from a fresh random one
+        abort() {
+          this.#current = null;
+        }
+
+        // Continue with the sentence starting with `symbol` (already consumed); false if none
+        seed(symbol) {
+          const i = this.#byInitial.get(symbol);
+          if (i === undefined) return false;
+          this.#start(i);
+          this.#pos = 1;
+          return true;
+        }
+
+        next() {
+          if (!this.#current || this.#pos >= this.#current.length) {
+            let i;
+            do i = (Math.random() * this.#sentences.length) | 0;
+            while (i === this.#last && this.#sentences.length > 1);
+            this.#start(i);
+          }
+          return this.#current[this.#pos++];
+        }
+
+        #start(i) {
+          this.#last = i;
+          this.#current = this.#sentences[i];
+          this.#pos = 0;
         }
       }
 
