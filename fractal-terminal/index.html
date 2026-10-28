@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <title>Wall of Text</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧱</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💠</text></svg>" />
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght,GRAD@8..144,25..151,100..1000,-200..150&display=swap" rel="stylesheet" />
     <style>
       :root {
@@ -892,8 +892,18 @@
           fetch(url)
             .then((res) => res.json())
             .then((dict) => {
-              const toSymbols = (text) => [...text.toUpperCase().replace(/['’]/g, "").replace(/[–—]/g, "-").replace(/[^0-9A-Z,.!?:;-]+/g, " ").trim()].map((ch) => CHARS.indexOf(ch));
-              this.#sentences = Object.values(dict).map(toSymbols).filter((s) => s.length);
+              const toSymbols = (text) =>
+                [
+                  ...text
+                    .toUpperCase()
+                    .replace(/['’]/g, "")
+                    .replace(/[–—]/g, "-")
+                    .replace(/[^0-9A-Z,.!?:;-]+/g, " ")
+                    .trim(),
+                ].map((ch) => CHARS.indexOf(ch));
+              this.#sentences = Object.values(dict)
+                .map(toSymbols)
+                .filter((s) => s.length);
               this.#byInitial = new Map(this.#sentences.map((s, i) => [s[0], i]));
             })
             .catch(() => {});
