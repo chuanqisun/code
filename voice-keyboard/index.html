@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chording Vocal Tract Prototype</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        user-select: none;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        background: #0d0d0d;
+        color: #e0e0e0;
+        font-family: monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      #char {
+        font-size: 7rem;
+        font-weight: bold;
+        height: 8.5rem;
+        line-height: 8.5rem;
+        letter-spacing: -0.03em;
+        transition:
+          transform 0.04s ease-out,
+          color 0.04s;
+      }
+      #phoneme {
+        font-size: 1rem;
+        color: #666;
+        height: 1.5rem;
+        letter-spacing: 0.08em;
+      }
+      #hint {
+        position: fixed;
+        bottom: 24px;
+        color: #383838;
+        font-size: 0.75rem;
+        text-align: center;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="char">_</div>
+    <div id="phoneme">type or chord keys (strictly preserves input order)</div>
+    <div id="hint">f+a → "fa" • a+f → "af" • hold to sustain</div>
+
+    <script>
+      // Dry, Noise-Free Phoneme Database
+      const PHONEMES = {
+        // Vowels (Zero noise for clean tone)
+        a: { type: "V", ipa: "ɑ", f: [730, 1090, 2440], bw: [130, 150, 220], v: 1.0, n: 0.0, nf: 1500, dur: 0 },
+        e: { type: "V", ipa: "ɛ", f: [530, 1840, 2480], bw: [110, 150, 220], v: 1.0, n: 0.0, nf: 2000, dur: 0 },
+        i: { type: "V", ipa: "i", f: [270, 2290, 3010], bw: [100, 150, 220], v: 1.0, n: 0.0, nf: 2800, dur: 0 },
+        o: { type: "V", ipa: "o", f: [450, 800, 2600], bw: [110, 140, 220], v: 1.0, n: 0.0, nf: 1000, dur: 0 },
+        u: { type: "V", ipa: "u", f: [300, 870, 2240], bw: [100, 140, 220], v: 1.0, n: 0.0, nf: 900, dur: 0 },
+
+        // Glides & Liquids
+        y: { type: "G", ipa: "j", f: [280, 2150, 2900], bw: [110, 160, 240], v: 0.9, n: 0.0, nf: 2600, dur: 55 },
+        w: { type: "G", ipa: "w", f: [310, 650, 2200], bw: [110, 140, 220], v: 0.9, n: 0.0, nf: 800, dur: 55 },
+        r: { type: "G", ipa: "ɹ", f: [420, 1300, 1600], bw: [120, 160, 220], v: 0.9, n: 0.0, nf: 1500, dur: 60 },
+        l: { type: "G", ipa: "l", f: [380, 1100, 2700], bw: [120, 160, 240], v: 0.9, n: 0.0, nf: 1400, dur: 60 },
+
+        // Nasals
+        m: { type: "N", ipa: "m", f: [260, 1000, 2100], bw: [160, 220, 300], v: 0.85, n: 0.0, nf: 500, dur: 65 },
+        n: { type: "N", ipa: "n", f: [280, 1450, 2300], bw: [160, 220, 300], v: 0.85, n: 0.0, nf: 700, dur: 65 },
+
+        // Voiced Fricatives & Affricates
+        z: { type: "F", ipa: "z", f: [320, 1600, 2600], bw: [150, 200, 280], v: 0.65, n: 0.18, nf: 5200, dur: 65 },
+        v: { type: "F", ipa: "v", f: [320, 1100, 2300], bw: [150, 200, 280], v: 0.65, n: 0.12, nf: 2400, dur: 60 },
+        j: { type: "P", ipa: "dʒ", f: [350, 1850, 2650], bw: [140, 180, 250], v: 0.75, n: 0.22, nf: 3200, dur: 60, plosive: true },
+
+        // Unvoiced Fricatives
+        s: { type: "F", ipa: "s", f: [400, 1800, 2800], bw: [250, 250, 350], v: 0.0, n: 0.25, nf: 5800, dur: 70 },
+        f: { type: "F", ipa: "f", f: [400, 1300, 2400], bw: [250, 250, 350], v: 0.0, n: 0.16, nf: 2400, dur: 65 },
+        h: { type: "F", ipa: "h", f: [650, 1350, 2450], bw: [220, 250, 300], v: 0.05, n: 0.16, nf: 1500, dur: 50 },
+        x: { type: "F", ipa: "ks", f: [400, 1800, 2700], bw: [200, 220, 300], v: 0.0, n: 0.28, nf: 5200, dur: 75 },
+
+        // Voiced Plosives
+        b: { type: "P", ipa: "b", f: [380, 1050, 2300], bw: [130, 160, 220], v: 0.85, n: 0.1, nf: 900, dur: 42, plosive: true },
+        d: { type: "P", ipa: "d", f: [380, 1650, 2550], bw: [130, 160, 220], v: 0.85, n: 0.12, nf: 2800, dur: 42, plosive: true },
+        g: { type: "P", ipa: "g", f: [380, 1550, 2100], bw: [130, 160, 220], v: 0.85, n: 0.12, nf: 1800, dur: 42, plosive: true },
+
+        // Unvoiced Plosives
+        p: { type: "P", ipa: "p", f: [450, 1100, 2300], bw: [150, 180, 240], v: 0.1, n: 0.22, nf: 1000, dur: 45, plosive: true },
+        t: { type: "P", ipa: "t", f: [450, 1750, 2600], bw: [150, 180, 240], v: 0.1, n: 0.28, nf: 4000, dur: 45, plosive: true },
+        k: { type: "P", ipa: "k", f: [450, 1500, 2200], bw: [150, 180, 240], v: 0.1, n: 0.25, nf: 2100, dur: 50, plosive: true },
+        c: { type: "P", ipa: "k", f: [450, 1500, 2200], bw: [150, 180, 240], v: 0.1, n: 0.25, nf: 2100, dur: 50, plosive: true },
+        q: { type: "P", ipa: "kw", f: [350, 800, 2200], bw: [140, 170, 220], v: 0.45, n: 0.22, nf: 1300, dur: 60, plosive: true },
+
+        // Sequential Digraphs (only matched when typed in exact adjacent order)
+        sh: { type: "F", ipa: "ʃ", f: [380, 1850, 2500], bw: [200, 220, 280], v: 0.0, n: 0.24, nf: 2900, dur: 70 },
+        ch: { type: "P", ipa: "tʃ", f: [380, 1850, 2550], bw: [180, 200, 260], v: 0.05, n: 0.28, nf: 3200, dur: 60, plosive: true },
+        th: { type: "F", ipa: "ð", f: [360, 1450, 2500], bw: [180, 220, 280], v: 0.65, n: 0.1, nf: 3800, dur: 60 },
+        ph: { type: "F", ipa: "f", f: [400, 1300, 2400], bw: [250, 250, 350], v: 0.0, n: 0.16, nf: 2400, dur: 65 },
+        ng: { type: "N", ipa: "ŋ", f: [280, 1150, 2100], bw: [160, 220, 300], v: 0.85, n: 0.0, nf: 600, dur: 65 },
+        wh: { type: "G", ipa: "ʍ", f: [310, 650, 2200], bw: [140, 170, 220], v: 0.65, n: 0.1, nf: 900, dur: 55 },
+        qu: { type: "P", ipa: "kw", f: [320, 750, 2200], bw: [140, 170, 220], v: 0.7, n: 0.18, nf: 1200, dur: 60, plosive: true },
+      };
+
+      const SCHWA = { type: "V", ipa: "ə", f: [500, 1500, 2500], bw: [140, 160, 220], v: 0.8, n: 0.0, nf: 1500, dur: 55 };
+
+      class ChordingVocalTract {
+        constructor() {
+          this.ctx = null;
+          // JS Map preserves insertion order, guaranteeing strict chronological input order
+          this.pressedMap = new Map();
+          this.sequenceTimers = [];
+          this.chordDebounce = null;
+          this.basePitch = 125;
+        }
+
+        init() {
+          if (this.ctx) {
+            if (this.ctx.state === "suspended") this.ctx.resume();
+            return;
+          }
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx({ latencyHint: "interactive" });
+
+          // Strict Master Gate: 0.0 when idle
+          this.masterGate = this.ctx.createGain();
+          this.masterGate.gain.value = 0.0;
+          this.masterGate.connect(this.ctx.destination);
+
+          // Glottal Source
+          this.glottis = this.ctx.createOscillator();
+          this.glottis.type = "sawtooth";
+          this.glottis.frequency.value = this.basePitch;
+
+          this.subOsc = this.ctx.createOscillator();
+          this.subOsc.type = "triangle";
+          this.subOsc.frequency.value = this.basePitch;
+
+          // Subtle Vibrato
+          this.vibrato = this.ctx.createOscillator();
+          this.vibrato.frequency.value = 5.5;
+          this.vibratoGain = this.ctx.createGain();
+          this.vibratoGain.gain.value = 2.2;
+          this.vibrato.connect(this.vibratoGain);
+          this.vibratoGain.connect(this.glottis.frequency);
+          this.vibratoGain.connect(this.subOsc.frequency);
+
+          // Warm spectral tilt
+          this.glottalTilt = this.ctx.createBiquadFilter();
+          this.glottalTilt.type = "lowpass";
+          this.glottalTilt.frequency.value = 1400;
+
+          this.voiceGain = this.ctx.createGain();
+          this.voiceGain.gain.value = 0.0;
+
+          this.glottis.connect(this.glottalTilt);
+          this.subOsc.connect(this.glottalTilt);
+          this.glottalTilt.connect(this.voiceGain);
+
+          // White Noise Generator
+          const bufSize = this.ctx.sampleRate * 2;
+          const noiseBuf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+          const data = noiseBuf.getChannelData(0);
+          for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+          this.noise = this.ctx.createBufferSource();
+          this.noise.buffer = noiseBuf;
+          this.noise.loop = true;
+
+          // Parallel Formant Filter Bank (F1, F2, F3)
+          this.formants = [0, 1, 2].map((idx) => {
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = "bandpass";
+            const gain = this.ctx.createGain();
+            gain.gain.value = [1.0, 0.5, 0.2][idx];
+
+            this.voiceGain.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.masterGate);
+            return filter;
+          });
+
+          // Fricative / Consonant Burst Tract
+          this.fricFilter = this.ctx.createBiquadFilter();
+          this.fricFilter.type = "bandpass";
+          this.fricFilter.Q.value = 2.0;
+
+          this.fricGain = this.ctx.createGain();
+          this.fricGain.gain.value = 0.0;
+
+          this.noise.connect(this.fricFilter);
+          this.fricFilter.connect(this.fricGain);
+          this.fricGain.connect(this.masterGate);
+
+          this.glottis.start();
+          this.subOsc.start();
+          this.vibrato.start();
+          this.noise.start();
+        }
+
+        clearTimers() {
+          while (this.sequenceTimers.length) clearTimeout(this.sequenceTimers.pop());
+        }
+
+        // Strictly preserves exact chronological order of pressed keys
+        buildSyllable() {
+          const items = Array.from(this.pressedMap.values());
+          if (items.length === 0) return null;
+
+          const isUpper = items.some((x) => x.key !== x.key.toLowerCase() && x.key.length === 1);
+          const pitchMult = isUpper ? 1.32 : 1.0;
+
+          // Build tokens strictly in the order the user pressed them
+          const orderedTokens = [];
+          for (let i = 0; i < items.length; i++) {
+            const c1 = items[i].key.toLowerCase();
+            const c2 = i + 1 < items.length ? items[i + 1].key.toLowerCase() : "";
+            const pair = c1 + c2;
+
+            // Only merge digraph if the two keys were pressed consecutively in exact order (e.g. 's' then 'h')
+            if (c2 && PHONEMES[pair]) {
+              orderedTokens.push({
+                str: pair,
+                phoneme: { ...PHONEMES[pair], pitch: this.basePitch * pitchMult },
+              });
+              i++; // Skip the second character of the digraph
+            } else if (PHONEMES[c1]) {
+              orderedTokens.push({
+                str: c1,
+                phoneme: { ...PHONEMES[c1], pitch: this.basePitch * pitchMult },
+              });
+            } else {
+              const sp = this.resolveSpecialKey(items[i].key);
+              orderedTokens.push({
+                str: items[i].key === " " ? "␣" : items[i].key,
+                phoneme: sp,
+              });
+            }
+          }
+
+          // Convert ordered tokens into a timed phoneme execution queue
+          const queue = orderedTokens.map((t, idx) => {
+            const isLast = idx === orderedTokens.length - 1;
+            const p = { ...t.phoneme };
+
+            if (p.type === "V") {
+              // If vowel is followed by another phoneme (e.g. "a" then "f" -> "af"), play vowel for 95ms then transition to "f"
+              p.dur = isLast ? 0 : 95;
+            } else if (isLast && !p.plosive && p.dur === 0) {
+              p.dur = 0;
+            } else if (isLast && !p.plosive && p.type) {
+              // Sustain final continuant consonant (e.g. "a+f" sustains the "f" slightly or until release)
+              p.dur = 120;
+            }
+            return p;
+          });
+
+          // If the sequence ends on a plosive (e.g., "b" or "a+t"), add a crisp schwa release so the final plosive is audible
+          const lastPhoneme = queue[queue.length - 1];
+          if (lastPhoneme && lastPhoneme.plosive) {
+            queue.push({ ...SCHWA, pitch: this.basePitch * pitchMult });
+          }
+
+          const displayText = orderedTokens.map((t) => t.str).join("");
+          const displayIpa = "/" + queue.map((p) => p.ipa).join("") + "/";
+
+          return {
+            text: isUpper ? displayText.toUpperCase() : displayText,
+            ipa: displayIpa,
+            queue,
+          };
+        }
+
+        resolveSpecialKey(key) {
+          if (/^[0-9]$/.test(key)) {
+            const n = key === "0" ? 9 : parseInt(key, 10) - 1;
+            const semitones = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16][n];
+            const v = PHONEMES[["a", "o", "e", "i", "u"][n % 5]];
+            return { ...v, ipa: `♪${key}`, pitch: this.basePitch * Math.pow(2, semitones / 12) };
+          }
+          if (key === " ") return { ipa: "breath", f: [500, 1500, 2500], bw: [250, 250, 300], v: 0.0, n: 0.12, nf: 1100, dur: 70 };
+          if (key === "?") return { ...PHONEMES["a"], ipa: "ɑ↗", pitch: this.basePitch * 0.9, pitchSlide: this.basePitch * 1.65, dur: 200 };
+          if (key === "!") return { ...PHONEMES["a"], ipa: "ɑ!", pitch: this.basePitch * 1.6, pitchSlide: this.basePitch * 1.1, dur: 160 };
+
+          let hash = 0;
+          for (let i = 0; i < key.length; i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
+          return {
+            ipa: "ə",
+            f: [320 + (Math.abs(hash) % 400), 950 + (Math.abs(hash >> 4) % 1300), 2500],
+            bw: [140, 160, 220],
+            v: 0.75,
+            n: 0.0,
+            nf: 1800,
+            dur: 85,
+          };
+        }
+
+        articulatePhoneme(p, isTransition = false) {
+          const now = this.ctx.currentTime;
+          const rampTime = isTransition ? 0.03 : 0.012;
+
+          // Open the master gate
+          this.masterGate.gain.cancelScheduledValues(now);
+          this.masterGate.gain.setValueAtTime(this.masterGate.gain.value, now);
+          this.masterGate.gain.linearRampToValueAtTime(0.9, now + 0.008);
+
+          const targetPitch = p.pitch || this.basePitch + (Math.random() * 3 - 1.5);
+          this.glottis.frequency.cancelScheduledValues(now);
+          this.subOsc.frequency.cancelScheduledValues(now);
+          this.glottis.frequency.setValueAtTime(this.glottis.frequency.value, now);
+          this.subOsc.frequency.setValueAtTime(this.subOsc.frequency.value, now);
+          this.glottis.frequency.linearRampToValueAtTime(targetPitch, now + 0.015);
+          this.subOsc.frequency.linearRampToValueAtTime(targetPitch, now + 0.015);
+
+          if (p.pitchSlide) {
+            this.glottis.frequency.linearRampToValueAtTime(p.pitchSlide, now + 0.16);
+            this.subOsc.frequency.linearRampToValueAtTime(p.pitchSlide, now + 0.16);
+          }
+
+          // Formant Frequencies & Damped Q
+          for (let i = 0; i < 3; i++) {
+            const freq = p.f[i];
+            const q = Math.min(8, freq / p.bw[i]);
+            this.formants[i].frequency.cancelScheduledValues(now);
+            this.formants[i].Q.cancelScheduledValues(now);
+
+            if (p.plosive && !isTransition) {
+              this.formants[i].frequency.setValueAtTime(freq * 0.7, now);
+              this.formants[i].frequency.linearRampToValueAtTime(freq, now + 0.025);
+            } else {
+              this.formants[i].frequency.setValueAtTime(this.formants[i].frequency.value, now);
+              this.formants[i].frequency.linearRampToValueAtTime(freq, now + rampTime);
+            }
+            this.formants[i].Q.setValueAtTime(q, now);
+          }
+
+          this.fricFilter.frequency.setValueAtTime(p.nf, now);
+
+          // Tight, dry amplitude envelopes
+          this.voiceGain.gain.cancelScheduledValues(now);
+          this.fricGain.gain.cancelScheduledValues(now);
+          this.voiceGain.gain.setValueAtTime(this.voiceGain.gain.value, now);
+          this.fricGain.gain.setValueAtTime(this.fricGain.gain.value, now);
+
+          if (p.plosive) {
+            this.fricGain.gain.linearRampToValueAtTime(p.n, now + 0.004);
+            this.fricGain.gain.linearRampToValueAtTime(0.0, now + 0.035);
+            this.voiceGain.gain.linearRampToValueAtTime(p.v, now + 0.015);
+          } else {
+            this.voiceGain.gain.linearRampToValueAtTime(p.v, now + 0.012);
+            this.fricGain.gain.linearRampToValueAtTime(p.n, now + 0.012);
+          }
+        }
+
+        triggerChord(onUpdateUI) {
+          this.init();
+          this.clearTimers();
+
+          const syllable = this.buildSyllable();
+          if (!syllable) return;
+
+          onUpdateUI(syllable.text, syllable.ipa);
+
+          let elapsed = 0;
+          syllable.queue.forEach((phoneme, idx) => {
+            if (idx === 0) {
+              this.articulatePhoneme(phoneme, false);
+            } else {
+              const t = setTimeout(() => {
+                this.articulatePhoneme(phoneme, true);
+              }, elapsed);
+              this.sequenceTimers.push(t);
+            }
+
+            if (phoneme.dur > 0) {
+              elapsed += phoneme.dur;
+              if (idx === syllable.queue.length - 1) {
+                const stopT = setTimeout(() => this.release(), elapsed);
+                this.sequenceTimers.push(stopT);
+              }
+            }
+          });
+        }
+
+        release() {
+          if (!this.ctx) return;
+          this.clearTimers();
+          const now = this.ctx.currentTime;
+
+          this.voiceGain.gain.cancelScheduledValues(now);
+          this.voiceGain.gain.setValueAtTime(this.voiceGain.gain.value, now);
+          this.voiceGain.gain.linearRampToValueAtTime(0.0, now + 0.018);
+
+          this.fricGain.gain.cancelScheduledValues(now);
+          this.fricGain.gain.setValueAtTime(this.fricGain.gain.value, now);
+          this.fricGain.gain.linearRampToValueAtTime(0.0, now + 0.015);
+
+          this.masterGate.gain.cancelScheduledValues(now);
+          this.masterGate.gain.setValueAtTime(this.masterGate.gain.value, now);
+          this.masterGate.gain.linearRampToValueAtTime(0.0, now + 0.02);
+        }
+      }
+
+      const synth = new ChordingVocalTract();
+      const charEl = document.getElementById("char");
+      const phonemeEl = document.getElementById("phoneme");
+
+      function updateUI(text, ipa) {
+        charEl.textContent = text;
+        charEl.style.transform = "scale(1.1)";
+        charEl.style.color = "#fff";
+        phonemeEl.textContent = ipa;
+      }
+
+      window.addEventListener("keydown", (e) => {
+        if (!e.metaKey && !e.ctrlKey && e.key !== "F5" && e.key !== "F12") {
+          e.preventDefault();
+        }
+        if (e.repeat) return;
+        if (e.key === "Shift" || e.key === "Control" || e.key === "Alt" || e.key === "Meta") return;
+
+        // Record key in exact chronological press order
+        synth.pressedMap.set(e.code, { key: e.key, time: performance.now() });
+        synth.triggerChord(updateUI);
+      });
+
+      window.addEventListener("keyup", (e) => {
+        synth.pressedMap.delete(e.code);
+        if (synth.pressedMap.size === 0) {
+          synth.release();
+          charEl.style.transform = "scale(1)";
+          charEl.style.color = "#555";
+        }
+      });
+
+      window.addEventListener("blur", () => {
+        synth.pressedMap.clear();
+        synth.release();
+      });
+    </script>
+  </body>
+</html>
