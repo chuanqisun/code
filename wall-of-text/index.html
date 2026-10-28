@@ -940,12 +940,18 @@
           if (CHARS[c] === "0") {
             // Slashed zero, so it reads differently from O
             const w = (m.actualBoundingBoxLeft + m.actualBoundingBoxRight) * k;
+            const h = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) * k;
             const x0 = gx - m.actualBoundingBoxLeft * k;
-            ctx.lineWidth = w * 0.14;
+            const y0 = gy - m.actualBoundingBoxAscent * k;
+            // Clipped to the ellipse inscribed in the glyph box so the slash never leaves the 0
             ctx.beginPath();
-            ctx.moveTo(x0 + w * 0.12, gy + m.actualBoundingBoxDescent * k - w * 0.05);
-            ctx.lineTo(x0 + w * 0.88, gy - m.actualBoundingBoxAscent * k + w * 0.05);
+            ctx.ellipse(x0 + w / 2, y0 + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+            ctx.clip();
+            ctx.lineWidth = w * 0.14;
             ctx.strokeStyle = "#fff";
+            ctx.beginPath();
+            ctx.moveTo(x0 + w * 0.22, y0 + h * 0.8);
+            ctx.lineTo(x0 + w * 0.78, y0 + h * 0.2);
             ctx.stroke();
           }
           ctx.restore();
