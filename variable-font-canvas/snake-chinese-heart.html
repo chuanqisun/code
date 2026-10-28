@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Variable Font Snake 贪吃蛇</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@100..900&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: #0a0a0a;
+        color: #eee;
+        font-family: "Noto Sans SC", sans-serif;
+        user-select: none;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(9, 66px);
+        grid-template-rows: repeat(16, 66px);
+        background: #000;
+        outline: 1px solid #222; /* outside the box: 9x16 cells = 9:16 */
+      }
+      .pixel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 62px;
+        line-height: 1;
+        will-change: font-variation-settings, color;
+      }
+      /* Record mode: no outline */
+      #grid.recording {
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+
+    <script>
+      // Nature / environment characters for the inactive pixels
+      const CHARS = "草石水树土山林木花叶云风雨雪火沙江河湖海田泥藤竹松岩泉露霜雾";
+      // Snake food (never used in CHARS): bug, frog, egg, bird, mouse, fish, snail, ant
+      const FOODS = "虫蛙蛋鸟鼠鱼蜗蚁";
+      const randomFood = () => FOODS[Math.floor(Math.random() * FOODS.length)];
+      const COLS = 9;
+      const ROWS = 16; // 9:16 portrait
+      const N = COLS * ROWS;
+
+      const STEP = 90; // ms per snake move
+      const RESTART_DELAY = 2000;
+      const HEART_HOLD = 5000; // how long the heart stays after the snake dies
+      const RISE = 0.03; // ms time constant to light up a pixel
+      const FALL = 0.03; // ms time constant to dim a pixel
+
+      const grid = document.getElementById("grid");
+      const pixels = [];
+      const ink = new Float32Array(N); // displayed intensity (0..1)
+      const target = new Float32Array(N); // intensity the pixel eases toward
+
+      function randomChar() {
+        return CHARS[Math.floor(Math.random() * CHARS.length)];
+      }
+
+      for (let i = 0; i < N; i++) {
+        const span = document.createElement("span");
+        span.className = "pixel";
+        span.textContent = randomChar();
+        grid.appendChild(span);
+        pixels.push(span);
+      }
+
+      // Set variable font axes based on "ink" intensity (0.0 to 1.0)
+      function setInk(el, val, red) {
+        const wght = Math.round(400 + val * 500); // Weight: 400 to 900, glyph box stays full-size
+        const light = Math.round(30 + val * 70); // Lightness: 16% to 100%
+
+        el.style.fontVariationSettings = `'wght' ${wght}`;
+        el.style.color = red ? `hsl(0, 90%, ${Math.round(light * 0.6)}%)` : `hsl(0, 0%, ${light}%)`;
+      }
+
+      // Game state
+      let snake; // [{x, y}], head first
+      let dir, dirQueue, food;
+      let over = false;
+      let restartAt = 0;
+      let stepAcc = 0;
+      let plan; // queued cells of the heart suicide run, or null
+      let heartDeath = false;
+
+      const idx = (x, y) => y * COLS + x;
+
+      // 头 head, 尾 tail, and in between the eaten food characters. The snake is a
+      // fixed string indexed along its length, so eaten characters travel with it.
+      let bodyChars; // characters between head and tail, head side first
+      function bodyChar(i, len) {
+        if (heartDeath) return i % 2 ? "蛇" : "死"; // 死蛇死蛇…
+        if (i === 0) return "头";
+        if (i === len - 1) return "尾";
+        return bodyChars[i - 1];
+      }
+
+      function placeFood() {
+        const taken = new Set(snake.map((p) => idx(p.x, p.y)));
+        const free = [];
+        for (let i = 0; i < N; i++) if (!taken.has(i)) free.push(i);
+        if (!free.length) return null;
+        const i = free[Math.floor(Math.random() * free.length)];
+        return { x: i % COLS, y: Math.floor(i / COLS), ch: randomFood() };
+      }
+
+      // Closed 4-connected outline of a heart (x, y relative to its top-left corner)
+      const HEART = [
+        [1, 0], [2, 0], [3, 0], [3, 1], [4, 1], [5, 1], [5, 0], [6, 0], [7, 0],
+        [7, 1], [8, 1], [8, 2], [8, 3], [8, 4],
+        [7, 4], [7, 5], [6, 5], [6, 6], [5, 6], [5, 7], [4, 7],
+        [3, 7], [3, 6], [2, 6], [2, 5], [1, 5], [1, 4], [0, 4],
+        [0, 3], [0, 2], [0, 1], [1, 1],
+      ];
+      const HEART_LEN = HEART.length; // snake length at which it takes its own life
+      const HEART_Y = Math.floor((ROWS - 8) / 2);
+      const heartCells = HEART.map(([x, y]) => ({ x, y: y + HEART_Y }));
+
+      // One short of a full heart: the last food sits on the outline, and eating it
+      // closes the heart and kills the snake
+      const heartMode = () => autoMode && snake.length === HEART_LEN - 1;
+
+      function tryHeartPlan() {
+        plan = planHeart();
+        if (!plan) return;
+        const last = plan[plan.length - 1];
+        food = { x: last.x, y: last.y, ch: food ? food.ch : randomFood() };
+      }
+
+      // Route that ends with the whole snake lying on the heart outline, or null.
+      // Enter the outline at some cell, walk all the way around it; the body
+      // trails behind and ends up exactly covering the outline.
+      function planHeart() {
+        const len = snake.length; // HEART_LEN - 1; the final step eats the last cell
+        const head = snake[0];
+        const heartSet = new Set(heartCells.map((p) => idx(p.x, p.y)));
+        const bodyIdx = new Map(snake.map((p, i) => [idx(p.x, p.y), i]));
+        const solid = new Set(snake.slice(0, -1).map((p) => idx(p.x, p.y)));
+        let best = null;
+        for (let e = 0; e < HEART_LEN; e++) {
+          const entry = heartCells[e];
+          const blocked = new Set(solid);
+          for (const c of heartSet) if (c !== idx(entry.x, entry.y)) blocked.add(c);
+          blocked.delete(idx(head.x, head.y));
+          const route = head.x === entry.x && head.y === entry.y ? [] : bfs(head, entry, blocked);
+          if (!route) continue;
+          for (const d of [1, -1]) {
+            const loop = [];
+            for (let j = 0; j < HEART_LEN; j++) loop.push(heartCells[(e + d * j + HEART_LEN) % HEART_LEN]);
+            // A body cell is only free again once the tail has moved past it
+            const clear = loop.every((p, j) => {
+              const i = bodyIdx.get(idx(p.x, p.y));
+              return i === undefined || route.length + j >= len - i;
+            });
+            if (!clear) continue;
+            const full = route.concat(loop.slice(1)); // route already ends on the entry cell
+            if (!best || full.length < best.length) best = full;
+          }
+        }
+        return best;
+      }
+
+      function reset() {
+        const y = Math.floor(ROWS / 2);
+        snake = [];
+        for (let i = 0; i < 3; i++) snake.push({ x: COLS - 4 + i, y });
+        bodyChars = ["蛇"];
+        dir = { x: -1, y: 0 };
+        dirQueue = [];
+        food = placeFood();
+        over = false;
+        stepAcc = 0;
+        plan = null;
+        heartDeath = false;
+      }
+
+      // ?auto=true: an AI drives the snake until ESC is pressed
+      const params = new URLSearchParams(location.search);
+      let autoMode = params.get("auto") === "true";
+
+      const inBounds = (x, y) => x >= 0 && x < COLS && y >= 0 && y < ROWS;
+      const NEIGHBORS = [
+        { x: 1, y: 0 },
+        { x: -1, y: 0 },
+        { x: 0, y: 1 },
+        { x: 0, y: -1 },
+      ];
+
+      // Shortest path from `from` to `to` (excluding `from`, including `to`)
+      // that avoids `blocked` cell indices, or null
+      function bfs(from, to, blocked) {
+        const prev = new Map([[idx(from.x, from.y), null]]);
+        const queue = [from];
+        for (let qi = 0; qi < queue.length; qi++) {
+          const p = queue[qi];
+          if (p.x === to.x && p.y === to.y) {
+            const path = [];
+            for (let c = p; prev.get(idx(c.x, c.y)); c = prev.get(idx(c.x, c.y))) path.push(c);
+            return path.reverse();
+          }
+          for (const d of NEIGHBORS) {
+            const n = { x: p.x + d.x, y: p.y + d.y };
+            const i = idx(n.x, n.y);
+            if (!inBounds(n.x, n.y) || prev.has(i) || blocked.has(i)) continue;
+            prev.set(i, p);
+            queue.push(n);
+          }
+        }
+        return null;
+      }
+
+      function reachable(from, blocked) {
+        const seen = new Set([idx(from.x, from.y)]);
+        const queue = [from];
+        for (let qi = 0; qi < queue.length; qi++) {
+          for (const d of NEIGHBORS) {
+            const n = { x: queue[qi].x + d.x, y: queue[qi].y + d.y };
+            const i = idx(n.x, n.y);
+            if (!inBounds(n.x, n.y) || seen.has(i) || blocked.has(i)) continue;
+            seen.add(i);
+            queue.push(n);
+          }
+        }
+        return seen.size;
+      }
+
+      // Go for the food only if the snake could still reach its own tail afterwards;
+      // otherwise chase the tail, otherwise take the roomiest safe neighbor.
+      function autoDir() {
+        const head = snake[0];
+        const tail = snake[snake.length - 1];
+        const blocked = new Set(snake.slice(0, -1).map((p) => idx(p.x, p.y)));
+        const toDir = (c) => ({ x: c.x - head.x, y: c.y - head.y });
+
+        const path = food && !heartMode() && bfs(head, food, blocked);
+        if (path) {
+          // Snake after eating along this path (it grows by one)
+          const after = path.slice().reverse().concat(snake).slice(0, snake.length + 1);
+          const afterBlocked = new Set(after.slice(0, -1).map((p) => idx(p.x, p.y)));
+          if (after.length === N || bfs(after[0], after[after.length - 1], afterBlocked)) return toDir(path[0]);
+        }
+
+        // No safe route to the food: stall by stepping to the neighbor with the
+        // longest route back to the tail, which keeps the snake loosening up
+        let stall = null;
+        let stallLen = -1;
+        const withHead = new Set(blocked).add(idx(head.x, head.y));
+        for (const d of NEIGHBORS) {
+          const n = { x: head.x + d.x, y: head.y + d.y };
+          if (!inBounds(n.x, n.y) || blocked.has(idx(n.x, n.y))) continue;
+          const back = n.x === tail.x && n.y === tail.y ? [] : bfs(n, tail, withHead);
+          if (back && back.length > stallLen) {
+            stallLen = back.length;
+            stall = d;
+          }
+        }
+        if (stall) return stall;
+
+        let best = null;
+        let bestSpace = -1;
+        for (const d of NEIGHBORS) {
+          const n = { x: head.x + d.x, y: head.y + d.y };
+          if (!inBounds(n.x, n.y) || blocked.has(idx(n.x, n.y))) continue;
+          const space = reachable(n, blocked);
+          if (space > bestSpace) {
+            bestSpace = space;
+            best = d;
+          }
+        }
+        return best || dir;
+      }
+
+      function step() {
+        if (heartMode() && !plan) tryHeartPlan();
+        if (plan) {
+          snake.unshift(plan.shift());
+          if (plan.length) snake.pop();
+          else {
+            // Ate the last food: the snake now covers the whole heart
+            food = null;
+            over = heartDeath = true;
+            restartAt = performance.now() + HEART_HOLD;
+          }
+          return;
+        }
+        if (autoMode) {
+          dirQueue.length = 0;
+          dir = autoDir();
+        } else if (dirQueue.length) dir = dirQueue.shift();
+        const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+        const eating = food && !heartMode() && head.x === food.x && head.y === food.y;
+        // The tail moves away this tick unless we grow
+        const body = eating ? snake : snake.slice(0, -1);
+        if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS || body.some((p) => p.x === head.x && p.y === head.y)) {
+          over = true;
+          restartAt = performance.now() + RESTART_DELAY;
+          return;
+        }
+        snake.unshift(head);
+        if (eating) {
+          bodyChars.unshift(food.ch); // eaten character settles right behind the head
+          food = placeFood();
+          if (heartMode()) tryHeartPlan();
+          if (!food) {
+            over = true;
+            restartAt = performance.now() + RESTART_DELAY;
+          }
+        } else {
+          snake.pop();
+        }
+      }
+
+      const DIRS = {
+        ArrowUp: { x: 0, y: -1 },
+        w: { x: 0, y: -1 },
+        ArrowDown: { x: 0, y: 1 },
+        s: { x: 0, y: 1 },
+        ArrowLeft: { x: -1, y: 0 },
+        a: { x: -1, y: 0 },
+        ArrowRight: { x: 1, y: 0 },
+        d: { x: 1, y: 0 },
+      };
+
+      function turn(d) {
+        if (autoMode) return;
+        const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
+        if (d.x === -last.x && d.y === -last.y) return; // no reversing
+        if (d.x === last.x && d.y === last.y) return;
+        if (dirQueue.length < 3) dirQueue.push(d);
+      }
+
+      window.addEventListener("keydown", (e) => {
+        // While recording, the recorder's own ESC handler also handles this
+        if (e.key === "Escape" && params.get("record") !== "true") autoMode = false;
+        const d = DIRS[e.key] || DIRS[e.key.toLowerCase()];
+        if (!d) return;
+        e.preventDefault();
+        turn(d);
+      });
+
+      // Swipe support
+      let touch = null;
+      window.addEventListener("touchstart", (e) => {
+        touch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      });
+      window.addEventListener("touchend", (e) => {
+        if (!touch) return;
+        const dx = e.changedTouches[0].clientX - touch.x;
+        const dy = e.changedTouches[0].clientY - touch.y;
+        touch = null;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+        turn(Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) });
+      });
+
+      reset();
+      let lastTime = performance.now();
+
+      function animate(now) {
+        const dt = Math.min(now - lastTime, 100);
+        lastTime = now;
+
+        // Frozen on game over until the restart timer fires
+        if (over) {
+          if (now >= restartAt) reset();
+          else if (!heartDeath) return requestAnimationFrame(animate);
+        } else {
+          stepAcc += dt;
+          while (stepAcc >= STEP && !over) {
+            stepAcc -= STEP;
+            step();
+          }
+        }
+
+        target.fill(0);
+        let foodCell = -1;
+        const forced = new Map(); // cell index -> fixed character
+        snake.forEach((p, i) => {
+          const c = idx(p.x, p.y);
+          target[c] = 1;
+          forced.set(c, bodyChar(i, snake.length));
+        });
+        if (food) {
+          const c = idx(food.x, food.y);
+          target[c] = 1;
+          forced.set(c, food.ch);
+          foodCell = c;
+        }
+
+        for (let i = 0; i < N; i++) {
+          const el = pixels[i];
+          const ch = forced.get(i);
+          if (ch) {
+            if (el.textContent !== ch) el.textContent = ch;
+          } else if (Math.random() < 0.04) {
+            // Every non-snake, non-food pixel keeps randomly switching
+            el.textContent = randomChar();
+          }
+
+          // Ease intensity: fast light-up, slower dim, driving the font axes
+          const k = target[i] > ink[i] ? RISE : FALL;
+          ink[i] += (target[i] - ink[i]) * (1 - Math.exp(-dt * k));
+          setInk(el, ink[i], i === foodCell || (heartDeath && target[i] === 1));
+        }
+
+        requestAnimationFrame(animate);
+      }
+      document.fonts.ready.then(() => requestAnimationFrame(animate));
+
+      // ?record=true: record just the grid (Region Capture + MediaRecorder),
+      // press ESC to stop and download
+      if (params.get("record") === "true") {
+        startRecording();
+      }
+
+      async function startRecording() {
+        grid.classList.add("recording");
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 60 },
+          audio: false,
+          preferCurrentTab: true,
+        });
+        const [track] = stream.getVideoTracks();
+        await track.cropTo(await CropTarget.fromElement(grid));
+
+        const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 20_000_000,
+        });
+        const chunks = [];
+        recorder.ondataavailable = (e) => chunks.push(e.data);
+        recorder.onstop = () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(new Blob(chunks, { type: mimeType }));
+          a.download = `recording-${Date.now()}.webm`;
+          a.click();
+          grid.classList.remove("recording");
+        };
+        recorder.start();
+
+        window.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          // In AI mode the first ESC hands control back to the player
+          if (autoMode) autoMode = false;
+          else if (recorder.state === "recording") recorder.stop();
+        });
+      }
+    </script>
+  </body>
+</html>
