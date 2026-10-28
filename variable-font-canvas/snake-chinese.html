@@ -2,14 +2,33 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Variable Font Snake 贪吃蛇</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@100..900&display=swap" rel="stylesheet" />
     <style>
+      :root {
+        /* Cells shrink to fit the screen but never exceed 66px, so text stays crisp */
+        --cell: min(66px, calc(100vw / 9), calc(100vh / 16));
+      }
+      @supports (height: 100dvh) {
+        :root {
+          --cell: min(66px, calc(100vw / 9), calc(100dvh / 16));
+        }
+      }
+      html,
+      body {
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none; /* no pinch-zoom, double-tap zoom or scrolling */
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+      }
       body {
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 100vh;
+        height: 100vh;
+        height: 100dvh;
         margin: 0;
         background: #0a0a0a;
         color: #eee;
@@ -18,8 +37,8 @@
       }
       #grid {
         display: grid;
-        grid-template-columns: repeat(9, 66px);
-        grid-template-rows: repeat(16, 66px);
+        grid-template-columns: repeat(9, var(--cell));
+        grid-template-rows: repeat(16, var(--cell));
         background: #000;
         outline: 1px solid #222; /* outside the box: 9x16 cells = 9:16 */
       }
@@ -27,7 +46,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 62px;
+        font-size: calc(var(--cell) * 62 / 66);
         line-height: 1;
         will-change: font-variation-settings, color;
       }
@@ -271,19 +290,25 @@
         turn(d);
       });
 
-      // Swipe support
-      let touch = null;
-      window.addEventListener("touchstart", (e) => {
-        touch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      // Tap/click: the line through the head along its heading splits the screen in
+      // two; the side that was hit picks which of the two possible turns to take
+      window.addEventListener("pointerdown", (e) => {
+        if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0) || over) return;
+        const r = pixels[idx(snake[0].x, snake[0].y)].getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2);
+        const dy = e.clientY - (r.top + r.height / 2);
+        const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
+        const d = last.x !== 0 ? { x: 0, y: Math.sign(dy) } : { x: Math.sign(dx), y: 0 };
+        if (d.x || d.y) turn(d);
       });
-      window.addEventListener("touchend", (e) => {
-        if (!touch) return;
-        const dx = e.changedTouches[0].clientX - touch.x;
-        const dy = e.changedTouches[0].clientY - touch.y;
-        touch = null;
-        if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
-        turn(Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) });
-      });
+
+      // Block zoom gestures (iOS pinch, ctrl+wheel, double-tap, touch scrolling)
+      for (const t of ["gesturestart", "gesturechange", "dblclick", "contextmenu"]) {
+        document.addEventListener(t, (e) => e.preventDefault());
+      }
+      document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+      window.addEventListener("wheel", (e) => e.ctrlKey && e.preventDefault(), { passive: false });
+      window.addEventListener("keydown", (e) => (e.ctrlKey || e.metaKey) && ["+", "-", "=", "0"].includes(e.key) && e.preventDefault());
 
       reset();
       let lastTime = performance.now();
