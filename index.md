@@ -56,7 +56,7 @@
 
 - [Voice keyboard](./voice-keyboard/) simulating human vocal tract
 - [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html) Snake in Chinese characters #typography#game
-- [Wall of Text](./wall-of-text/) infinite fractal canvas displaying texts #typography
+- [Fractal Terminal](./fractal-terminal/) infinite terminal displaying texts via zooming #typography#tui
 - [Variable Font Canvas](./variable-font-canvas/) drawing with font metrics #typography
 - [Timesdraw](./timesdraw/) predict next 2 seconds of line sketch #ml#sketch
 
