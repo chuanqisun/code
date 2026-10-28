@@ -58,6 +58,7 @@
 - [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html) Snake in Chinese characters #typography#game
 - [Wall of Text](./wall-of-text/) infinite fractal canvas displaying texts #typography
 - [Variable Font Canvas](./variable-font-canvas/) drawing with font metrics #typography
+- [Timesdraw](./timesdraw/) predict next 2 seconds of line sketch #ml#sketch
 
 ## Experiments Archive
 
@@ -143,7 +144,6 @@
 - [Text Rain](./text-rain/)
 - [Text to pixel art](./text-to-pixel-art/)
 - [Thought Completion](./thought-completion/)
-- [Timesdraw](./timesdraw/)
 - [Total Human Pixels](./total-human-pixels/)
 - [Townsquare](https://chuanqisun.github.io/townsquare/)
 - [Tree of Lives](./tree-of-lives/)
