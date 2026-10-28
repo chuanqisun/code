@@ -713,18 +713,18 @@
           return this.world.levelIndex + this.elapsedMs / CYCLE_MS;
         }
 
-        // Each key queues one more level of zoom-out and pins the letter shown there
+        // Each key queues one more level of zoom-in, landing on the tile that now shows the typed letter
         #typeChar(charIdx) {
           const { world } = this;
           world.respine(this.focus);
           this.sequenceNode = null;
-          const next = (this.targetLevel ?? world.levelIndex) + 1;
-          if (next - this.#levelPosition > TYPE_MAX_LEAD) return;
-          this.targetLevel = next;
-          world.setLevelChar(next + 1, charIdx);
+          const target = (this.targetLevel ?? world.levelIndex) - 1;
+          if (this.#levelPosition - target > TYPE_MAX_LEAD) return;
+          this.targetLevel = target;
+          world.overrides.set(target + 1, charIdx);
 
           // The typed key seeds the dictionary sentence starting with it; zooming out continues it
-          if (this.dictionary.seed(charIdx)) this.writtenLevel = next + 1;
+          if (this.dictionary.seed(charIdx)) this.writtenLevel = target + 1;
           else this.#abortDictionary();
           this.#logSequence(`typed ${JSON.stringify(CHARS[charIdx])}`);
           this.#pauseAutoplay();
@@ -742,19 +742,31 @@
         #stepTyping(dtMs) {
           const sec = dtMs / 1000;
           const remaining = this.targetLevel - this.#levelPosition;
-          const speed = (this.zoomSpeed = clamp(remaining / TYPE_TAU_S, TYPE_MIN_SPEED, TYPE_MAX_SPEED));
+          const dist = Math.abs(remaining);
+          const dir = Math.sign(remaining);
+          const speed = (this.zoomSpeed = clamp(dist / TYPE_TAU_S, TYPE_MIN_SPEED, TYPE_MAX_SPEED));
 
-          if (speed * sec >= remaining) {
+          if (dir < 0) {
+            // Zooming in must land on the spine's center tile: shrink the pan to zero by the next level crossing
+            const progress = this.elapsedMs / CYCLE_MS;
+            const keep = progress > 1e-9 ? Math.max(0, 1 - Math.min(speed * sec, dist) / progress) : 0;
+            this.panX *= keep;
+            this.panY *= keep;
+          }
+
+          if (speed * sec >= dist) {
             // Epsilon so float error can't leave us just short of the boundary
             this.#advanceTime((this.targetLevel - this.world.levelIndex) * CYCLE_MS - this.elapsedMs + 1e-6);
             this.targetLevel = null;
             this.zoomSpeed = 0;
             this.#pauseAutoplay();
-          } else this.#advanceTime(speed * sec * CYCLE_MS);
+          } else this.#advanceTime(dir * speed * sec * CYCLE_MS);
 
-          const decay = Math.exp(-sec / TYPE_PAN_TAU_S);
-          this.panX *= decay;
-          this.panY *= decay;
+          if (dir > 0) {
+            const decay = Math.exp(-sec / TYPE_PAN_TAU_S);
+            this.panX *= decay;
+            this.panY *= decay;
+          }
         }
 
         #normalizePan() {
