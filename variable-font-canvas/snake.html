@@ -108,8 +108,8 @@
       function reset() {
         const y = Math.floor(ROWS / 2);
         snake = [];
-        for (let i = 0; i < 5; i++) snake.push({ x: 9 - i, y });
-        dir = { x: 1, y: 0 };
+        for (let i = 0; i < 5; i++) snake.push({ x: COLS - 10 + i, y });
+        dir = { x: -1, y: 0 };
         dirQueue = [];
         food = placeFood();
         over = false;
@@ -207,7 +207,7 @@
         if (food) {
           const c = idx(food.x, food.y);
           target[c] = 1;
-          forced.set(c, "#");
+          forced.set(c, "A");
         }
 
         for (let i = 0; i < N; i++) {
