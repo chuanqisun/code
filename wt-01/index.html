@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>WT-01 // WAVETABLE SYNTHESIZER</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>WT-01 // EQUATION WAVETABLE SYNTHESIZER</title>
     <style>
       :root {
         --ink: #000;
@@ -19,6 +20,7 @@
         --bar-height: 120px;
         --piano-width: clamp(230px, 28vw, 310px);
         font: 11px monospace;
+        -webkit-text-size-adjust: 100%;
       }
 
       * {
@@ -45,7 +47,6 @@
         color: var(--muted);
       }
 
-      /* One consistent control size everywhere */
       select,
       button {
         height: var(--ctl);
@@ -69,6 +70,7 @@
         font-weight: bold;
         white-space: nowrap;
         cursor: pointer;
+        touch-action: manipulation;
 
         &:hover,
         &.active {
@@ -88,7 +90,7 @@
         top: var(--edge);
         left: var(--edge);
         right: var(--edge);
-        height: var(--top-height);
+        min-height: var(--top-height);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -96,6 +98,9 @@
         overflow: hidden;
         white-space: nowrap;
 
+        .panel-toggle {
+          display: none;
+        }
         > div {
           display: flex;
           align-items: center;
@@ -162,11 +167,60 @@
         }
       }
 
+      /* In-scene equation editors (CSS2D labels anchored to keyframe slices) */
+      .eq {
+        width: 215px;
+        padding: 4px 6px 6px;
+        font-size: 10px;
+        background: var(--panel-bg);
+        border: 1px solid var(--ink);
+        pointer-events: auto;
+        user-select: text;
+
+        .eq-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 6px;
+          height: 14px;
+          line-height: 14px;
+          white-space: nowrap;
+          overflow: hidden;
+          span {
+            color: var(--muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        }
+        input {
+          display: block;
+          width: 100%;
+          height: var(--ctl);
+          margin-top: 2px;
+          padding: 0 4px;
+          font: inherit;
+          color: var(--ink);
+          background: var(--tint);
+          border: 0;
+          border-radius: 0;
+          outline: none;
+          cursor: text;
+          &:focus {
+            background: var(--tint-2);
+          }
+        }
+        &.bad .eq-head span {
+          color: #f00;
+        }
+        &.bad input {
+          box-shadow: inset 0 -2px 0 #f00;
+        }
+      }
+
       #bottom-bar {
         bottom: var(--edge);
         left: var(--edge);
         right: var(--edge);
-        height: var(--bar-height);
+        min-height: var(--bar-height);
         display: flex;
         gap: 12px;
       }
@@ -274,6 +328,7 @@
       }
 
       .key {
+        touch-action: manipulation;
         flex: 1;
         min-width: 0;
         display: flex;
@@ -325,10 +380,208 @@
         }
       }
 
+      /* Manual modal */
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgb(255 255 255 / 0.7);
+
+        &[hidden] {
+          display: none;
+        }
+
+        .sheet {
+          width: min(720px, 100%);
+          max-height: 100%;
+          display: flex;
+          flex-direction: column;
+          background: var(--paper);
+          border: 1px solid var(--ink);
+        }
+        .sheet-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex: none;
+          padding: var(--gap);
+          border-bottom: 1px solid var(--ink);
+          button {
+            min-width: 0;
+            width: 60px;
+          }
+        }
+        .sheet-body {
+          overflow-y: auto;
+          padding: 4px 14px 14px;
+          line-height: 1.5;
+          user-select: text;
+        }
+        h4 {
+          margin: 14px 0 4px;
+          padding-bottom: 2px;
+          font-size: 11px;
+          border-bottom: 1px solid var(--ink);
+        }
+        p {
+          margin: 4px 0;
+        }
+        ul {
+          margin: 4px 0;
+          padding-left: 18px;
+        }
+        code,
+        pre {
+          font: inherit;
+          background: var(--tint);
+        }
+        code {
+          padding: 0 3px;
+        }
+        pre {
+          margin: 4px 0;
+          padding: 6px 8px;
+          overflow-x: auto;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 4px 0;
+        }
+        td {
+          padding: 2px 6px 2px 0;
+          vertical-align: top;
+          border-bottom: 1px solid var(--tint-2);
+        }
+        td:first-child {
+          width: 36%;
+          white-space: nowrap;
+          font-weight: bold;
+        }
+      }
+
       @media (max-width: 1150px) {
+        :root {
+          --panel-width: 240px;
+        }
         #scope-box,
         #top-bar .muted {
           display: none;
+        }
+        .row {
+          grid-template-columns: 78px minmax(0, 1fr) 40px;
+        }
+      }
+
+      /* Tablet / phone: panels become toggled overlays, bottom bar stacks */
+      @media (max-width: 820px) {
+        :root {
+          --edge: 6px;
+          --gap: 6px;
+        }
+        #top-bar {
+          padding: var(--gap);
+          flex-wrap: wrap;
+          gap: var(--gap);
+          white-space: normal;
+
+          > div {
+            flex-wrap: wrap;
+          }
+          > div:first-child {
+            display: none;
+          }
+          > div:last-child {
+            width: 100%;
+          }
+          #presetSelect {
+            flex: 1 1 100%;
+            width: auto;
+          }
+          button {
+            flex: 1 1 0;
+            width: auto;
+            min-width: 0;
+            padding: 0 4px;
+          }
+          .panel-toggle {
+            display: inline-block;
+          }
+        }
+
+        .panel {
+          display: none;
+          left: var(--edge);
+          right: var(--edge);
+          width: auto;
+          &.open {
+            display: block;
+          }
+        }
+        .row {
+          grid-template-columns: 110px minmax(0, 1fr) 44px;
+        }
+
+        .eq {
+          width: 150px;
+        }
+
+        #bottom-bar {
+          flex-direction: column;
+          gap: 6px;
+        }
+        #sequencer {
+          flex: none;
+          .toolbar {
+            flex-wrap: wrap;
+          }
+          button {
+            min-width: 0;
+          }
+        }
+        #step-grid {
+          flex: none;
+          height: 40px;
+          gap: 2px;
+        }
+        .step {
+          padding: 2px 0;
+          font-size: 8px;
+        }
+        #keyboard {
+          flex: none;
+          width: 100%;
+        }
+        #piano {
+          flex: none;
+          height: 44px;
+        }
+        .modal {
+          padding: 6px;
+        }
+      }
+
+      @media (max-width: 480px) {
+        #sequencer .toolbar > div {
+          flex-wrap: wrap;
+          width: 100%;
+        }
+        #sequencer .toolbar button {
+          flex: 1;
+        }
+        .key small {
+          display: none;
+        }
+        .modal .sheet-body {
+          padding: 4px 10px 10px;
+        }
+        .modal td:first-child {
+          width: auto;
+          white-space: normal;
         }
       }
     </style>
@@ -343,10 +596,14 @@
   </head>
   <body>
     <header id="top-bar" class="hud">
-      <div><b>WT-01 // WAVETABLE SYNTHESIZER</b> <span class="muted">[DRAG 3D VIEW TO ORBIT]</span></div>
+      <div><b>WT-01 // EQUATION WAVETABLE</b> <span class="muted">[DRAG TO ORBIT · EDIT KEYFRAME EQUATIONS IN THE 3D VIEW]</span></div>
       <div>
         <select id="presetSelect" title="Preset"></select>
+        <button id="manualBtn" title="Equation language manual (press ? or F1)">MANUAL</button>
+        <button id="resetEqBtn" title="Restore the default equations of the current bank">RESET EQ</button>
         <button id="powerBtn">POWER: OFF</button>
+        <button id="leftToggle" class="panel-toggle" data-panel="left-panel">SYNTH</button>
+        <button id="rightToggle" class="panel-toggle" data-panel="right-panel">MOD/FX</button>
         <button id="holdBtn" title="Latches a continuous note so you can audition parameter changes hands-free">HOLD NOTE</button>
       </div>
     </header>
@@ -383,9 +640,233 @@
       </section>
     </footer>
 
+    <div id="manual" class="modal" hidden>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Equation language manual">
+        <div class="sheet-head"><b>WT-01 // EQUATION LANGUAGE MANUAL</b><button id="manualClose">CLOSE</button></div>
+        <div class="sheet-body">
+          <h4>1. OVERVIEW</h4>
+          <p>
+            The wavetable has 4 <b>keyframes</b> (KF1–KF4) at table positions 0, 0.33, 0.67 and 1. Each keyframe is one equation <code>y(p)</code> describing a
+            single cycle of a waveform. The 33 slices between keyframes are linear crossfades of their neighbours. Edit an equation in the box beside its slice
+            in the 3D view, and the terrain and sound update on every valid keystroke.
+          </p>
+
+          <h4>2. THE EQUATION</h4>
+          <ul>
+            <li>Write a single <b>expression</b> that returns a number. There are no statements, no <code>y =</code> prefix and no semicolons.</li>
+            <li>The only variable is <code>p</code>, the phase of one cycle, running from 0 to 1.</li>
+            <li>
+              The output <code>y</code> should stay roughly within <b>-1 to +1</b>. Values are hard-limited to ±2 when baked, and the terrain draws ±1 at full
+              height.
+            </li>
+            <li>The equation is sampled at 1024 points and interpolated, so sharp jumps are rendered with a tiny slope.</li>
+          </ul>
+          <pre>0.85*sin(tau*p) + 0.25*sin(2*tau*p)</pre>
+
+          <h4>3. OPERATORS</h4>
+          <table>
+            <tr>
+              <td>+ - * / %</td>
+              <td>Arithmetic. <code>%</code> is the remainder, which can be negative for negative inputs.</td>
+            </tr>
+            <tr>
+              <td>**</td>
+              <td>Power, e.g. <code>p**3</code>. Same as <code>pow(p,3)</code>.</td>
+            </tr>
+            <tr>
+              <td>( ) ,</td>
+              <td>Grouping and function arguments.</td>
+            </tr>
+            <tr>
+              <td>&lt; &gt; == !</td>
+              <td>Comparisons give 1 or 0 in arithmetic, e.g. <code>(p&lt;0.5)*2-1</code>.</td>
+            </tr>
+            <tr>
+              <td>? :</td>
+              <td>Conditional: <code>p&lt;0.25 ? 1 : -1</code>.</td>
+            </tr>
+            <tr>
+              <td>&amp;&amp; ||</td>
+              <td>Logical and/or.</td>
+            </tr>
+          </table>
+          <p>
+            <b>Warning:</b> <code>^</code> is bitwise XOR, <b>not</b> power. Use <code>**</code> or <code>pow()</code>. Only characters in
+            <code>0-9 a-z + - * / % ( ) . , &lt; &gt; = ? : ! &amp; | ^</code> are accepted.
+          </p>
+
+          <h4>4. FUNCTIONS</h4>
+          <table>
+            <tr>
+              <td>sin cos tan</td>
+              <td>Trigonometry, argument in <b>radians</b>. A full cycle is <code>sin(tau*p)</code>.</td>
+            </tr>
+            <tr>
+              <td>tanh atan</td>
+              <td>Soft saturators. <code>tanh(k*x)</code> squares off a signal as <code>k</code> grows.</td>
+            </tr>
+            <tr>
+              <td>abs sign</td>
+              <td>Absolute value and sign (-1, 0, 1).</td>
+            </tr>
+            <tr>
+              <td>sqrt pow exp log</td>
+              <td>Roots, powers, exponentials, natural log. <code>log</code> and <code>sqrt</code> of negatives give NaN, which is rejected.</td>
+            </tr>
+            <tr>
+              <td>floor ceil round</td>
+              <td>Rounding. Useful for stepped and quantised shapes.</td>
+            </tr>
+            <tr>
+              <td>min max</td>
+              <td>Smaller or larger of its arguments. Combine for clipping: <code>max(-0.5, min(0.5, x))</code>.</td>
+            </tr>
+            <tr>
+              <td>fract(x)</td>
+              <td>Fractional part of x, in [0, 1).</td>
+            </tr>
+          </table>
+
+          <h4>5. PERIODIC HELPERS</h4>
+          <p>
+            These take their argument in <b>cycles</b>, not radians, and repeat every 1.0. <code>tri(2*p)</code> gives two triangle cycles across the frame.
+          </p>
+          <table>
+            <tr>
+              <td>tri(x)</td>
+              <td>Triangle wave, -1 to 1, starting at 0 and rising.</td>
+            </tr>
+            <tr>
+              <td>saw(x)</td>
+              <td>Rising ramp, -1 to 1.</td>
+            </tr>
+            <tr>
+              <td>sq(x)</td>
+              <td>Square wave, +1 for the first half cycle, -1 for the second.</td>
+            </tr>
+          </table>
+
+          <h4>6. CONSTANTS</h4>
+          <table>
+            <tr>
+              <td>pi</td>
+              <td>3.14159… A half cycle: <code>sin(pi*p)</code> is a single hump from 0 to 1 and back to 0.</td>
+            </tr>
+            <tr>
+              <td>tau</td>
+              <td>2π = 6.28318… Use <code>sin(tau*p)</code> for one sine cycle.</td>
+            </tr>
+            <tr>
+              <td>e</td>
+              <td>2.71828…</td>
+            </tr>
+          </table>
+
+          <h4>7. RECIPES</h4>
+          <table>
+            <tr>
+              <td>Sine</td>
+              <td><code>sin(tau*p)</code></td>
+            </tr>
+            <tr>
+              <td>Additive (harmonics)</td>
+              <td><code>sin(tau*p) + 0.5*sin(2*tau*p) + 0.25*sin(3*tau*p)</code></td>
+            </tr>
+            <tr>
+              <td>Soft square</td>
+              <td><code>0.85*tanh(4.5*sin(tau*p))</code></td>
+            </tr>
+            <tr>
+              <td>Hard square</td>
+              <td><code>0.8*sq(p)</code></td>
+            </tr>
+            <tr>
+              <td>Rising saw</td>
+              <td><code>0.85*saw(p)</code></td>
+            </tr>
+            <tr>
+              <td>Pulse (25% width)</td>
+              <td><code>p&lt;0.25 ? 0.8 : -0.8</code></td>
+            </tr>
+            <tr>
+              <td>Phase modulation (FM)</td>
+              <td><code>sin(tau*p + 3*sin(tau*p))</code></td>
+            </tr>
+            <tr>
+              <td>Octave-stacked sines</td>
+              <td><code>0.6*sin(tau*p) + 0.4*sin(tau*2*p + 1)</code></td>
+            </tr>
+            <tr>
+              <td>Windowed harmonic (formant)</td>
+              <td><code>0.5*sin(tau*p) + sin(5*tau*p)*sin(pi*p)</code></td>
+            </tr>
+            <tr>
+              <td>Decaying burst</td>
+              <td><code>sin(6*tau*p)*exp(-4*p)</code></td>
+            </tr>
+            <tr>
+              <td>Wavefolder</td>
+              <td><code>sin(3*sin(tau*p))</code></td>
+            </tr>
+            <tr>
+              <td>Sine + triangle blend</td>
+              <td><code>0.5*sin(tau*p) + 0.5*tri(p)</code></td>
+            </tr>
+            <tr>
+              <td>Hard clip</td>
+              <td><code>max(-0.6, min(0.6, 1.5*sin(tau*p)))</code></td>
+            </tr>
+            <tr>
+              <td>Bit-crushed sine</td>
+              <td><code>floor(sin(tau*p)*4)/4</code></td>
+            </tr>
+          </table>
+
+          <h4>8. TIPS</h4>
+          <ul>
+            <li>
+              <b>Seamless loop.</b> A waveform is smoothest if <code>y(0)</code> equals <code>y(1)</code>. A raw saw jumps there, which sounds bright and buzzy.
+              That may be what you want.
+            </li>
+            <li>
+              <b>Use whole harmonics.</b> Multiply <code>tau*p</code> by integers (1, 2, 3…) to keep the pitch stable. Fractional multiples like
+              <code>1.5*tau*p</code> break periodicity and add a click at the loop point.
+            </li>
+            <li>
+              <b>Morphing.</b> Keyframes with similar structure, such as the same harmonics at different amplitudes, morph smoothly. Very different shapes give
+              brief mixed in-between waveforms.
+            </li>
+            <li><b>DC offset.</b> A constant term like <code>+0.3</code> shifts the wave, wasting headroom. It is not removed.</li>
+            <li>
+              <b>Aliasing.</b> Tables are not band-limited. Bright equations such as <code>sq(p)</code>, or sines with high harmonics, alias on high notes. Use
+              the filter, or play lower notes.
+            </li>
+            <li>
+              <b>Warp stage.</b> Warp (bend, fold, sync, FM) is applied to the phase <b>after</b> your equation is looked up, so it works on any custom shape.
+            </li>
+            <li><b>Hear changes.</b> Use <b>HOLD NOTE</b> and edit while it sustains.</li>
+          </ul>
+
+          <h4>9. EDITOR BEHAVIOUR &amp; ERRORS</h4>
+          <ul>
+            <li>The slice for the focused equation turns black. The red slice is the current playback position.</li>
+            <li>
+              An invalid equation turns the field red and shows the reason in its header: <code>empty</code>, <code>bad character</code>, a syntax message, or
+              <code>NaN at p=…</code> if the result is not a finite number at any of six test points. The <b>last valid</b> sound is kept.
+            </li>
+            <li>Leaving the field restores the last valid equation. <b>Enter</b> or <b>Esc</b> leaves the field.</li>
+            <li>Typing in a field never plays piano keys or triggers sequencer shortcuts.</li>
+            <li>Edits are kept per bank when you switch banks. <b>RESET EQ</b> restores the defaults for the current bank.</li>
+            <li>Open this manual with <b>MANUAL</b>, <b>F1</b> or <b>?</b>. Close it with <b>Esc</b>, <b>CLOSE</b> or by clicking outside.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
     <script type="module">
       import * as THREE from "three";
       import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
       // Helpers at the bottom are hoisted function declarations, so they are usable everywhere above.
 
@@ -402,52 +883,89 @@
 
       const NUM_SLICES = 37;
       const NUM_SAMPLES = 128;
-      const KEYFRAME_STRIDE = (NUM_SLICES - 1) / 3;
+      const KEYFRAME_COUNT = 4;
+      const KEYFRAME_STRIDE = (NUM_SLICES - 1) / (KEYFRAME_COUNT - 1);
+      const TABLE_SIZE = 1024;
       const SIZE = 7.8;
       const AMP_Y = 1.45;
       const BASE_Y = -2;
       const FRUSTUM = 14.2;
       const ACTIVE_COLOR = 0xff0000;
       const KEYFRAME_COLOR = 0x666666;
+      const FOCUS_COLOR = 0x000000;
       const SLICE_COLOR = 0xbbbbbb;
       const RIBBON_INDICES = Array.from({ length: NUM_SAMPLES - 1 }, (_, i) => {
         const [a, b] = [i * 2, i * 2 + 2];
         return [a, a + 1, b, a + 1, b + 1, b];
       }).flat();
 
-      const BANKS = {
+      // Names available inside keyframe equations. Variable: p (phase, 0..1).
+      const EQ_ENV = {
+        sin: Math.sin,
+        cos: Math.cos,
+        tan: Math.tan,
+        tanh: Math.tanh,
+        atan: Math.atan,
+        abs: Math.abs,
+        sqrt: Math.sqrt,
+        pow: Math.pow,
+        exp: Math.exp,
+        log: Math.log,
+        floor: Math.floor,
+        ceil: Math.ceil,
+        round: Math.round,
+        sign: Math.sign,
+        min: Math.min,
+        max: Math.max,
+        fract: (x) => x - Math.floor(x),
+        tri: (x) => 1 - 4 * Math.abs(Math.round(x - 0.25) - (x - 0.25)),
+        saw: (x) => 2 * (x - Math.floor(x)) - 1,
+        sq: (x) => (x - Math.floor(x) < 0.5 ? 1 : -1),
+        pi: Math.PI,
+        tau: TAU,
+        e: Math.E,
+      };
+      const EQ_NAMES = Object.keys(EQ_ENV);
+      const EQ_VALUES = Object.values(EQ_ENV);
+      const EQ_HELP =
+        "y(p), p = phase 0..1. Functions: " + EQ_NAMES.join(" ") + ". Periodic helpers tri/saw/sq take cycles, e.g. tri(2*p). Press F1 for the manual.";
+
+      const BANK_DEFS = {
         basic: {
           label: "Basic Analog (Sine-Sq)",
-          frames: [(p) => sine(p), triangle, (p) => (2 * p - 1) * 0.85, (p) => Math.tanh(sine(p) * 4.5) * 0.85],
+          equations: ["sin(tau*p)", "tri(p)", "0.85*(2*p-1)", "0.85*tanh(4.5*sin(tau*p))"],
         },
         harmonic: {
           label: "Warm Organ Harmonics",
-          frames: [
-            additive(1, [1, 0.85], [2, 0.25]),
-            additive(0.65, [1, 1], [2, 0.5], [3, 0.25]),
-            additive(0.65, [1, 1], [3, 0.45], [5, 0.3]),
-            additive(0.6, [1, 1], [2, 0.35], [4, 0.3], [8, 0.25]),
+          equations: [
+            "0.85*sin(tau*p) + 0.25*sin(2*tau*p)",
+            "0.65*(sin(tau*p) + 0.5*sin(2*tau*p) + 0.25*sin(3*tau*p))",
+            "0.65*(sin(tau*p) + 0.45*sin(3*tau*p) + 0.3*sin(5*tau*p))",
+            "0.6*(sin(tau*p) + 0.35*sin(2*tau*p) + 0.3*sin(4*tau*p) + 0.25*sin(8*tau*p))",
           ],
         },
         glass: {
           label: "Glass Bell Overtones",
-          frames: [
-            (p) => sine(p),
-            additive(0.9, [1, 0.7], [3, 0.35]),
-            additive(0.9, [1, 0.55], [4, 0.35], [6, 0.2]),
-            (p) => (sine(p) * 0.5 + sine(p, 5) * 0.35 + sine(p, 7) * halfSine(p)) * 0.85,
+          equations: [
+            "sin(tau*p)",
+            "0.9*(0.7*sin(tau*p) + 0.35*sin(3*tau*p))",
+            "0.9*(0.55*sin(tau*p) + 0.35*sin(4*tau*p) + 0.2*sin(6*tau*p))",
+            "0.85*(0.5*sin(tau*p) + 0.35*sin(5*tau*p) + sin(7*tau*p)*sin(pi*p))",
           ],
         },
         formant: {
           label: "Soft Vocal Formants",
-          frames: [
-            additive(1, [1, 0.75], [2, 0.25]),
-            (p) => (sine(p) * 0.6 + sine(p, 3) * halfSine(p)) * 0.85,
-            (p) => (sine(p) * 0.5 + sine(p, 4) * halfSine(p)) * 0.85,
-            (p) => (sine(p) * 0.5 + sine(p, 6) * halfSine(p) * 0.65) * 0.85,
+          equations: [
+            "0.75*sin(tau*p) + 0.25*sin(2*tau*p)",
+            "0.85*(0.6*sin(tau*p) + sin(3*tau*p)*sin(pi*p))",
+            "0.85*(0.5*sin(tau*p) + sin(4*tau*p)*sin(pi*p))",
+            "0.85*(0.5*sin(tau*p) + 0.65*sin(6*tau*p)*sin(pi*p))",
           ],
         },
       };
+
+      // Live banks: each frame keeps its equation text plus a baked lookup table.
+      const BANKS = Object.fromEntries(Object.entries(BANK_DEFS).map(([key, { label, equations }]) => [key, { label, frames: equations.map(makeFrame) }]));
 
       const WARPS = {
         bend: { label: "Asym Bend (PWM)", apply: (p, amt) => [p ** (3.2 ** amt), 1] },
@@ -579,38 +1097,8 @@
           fxDelay: 0.2,
           fxDelayTime: 0.33,
         },
-        lead: {
-          label: "04. Dream Synth Lead",
-          scale: "a_minor",
-          bpm: 90,
-          notes: [45, 52, 57, 60, 59, 57, 52, 48, 50, 53, 57, 60, 59, 55, 52, 47],
-          wtBank: "formant",
-          wtPos: 0.25,
-          warpMode: "sync",
-          warpAmt: 0.15,
-          uniVoices: 4,
-          uniDetune: 18,
-          subMix: 0.2,
-          fltType: "lowpass",
-          fltCut: 1100,
-          fltRes: 2.5,
-          lfoShape: "sine",
-          lfoRate: 3.2,
-          lfoToPos: 0.28,
-          lfoToWarp: 0.15,
-          lfoToCut: 450,
-          envA: 0.015,
-          envD: 0.45,
-          envS: 0.45,
-          envR: 0.35,
-          envToPos: 0.35,
-          envToCut: 2400,
-          fxDrive: 0.15,
-          fxDelay: 0.45,
-          fxDelayTime: 0.33,
-        },
         acid: {
-          label: "05. Classic Acid 303",
+          label: "04. Classic Acid 303",
           scale: "c_phrygian",
           bpm: 90,
           notes: [36, 36, 48, 36, 37, 49, 36, 41, 36, 48, 44, 36, 43, 41, 39, 37],
@@ -749,15 +1237,13 @@
       renderer.setPixelRatio(devicePixelRatio);
       document.body.append(renderer.domElement);
 
+      // DOM overlay that projects the equation editors into the 3D scene (below the HUD panels).
+      const labelRenderer = new CSS2DRenderer();
+      Object.assign(labelRenderer.domElement.style, { position: "absolute", top: "0", left: "0", zIndex: "5", pointerEvents: "none" });
+      document.body.append(labelRenderer.domElement);
+
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.target.set(0, -0.3, 0);
-
-      const platform = new THREE.LineSegments(
-        new THREE.EdgesGeometry(new THREE.BoxGeometry(SIZE + 0.4, 0.08, SIZE + 0.4)),
-        new THREE.LineBasicMaterial({ color: 0xcccccc }),
-      );
-      platform.position.y = BASE_Y - 0.04;
-      scene.add(platform);
 
       const sliceFill = new THREE.MeshBasicMaterial({
         color: 0xffffff,
@@ -773,12 +1259,66 @@
         return { ...slice, baseColor };
       });
 
+      const editors = Array.from({ length: KEYFRAME_COUNT }, (_, k) => createEditor(k));
+
       const resize = () => {
         const aspect = innerWidth / innerHeight;
         Object.assign(camera, { left: (-FRUSTUM * aspect) / 2, right: (FRUSTUM * aspect) / 2, top: FRUSTUM / 2, bottom: -FRUSTUM / 2 });
         camera.updateProjectionMatrix();
         renderer.setSize(innerWidth, innerHeight);
+        labelRenderer.setSize(innerWidth, innerHeight);
       };
+
+      function createEditor(k) {
+        const el = document.createElement("div");
+        el.className = "eq";
+        el.innerHTML = `<div class="eq-head"><b>KF${k + 1} · y(p) =</b><span>WT ${(k / (KEYFRAME_COUNT - 1)).toFixed(2)}</span></div>
+    <input type="text" spellcheck="false" autocomplete="off" title="${EQ_HELP}">`;
+        const input = el.querySelector("input");
+        const msg = el.querySelector("span");
+        const idle = msg.textContent;
+        const sliceIndex = k * KEYFRAME_STRIDE;
+
+        input.addEventListener("input", () => {
+          try {
+            BANKS[state.wtBank].frames[k] = makeFrame(input.value);
+            el.classList.remove("bad");
+            msg.textContent = idle;
+            rebuildTerrain();
+          } catch (err) {
+            el.classList.add("bad");
+            msg.textContent = "ERR: " + err.message.slice(0, 22);
+          }
+        });
+        input.addEventListener("focus", () => setSliceBase(sliceIndex, FOCUS_COLOR));
+        input.addEventListener("blur", () => {
+          setSliceBase(sliceIndex, KEYFRAME_COLOR);
+          // Restore the last valid equation if the field was left in an error state.
+          input.value = BANKS[state.wtBank].frames[k].eq;
+          el.classList.remove("bad");
+          msg.textContent = idle;
+        });
+
+        const anchor = new CSS2DObject(el);
+        anchor.center.set(0, 0.5);
+        anchor.position.set(SIZE / 2 + 0.3, BASE_Y, (k / (KEYFRAME_COUNT - 1) - 0.5) * SIZE);
+        scene.add(anchor);
+        return { el, input, msg, idle };
+      }
+
+      function syncEditors() {
+        editors.forEach(({ el, input, msg, idle }, k) => {
+          el.classList.remove("bad");
+          msg.textContent = idle;
+          if (document.activeElement !== input) input.value = BANKS[state.wtBank].frames[k].eq;
+        });
+      }
+
+      function setSliceBase(index, color) {
+        const slice = slices[index];
+        slice.baseColor = color;
+        if (litSlice !== index) slice.objects[1].material.color.set(color);
+      }
 
       function createAudioGraph() {
         const ctx = new AudioContext();
@@ -882,6 +1422,7 @@
 
       function onParamChange(id) {
         readParams();
+        if (id === "wtBank") syncEditors();
         if (["warpAmt", "wtBank", "warpMode"].includes(id)) rebuildTerrain();
         if (id === "fxDrive") applyDrive();
       }
@@ -896,10 +1437,28 @@
         $("scaleSelect").value = scale;
         steps.splice(0, STEP_COUNT, ...notes);
         readParams();
+        syncEditors();
         rebuildPiano();
         renderSteps();
         applyDrive();
         rebuildTerrain();
+      }
+
+      function resetEquations() {
+        const key = state.wtBank;
+        BANKS[key].frames = BANK_DEFS[key].equations.map(makeFrame);
+        syncEditors();
+        rebuildTerrain();
+      }
+
+      function openManual() {
+        $("manual").hidden = false;
+        $("manual").querySelector(".sheet-body").scrollTop = 0;
+        document.activeElement?.blur();
+      }
+
+      function closeManual() {
+        $("manual").hidden = true;
       }
 
       function renderSteps() {
@@ -962,9 +1521,10 @@
             el.classList.remove("active");
           };
 
-          el.addEventListener("mousedown", press);
-          el.addEventListener("mouseup", release);
-          el.addEventListener("mouseleave", () => el.classList.contains("active") && release());
+          el.addEventListener("pointerdown", press);
+          el.addEventListener("pointerup", release);
+          el.addEventListener("pointercancel", release);
+          el.addEventListener("pointerleave", () => el.classList.contains("active") && release());
           piano.append(el);
           keyBindings[char] = { press, release };
         });
@@ -985,7 +1545,7 @@
       function lightSlice(index) {
         if (index === litSlice) return;
         if (litSlice >= 0) slices[litSlice].objects[1].material.color.set(slices[litSlice].baseColor);
-        slices[index].objects[1].material.color.set(ACTIVE_COLOR);
+        if (index >= 0) slices[index].objects[1].material.color.set(ACTIVE_COLOR);
         litSlice = index;
       }
 
@@ -1019,9 +1579,10 @@
           live = modulate(state, LFO_SHAPES[state.lfoShape].fn(idlePhase, 0), 0);
         }
 
-        lightSlice(Math.round(live.pos * (NUM_SLICES - 1)));
+        lightSlice(powered ? Math.round(live.pos * (NUM_SLICES - 1)) : -1);
 
         renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
         drawScope();
       }
 
@@ -1030,6 +1591,10 @@
 
       $("presetSelect").addEventListener("change", ({ target }) => loadPreset(target.value));
       $("scaleSelect").addEventListener("change", rebuildPiano);
+      $("resetEqBtn").addEventListener("click", resetEquations);
+      $("manualBtn").addEventListener("click", openManual);
+      $("manualClose").addEventListener("click", closeManual);
+      $("manual").addEventListener("mousedown", (e) => e.target === $("manual") && closeManual());
       $("powerBtn").addEventListener("click", () => (powered ? setPower(false) : ensureAudio()));
 
       $("holdBtn").addEventListener("click", ({ target }) => {
@@ -1061,6 +1626,30 @@
       );
 
       addEventListener("keydown", (e) => {
+        // While the manual is open only Esc / F1 / ? matter.
+        if (!$("manual").hidden) {
+          if (e.key === "Escape" || e.key === "F1") {
+            e.preventDefault();
+            closeManual();
+          }
+          return;
+        }
+
+        // Typing in an equation field must not trigger notes or step editing.
+        if (e.target.closest?.(".eq")) {
+          if (e.key === "Enter" || e.key === "Escape") e.target.blur();
+          if (e.key === "F1") {
+            e.preventDefault();
+            openManual();
+          }
+          return;
+        }
+
+        if (e.key === "F1" || e.key === "?") {
+          e.preventDefault();
+          return openManual();
+        }
+
         const key = e.key.toLowerCase();
         const arrowActions = {
           ArrowLeft: () => selectStep(selectedStep - 1),
@@ -1077,7 +1666,30 @@
         if (["x", "backspace", "delete"].includes(key)) return clearSelectedStep();
         keyBindings[key]?.press();
       });
-      addEventListener("keyup", (e) => keyBindings[e.key.toLowerCase()]?.release());
+      addEventListener("keyup", (e) => {
+        if (e.target.closest?.(".eq")) return;
+        keyBindings[e.key.toLowerCase()]?.release();
+      });
+      // Panels and bottom bar can change height when the layout reflows; keep the CSS offsets in sync.
+      const syncLayout = () => {
+        const root = document.documentElement.style;
+        root.setProperty("--top-height", `${$("top-bar").offsetHeight}px`);
+        root.setProperty("--bar-height", `${$("bottom-bar").offsetHeight}px`);
+      };
+      const layoutObserver = new ResizeObserver(syncLayout);
+      layoutObserver.observe($("top-bar"));
+      layoutObserver.observe($("bottom-bar"));
+
+      document.querySelectorAll(".panel-toggle").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".panel").forEach((panel) => {
+            const open = panel.id === btn.dataset.panel && !panel.classList.contains("open");
+            panel.classList.toggle("open", open);
+          });
+          document.querySelectorAll(".panel-toggle").forEach((b) => b.classList.toggle("active", $(b.dataset.panel).classList.contains("open")));
+        }),
+      );
+
       addEventListener("resize", resize);
 
       resize();
@@ -1105,9 +1717,6 @@
       }
       function triangle(p) {
         return 1 - 4 * Math.abs(Math.round(p - 0.25) - (p - 0.25));
-      }
-      function additive(gain, ...partials) {
-        return (p) => gain * partials.reduce((sum, [h, amp]) => sum + amp * sine(p, h), 0);
       }
 
       function midiToFreq(midi) {
@@ -1138,6 +1747,38 @@
           ? `<select id="${id}" data-param>${optionTags(first)}</select>`
           : `<input type="range" id="${id}" data-param min="${first}" max="${max}" step="${step}" data-unit="${unit}">`;
         return `<div class="row"><label title="${label}">${label}</label>${input}${isSelect ? "" : `<span class="val" id="${id}Val"></span>`}</div>`;
+      }
+
+      // Turns an equation string into a function of phase. Throws a readable Error if it is unusable.
+      function compileEquation(source) {
+        const text = source.trim();
+        if (!text) throw new Error("empty");
+        if (!/^[\w\s+\-*/%().,<>=?:!&|^]+$/.test(text)) throw new Error("bad character");
+
+        const fn = new Function("p", ...EQ_NAMES, `"use strict"; return (${text});`);
+        const evaluate = (p) => fn(p, ...EQ_VALUES);
+        for (const probe of [0, 0.13, 0.37, 0.5, 0.71, 0.99]) {
+          const value = evaluate(probe);
+          if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`NaN at p=${probe}`);
+        }
+        return evaluate;
+      }
+
+      // Bakes the equation into a lookup table so the audio loop never evaluates strings.
+      function makeFrame(eq) {
+        const evaluate = compileEquation(eq);
+        const table = Float32Array.from({ length: TABLE_SIZE + 1 }, (_, i) => {
+          const value = evaluate(i / TABLE_SIZE);
+          return Number.isFinite(value) ? clamp(value, -2, 2) : 0;
+        });
+        return { eq, table };
+      }
+
+      function sampleFrame({ table }, p) {
+        const x = clamp(p, 0, 1) * TABLE_SIZE;
+        const i = Math.min(Math.floor(x), TABLE_SIZE - 1);
+        const f = x - i;
+        return table[i] * (1 - f) + table[i + 1] * f;
       }
 
       function modulate(params, lfo, env) {
@@ -1171,7 +1812,7 @@
         const scaled = clamp(pos, 0, 1) * (frames.length - 1);
         const index = Math.min(Math.floor(scaled), frames.length - 2);
         const mix = scaled - index;
-        return (frames[index](phase) * (1 - mix) + frames[index + 1](phase) * mix) * window;
+        return (sampleFrame(frames[index], phase) * (1 - mix) + sampleFrame(frames[index + 1], phase) * mix) * window;
       }
 
       function distortionCurve(amount) {
