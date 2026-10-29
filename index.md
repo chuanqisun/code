@@ -54,7 +54,8 @@
 
 ## Experiments Feed
 
-- [Laptop Sonar](./laptop-sonar/) detect hand position with laptop speakers and microphone
+- [WT-01](./wt-01/) wavetable synthesizer #audio#music
+- [Laptop Sonar](./laptop-sonar/) detect hand position with laptop speakers and microphone #audio#sensing
 - [Voice keyboard](./voice-keyboard/) simulating human vocal tract
 - [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html) Snake in Chinese characters #typography#game
 - [Fractal Terminal](./fractal-terminal/) infinite terminal displaying texts via zooming #typography#tui

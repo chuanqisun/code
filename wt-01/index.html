@@ -1,0 +1,1230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WT-01 // WAVETABLE SYNTHESIZER</title>
+    <style>
+      :root {
+        --ink: #000;
+        --paper: #fff;
+        --muted: #666;
+        --tint: #f2f2f2;
+        --tint-2: #e4e4e4;
+        --panel-bg: rgb(255 255 255 / 0.94);
+        --gap: 8px;
+        --edge: 10px;
+        --ctl: 22px;
+        --top-height: 36px;
+        --panel-width: 280px;
+        --bar-height: 120px;
+        --piano-width: clamp(230px, 28vw, 310px);
+        font: 11px monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: var(--paper);
+        color: var(--ink);
+        user-select: none;
+      }
+
+      .hud {
+        position: absolute;
+        z-index: 10;
+        padding: var(--gap);
+        background: var(--panel-bg);
+        border: 1px solid var(--ink);
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      /* One consistent control size everywhere */
+      select,
+      button {
+        height: var(--ctl);
+        margin: 0;
+        padding: 0 8px;
+        font: inherit;
+        color: var(--ink);
+        background: var(--paper);
+        border: 1px solid var(--ink);
+        border-radius: 0;
+      }
+
+      select {
+        padding: 0 2px;
+        min-width: 0;
+        cursor: pointer;
+      }
+
+      button {
+        min-width: 72px;
+        font-weight: bold;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:hover,
+        &.active {
+          background: var(--ink);
+          color: var(--paper);
+        }
+      }
+
+      input[type="range"] {
+        height: var(--ctl);
+        margin: 0;
+        accent-color: var(--ink);
+        cursor: pointer;
+      }
+
+      #top-bar {
+        top: var(--edge);
+        left: var(--edge);
+        right: var(--edge);
+        height: var(--top-height);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 var(--gap);
+        overflow: hidden;
+        white-space: nowrap;
+
+        > div {
+          display: flex;
+          align-items: center;
+          gap: var(--gap);
+          min-width: 0;
+        }
+        #presetSelect {
+          width: 190px;
+        }
+        button {
+          width: 96px;
+        }
+      }
+
+      .panel {
+        top: calc(var(--edge) * 2 + var(--top-height));
+        width: var(--panel-width);
+        max-height: calc(100vh - var(--edge) * 4 - var(--top-height) - var(--bar-height));
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+      #left-panel {
+        left: var(--edge);
+      }
+      #right-panel {
+        right: var(--edge);
+      }
+
+      .panel section + section {
+        margin-top: 12px;
+      }
+
+      h3 {
+        margin: 0 0 4px;
+        padding-bottom: 3px;
+        font-size: 11px;
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 92px minmax(0, 1fr) 42px;
+        align-items: center;
+        gap: 6px;
+        height: var(--ctl);
+        margin: 2px 0;
+
+        label {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        select {
+          grid-column: 2 / 4;
+          width: 100%;
+        }
+        input[type="range"] {
+          width: 100%;
+          min-width: 0;
+        }
+        .val {
+          text-align: right;
+          font-weight: bold;
+        }
+      }
+
+      #bottom-bar {
+        bottom: var(--edge);
+        left: var(--edge);
+        right: var(--edge);
+        height: var(--bar-height);
+        display: flex;
+        gap: 12px;
+      }
+
+      #sequencer {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        overflow: hidden;
+
+        .toolbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+
+          > div {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+          }
+        }
+        button {
+          min-width: 64px;
+        }
+        #scaleSelect {
+          width: 130px;
+        }
+        #bpm {
+          width: 70px;
+        }
+        #bpmVal {
+          width: 24px;
+          text-align: right;
+        }
+      }
+
+      #step-grid {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: repeat(16, minmax(0, 1fr));
+        gap: 3px;
+      }
+
+      .step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 0;
+        font-size: 9px;
+        background: var(--tint);
+        cursor: pointer;
+        overflow: hidden;
+
+        &:hover {
+          background: var(--tint-2);
+        }
+        &.on {
+          background: var(--ink);
+          color: var(--paper);
+        }
+        &.playing {
+          box-shadow: inset 0 -3px 0 var(--ink);
+        }
+        &.on.playing {
+          box-shadow: inset 0 -3px 0 var(--paper);
+        }
+        &.selected {
+          outline: 2px dashed var(--ink);
+          outline-offset: -2px;
+        }
+        &.on.selected {
+          outline-color: var(--paper);
+        }
+      }
+
+      #keyboard {
+        display: flex;
+        flex-direction: column;
+        flex: none;
+        width: var(--piano-width);
+        gap: 4px;
+
+        #mode-hint {
+          height: 14px;
+          overflow: hidden;
+          font-size: 9px;
+          font-weight: bold;
+          text-align: center;
+          white-space: nowrap;
+          text-overflow: ellipsis;
+        }
+      }
+
+      #piano {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        gap: 2px;
+      }
+
+      .key {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+        font-size: 9px;
+        background: var(--tint);
+        cursor: pointer;
+
+        &.upper {
+          background: var(--tint-2);
+        }
+        &:hover {
+          background: #d0d0d0;
+        }
+        &.active {
+          background: var(--ink);
+          color: var(--paper);
+        }
+        small {
+          color: var(--muted);
+        }
+        &.active small {
+          color: var(--paper);
+        }
+      }
+
+      #scope-box {
+        flex: none;
+        width: 135px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        text-align: center;
+        font-size: 9px;
+
+        b {
+          height: 14px;
+          line-height: 14px;
+          white-space: nowrap;
+        }
+        canvas {
+          flex: 1;
+          min-height: 0;
+          width: 100%;
+          background: var(--tint);
+        }
+      }
+
+      @media (max-width: 1150px) {
+        #scope-box,
+        #top-bar .muted {
+          display: none;
+        }
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://esm.sh/three@0.186.1",
+          "three/addons/": "https://esm.sh/three@0.186.1/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header id="top-bar" class="hud">
+      <div><b>WT-01 // WAVETABLE SYNTHESIZER</b> <span class="muted">[DRAG 3D VIEW TO ORBIT]</span></div>
+      <div>
+        <select id="presetSelect" title="Preset"></select>
+        <button id="powerBtn">POWER: OFF</button>
+        <button id="holdBtn" title="Latches a continuous note so you can audition parameter changes hands-free">HOLD NOTE</button>
+      </div>
+    </header>
+
+    <aside id="left-panel" class="hud panel"></aside>
+    <aside id="right-panel" class="hud panel"></aside>
+
+    <footer id="bottom-bar" class="hud">
+      <section id="sequencer">
+        <div class="toolbar">
+          <div>
+            <button id="seqBtn" class="active">SEQ: RUN</button>
+            <button id="modeBtn" title="Toggle between Play Mode and Step Edit Mode">MODE: PLAY</button>
+            <button id="restBtn" title="Set focused step to REST (or press X / Backspace)">REST</button>
+            <button id="clearBtn" title="Clear all 16 steps">CLEAR</button>
+          </div>
+          <div>
+            <select id="scaleSelect" title="Scale"></select>
+            <span>BPM</span><b id="bpmVal"></b>
+            <input type="range" id="bpm" data-param min="60" max="150" step="1" />
+          </div>
+        </div>
+        <div id="step-grid"></div>
+      </section>
+
+      <section id="keyboard">
+        <div id="mode-hint"></div>
+        <div id="piano"></div>
+      </section>
+
+      <section id="scope-box">
+        <b>POST-FX OUTPUT</b>
+        <canvas id="scope" width="135" height="75"></canvas>
+      </section>
+    </footer>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      // Helpers at the bottom are hoisted function declarations, so they are usable everywhere above.
+
+      const TAU = Math.PI * 2;
+      const STEP_COUNT = 16;
+      const NOTE_RANGE = [24, 84];
+      const WARP_LIMIT = 0.85;
+      const QWERTY = [..."asdfghjkl;"];
+      const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+      const MODE_HINTS = {
+        play: "PLAY MODE: KEYS [A-L] JAM LIVE",
+        edit: "EDIT: [←/→] STEP [↑/↓] NOTE [X] REST",
+      };
+
+      const NUM_SLICES = 37;
+      const NUM_SAMPLES = 128;
+      const KEYFRAME_STRIDE = (NUM_SLICES - 1) / 3;
+      const SIZE = 7.8;
+      const AMP_Y = 1.45;
+      const BASE_Y = -2;
+      const FRUSTUM = 14.2;
+      const ACTIVE_COLOR = 0xff0000;
+      const KEYFRAME_COLOR = 0x666666;
+      const SLICE_COLOR = 0xbbbbbb;
+      const RIBBON_INDICES = Array.from({ length: NUM_SAMPLES - 1 }, (_, i) => {
+        const [a, b] = [i * 2, i * 2 + 2];
+        return [a, a + 1, b, a + 1, b + 1, b];
+      }).flat();
+
+      const BANKS = {
+        basic: {
+          label: "Basic Analog (Sine-Sq)",
+          frames: [(p) => sine(p), triangle, (p) => (2 * p - 1) * 0.85, (p) => Math.tanh(sine(p) * 4.5) * 0.85],
+        },
+        harmonic: {
+          label: "Warm Organ Harmonics",
+          frames: [
+            additive(1, [1, 0.85], [2, 0.25]),
+            additive(0.65, [1, 1], [2, 0.5], [3, 0.25]),
+            additive(0.65, [1, 1], [3, 0.45], [5, 0.3]),
+            additive(0.6, [1, 1], [2, 0.35], [4, 0.3], [8, 0.25]),
+          ],
+        },
+        glass: {
+          label: "Glass Bell Overtones",
+          frames: [
+            (p) => sine(p),
+            additive(0.9, [1, 0.7], [3, 0.35]),
+            additive(0.9, [1, 0.55], [4, 0.35], [6, 0.2]),
+            (p) => (sine(p) * 0.5 + sine(p, 5) * 0.35 + sine(p, 7) * halfSine(p)) * 0.85,
+          ],
+        },
+        formant: {
+          label: "Soft Vocal Formants",
+          frames: [
+            additive(1, [1, 0.75], [2, 0.25]),
+            (p) => (sine(p) * 0.6 + sine(p, 3) * halfSine(p)) * 0.85,
+            (p) => (sine(p) * 0.5 + sine(p, 4) * halfSine(p)) * 0.85,
+            (p) => (sine(p) * 0.5 + sine(p, 6) * halfSine(p) * 0.65) * 0.85,
+          ],
+        },
+      };
+
+      const WARPS = {
+        bend: { label: "Asym Bend (PWM)", apply: (p, amt) => [p ** (3.2 ** amt), 1] },
+        fold: {
+          label: "Soft Wave Fold",
+          apply: (p, amt) => {
+            const folded = (p * (1 + Math.abs(amt) * 2.5)) % 2;
+            return [folded > 1 ? 2 - folded : folded, 1];
+          },
+        },
+        sync: {
+          label: "Windowed Sync",
+          apply: (p, amt) => [(p * (1 + Math.max(0, amt + WARP_LIMIT) * 3.2)) % 1, 0.3 + 0.7 * halfSine(p)],
+        },
+        fm: { label: "Gentle Phase FM", apply: (p, amt) => [(((p + amt * 0.28 * sine(p, 2)) % 1) + 1) % 1, 1] },
+      };
+
+      const LFO_SHAPES = {
+        sine: { label: "Sine", fn: (p) => sine(p) },
+        tri: { label: "Triangle", fn: triangle },
+        saw: { label: "Ramp Down", fn: (p) => 1 - 2 * p },
+        sqr: { label: "Square", fn: (p) => (p < 0.5 ? 1 : -1) },
+        sh: { label: "Sample & Hold", fn: (_, held) => held },
+      };
+
+      const FILTER_TYPES = {
+        lowpass: { label: "Lowpass (12dB)" },
+        bandpass: { label: "Bandpass (Warm)" },
+        highpass: { label: "Highpass" },
+      };
+
+      const SCALES = {
+        c_dorian: { label: "C Dorian", notes: [48, 50, 51, 53, 55, 57, 58, 60, 62, 63] },
+        c_minor: { label: "C Natural Minor", notes: [48, 50, 51, 53, 55, 56, 58, 60, 62, 63] },
+        c_maj_pent: { label: "C Major Pentatonic", notes: [48, 50, 52, 55, 57, 60, 62, 64, 67, 69] },
+        a_minor: { label: "A Natural Minor", notes: [45, 47, 48, 50, 52, 53, 55, 57, 59, 60] },
+        c_phrygian: { label: "C Phrygian", notes: [36, 37, 39, 41, 43, 44, 46, 48, 49, 51] },
+      };
+
+      const PRESETS = {
+        pluck: {
+          // Full scan: centre 0.5 with LFO depth 0.5 sweeps the whole table (0 → 1) every cycle.
+          label: "01. Warm Analog Pluck",
+          scale: "c_dorian",
+          bpm: 90,
+          notes: [48, 55, 60, 55, 62, 58, 55, 51, 48, 55, 60, 63, 62, 58, 55, 53],
+          wtBank: "harmonic",
+          wtPos: 0.5,
+          warpMode: "bend",
+          warpAmt: 0.18,
+          uniVoices: 4,
+          uniDetune: 14,
+          subMix: 0.25,
+          fltType: "lowpass",
+          fltCut: 750,
+          fltRes: 2.8,
+          lfoShape: "tri",
+          lfoRate: 0.8,
+          lfoToPos: 0.5,
+          lfoToWarp: 0.12,
+          lfoToCut: 350,
+          envA: 0.005,
+          envD: 0.28,
+          envS: 0.12,
+          envR: 0.22,
+          envToPos: 0,
+          envToCut: 3200,
+          fxDrive: 0.12,
+          fxDelay: 0.38,
+          fxDelayTime: 0.33,
+        },
+        pad: {
+          label: "02. Glass Harmonics Pad",
+          scale: "c_maj_pent",
+          bpm: 90,
+          notes: [48, 0, 55, 0, 60, 0, 64, 0, 57, 0, 62, 0, 67, 0, 64, 0],
+          wtBank: "glass",
+          wtPos: 0.3,
+          warpMode: "bend",
+          warpAmt: -0.25,
+          uniVoices: 5,
+          uniDetune: 22,
+          subMix: 0.18,
+          fltType: "lowpass",
+          fltCut: 1800,
+          fltRes: 1.4,
+          lfoShape: "tri",
+          lfoRate: 0.35,
+          lfoToPos: 0.45,
+          lfoToWarp: -0.3,
+          lfoToCut: 900,
+          envA: 0.22,
+          envD: 0.85,
+          envS: 0.75,
+          envR: 0.85,
+          envToPos: 0.2,
+          envToCut: 900,
+          fxDrive: 0.05,
+          fxDelay: 0.5,
+          fxDelayTime: 0.44,
+        },
+        subgroove: {
+          label: "03. Sub-Bass Groove",
+          scale: "c_minor",
+          bpm: 90,
+          notes: [36, 0, 36, 48, 0, 39, 41, 0, 36, 0, 36, 51, 48, 0, 43, 39],
+          wtBank: "basic",
+          wtPos: 0.35,
+          warpMode: "fold",
+          warpAmt: 0.22,
+          uniVoices: 2,
+          uniDetune: 10,
+          subMix: 0.55,
+          fltType: "lowpass",
+          fltCut: 420,
+          fltRes: 3.8,
+          lfoShape: "sine",
+          lfoRate: 1.5,
+          lfoToPos: 0.3,
+          lfoToWarp: 0.2,
+          lfoToCut: 550,
+          envA: 0.005,
+          envD: 0.24,
+          envS: 0.15,
+          envR: 0.18,
+          envToPos: 0.45,
+          envToCut: 1900,
+          fxDrive: 0.22,
+          fxDelay: 0.2,
+          fxDelayTime: 0.33,
+        },
+        lead: {
+          label: "04. Dream Synth Lead",
+          scale: "a_minor",
+          bpm: 90,
+          notes: [45, 52, 57, 60, 59, 57, 52, 48, 50, 53, 57, 60, 59, 55, 52, 47],
+          wtBank: "formant",
+          wtPos: 0.25,
+          warpMode: "sync",
+          warpAmt: 0.15,
+          uniVoices: 4,
+          uniDetune: 18,
+          subMix: 0.2,
+          fltType: "lowpass",
+          fltCut: 1100,
+          fltRes: 2.5,
+          lfoShape: "sine",
+          lfoRate: 3.2,
+          lfoToPos: 0.28,
+          lfoToWarp: 0.15,
+          lfoToCut: 450,
+          envA: 0.015,
+          envD: 0.45,
+          envS: 0.45,
+          envR: 0.35,
+          envToPos: 0.35,
+          envToCut: 2400,
+          fxDrive: 0.15,
+          fxDelay: 0.45,
+          fxDelayTime: 0.33,
+        },
+        acid: {
+          label: "05. Classic Acid 303",
+          scale: "c_phrygian",
+          bpm: 90,
+          notes: [36, 36, 48, 36, 37, 49, 36, 41, 36, 48, 44, 36, 43, 41, 39, 37],
+          wtBank: "basic",
+          wtPos: 0.65,
+          warpMode: "bend",
+          warpAmt: 0.4,
+          uniVoices: 1,
+          uniDetune: 0,
+          subMix: 0.4,
+          fltType: "lowpass",
+          fltCut: 380,
+          fltRes: 9.5,
+          lfoShape: "tri",
+          lfoRate: 0.75,
+          lfoToPos: 0.2,
+          lfoToWarp: 0.25,
+          lfoToCut: 650,
+          envA: 0.005,
+          envD: 0.2,
+          envS: 0.05,
+          envR: 0.1,
+          envToPos: -0.25,
+          envToCut: 3100,
+          fxDrive: 0.42,
+          fxDelay: 0.32,
+          fxDelayTime: 0.25,
+        },
+      };
+
+      // [id, label, optionsMap] = select | [id, label, min, max, step, unit?] = slider
+      const PANELS = {
+        "left-panel": [
+          [
+            "OSC A // WAVETABLE",
+            [
+              ["wtBank", "Bank", labelsOf(BANKS)],
+              ["wtPos", "WT Position", 0, 1, 0.005],
+              ["warpMode", "Warp Mode", labelsOf(WARPS)],
+              ["warpAmt", "Warp Amount", -WARP_LIMIT, WARP_LIMIT, 0.01],
+            ],
+          ],
+          [
+            "UNISON & SUB",
+            [
+              ["uniVoices", "Voices", 1, 5, 1],
+              ["uniDetune", "Detune", 0, 50, 1, "c"],
+              ["subMix", "Sub (-1 Oct)", 0, 0.8, 0.01],
+            ],
+          ],
+          [
+            "FILTER // SVF",
+            [
+              ["fltType", "Type", labelsOf(FILTER_TYPES)],
+              ["fltCut", "Cutoff", 60, 8000, 10],
+              ["fltRes", "Resonance", 0.5, 15, 0.1],
+            ],
+          ],
+        ],
+        "right-panel": [
+          [
+            "LFO 1",
+            [
+              ["lfoShape", "Shape", labelsOf(LFO_SHAPES)],
+              ["lfoRate", "Rate (Hz)", 0.1, 12, 0.1],
+              ["lfoToPos", "To WT Pos", -0.8, 0.8, 0.01],
+              ["lfoToWarp", "To Warp", -0.8, 0.8, 0.01],
+              ["lfoToCut", "To Cutoff", -3500, 3500, 50],
+            ],
+          ],
+          [
+            "ENV 1 // ADSR",
+            [
+              ["envA", "Attack (s)", 0.005, 0.8, 0.005],
+              ["envD", "Decay (s)", 0.05, 1.5, 0.01],
+              ["envS", "Sustain", 0, 1, 0.01],
+              ["envR", "Release (s)", 0.02, 1.5, 0.01],
+              ["envToPos", "To WT Pos", -0.8, 0.8, 0.01],
+              ["envToCut", "To Cutoff", -4000, 4000, 50],
+            ],
+          ],
+          [
+            "MASTER FX",
+            [
+              ["fxDrive", "Drive", 0, 1, 0.01],
+              ["fxDelay", "Delay Mix", 0, 0.7, 0.01],
+              ["fxDelayTime", "Delay (s)", 0.08, 0.6, 0.01],
+            ],
+          ],
+        ],
+      };
+
+      const state = {};
+      const voice = {
+        freq: midiToFreq(48),
+        phases: Array(5).fill(0),
+        subPhase: 0,
+        lfoPhase: 0,
+        held: 0,
+        env: { stage: "off", level: 0 },
+      };
+      const steps = Array(STEP_COUNT).fill(0);
+
+      let audio = null;
+      let live = { pos: 0, warp: 0, cutoff: 0 };
+      let powered = false;
+      let sequencing = true;
+      let holding = false;
+      let mode = "play";
+      let selectedStep = 0;
+      let playingStep = -1;
+      let lastStepTime = 0;
+      let litSlice = -1;
+      let keyBindings = {};
+
+      Object.entries(PANELS).forEach(([panelId, sections]) => {
+        $(panelId).innerHTML = sections.map(([title, rows]) => `<section><h3>${title}</h3>${rows.map(controlRow).join("")}</section>`).join("");
+      });
+      $("presetSelect").innerHTML = optionTags(labelsOf(PRESETS));
+      $("scaleSelect").innerHTML = optionTags(labelsOf(SCALES));
+      $("step-grid").innerHTML = steps.map((_, i) => `<div class="step"><span>${i + 1}</span><b>---</b></div>`).join("");
+
+      const stepEls = [...$("step-grid").children];
+      const piano = $("piano");
+      const scopeCanvas = $("scope");
+      const scopeCtx = scopeCanvas.getContext("2d");
+      const scopeBuffer = new Uint8Array(512);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
+      camera.position.set(19, 15.5, 20);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(devicePixelRatio);
+      document.body.append(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, -0.3, 0);
+
+      const platform = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(SIZE + 0.4, 0.08, SIZE + 0.4)),
+        new THREE.LineBasicMaterial({ color: 0xcccccc }),
+      );
+      platform.position.y = BASE_Y - 0.04;
+      scene.add(platform);
+
+      const sliceFill = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: 1.5,
+        polygonOffsetUnits: 1.5,
+      });
+      const slices = Array.from({ length: NUM_SLICES }, (_, s) => {
+        const baseColor = s % KEYFRAME_STRIDE === 0 ? KEYFRAME_COLOR : SLICE_COLOR;
+        const slice = createSlice(sliceFill, new THREE.LineBasicMaterial({ color: baseColor }));
+        scene.add(...slice.objects);
+        return { ...slice, baseColor };
+      });
+
+      const resize = () => {
+        const aspect = innerWidth / innerHeight;
+        Object.assign(camera, { left: (-FRUSTUM * aspect) / 2, right: (FRUSTUM * aspect) / 2, top: FRUSTUM / 2, bottom: -FRUSTUM / 2 });
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      };
+
+      function createAudioGraph() {
+        const ctx = new AudioContext();
+        const processor = ctx.createScriptProcessor(512, 0, 1);
+        const filter = ctx.createBiquadFilter();
+        const shaper = ctx.createWaveShaper();
+        const delay = ctx.createDelay(1);
+        const feedback = createGain(ctx, 0.4);
+        const wet = createGain(ctx, 0);
+        const dry = createGain(ctx, 0.85);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        shaper.curve = distortionCurve(state.fxDrive);
+
+        connect(processor, filter, shaper, dry, analyser, ctx.destination);
+        connect(shaper, delay, wet, analyser);
+        connect(delay, feedback, delay);
+
+        processor.onaudioprocess = ({ outputBuffer }) => {
+          const mod = renderBlock(outputBuffer.getChannelData(0), ctx.sampleRate);
+          if (!mod) return;
+          const now = ctx.currentTime;
+          live = mod;
+          filter.type = state.fltType;
+          filter.frequency.setTargetAtTime(mod.cutoff, now, 0.008);
+          filter.Q.setTargetAtTime(state.fltRes, now, 0.008);
+          delay.delayTime.setTargetAtTime(state.fxDelayTime, now, 0.02);
+          wet.gain.setTargetAtTime(state.fxDelay, now, 0.02);
+        };
+
+        return { ctx, shaper, analyser };
+      }
+
+      function ensureAudio() {
+        audio ??= createAudioGraph();
+        audio.ctx.resume();
+        setPower(true);
+      }
+
+      function setPower(on) {
+        powered = on;
+        $("powerBtn").textContent = `POWER: ${on ? "ON" : "OFF"}`;
+        $("powerBtn").classList.toggle("active", on);
+      }
+
+      function noteOn(midi) {
+        voice.freq = midiToFreq(midi);
+        voice.env.stage = "attack";
+      }
+
+      function noteOff() {
+        if (!holding && voice.env.stage !== "off") voice.env.stage = "release";
+      }
+
+      function audition(midi, ms) {
+        ensureAudio();
+        noteOn(midi);
+        setTimeout(noteOff, ms);
+      }
+
+      function renderBlock(out, sampleRate) {
+        const voices = Math.round(state.uniVoices);
+        const { env } = voice;
+        let mod = null;
+
+        out.forEach((_, i) => {
+          if (!powered) return void (out[i] = 0);
+
+          voice.lfoPhase += state.lfoRate / sampleRate;
+          if (voice.lfoPhase >= 1) {
+            voice.lfoPhase -= 1;
+            voice.held = Math.random() * 2 - 1;
+          }
+          advanceEnvelope(env, state, sampleRate, holding);
+          mod = modulate(state, LFO_SHAPES[state.lfoShape].fn(voice.lfoPhase, voice.held), env.level);
+          out[i] = env.level <= 1e-4 ? 0 : renderVoiceSample(mod, voices, sampleRate);
+        });
+        return mod;
+      }
+
+      function renderVoiceSample({ pos, warp }, voices, sampleRate) {
+        let sum = 0;
+        for (let v = 0; v < voices; v++) {
+          const spread = voices === 1 ? 0 : v / (voices - 1) - 0.5;
+          voice.phases[v] = (voice.phases[v] + (voice.freq * 2 ** ((spread * state.uniDetune) / 1200)) / sampleRate) % 1;
+          sum += sampleWavetable(state, voice.phases[v], pos, warp);
+        }
+        voice.subPhase = (voice.subPhase + (voice.freq * 0.5) / sampleRate) % 1;
+        const sub = sine(voice.subPhase) * state.subMix;
+        return ((sum / Math.sqrt(voices)) * 0.55 + sub * 0.45) * voice.env.level * 0.4;
+      }
+
+      function readParams() {
+        $$("[data-param]").forEach((el) => {
+          const isRange = el.type === "range";
+          state[el.id] = isRange ? +el.value : el.value;
+          const label = $(`${el.id}Val`);
+          if (label) label.textContent = isRange ? formatValue(+el.value, el) : "";
+        });
+      }
+
+      function onParamChange(id) {
+        readParams();
+        if (["warpAmt", "wtBank", "warpMode"].includes(id)) rebuildTerrain();
+        if (id === "fxDrive") applyDrive();
+      }
+
+      function applyDrive() {
+        if (audio) audio.shaper.curve = distortionCurve(state.fxDrive);
+      }
+
+      function loadPreset(key) {
+        const { label, scale, notes, ...params } = PRESETS[key];
+        Object.entries(params).forEach(([id, value]) => ($(id).value = value));
+        $("scaleSelect").value = scale;
+        steps.splice(0, STEP_COUNT, ...notes);
+        readParams();
+        rebuildPiano();
+        renderSteps();
+        applyDrive();
+        rebuildTerrain();
+      }
+
+      function renderSteps() {
+        stepEls.forEach((el, i) => {
+          el.classList.toggle("on", steps[i] > 0);
+          el.classList.toggle("playing", i === playingStep);
+          el.classList.toggle("selected", mode === "edit" && i === selectedStep);
+          el.querySelector("b").textContent = midiToName(steps[i]);
+        });
+      }
+
+      function setMode(next) {
+        mode = next;
+        $("modeBtn").textContent = `MODE: ${next.toUpperCase()}`;
+        $("modeBtn").classList.toggle("active", next === "edit");
+        $("mode-hint").textContent = MODE_HINTS[next];
+        renderSteps();
+      }
+
+      function selectStep(index) {
+        selectedStep = (index + STEP_COUNT) % STEP_COUNT;
+        if (steps[selectedStep] > 0) audition(steps[selectedStep], 140);
+        renderSteps();
+      }
+
+      function assignNote(midi) {
+        steps[selectedStep] = midi;
+        renderSteps();
+      }
+
+      function nudgeNote(semitones) {
+        const current = steps[selectedStep];
+        assignNote(current > 0 ? clamp(current + semitones, ...NOTE_RANGE) : currentScale().notes[0]);
+        audition(steps[selectedStep], 150);
+      }
+
+      function clearSelectedStep() {
+        setMode("edit");
+        assignNote(0);
+      }
+
+      function rebuildPiano() {
+        piano.replaceChildren();
+        keyBindings = {};
+
+        currentScale().notes.forEach((midi, i) => {
+          const char = QWERTY[i];
+          const el = document.createElement("div");
+          el.className = `key${i >= 5 ? " upper" : ""}`;
+          el.innerHTML = `<span>${midiToName(midi)}</span><small>[${char.toUpperCase()}]</small>`;
+
+          const press = () => {
+            ensureAudio();
+            noteOn(midi);
+            el.classList.add("active");
+            if (mode === "edit") assignNote(midi);
+          };
+          const release = () => {
+            noteOff();
+            el.classList.remove("active");
+          };
+
+          el.addEventListener("mousedown", press);
+          el.addEventListener("mouseup", release);
+          el.addEventListener("mouseleave", () => el.classList.contains("active") && release());
+          piano.append(el);
+          keyBindings[char] = { press, release };
+        });
+      }
+
+      function tickSequencer(now) {
+        if (!powered || !sequencing || now - lastStepTime < 15000 / state.bpm) return;
+        lastStepTime = now;
+        playingStep = (playingStep + 1) % STEP_COUNT;
+        if (steps[playingStep] > 0) noteOn(steps[playingStep]);
+        renderSteps();
+      }
+
+      function rebuildTerrain() {
+        slices.forEach((slice, s) => writeSlice(slice, s / (NUM_SLICES - 1), state.warpAmt));
+      }
+
+      function lightSlice(index) {
+        if (index === litSlice) return;
+        if (litSlice >= 0) slices[litSlice].objects[1].material.color.set(slices[litSlice].baseColor);
+        slices[index].objects[1].material.color.set(ACTIVE_COLOR);
+        litSlice = index;
+      }
+
+      function drawScope() {
+        const { width, height } = scopeCanvas;
+        const active = powered && audio;
+        if (active) audio.analyser.getByteTimeDomainData(scopeBuffer);
+
+        scopeCtx.clearRect(0, 0, width, height);
+        scopeCtx.lineWidth = 1.4;
+        scopeCtx.beginPath();
+        for (let x = 0; x < width; x++) {
+          const level = active ? (scopeBuffer[Math.floor((x / width) * scopeBuffer.length)] - 128) / 128 : 0;
+          scopeCtx.lineTo(x, height / 2 - level * height * 0.45);
+        }
+        scopeCtx.stroke();
+      }
+
+      let lastFrame = performance.now();
+      let idlePhase = 0;
+
+      function frame(now) {
+        requestAnimationFrame(frame);
+        const dt = (now - lastFrame) / 1000;
+        lastFrame = now;
+
+        tickSequencer(now);
+
+        if (!powered) {
+          idlePhase = (idlePhase + state.lfoRate * dt) % 1;
+          live = modulate(state, LFO_SHAPES[state.lfoShape].fn(idlePhase, 0), 0);
+        }
+
+        lightSlice(Math.round(live.pos * (NUM_SLICES - 1)));
+
+        renderer.render(scene, camera);
+        drawScope();
+      }
+
+      document.addEventListener("input", ({ target }) => target.matches("[data-param]") && onParamChange(target.id));
+      document.addEventListener("change", ({ target }) => target.tagName === "SELECT" && target.blur());
+
+      $("presetSelect").addEventListener("change", ({ target }) => loadPreset(target.value));
+      $("scaleSelect").addEventListener("change", rebuildPiano);
+      $("powerBtn").addEventListener("click", () => (powered ? setPower(false) : ensureAudio()));
+
+      $("holdBtn").addEventListener("click", ({ target }) => {
+        ensureAudio();
+        holding = !holding;
+        target.classList.toggle("active", holding);
+        holding ? noteOn(currentScale().notes[0]) : noteOff();
+      });
+
+      $("seqBtn").addEventListener("click", ({ target }) => {
+        sequencing = !sequencing;
+        target.textContent = `SEQ: ${sequencing ? "RUN" : "STOP"}`;
+        target.classList.toggle("active", sequencing);
+      });
+
+      $("modeBtn").addEventListener("click", () => setMode(mode === "play" ? "edit" : "play"));
+      $("restBtn").addEventListener("click", clearSelectedStep);
+      $("clearBtn").addEventListener("click", () => {
+        steps.fill(0);
+        renderSteps();
+      });
+
+      stepEls.forEach((el, i) =>
+        el.addEventListener("click", () => {
+          if (mode === "edit") return selectStep(i);
+          steps[i] = steps[i] ? 0 : currentScale().notes[0];
+          renderSteps();
+        }),
+      );
+
+      addEventListener("keydown", (e) => {
+        const key = e.key.toLowerCase();
+        const arrowActions = {
+          ArrowLeft: () => selectStep(selectedStep - 1),
+          ArrowRight: () => selectStep(selectedStep + 1),
+          ArrowUp: () => nudgeNote(1),
+          ArrowDown: () => nudgeNote(-1),
+        };
+
+        if (mode === "edit" && arrowActions[e.key]) {
+          e.preventDefault();
+          return arrowActions[e.key]();
+        }
+        if (e.repeat) return;
+        if (["x", "backspace", "delete"].includes(key)) return clearSelectedStep();
+        keyBindings[key]?.press();
+      });
+      addEventListener("keyup", (e) => keyBindings[e.key.toLowerCase()]?.release());
+      addEventListener("resize", resize);
+
+      resize();
+      controls.update();
+      $("presetSelect").value = "pluck";
+      loadPreset("pluck");
+      setMode("play");
+      requestAnimationFrame(frame);
+
+      function $(id) {
+        return document.getElementById(id);
+      }
+      function $$(selector) {
+        return [...document.querySelectorAll(selector)];
+      }
+
+      function clamp(value, min, max) {
+        return Math.min(max, Math.max(min, value));
+      }
+      function sine(p, harmonic = 1) {
+        return Math.sin(p * TAU * harmonic);
+      }
+      function halfSine(p) {
+        return Math.sin(p * Math.PI);
+      }
+      function triangle(p) {
+        return 1 - 4 * Math.abs(Math.round(p - 0.25) - (p - 0.25));
+      }
+      function additive(gain, ...partials) {
+        return (p) => gain * partials.reduce((sum, [h, amp]) => sum + amp * sine(p, h), 0);
+      }
+
+      function midiToFreq(midi) {
+        return 440 * 2 ** ((midi - 69) / 12);
+      }
+      function midiToName(midi) {
+        return midi <= 0 ? "---" : NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+      }
+      function currentScale() {
+        return SCALES[$("scaleSelect").value];
+      }
+
+      function labelsOf(map) {
+        return Object.fromEntries(Object.entries(map).map(([key, { label }]) => [key, label]));
+      }
+      function optionTags(labels) {
+        return Object.entries(labels)
+          .map(([value, label]) => `<option value="${value}">${label}</option>`)
+          .join("");
+      }
+      function formatValue(value, { step, dataset }) {
+        return (+step >= 1 ? Math.round(value) : value.toFixed(2)) + (dataset.unit ?? "");
+      }
+
+      function controlRow([id, label, first, max, step, unit = ""]) {
+        const isSelect = typeof first === "object";
+        const input = isSelect
+          ? `<select id="${id}" data-param>${optionTags(first)}</select>`
+          : `<input type="range" id="${id}" data-param min="${first}" max="${max}" step="${step}" data-unit="${unit}">`;
+        return `<div class="row"><label title="${label}">${label}</label>${input}${isSelect ? "" : `<span class="val" id="${id}Val"></span>`}</div>`;
+      }
+
+      function modulate(params, lfo, env) {
+        return {
+          pos: clamp(params.wtPos + lfo * params.lfoToPos + env * params.envToPos, 0, 1),
+          warp: clamp(params.warpAmt + lfo * params.lfoToWarp, -WARP_LIMIT, WARP_LIMIT),
+          cutoff: clamp(params.fltCut + lfo * params.lfoToCut + env * params.envToCut, 50, 11000),
+        };
+      }
+
+      function advanceEnvelope(env, { envA, envD, envS, envR }, sampleRate, sustaining) {
+        const rate = (seconds) => 1 / (seconds * sampleRate);
+
+        if (env.stage === "attack") {
+          env.level += rate(Math.max(0.003, envA));
+          if (env.level >= 1) Object.assign(env, { level: 1, stage: "decay" });
+        } else if (env.stage === "decay") {
+          env.level -= (1 - envS) * rate(Math.max(0.01, envD));
+          if (env.level <= envS) Object.assign(env, { level: envS, stage: sustaining ? "sustain" : "release" });
+        } else if (env.stage === "sustain") {
+          env.level = envS;
+        } else if (env.stage === "release") {
+          env.level -= Math.max(0.05, env.level) * rate(Math.max(0.01, envR));
+          if (env.level <= 0.0005) Object.assign(env, { level: 0, stage: "off" });
+        }
+      }
+
+      function sampleWavetable({ wtBank, warpMode }, p, pos, warp) {
+        const { frames } = BANKS[wtBank];
+        const [phase, window] = Math.abs(warp) < 0.001 ? [p, 1] : WARPS[warpMode].apply(p, warp);
+        const scaled = clamp(pos, 0, 1) * (frames.length - 1);
+        const index = Math.min(Math.floor(scaled), frames.length - 2);
+        const mix = scaled - index;
+        return (frames[index](phase) * (1 - mix) + frames[index + 1](phase) * mix) * window;
+      }
+
+      function distortionCurve(amount) {
+        const k = amount * 35;
+        return Float32Array.from({ length: 512 }, (_, i) => {
+          const x = (i * 2) / 512 - 1;
+          return k === 0 ? x : ((1 + k) * x) / (1 + k * Math.abs(x));
+        });
+      }
+
+      function createGain(ctx, value) {
+        const node = ctx.createGain();
+        node.gain.value = value;
+        return node;
+      }
+
+      function connect(...nodes) {
+        return nodes.reduce((from, to) => from.connect(to));
+      }
+
+      function createSlice(fillMaterial, borderMaterial) {
+        const fillGeometry = new THREE.BufferGeometry();
+        fillGeometry.setIndex(RIBBON_INDICES);
+        fillGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(NUM_SAMPLES * 6), 3));
+
+        const borderGeometry = new THREE.BufferGeometry();
+        borderGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array((NUM_SAMPLES + 3) * 3), 3));
+
+        const objects = [new THREE.Mesh(fillGeometry, fillMaterial), new THREE.Line(borderGeometry, borderMaterial)];
+        objects.forEach((object) => (object.frustumCulled = false));
+        return { fillGeometry, borderGeometry, objects };
+      }
+
+      function writeSlice({ fillGeometry, borderGeometry }, pos, warp) {
+        const fill = fillGeometry.attributes.position;
+        const border = borderGeometry.attributes.position;
+        const z = (pos - 0.5) * SIZE;
+        const half = SIZE / 2;
+
+        border.setXYZ(0, -half, BASE_Y, z);
+        for (let i = 0; i < NUM_SAMPLES; i++) {
+          const p = i / (NUM_SAMPLES - 1);
+          const x = (p - 0.5) * SIZE;
+          const y = sampleWavetable(state, p, pos, warp) * AMP_Y;
+          fill.setXYZ(i * 2, x, y, z);
+          fill.setXYZ(i * 2 + 1, x, BASE_Y, z);
+          border.setXYZ(i + 1, x, y, z);
+        }
+        border.setXYZ(NUM_SAMPLES + 1, half, BASE_Y, z);
+        border.setXYZ(NUM_SAMPLES + 2, -half, BASE_Y, z);
+
+        fill.needsUpdate = border.needsUpdate = true;
+      }
+    </script>
+  </body>
+</html>
