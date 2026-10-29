@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SONAR / 1D</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        background: #fff;
+        color: #000;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      body {
+        display: flex;
+        justify-content: center;
+        padding: 32px 20px;
+      }
+      .wrap {
+        width: 100%;
+        max-width: 880px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        border-bottom: 1px solid #000;
+        padding-bottom: 8px;
+      }
+      header b {
+        letter-spacing: 0.2em;
+        font-weight: 700;
+      }
+      .dim {
+        color: #777;
+      }
+      .readout {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+      }
+      .big {
+        font-size: 56px;
+        line-height: 1;
+        letter-spacing: -0.04em;
+        font-weight: 300;
+        transition: color 0.15s;
+        white-space: nowrap;
+      }
+      .small {
+        letter-spacing: 0.3em;
+        font-size: 12px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        transition: color 0.15s;
+        white-space: nowrap;
+      }
+      canvas {
+        width: 100%;
+        height: 150px;
+        display: block;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      button {
+        font: inherit;
+        background: #fff;
+        color: #000;
+        border: 1px solid #000;
+        padding: 6px 14px;
+        cursor: pointer;
+        letter-spacing: 0.05em;
+      }
+      button:hover:not(:disabled) {
+        background: #000;
+        color: #fff;
+      }
+      button:disabled {
+        color: #bbb;
+        border-color: #ccc;
+        cursor: not-allowed;
+      }
+      button.on {
+        background: #000;
+        color: #fff;
+      }
+      .status {
+        min-height: 20px;
+      }
+      .rec {
+        animation: blink 1s steps(2) infinite;
+        color: #e00000;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.25;
+        }
+      }
+      details {
+        border-top: 1px solid #ddd;
+        padding-top: 10px;
+      }
+      summary {
+        cursor: pointer;
+        color: #777;
+        letter-spacing: 0.1em;
+        user-select: none;
+      }
+      details .in {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      input[type="number"] {
+        font: inherit;
+        width: 84px;
+        border: 1px solid #000;
+        padding: 2px 6px;
+        background: #fff;
+        color: #000;
+        border-radius: 0;
+      }
+      input[type="range"] {
+        accent-color: #000;
+      }
+      pre {
+        font: inherit;
+        white-space: pre-wrap;
+        color: #444;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <b>SONAR/1D</b>
+        <span class="dim" id="sr">offline</span>
+      </header>
+
+      <section>
+        <div class="readout">
+          <div class="big" id="tag">STANDBY</div>
+          <div class="small" id="num">--</div>
+        </div>
+        <canvas id="dial"></canvas>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <div class="row">
+          <button id="startBtn">START</button>
+          <span class="dim">/</span>
+          <button id="bBase" disabled>1 BASELINE</button>
+          <button id="bL" disabled>2 LEFT</button>
+          <button id="bR" disabled>3 RIGHT</button>
+          <button id="bReset">RESET</button>
+        </div>
+        <div class="status" id="status">Press START. Use built-in speakers and mic.</div>
+        <div class="dim" id="modelInfo">model: none</div>
+      </section>
+
+      <details>
+        <summary>SETTINGS / DIAGNOSTICS</summary>
+        <div class="in">
+          <label>L-spk tone Hz <input type="number" id="f0" value="17500" step="100" /></label>
+          <label>R-spk tone Hz <input type="number" id="f1" value="19500" step="100" /></label>
+          <label>volume <input type="range" id="vol" min="5" max="60" value="35" /> <span id="volV">35</span>%</label>
+          <pre id="diag">--</pre>
+        </div>
+      </details>
+    </div>
+
+    <script type="worklet" id="wk">
+      class SonarProc extends AudioWorkletProcessor{
+        constructor(){
+          super();
+          this.N=1024; this.f=[17500,19500]; this.g=0.3; this.ph=[0,0];
+          this.acc=new Float64Array(8); this.cnt=0;
+          this.port.onmessage=(e)=>{
+            const m=e.data;
+            if(m.f){
+              const bw=sampleRate/this.N;
+              this.f=m.f.map(x=>Math.round(x/bw)*bw);
+              this.port.postMessage({actual:this.f,sr:sampleRate});
+            }
+            if(m.g!==undefined) this.g=m.g;
+          };
+        }
+        process(inputs,outputs){
+          const out=outputs[0]; const inp=inputs[0]||[];
+          const a=inp[0], b=inp[1]||inp[0];
+          const n=out[0].length;
+          for(let i=0;i<n;i++){
+            const xl=a?a[i]:0, xr=b?b[i]:0;
+            for(let t=0;t<2;t++){
+              const ph=this.ph[t], s=Math.sin(ph), c=Math.cos(ph);
+              if(out[t]) out[t][i]=this.g*s;
+              const o0=(0*2+t)*2, o1=(1*2+t)*2;
+              this.acc[o0]+=xl*s; this.acc[o0+1]+=xl*c;
+              this.acc[o1]+=xr*s; this.acc[o1+1]+=xr*c;
+              let np=ph+2*Math.PI*this.f[t]/sampleRate;
+              if(np>2*Math.PI) np-=2*Math.PI;
+              this.ph[t]=np;
+            }
+            if(++this.cnt===this.N){
+              const o=new Float32Array(8);
+              for(let k=0;k<8;k++) o[k]=this.acc[k]*2/this.N;
+              this.port.postMessage({z:o});
+              this.acc.fill(0); this.cnt=0;
+            }
+          }
+          return true;
+        }
+      }
+      registerProcessor('sonar',SonarProc);
+    </script>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const RED = "#e00000";
+      let ctx = null,
+        node = null,
+        stream = null,
+        running = false;
+      let zs = new Float32Array(8),
+        zInit = false;
+      let base = null,
+        emptyZs = [],
+        takes = [],
+        recording = null;
+      let model = null,
+        presenceThr = null;
+      let present = false,
+        posTarget = 0,
+        posDisp = 0,
+        lastBlocks = 0;
+      const trail = [];
+      const TRAIL = 70;
+
+      // ---------- Start / Stop ----------
+      $("startBtn").onclick = async () => {
+        if (running) {
+          stop();
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              channelCount: { ideal: 2 },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+          const st = stream.getAudioTracks()[0].getSettings();
+          ctx = new AudioContext({ sampleRate: 48000, latencyHint: "interactive" });
+          const url = URL.createObjectURL(new Blob([$("wk").textContent], { type: "application/javascript" }));
+          await ctx.audioWorklet.addModule(url);
+          node = new AudioWorkletNode(ctx, "sonar", {
+            numberOfInputs: 1,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            channelCount: 2,
+            channelCountMode: "explicit",
+            channelInterpretation: "discrete",
+          });
+          node.port.onmessage = (e) => {
+            if (e.data.z) onBlock(e.data.z);
+            if (e.data.actual) {
+              $("sr").textContent = `${e.data.sr}Hz · ${e.data.actual[0].toFixed(0)}/${e.data.actual[1].toFixed(0)}Hz · mic ch ${st.channelCount || "?"}`;
+            }
+          };
+          ctx.createMediaStreamSource(stream).connect(node);
+          node.connect(ctx.destination);
+          node.port.postMessage({ f: [+$("f0").value, +$("f1").value], g: +$("vol").value / 100 });
+          running = true;
+          zInit = false;
+          $("startBtn").textContent = "STOP";
+          $("startBtn").classList.add("on");
+          ["f0", "f1"].forEach((i) => ($(i).disabled = true));
+          ["bBase", "bL", "bR"].forEach((i) => ($(i).disabled = false));
+          setStatus("Step 1: hands away from laptop, press BASELINE.");
+          $("tag").textContent = "UNCALIBRATED";
+        } catch (err) {
+          alert("Failed: " + err.message);
+          console.error(err);
+        }
+      };
+      function stop() {
+        running = false;
+        if (stream) stream.getTracks().forEach((t) => t.stop());
+        if (ctx) ctx.close();
+        $("startBtn").textContent = "START";
+        $("startBtn").classList.remove("on");
+        ["f0", "f1"].forEach((i) => ($(i).disabled = false));
+        ["bBase", "bL", "bR"].forEach((i) => ($(i).disabled = true));
+        $("sr").textContent = "offline";
+        resetAll();
+      }
+      $("vol").oninput = () => {
+        $("volV").textContent = $("vol").value;
+        if (node) node.port.postMessage({ g: +$("vol").value / 100 });
+      };
+      function setStatus(t, rec) {
+        $("status").textContent = t;
+        $("status").className = "status" + (rec ? " rec" : "");
+      }
+      function resetAll() {
+        base = null;
+        emptyZs = [];
+        takes = [];
+        model = null;
+        presenceThr = null;
+        recording = null;
+        present = false;
+        posTarget = 0;
+        trail.length = 0;
+        $("modelInfo").textContent = "model: none";
+        $("num").textContent = "--";
+        $("num").style.color = "#000";
+        $("tag").style.color = "#000";
+        $("tag").textContent = running ? "UNCALIBRATED" : "STANDBY";
+        setStatus(running ? "Calibration cleared. Press BASELINE." : "Press START. Use built-in speakers and mic.");
+      }
+      $("bReset").onclick = resetAll;
+
+      // ---------- Calibration ----------
+      function startTake(label, secs) {
+        if (!running || recording) return;
+        ["bBase", "bL", "bR"].forEach((i) => ($(i).disabled = true));
+        let c = 2;
+        setStatus(`${label.toUpperCase()} in ${c}...`);
+        const t = setInterval(() => {
+          c--;
+          if (c > 0) {
+            setStatus(`${label.toUpperCase()} in ${c}...`);
+            return;
+          }
+          clearInterval(t);
+          recording = { label, zs: [] };
+          setStatus(
+            `● RECORDING ${label.toUpperCase()} ${secs}s — ` +
+              (label === "empty" ? "keep hands away" : "move hand slowly within that side, vary distance and tilt"),
+            true,
+          );
+          setTimeout(() => {
+            const rec = recording;
+            recording = null;
+            if (label === "empty") {
+              emptyZs = rec.zs;
+              base = meanZ(rec.zs);
+            } else takes.push(rec);
+            ["bBase", "bL", "bR"].forEach((i) => ($(i).disabled = !running));
+            const nl = takes.filter((t) => t.label === "left").length,
+              nr = takes.filter((t) => t.label === "right").length;
+            setStatus(`Saved ${label}. takes L=${nl} R=${nr}. Record 2+ per side for a hold-out score.`);
+            retrain();
+          }, secs * 1000);
+        }, 1000);
+      }
+      $("bBase").onclick = () => startTake("empty", 3);
+      $("bL").onclick = () => startTake("left", 4);
+      $("bR").onclick = () => startTake("right", 4);
+
+      function meanZ(arr) {
+        const m = new Float32Array(8);
+        arr.forEach((z) => {
+          for (let i = 0; i < 8; i++) m[i] += z[i];
+        });
+        for (let i = 0; i < 8; i++) m[i] /= arr.length;
+        return m;
+      }
+
+      // ---------- Features ----------
+      function residual(z) {
+        const r = new Float32Array(8);
+        for (let i = 0; i < 8; i++) r[i] = z[i] - (base ? base[i] : 0);
+        return r;
+      }
+      function scaleOf() {
+        if (!base) return 1;
+        let s = 0;
+        for (let p = 0; p < 4; p++) s += base[2 * p] ** 2 + base[2 * p + 1] ** 2;
+        return Math.sqrt(s / 4) + 1e-9;
+      }
+      function features(z) {
+        const r = residual(z),
+          s = scaleOf(),
+          f = [];
+        for (let p = 0; p < 4; p++) {
+          f.push(r[2 * p] / s, r[2 * p + 1] / s);
+        }
+        for (let p = 0; p < 4; p++) {
+          const m = Math.hypot(r[2 * p], r[2 * p + 1]) / s;
+          f.push(Math.log10(m + 1e-4));
+        }
+        return f;
+      }
+      function presence(z) {
+        const r = residual(z),
+          s = scaleOf();
+        let e = 0;
+        for (let i = 0; i < 8; i++) e += r[i] * r[i];
+        return Math.sqrt(e) / s;
+      }
+
+      // ---------- Logistic regression ----------
+      const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+      function fit(X, y) {
+        const d = X[0].length,
+          n = X.length;
+        const mu = new Array(d).fill(0),
+          sd = new Array(d).fill(0);
+        X.forEach((x) => x.forEach((v, i) => (mu[i] += v / n)));
+        X.forEach((x) => x.forEach((v, i) => (sd[i] += (v - mu[i]) ** 2 / n)));
+        for (let i = 0; i < d; i++) sd[i] = Math.sqrt(sd[i]) + 1e-6;
+        const Xs = X.map((x) => x.map((v, i) => (v - mu[i]) / sd[i]));
+        let w = new Array(d).fill(0),
+          b = 0;
+        const lr = 0.2,
+          l2 = 0.01;
+        for (let ep = 0; ep < 500; ep++) {
+          const gw = new Array(d).fill(0);
+          let gb = 0;
+          for (let k = 0; k < n; k++) {
+            let z = b;
+            for (let i = 0; i < d; i++) z += w[i] * Xs[k][i];
+            const e = sigmoid(z) - y[k];
+            for (let i = 0; i < d; i++) gw[i] += (e * Xs[k][i]) / n;
+            gb += e / n;
+          }
+          for (let i = 0; i < d; i++) w[i] -= lr * (gw[i] + l2 * w[i]);
+          b -= lr * gb;
+        }
+        return { mu, sd, w, b, scale: 1 };
+      }
+      function logit(m, f) {
+        let z = m.b;
+        for (let i = 0; i < f.length; i++) z += (m.w[i] * (f[i] - m.mu[i])) / m.sd[i];
+        return z;
+      }
+      function acc(m, X, y) {
+        let ok = 0;
+        X.forEach((x, i) => {
+          if ((logit(m, x) > 0 ? 1 : 0) === y[i]) ok++;
+        });
+        return ok / X.length;
+      }
+      function buildSet(tks) {
+        const X = [],
+          y = [];
+        tks.forEach((t) =>
+          t.zs.forEach((z) => {
+            X.push(features(z));
+            y.push(t.label === "right" ? 1 : 0);
+          }),
+        );
+        return { X, y };
+      }
+      function retrain() {
+        const Lt = takes.filter((t) => t.label === "left"),
+          Rt = takes.filter((t) => t.label === "right");
+        if (!base || !Lt.length || !Rt.length) {
+          $("modelInfo").textContent = "model: need baseline + LEFT + RIGHT";
+          return;
+        }
+        let msg = "";
+        if (Lt.length >= 2 && Rt.length >= 2) {
+          const tr = [...Lt.slice(0, -1), ...Rt.slice(0, -1)],
+            va = [Lt[Lt.length - 1], Rt[Rt.length - 1]];
+          const a = buildSet(tr),
+            b = buildSet(va);
+          const m = fit(a.X, a.y);
+          msg = `hold-out ${(acc(m, b.X, b.y) * 100).toFixed(0)}%`;
+        }
+        const all = buildSet(takes);
+        model = fit(all.X, all.y);
+        const mags = all.X.map((x) => Math.abs(logit(model, x))).sort((a, b) => a - b);
+        model.scale = Math.max(0.5, mags[Math.floor(mags.length * 0.8)] || 1);
+        if (!msg) msg = `train ${(acc(model, all.X, all.y) * 100).toFixed(0)}% (no hold-out yet)`;
+        const ePres = emptyZs.map(presence).sort((a, b) => a - b);
+        const e95 = ePres[Math.floor(ePres.length * 0.95)] || 0;
+        const hp = [];
+        takes.forEach((t) => t.zs.forEach((z) => hp.push(presence(z))));
+        hp.sort((a, b) => a - b);
+        const hm = hp[Math.floor(hp.length / 2)] || 0;
+        presenceThr = hm > e95 ? e95 + 0.3 * (hm - e95) : e95 * 1.5 + 1e-4;
+        $("modelInfo").textContent = `model: n=${all.X.length} · ${msg} · presence thr ${presenceThr.toFixed(4)}`;
+      }
+
+      // ---------- Realtime ----------
+      function onBlock(raw) {
+        if (!zInit) {
+          zs.set(raw);
+          zInit = true;
+        } else for (let i = 0; i < 8; i++) zs[i] = 0.4 * raw[i] + 0.6 * zs[i];
+        if (recording) recording.zs.push(Float32Array.from(zs));
+        if (!base) return;
+
+        const pres = presence(zs);
+        if (model) {
+          if (!present && pres > presenceThr) present = true;
+          else if (present && pres < presenceThr * 0.8) present = false;
+          if (present) {
+            const raw = Math.max(-1, Math.min(1, logit(model, features(zs)) / model.scale));
+            posTarget += 0.12 * (raw - posTarget);
+          }
+        }
+        if (++lastBlocks % 10 === 0) {
+          const r = residual(zs),
+            s = scaleOf(),
+            names = ["Lmic<-Lspk", "Lmic<-Rspk", "Rmic<-Lspk", "Rmic<-Rspk"];
+          $("diag").textContent =
+            names
+              .map((n, p) => `${n}  raw ${Math.hypot(zs[2 * p], zs[2 * p + 1]).toFixed(4)}  resid ${(Math.hypot(r[2 * p], r[2 * p + 1]) / s).toFixed(4)}`)
+              .join("\n") + `\npresence ${pres.toFixed(4)}`;
+        }
+      }
+
+      // ---------- Dial ----------
+      const cv = $("dial"),
+        g = cv.getContext("2d");
+      function frame() {
+        const dpr = window.devicePixelRatio || 1;
+        const W = cv.clientWidth,
+          H = cv.clientHeight;
+        if (cv.width !== W * dpr || cv.height !== H * dpr) {
+          cv.width = W * dpr;
+          cv.height = H * dpr;
+        }
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, W, H);
+
+        const pad = 16,
+          x0 = pad,
+          x1 = W - pad,
+          mid = (x0 + x1) / 2;
+        const X = (v) => mid + (v * (x1 - x0)) / 2;
+        const baseY = 78;
+        const active = present && model;
+
+        posDisp += 0.18 * (posTarget - posDisp);
+        if (active) {
+          trail.push(posDisp);
+        } else if (trail.length) trail.shift();
+        while (trail.length > TRAIL) trail.shift();
+
+        // ruler baseline
+        g.strokeStyle = "#000";
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(x0, baseY + 0.5);
+        g.lineTo(x1, baseY + 0.5);
+        g.stroke();
+
+        // ticks (ticks near the needle turn red and grow)
+        g.font = "11px ui-monospace,Menlo,Consolas,monospace";
+        g.textAlign = "center";
+        for (let i = -40; i <= 40; i++) {
+          const v = i / 40,
+            x = Math.round(X(v)) + 0.5;
+          const major = i % 20 === 0,
+            mid5 = i % 4 === 0;
+          let len = major ? 22 : mid5 ? 14 : 7;
+          let col = "#000";
+          if (active) {
+            const d = Math.abs(v - posDisp);
+            if (d < 0.07) {
+              const k = 1 - d / 0.07;
+              len += Math.round(8 * k);
+              col = RED;
+            }
+          }
+          g.strokeStyle = col;
+          g.lineWidth = col === RED ? 1.5 : 1;
+          g.beginPath();
+          g.moveTo(x, baseY);
+          g.lineTo(x, baseY - len);
+          g.stroke();
+          if (major) {
+            g.fillStyle = "#000";
+            g.fillText(i === -40 ? "L" : i === 40 ? "R" : "0", x, baseY + 18);
+          } else if (i % 10 === 0) {
+            g.fillStyle = "#888";
+            g.fillText((v > 0 ? "+" : "") + v.toFixed(1), x, baseY + 18);
+          }
+        }
+
+        // ghost trail below ruler (red)
+        trail.forEach((p, i) => {
+          const a = (i + 1) / trail.length;
+          g.fillStyle = `rgba(224,0,0,${(0.08 + 0.5 * a).toFixed(3)})`;
+          g.fillRect(Math.round(X(p)), baseY + 30, 2, 8);
+        });
+
+        // needle
+        const nx = Math.round(X(posDisp)) + 0.5;
+        if (active) {
+          g.strokeStyle = RED;
+          g.fillStyle = RED;
+          g.lineWidth = 2;
+          g.beginPath();
+          g.moveTo(nx, 16);
+          g.lineTo(nx, baseY + 8);
+          g.stroke();
+          g.beginPath();
+          g.moveTo(nx - 9, 2);
+          g.lineTo(nx + 9, 2);
+          g.lineTo(nx, 18);
+          g.closePath();
+          g.fill();
+          g.beginPath();
+          g.arc(nx, baseY, 4, 0, Math.PI * 2);
+          g.fill();
+          g.strokeStyle = "#fff";
+          g.lineWidth = 1.5;
+          g.beginPath();
+          g.arc(nx, baseY, 4, 0, Math.PI * 2);
+          g.stroke();
+        } else {
+          g.strokeStyle = "#bbb";
+          g.fillStyle = "#bbb";
+          g.lineWidth = 1;
+          g.setLineDash([3, 3]);
+          g.beginPath();
+          g.moveTo(nx, 14);
+          g.lineTo(nx, baseY + 4);
+          g.stroke();
+          g.setLineDash([]);
+          g.beginPath();
+          g.moveTo(nx - 5, 6);
+          g.lineTo(nx + 5, 6);
+          g.lineTo(nx, 14);
+          g.closePath();
+          g.fill();
+        }
+
+        // readout: big word (left), small number (right)
+        if (model) {
+          if (active) {
+            $("num").textContent = (posDisp >= 0 ? "+" : "-") + Math.abs(posDisp).toFixed(2);
+            $("tag").textContent = posDisp < -0.15 ? "LEFT" : posDisp > 0.15 ? "RIGHT" : "CENTER";
+            $("num").style.color = RED;
+            $("tag").style.color = RED;
+          } else {
+            $("num").textContent = "--";
+            $("tag").textContent = "NO HAND";
+            $("num").style.color = "#000";
+            $("tag").style.color = "#000";
+          }
+        }
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>

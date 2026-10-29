@@ -54,6 +54,7 @@
 
 ## Experiments Feed
 
+- [Laptop Sonar](./laptop-sonar/) detect hand position with laptop speakers and microphone
 - [Voice keyboard](./voice-keyboard/) simulating human vocal tract
 - [Chinamaxxing Snake](./variable-font-canvas/snake-chinese.html) Snake in Chinese characters #typography#game
 - [Fractal Terminal](./fractal-terminal/) infinite terminal displaying texts via zooming #typography#tui
