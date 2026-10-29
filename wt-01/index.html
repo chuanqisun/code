@@ -6,12 +6,17 @@
     <title>WT-01 // EQUATION WAVETABLE SYNTHESIZER</title>
     <style>
       :root {
-        --ink: #000;
-        --paper: #fff;
-        --muted: #666;
-        --tint: #f2f2f2;
-        --tint-2: #e4e4e4;
-        --panel-bg: rgb(255 255 255 / 0.94);
+        color-scheme: light dark;
+        --ink: light-dark(#000, #fff);
+        --paper: light-dark(#fff, #000);
+        --muted: light-dark(#666, #aaa);
+        --tint: light-dark(#f2f2f2, #1c1c1c);
+        --tint-2: light-dark(#e4e4e4, #333);
+        --tint-3: light-dark(#d0d0d0, #4a4a4a);
+        --alert: light-dark(#f00, #ff5555);
+        --active: light-dark(#f00, #ff4040);
+        --panel-bg: light-dark(rgb(255 255 255 / 0.94), rgb(0 0 0 / 0.94));
+        --scrim: light-dark(rgb(255 255 255 / 0.7), rgb(0 0 0 / 0.7));
         --gap: 8px;
         --edge: 10px;
         --ctl: 22px;
@@ -209,10 +214,10 @@
           }
         }
         &.bad .eq-head span {
-          color: #f00;
+          color: var(--alert);
         }
         &.bad input {
-          box-shadow: inset 0 -2px 0 #f00;
+          box-shadow: inset 0 -2px 0 var(--alert);
         }
       }
 
@@ -288,10 +293,7 @@
           color: var(--paper);
         }
         &.playing {
-          box-shadow: inset 0 -3px 0 var(--ink);
-        }
-        &.on.playing {
-          box-shadow: inset 0 -3px 0 var(--paper);
+          box-shadow: inset 0 -3px 0 var(--active);
         }
         &.selected {
           outline: 2px dashed var(--ink);
@@ -344,7 +346,7 @@
           background: var(--tint-2);
         }
         &:hover {
-          background: #d0d0d0;
+          background: var(--tint-3);
         }
         &.active {
           background: var(--ink);
@@ -389,7 +391,7 @@
         align-items: center;
         justify-content: center;
         padding: 20px;
-        background: rgb(255 255 255 / 0.7);
+        background: var(--scrim);
 
         &[hidden] {
           display: none;
@@ -600,11 +602,10 @@
       <div>
         <select id="presetSelect" title="Preset"></select>
         <button id="manualBtn" title="Equation language manual (press ? or F1)">MANUAL</button>
-        <button id="resetEqBtn" title="Restore the default equations of the current bank">RESET EQ</button>
+        <button id="resetBtn" title="Restore the selected preset: parameters, equations and sequencer notes">RESET</button>
         <button id="powerBtn">POWER: OFF</button>
         <button id="leftToggle" class="panel-toggle" data-panel="left-panel">SYNTH</button>
         <button id="rightToggle" class="panel-toggle" data-panel="right-panel">MOD/FX</button>
-        <button id="holdBtn" title="Latches a continuous note so you can audition parameter changes hands-free">HOLD NOTE</button>
       </div>
     </header>
 
@@ -617,7 +618,7 @@
           <div>
             <button id="seqBtn" class="active">SEQ: RUN</button>
             <button id="modeBtn" title="Toggle between Play Mode and Step Edit Mode">MODE: PLAY</button>
-            <button id="restBtn" title="Set focused step to REST (or press X / Backspace)">REST</button>
+            <button id="restBtn" title="Set focused step to REST (or press Backspace)">REST</button>
             <button id="clearBtn" title="Clear all 16 steps">CLEAR</button>
           </div>
           <div>
@@ -844,7 +845,6 @@
             <li>
               <b>Warp stage.</b> Warp (bend, fold, sync, FM) is applied to the phase <b>after</b> your equation is looked up, so it works on any custom shape.
             </li>
-            <li><b>Hear changes.</b> Use <b>HOLD NOTE</b> and edit while it sustains.</li>
           </ul>
 
           <h4>9. EDITOR BEHAVIOUR &amp; ERRORS</h4>
@@ -878,7 +878,7 @@
       const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
       const MODE_HINTS = {
         play: "PLAY MODE: KEYS [A-L] JAM LIVE",
-        edit: "EDIT: [←/→] STEP [↑/↓] NOTE [X] REST",
+        edit: "EDIT: [←/→] STEP [↑/↓] NOTE [SPACE] ON/OFF",
       };
 
       const NUM_SLICES = 37;
@@ -890,10 +890,12 @@
       const AMP_Y = 1.45;
       const BASE_Y = -2;
       const FRUSTUM = 14.2;
-      const ACTIVE_COLOR = 0xff0000;
-      const KEYFRAME_COLOR = 0x666666;
-      const FOCUS_COLOR = 0x000000;
-      const SLICE_COLOR = 0xbbbbbb;
+      const THEMES = {
+        light: { background: 0xffffff, active: 0xff0000, keyframe: 0x666666, focus: 0x000000, slice: 0xbbbbbb, scope: "#000" },
+        dark: { background: 0x000000, active: 0xff4040, keyframe: 0x999999, focus: 0xffffff, slice: 0x4d4d4d, scope: "#fff" },
+      };
+      const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+      let theme = THEMES[darkQuery.matches ? "dark" : "light"];
       const RIBBON_INDICES = Array.from({ length: NUM_SAMPLES - 1 }, (_, i) => {
         const [a, b] = [i * 2, i * 2 + 2];
         return [a, a + 1, b, a + 1, b + 1, b];
@@ -1198,17 +1200,18 @@
         subPhase: 0,
         lfoPhase: 0,
         held: 0,
-        env: { stage: "off", level: 0 },
+        env: { stage: "off", level: 0, gate: false },
       };
       const steps = Array(STEP_COUNT).fill(0);
+      const stepMemory = Array(STEP_COUNT).fill(0);
 
       let audio = null;
       let live = { pos: 0, warp: 0, cutoff: 0 };
       let powered = false;
       let sequencing = true;
-      let holding = false;
       let mode = "play";
       let selectedStep = 0;
+      let activeScale = "";
       let playingStep = -1;
       let lastStepTime = 0;
       let litSlice = -1;
@@ -1228,7 +1231,7 @@
       const scopeBuffer = new Uint8Array(512);
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xffffff);
+      scene.background = new THREE.Color(theme.background);
 
       const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
       camera.position.set(19, 15.5, 20);
@@ -1246,14 +1249,14 @@
       controls.target.set(0, -0.3, 0);
 
       const sliceFill = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
+        color: theme.background,
         side: THREE.DoubleSide,
         polygonOffset: true,
         polygonOffsetFactor: 1.5,
         polygonOffsetUnits: 1.5,
       });
       const slices = Array.from({ length: NUM_SLICES }, (_, s) => {
-        const baseColor = s % KEYFRAME_STRIDE === 0 ? KEYFRAME_COLOR : SLICE_COLOR;
+        const baseColor = s % KEYFRAME_STRIDE === 0 ? theme.keyframe : theme.slice;
         const slice = createSlice(sliceFill, new THREE.LineBasicMaterial({ color: baseColor }));
         scene.add(...slice.objects);
         return { ...slice, baseColor };
@@ -1290,9 +1293,9 @@
             msg.textContent = "ERR: " + err.message.slice(0, 22);
           }
         });
-        input.addEventListener("focus", () => setSliceBase(sliceIndex, FOCUS_COLOR));
+        input.addEventListener("focus", () => setSliceBase(sliceIndex, theme.focus));
         input.addEventListener("blur", () => {
-          setSliceBase(sliceIndex, KEYFRAME_COLOR);
+          setSliceBase(sliceIndex, theme.keyframe);
           // Restore the last valid equation if the field was left in an error state.
           input.value = BANKS[state.wtBank].frames[k].eq;
           el.classList.remove("bad");
@@ -1311,6 +1314,17 @@
           el.classList.remove("bad");
           msg.textContent = idle;
           if (document.activeElement !== input) input.value = BANKS[state.wtBank].frames[k].eq;
+        });
+      }
+
+      function applyTheme() {
+        theme = THEMES[darkQuery.matches ? "dark" : "light"];
+        scene.background.set(theme.background);
+        sliceFill.color.set(theme.background);
+        slices.forEach((slice, s) => {
+          const focused = s % KEYFRAME_STRIDE === 0 && document.activeElement === editors[s / KEYFRAME_STRIDE].input;
+          slice.baseColor = focused ? theme.focus : s % KEYFRAME_STRIDE === 0 ? theme.keyframe : theme.slice;
+          slice.objects[1].material.color.set(s === litSlice ? theme.active : slice.baseColor);
         });
       }
 
@@ -1364,13 +1378,16 @@
         $("powerBtn").classList.toggle("active", on);
       }
 
-      function noteOn(midi) {
+      // A gated note sustains at the envelope sustain level until noteOff().
+      function noteOn(midi, gate = false) {
         voice.freq = midiToFreq(midi);
         voice.env.stage = "attack";
+        voice.env.gate = gate;
       }
 
       function noteOff() {
-        if (!holding && voice.env.stage !== "off") voice.env.stage = "release";
+        voice.env.gate = false;
+        if (voice.env.stage !== "off") voice.env.stage = "release";
       }
 
       function audition(midi, ms) {
@@ -1392,7 +1409,7 @@
             voice.lfoPhase -= 1;
             voice.held = Math.random() * 2 - 1;
           }
-          advanceEnvelope(env, state, sampleRate, holding);
+          advanceEnvelope(env, state, sampleRate);
           mod = modulate(state, LFO_SHAPES[state.lfoShape].fn(voice.lfoPhase, voice.held), env.level);
           out[i] = env.level <= 1e-4 ? 0 : renderVoiceSample(mod, voices, sampleRate);
         });
@@ -1435,6 +1452,7 @@
         const { label, scale, notes, ...params } = PRESETS[key];
         Object.entries(params).forEach(([id, value]) => ($(id).value = value));
         $("scaleSelect").value = scale;
+        activeScale = scale;
         steps.splice(0, STEP_COUNT, ...notes);
         readParams();
         syncEditors();
@@ -1444,11 +1462,12 @@
         rebuildTerrain();
       }
 
-      function resetEquations() {
-        const key = state.wtBank;
-        BANKS[key].frames = BANK_DEFS[key].equations.map(makeFrame);
-        syncEditors();
-        rebuildTerrain();
+      function resetPreset() {
+        Object.entries(BANK_DEFS).forEach(([key, { equations }]) => (BANKS[key].frames = equations.map(makeFrame)));
+        selectedStep = 0;
+        document.activeElement?.blur();
+        controls.reset();
+        loadPreset($("presetSelect").value);
       }
 
       function openManual() {
@@ -1500,6 +1519,26 @@
         assignNote(0);
       }
 
+      function toggleSelectedStep() {
+        setMode("edit");
+        const current = steps[selectedStep];
+        if (current > 0) stepMemory[selectedStep] = current;
+        assignNote(current > 0 ? 0 : stepMemory[selectedStep] || currentScale().notes[0]);
+        if (steps[selectedStep] > 0) audition(steps[selectedStep], 140);
+      }
+
+      // Re-pitch the sequence: each note moves to the same degree of the new scale.
+      function changeScale(key) {
+        const from = SCALES[activeScale].notes;
+        const to = SCALES[key].notes;
+        const degreeOf = (midi) => from.reduce((best, note, i) => (Math.abs(note - midi) < Math.abs(from[best] - midi) ? i : best), 0);
+        steps.forEach((midi, i) => (steps[i] = midi > 0 ? to[degreeOf(midi)] : 0));
+        stepMemory.forEach((midi, i) => (stepMemory[i] = midi > 0 ? to[degreeOf(midi)] : 0));
+        activeScale = key;
+        rebuildPiano();
+        renderSteps();
+      }
+
       function rebuildPiano() {
         piano.replaceChildren();
         keyBindings = {};
@@ -1512,7 +1551,7 @@
 
           const press = () => {
             ensureAudio();
-            noteOn(midi);
+            noteOn(midi, true);
             el.classList.add("active");
             if (mode === "edit") assignNote(midi);
           };
@@ -1545,7 +1584,7 @@
       function lightSlice(index) {
         if (index === litSlice) return;
         if (litSlice >= 0) slices[litSlice].objects[1].material.color.set(slices[litSlice].baseColor);
-        if (index >= 0) slices[index].objects[1].material.color.set(ACTIVE_COLOR);
+        if (index >= 0) slices[index].objects[1].material.color.set(theme.active);
         litSlice = index;
       }
 
@@ -1556,6 +1595,7 @@
 
         scopeCtx.clearRect(0, 0, width, height);
         scopeCtx.lineWidth = 1.4;
+        scopeCtx.strokeStyle = theme.scope;
         scopeCtx.beginPath();
         for (let x = 0; x < width; x++) {
           const level = active ? (scopeBuffer[Math.floor((x / width) * scopeBuffer.length)] - 128) / 128 : 0;
@@ -1590,19 +1630,12 @@
       document.addEventListener("change", ({ target }) => target.tagName === "SELECT" && target.blur());
 
       $("presetSelect").addEventListener("change", ({ target }) => loadPreset(target.value));
-      $("scaleSelect").addEventListener("change", rebuildPiano);
-      $("resetEqBtn").addEventListener("click", resetEquations);
+      $("scaleSelect").addEventListener("change", ({ target }) => changeScale(target.value));
+      $("resetBtn").addEventListener("click", resetPreset);
       $("manualBtn").addEventListener("click", openManual);
       $("manualClose").addEventListener("click", closeManual);
       $("manual").addEventListener("mousedown", (e) => e.target === $("manual") && closeManual());
       $("powerBtn").addEventListener("click", () => (powered ? setPower(false) : ensureAudio()));
-
-      $("holdBtn").addEventListener("click", ({ target }) => {
-        ensureAudio();
-        holding = !holding;
-        target.classList.toggle("active", holding);
-        holding ? noteOn(currentScale().notes[0]) : noteOff();
-      });
 
       $("seqBtn").addEventListener("click", ({ target }) => {
         sequencing = !sequencing;
@@ -1663,11 +1696,16 @@
           return arrowActions[e.key]();
         }
         if (e.repeat) return;
-        if (["x", "backspace", "delete"].includes(key)) return clearSelectedStep();
+        if (e.key === " ") {
+          e.preventDefault();
+          return toggleSelectedStep();
+        }
+        if (["backspace", "delete"].includes(key)) return clearSelectedStep();
         keyBindings[key]?.press();
       });
       addEventListener("keyup", (e) => {
         if (e.target.closest?.(".eq")) return;
+        if (e.key === " ") return e.preventDefault();
         keyBindings[e.key.toLowerCase()]?.release();
       });
       // Panels and bottom bar can change height when the layout reflows; keep the CSS offsets in sync.
@@ -1690,10 +1728,12 @@
         }),
       );
 
+      darkQuery.addEventListener("change", applyTheme);
       addEventListener("resize", resize);
 
       resize();
       controls.update();
+      controls.saveState();
       $("presetSelect").value = "pluck";
       loadPreset("pluck");
       setMode("play");
@@ -1789,7 +1829,7 @@
         };
       }
 
-      function advanceEnvelope(env, { envA, envD, envS, envR }, sampleRate, sustaining) {
+      function advanceEnvelope(env, { envA, envD, envS, envR }, sampleRate) {
         const rate = (seconds) => 1 / (seconds * sampleRate);
 
         if (env.stage === "attack") {
@@ -1797,7 +1837,7 @@
           if (env.level >= 1) Object.assign(env, { level: 1, stage: "decay" });
         } else if (env.stage === "decay") {
           env.level -= (1 - envS) * rate(Math.max(0.01, envD));
-          if (env.level <= envS) Object.assign(env, { level: envS, stage: sustaining ? "sustain" : "release" });
+          if (env.level <= envS) Object.assign(env, { level: envS, stage: env.gate ? "sustain" : "release" });
         } else if (env.stage === "sustain") {
           env.level = envS;
         } else if (env.stage === "release") {
