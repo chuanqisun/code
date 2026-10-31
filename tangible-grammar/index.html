@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Puck grammar — 3D</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="data.js" defer></script>
+  <script src="anims.js" defer></script>
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <canvas id="gl"></canvas>
+  <header>
+    <div class="bar">
+      <h1>Puck grammar</h1>
+      <p class="key mute">
+        <span><i class="sw act"></i>gesture</span>
+        <span><i class="sw env"></i>environment</span>
+        <span><i class="sw a"></i>puck A</span>
+        <span><i class="sw b"></i>puck B</span>
+      </p>
+    </div>
+    <div class="bar">
+      <input id="q" type="search" placeholder="Search verbs, gestures, metaphors  ( / )" aria-label="Search" autocomplete="off">
+      <nav id="filters" aria-label="Category"></nav>
+      <button id="motion" aria-pressed="true">Motion</button>
+      <output id="count"></output>
+    </div>
+  </header>
+
+  <main id="dict"></main>
+  <p id="empty" class="mute" hidden>No match</p>
+  <dialog id="entry" aria-label="Entry"></dialog>
+</body>
+</html>

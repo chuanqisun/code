@@ -1,0 +1,178 @@
+:root {
+  --fg: #fff;
+  --bg: #000;
+  --mute: #8c8c8c;
+  --line: #2b2b2b;
+  --act: #f4a261; /* human gesture */
+  --env: #6fd3c2; /* environment: senses the pucks, responds */
+  --font: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --u: .5rem;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0 }
+[hidden] { display: none !important }
+
+body {
+  font: 13px/1.55 var(--font);
+  color: var(--fg);
+  background: var(--bg);
+  max-width: 1440px;
+  margin-inline: auto;
+  padding: 0 calc(var(--u) * 3) calc(var(--u) * 6);
+}
+
+a { color: inherit; text-decoration: none }
+h1, h2, h3 { font-size: 1em }
+small { font-size: .9em; font-weight: 400 }
+:focus-visible { outline: 1px solid var(--act); outline-offset: 2px }
+
+.mute { color: var(--mute) }
+.act { color: var(--act) }
+.env { color: var(--env) }
+
+button, input {
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: .3em .7em;
+}
+button {
+  cursor: pointer;
+  &:hover { border-color: var(--mute) }
+  &[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg) }
+}
+input:focus { border-color: var(--mute); outline: 0 }
+
+/* WebGL canvas sits behind the page; card stages are transparent windows onto it */
+#gl {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--u);
+  padding-block: calc(var(--u) * 2) var(--u);
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--u) calc(var(--u) * 2);
+  input { flex: 1 1 16rem }
+}
+#filters { display: flex; flex-wrap: wrap; gap: 4px }
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 calc(var(--u) * 2);
+  margin-left: auto;
+}
+.sw {
+  display: inline-block;
+  width: .7em;
+  height: .7em;
+  margin-right: .4em;
+  border-radius: 50%;
+  background: var(--fg);
+  &.act { background: var(--act) }
+  &.env { background: var(--env); border-radius: 2px }
+  &.b { background: #4b5058 }
+}
+
+section {
+  margin-top: calc(var(--u) * 4);
+  > h2 { margin-bottom: calc(var(--u) * 1.5); font-weight: 700 }
+  > h2 small { margin-left: var(--u) }
+}
+.grid {
+  display: grid;
+  gap: calc(var(--u) * 2);
+  grid-template-columns: repeat(auto-fill, minmax(min(45%, 15rem), 1fr));
+}
+
+.card {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  &:hover { border-color: var(--act) }
+  h3 { font-size: 1.15em }
+}
+.body {
+  display: grid;
+  gap: 2px;
+  padding: var(--u) calc(var(--u) * 1.5) calc(var(--u) * 1.5);
+}
+
+.stage {
+  position: relative;
+  aspect-ratio: 12 / 7;
+  border-bottom: 1px solid var(--line);
+  canvas { display: block; width: 100%; height: 100%; cursor: grab }
+}
+.out {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  font-size: .85em;
+  pointer-events: none;
+  text-shadow: 0 0 3px #000, 0 0 6px #000;
+}
+
+.phrase {
+  margin-bottom: calc(var(--u) * 3);
+  ol {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--u);
+    margin-top: var(--u);
+    list-style: none;
+  }
+  li { display: flex; align-items: center; gap: var(--u) }
+  li + li::before { content: "→"; color: var(--mute) }
+  .card { width: 10rem; text-align: center; padding-bottom: 4px }
+}
+
+dialog {
+  margin: auto;
+  width: min(46rem, 100% - 2rem);
+  max-height: calc(100dvh - 2rem);
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: auto;
+  &::backdrop { background: rgb(0 0 0 / .8) }
+  .stage { background: #000 }
+  .body { gap: calc(var(--u) * 1.5); padding: calc(var(--u) * 2) calc(var(--u) * 3) calc(var(--u) * 3) }
+  h2 { font-size: 1.4em; line-height: 1.2 }
+  dl { display: grid; grid-template-columns: 6rem 1fr; gap: var(--u) calc(var(--u) * 2) }
+  dt { color: var(--mute) }
+  nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: var(--u);
+    border-top: 1px solid var(--line);
+  }
+}
+
+@media (width < 40rem) {
+  body { padding-inline: var(--u) }
+  .key { margin-left: 0 }
+  .card .body { padding: 4px 6px 6px; font-size: .9em }
+  .phrase .card { width: 6.2rem; font-size: .85em }
+  dialog dl { grid-template-columns: 1fr; dt { margin-top: var(--u) } }
+}

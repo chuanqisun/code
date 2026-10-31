@@ -54,7 +54,7 @@
 
 ## Experiments Feed
 
-- [Puck Grammar](./tangible-grammar/2D) dictionary of metaphor based interaction design #concept#interaction
+- [Puck Grammar](./tangible-grammar/) dictionary of metaphor based interaction design #concept#interaction
 - [WT-01](./wt-01/) wavetable synthesizer #audio#music
 - [Laptop Sonar](./laptop-sonar/) detect hand position with laptop speakers and microphone #audio#sensing
 - [Voice keyboard](./voice-keyboard/) simulating human vocal tract
