@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Puck Grammar — Human–Puck–AI Interaction Dictionary</title>
+    <link rel="stylesheet" href="2D/style.css" />
+    <script src="2D/main.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <div class="bar">
+        <h1>PUCK GRAMMAR <small class="mute">human–puck–AI interaction dictionary</small></h1>
+        <p class="key">
+          <span><i class="sw act"></i>gesture</span>
+          <span><i class="sw sys"></i>system</span>
+          <span><i class="sw"></i>puck A</span>
+          <span><i class="sw b"></i>puck B</span>
+          <span>TOP / SIDE = view</span>
+        </p>
+      </div>
+      <div class="bar">
+        <input id="q" type="search" placeholder="search verbs, gestures, metaphors  ( / )" aria-label="Search" autocomplete="off" />
+        <nav id="filters" aria-label="Category filter"></nav>
+        <button id="motion" aria-pressed="true" title="Toggle animation">motion</button>
+        <output id="count"></output>
+      </div>
+    </header>
+
+    <main id="dict"></main>
+    <p id="empty" class="mute" hidden>no match</p>
+
+    <footer>
+      <details>
+        <summary>Foundations — image schemas &amp; conceptual metaphors (Lakoff &amp; Johnson)</summary>
+        <p class="mute">Puck: r = 3 cm, h = 1 cm. Two stable flat faces, one unstable rim. Bodily source domain → computational target domain.</p>
+        <dl>
+          <dt>CONTAINER</dt>
+          <dd>boundary, interior, exterior → context windows, sandboxes, caches, scopes, clusters</dd>
+          <dt>SOURCE-PATH-GOAL</dt>
+          <dd>origin, trajectory, destination → autoregression, chain-of-thought, routing, pipelining, backtracking</dd>
+          <dt>FORCE</dt>
+          <dd>compulsion, blockage, counterforce → logit bias, guardrails, injection defense, throttling, gradient clipping</dd>
+          <dt>PART-WHOLE · LINK</dt>
+          <dd>coupling, splitting, merging → tokenization, chunking, model merging, binding, ensembles</dd>
+          <dt>VERTICALITY · BALANCE</dt>
+          <dd>up–down, equilibrium, tipping point → abstraction layers, scaling, uncertainty, stability</dd>
+        </dl>
+        <ol>
+          <li>COMPUTATIONAL ENTITIES ARE PHYSICAL OBJECTS</li>
+          <li>CONTEXT &amp; MEMORY ARE BOUNDED CONTAINERS</li>
+          <li>INFERENCE &amp; REASONING ARE MOTION ALONG A PATH</li>
+          <li>CONTROL &amp; PARAMETERS ARE VERTICAL / ROTATIONAL FORCES</li>
+          <li>CERTAINTY IS FLATNESS; UNCERTAINTY IS RIM-BALANCE</li>
+          <li>SEMANTIC SIMILARITY IS SPATIAL PROXIMITY</li>
+        </ol>
+      </details>
+    </footer>
+
+    <dialog id="entry" aria-label="Dictionary entry"></dialog>
+  </body>
+</html>
