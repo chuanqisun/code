@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D ArUco Puck Generator for Bambu Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js & OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- JSZip for packaging .3mf files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      body {
+        background-color: #0f172a;
+        color: #f8fafc;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      .cell-transition {
+        transition: all 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      canvas {
+        outline: none;
+      }
+    </style>
+  </head>
+  <body class="h-screen flex flex-col overflow-hidden select-none">
+    <!-- Header -->
+    <header class="bg-slate-900 border-b border-slate-800 px-6 py-3.5 flex items-center justify-between shrink-0">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center font-bold text-slate-950 shadow-lg shadow-emerald-500/20">5×5</div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white leading-none">ArUco 3D Puck Generator</h1>
+          <p class="text-xs text-slate-400 mt-1">Multi-Color 3MF & STL Exporter for Bambu Lab Slicers</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3">
+        <button
+          id="export-3mf"
+          class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-4 py-2 rounded-lg text-sm shadow-lg shadow-emerald-500/20 transition flex items-center space-x-2"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+          </svg>
+          <span>Export 2-Color .3MF (Bambu Studio)</span>
+        </button>
+        <button
+          id="export-stl"
+          class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium px-3.5 py-2 rounded-lg text-sm transition"
+        >
+          Export Separate .STLs
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden">
+      <!-- Left Sidebar: Controls & 5x5 Editor -->
+      <aside class="w-96 bg-slate-900/70 border-r border-slate-800 p-6 flex flex-col justify-between overflow-y-auto shrink-0">
+        <div class="space-y-6">
+          <!-- 5x5 Grid Section -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">5×5 Pattern Editor</label>
+              <span class="text-xs text-slate-400" id="active-count">12 white squares</span>
+            </div>
+            <p class="text-xs text-slate-400 mb-3">
+              Click or drag to toggle extruded white squares (0.5cm). The outer black border is automatically reserved for ArUco detection.
+            </p>
+
+            <!-- Outer Black Border Indicator -->
+            <div class="p-4 bg-slate-950 rounded-xl border-2 border-slate-800 shadow-inner">
+              <div class="text-[10px] text-center text-slate-500 font-mono mb-2 uppercase tracking-widest">Black Quiet Zone / Puck Base</div>
+              <div id="grid-container" class="grid grid-cols-5 gap-2 aspect-square p-2 bg-black rounded-lg border border-slate-800">
+                <!-- Populated by JS -->
+              </div>
+            </div>
+
+            <!-- Preset / Quick Actions -->
+            <div class="grid grid-cols-4 gap-2 mt-3">
+              <button
+                id="btn-preset"
+                class="bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded-lg font-medium text-slate-200 transition border border-slate-700/60"
+              >
+                Sample ID
+              </button>
+              <button
+                id="btn-random"
+                class="bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded-lg font-medium text-slate-200 transition border border-slate-700/60"
+              >
+                Random
+              </button>
+              <button
+                id="btn-invert"
+                class="bg-slate-800 hover:bg-slate-700 text-xs py-2 rounded-lg font-medium text-slate-200 transition border border-slate-700/60"
+              >
+                Invert
+              </button>
+              <button
+                id="btn-clear"
+                class="bg-slate-800 hover:bg-red-950/60 hover:text-red-300 text-xs py-2 rounded-lg font-medium text-slate-300 transition border border-slate-700/60"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <!-- Dimensions & Padding Controls -->
+          <div class="border-t border-slate-800 pt-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-400">Puck Geometry (mm)</label>
+              <button id="btn-reset-dims" class="text-xs text-emerald-400 hover:underline">Reset to Spec</button>
+            </div>
+
+            <!-- Grid Size / Padding Slider -->
+            <div class="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
+              <div class="flex justify-between text-xs">
+                <span class="text-slate-300 font-medium">5×5 Pattern Width</span>
+                <span class="text-emerald-400 font-mono" id="grid-width-label">30.0 mm</span>
+              </div>
+              <input id="input-grid-size" type="range" min="15" max="42" step="0.5" value="30" class="w-full accent-emerald-500 cursor-pointer" />
+              <div class="flex justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                <span>Square Size: <strong id="cell-size-label" class="text-slate-200">6.0 mm</strong></span>
+                <span>Min Edge Padding: <strong id="padding-label" class="text-emerald-400">8.79 mm</strong></span>
+              </div>
+            </div>
+
+            <!-- Fixed Spec Dimensions (Editable if needed) -->
+            <div class="grid grid-cols-3 gap-2.5">
+              <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
+                <label class="block text-[10px] text-slate-400 uppercase">Puck Radius</label>
+                <div class="flex items-baseline mt-1">
+                  <input
+                    id="input-radius"
+                    type="number"
+                    value="30"
+                    min="10"
+                    max="100"
+                    step="1"
+                    class="w-full bg-transparent text-sm font-bold text-white focus:outline-none"
+                  />
+                  <span class="text-[10px] text-slate-500 ml-1">mm</span>
+                </div>
+                <span class="text-[10px] text-slate-500">3.0 cm</span>
+              </div>
+
+              <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
+                <label class="block text-[10px] text-slate-400 uppercase">Black Base</label>
+                <div class="flex items-baseline mt-1">
+                  <input
+                    id="input-base-h"
+                    type="number"
+                    value="10"
+                    min="1"
+                    max="50"
+                    step="0.5"
+                    class="w-full bg-transparent text-sm font-bold text-white focus:outline-none"
+                  />
+                  <span class="text-[10px] text-slate-500 ml-1">mm</span>
+                </div>
+                <span class="text-[10px] text-slate-500">1.0 cm thick</span>
+              </div>
+
+              <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800/80">
+                <label class="block text-[10px] text-slate-400 uppercase">White Extrude</label>
+                <div class="flex items-baseline mt-1">
+                  <input
+                    id="input-ext-h"
+                    type="number"
+                    value="5"
+                    min="0.4"
+                    max="30"
+                    step="0.2"
+                    class="w-full bg-transparent text-sm font-bold text-white focus:outline-none"
+                  />
+                  <span class="text-[10px] text-slate-500 ml-1">mm</span>
+                </div>
+                <span class="text-[10px] text-slate-500">0.5 cm tall</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bambu Studio Instructions -->
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 mt-6 text-xs text-slate-400 space-y-1.5">
+          <div class="font-semibold text-slate-200 flex items-center space-x-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Bambu Studio / OrcaSlicer Tip</span>
+          </div>
+          <p class="leading-relaxed">
+            Import the exported <code class="text-emerald-400">.3mf</code> file. In the <strong>Process &rarr; Objects</strong> tab, you will see
+            <strong>Black_Base</strong> and <strong>White_ArUco_Pattern</strong> grouped together so you can assign Filament #1 (Black) and Filament #2 (White)
+            with one click.
+          </p>
+        </div>
+      </aside>
+
+      <!-- Right Area: 3D Preview -->
+      <section class="flex-1 relative bg-slate-950 flex flex-col">
+        <!-- Floating Overlay Info -->
+        <div class="absolute top-4 left-4 z-10 pointer-events-none flex flex-wrap gap-2">
+          <div class="bg-slate-900/85 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg text-xs flex items-center space-x-2">
+            <span class="w-3 h-3 rounded-full bg-neutral-900 border border-slate-600 inline-block"></span>
+            <span class="text-slate-300">Part 1: Black Base (<span id="badge-base">Ø60mm × 10mm</span>)</span>
+          </div>
+          <div class="bg-slate-900/85 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg text-xs flex items-center space-x-2">
+            <span class="w-3 h-3 rounded-full bg-white border border-slate-400 inline-block"></span>
+            <span class="text-slate-300">Part 2: White Pattern (<span id="badge-ext">+5mm height</span>)</span>
+          </div>
+        </div>
+
+        <div
+          class="absolute bottom-4 right-4 z-10 pointer-events-none text-xs text-slate-500 bg-slate-900/70 px-3 py-1.5 rounded-lg border border-slate-800/60"
+        >
+          Left Click: Rotate &bull; Right Click: Pan &bull; Scroll: Zoom
+        </div>
+
+        <!-- Three.js Canvas Container -->
+        <div id="canvas-container" class="w-full h-full"></div>
+      </section>
+    </main>
+
+    <script>
+      // --- State Management ---
+      // Default 5x5 ArUco-style pattern (1 = White Extrusion, 0 = Black Base)
+      let gridState = [
+        [1, 0, 1, 1, 0],
+        [1, 0, 0, 1, 1],
+        [0, 1, 1, 0, 0],
+        [0, 1, 0, 1, 1],
+        [1, 1, 0, 1, 0],
+      ];
+
+      const params = {
+        radius: 30, // 3 cm = 30 mm
+        baseHeight: 10, // 1 cm = 10 mm
+        extrudeHeight: 5, // 0.5 cm = 5 mm
+        gridSize: 30, // 30 mm total width for the 5x5 square (leaves >8.7mm padding to circle edge)
+        segments: 96, // Smooth cylinder resolution
+      };
+
+      // --- Interactive 5x5 Grid UI ---
+      const gridContainer = document.getElementById("grid-container");
+      let isMouseDown = false;
+      let paintValue = 1;
+
+      window.addEventListener("mouseup", () => {
+        isMouseDown = false;
+      });
+
+      function renderGridUI() {
+        gridContainer.innerHTML = "";
+        let activeCount = 0;
+
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            const isWhite = gridState[r][c] === 1;
+            if (isWhite) activeCount++;
+
+            const cell = document.createElement("button");
+            cell.type = "button";
+            cell.className = `cell-transition w-full h-full rounded-md border flex items-center justify-center font-mono text-[10px] ${
+              isWhite ? "bg-white text-slate-900 border-white shadow-md scale-[0.98]" : "bg-slate-900/90 text-slate-600 border-slate-800 hover:border-slate-700"
+            }`;
+            cell.textContent = isWhite ? "1" : "0";
+
+            cell.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              isMouseDown = true;
+              paintValue = gridState[r][c] === 1 ? 0 : 1;
+              gridState[r][c] = paintValue;
+              renderGridUI();
+              update3DModel();
+            });
+
+            cell.addEventListener("mouseenter", () => {
+              if (isMouseDown && gridState[r][c] !== paintValue) {
+                gridState[r][c] = paintValue;
+                renderGridUI();
+                update3DModel();
+              }
+            });
+
+            gridContainer.appendChild(cell);
+          }
+        }
+
+        document.getElementById("active-count").textContent = `${activeCount} white square${activeCount === 1 ? "" : "s"}`;
+      }
+
+      // --- Three.js 3D Preview Setup ---
+      const container = document.getElementById("canvas-container");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x090d16);
+
+      const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 1, 1000);
+      camera.position.set(0, 75, 85);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.target.set(0, 5, 0);
+
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      scene.add(ambientLight);
+
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
+      dirLight1.position.set(45, 90, 60);
+      dirLight1.castShadow = true;
+      dirLight1.shadow.mapSize.width = 2048;
+      dirLight1.shadow.mapSize.height = 2048;
+      scene.add(dirLight1);
+
+      const dirLight2 = new THREE.DirectionalLight(0x93c5fd, 0.35);
+      dirLight2.position.set(-60, 40, -50);
+      scene.add(dirLight2);
+
+      // Build Plate Grid Helper (100x100mm)
+      const gridHelper = new THREE.GridHelper(120, 12, 0x334155, 0x1e293b);
+      gridHelper.position.y = -0.05;
+      scene.add(gridHelper);
+
+      // Puck Group
+      const puckGroup = new THREE.Group();
+      scene.add(puckGroup);
+
+      // Materials
+      const blackMaterial = new THREE.MeshStandardMaterial({
+        color: 0x18181b,
+        roughness: 0.45,
+        metalness: 0.1,
+      });
+
+      const whiteMaterial = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        roughness: 0.25,
+        metalness: 0.05,
+      });
+
+      const padOutlineMaterial = new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.45 });
+
+      function update3DModel() {
+        // Clear previous meshes
+        while (puckGroup.children.length > 0) {
+          const obj = puckGroup.children[0];
+          if (obj.geometry) obj.geometry.dispose();
+          puckGroup.remove(obj);
+        }
+
+        const R = params.radius;
+        const baseH = params.baseHeight;
+        const extH = params.extrudeHeight;
+        const gridW = params.gridSize;
+        const cellSize = gridW / 5;
+
+        // 1. Black Cylindrical Base (Y is up in Three.js viewer)
+        const baseGeom = new THREE.CylinderGeometry(R, R, baseH, params.segments);
+        baseGeom.translate(0, baseH / 2, 0);
+        const baseMesh = new THREE.Mesh(baseGeom, blackMaterial);
+        baseMesh.castShadow = true;
+        baseMesh.receiveShadow = true;
+        puckGroup.add(baseMesh);
+
+        // Subtle green boundary line showing the 5x5 boundary on top of the puck
+        const halfW = gridW / 2;
+        const borderPts = [
+          new THREE.Vector3(-halfW, baseH + 0.05, -halfW),
+          new THREE.Vector3(halfW, baseH + 0.05, -halfW),
+          new THREE.Vector3(halfW, baseH + 0.05, halfW),
+          new THREE.Vector3(-halfW, baseH + 0.05, halfW),
+          new THREE.Vector3(-halfW, baseH + 0.05, -halfW),
+        ];
+        const borderGeom = new THREE.BufferGeometry().setFromPoints(borderPts);
+        puckGroup.add(new THREE.Line(borderGeom, padOutlineMaterial));
+
+        // 2. White Extruded Squares
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            if (gridState[r][c] === 1) {
+              const boxGeom = new THREE.BoxGeometry(cellSize, extH, cellSize);
+              const x = (c - 2) * cellSize;
+              const z = (r - 2) * cellSize;
+              boxGeom.translate(x, baseH + extH / 2, z);
+
+              const boxMesh = new THREE.Mesh(boxGeom, whiteMaterial);
+              boxMesh.castShadow = true;
+              boxMesh.receiveShadow = true;
+              puckGroup.add(boxMesh);
+            }
+          }
+        }
+
+        updateLabels();
+      }
+
+      function updateLabels() {
+        const R = params.radius;
+        const gridW = params.gridSize;
+        const cellSize = gridW / 5;
+        // Closest point of square corner to circle edge: R - (gridW / 2) * sqrt(2)
+        const cornerDist = R - (gridW / 2) * Math.SQRT2;
+        const sideDist = R - gridW / 2;
+
+        document.getElementById("grid-width-label").textContent = `${gridW.toFixed(1)} mm`;
+        document.getElementById("cell-size-label").textContent = `${cellSize.toFixed(2)} mm`;
+
+        const padLabel = document.getElementById("padding-label");
+        padLabel.textContent = `${cornerDist.toFixed(2)} mm (corners) / ${sideDist.toFixed(1)} mm (sides)`;
+        padLabel.className = cornerDist < 2 ? "text-amber-400 font-bold" : "text-emerald-400 font-semibold";
+
+        document.getElementById("badge-base").textContent = `Ø${(R * 2).toFixed(0)}mm × ${params.baseHeight}mm`;
+        document.getElementById("badge-ext").textContent = `+${params.extrudeHeight}mm height`;
+      }
+
+      // Animation Loop
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      window.addEventListener("resize", () => {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+
+      // --- Slicer Mesh Generation (Z-Up Coordinate System in Millimeters) ---
+      function extractMeshZUp(bufferGeometry) {
+        const nonIndexed = bufferGeometry.index ? bufferGeometry.toNonIndexed() : bufferGeometry.clone();
+        const pos = nonIndexed.attributes.position.array;
+
+        const vertices = [];
+        const triangles = [];
+        const vertexMap = new Map();
+
+        function getVertexIndex(x, y, z) {
+          const key = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+          if (vertexMap.has(key)) return vertexMap.get(key);
+          const idx = vertices.length;
+          vertices.push({ x, y, z });
+          vertexMap.set(key, idx);
+          return idx;
+        }
+
+        for (let i = 0; i < pos.length; i += 9) {
+          const v1 = getVertexIndex(pos[i], pos[i + 1], pos[i + 2]);
+          const v2 = getVertexIndex(pos[i + 3], pos[i + 4], pos[i + 5]);
+          const v3 = getVertexIndex(pos[i + 6], pos[i + 7], pos[i + 8]);
+          triangles.push({ v1, v2, v3 });
+        }
+
+        return { vertices, triangles };
+      }
+
+      function mergeMeshes(meshList) {
+        const vertices = [];
+        const triangles = [];
+        for (const m of meshList) {
+          const offset = vertices.length;
+          for (const v of m.vertices) vertices.push(v);
+          for (const t of m.triangles) {
+            triangles.push({ v1: t.v1 + offset, v2: t.v2 + offset, v3: t.v3 + offset });
+          }
+        }
+        return { vertices, triangles };
+      }
+
+      function buildSlicerMeshes() {
+        const R = params.radius;
+        const baseH = params.baseHeight;
+        const extH = params.extrudeHeight;
+        const cellSize = params.gridSize / 5;
+
+        // 1. Base Cylinder in Z-Up: Rotate X by 90 deg so cylinder axis is Z, sitting on Z=[0, baseH]
+        const cylGeom = new THREE.CylinderGeometry(R, R, baseH, params.segments);
+        cylGeom.rotateX(Math.PI / 2);
+        cylGeom.translate(0, 0, baseH / 2);
+        const baseMeshData = extractMeshZUp(cylGeom);
+
+        // 2. White Extruded Squares sitting on Z=[baseH, baseH + extH]
+        const whiteParts = [];
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            if (gridState[r][c] === 1) {
+              const box = new THREE.BoxGeometry(cellSize, cellSize, extH);
+              const x = (c - 2) * cellSize;
+              // Flip row index along Y so top row of grid matches +Y in slicer top-down view
+              const y = (2 - r) * cellSize;
+              const z = baseH + extH / 2;
+              box.translate(x, y, z);
+              whiteParts.push(extractMeshZUp(box));
+            }
+          }
+        }
+
+        const whiteMeshData = mergeMeshes(whiteParts);
+        return { baseMeshData, whiteMeshData };
+      }
+
+      // --- Export to Multi-Part .3MF (Native Bambu Studio / OrcaSlicer Format) ---
+      function meshTo3MFObjectXML(id, name, mesh, pid, pindex) {
+        let vStr = "";
+        for (const v of mesh.vertices) {
+          vStr += `          <vertex x="${v.x.toFixed(4)}" y="${v.y.toFixed(4)}" z="${v.z.toFixed(4)}" />\n`;
+        }
+        let tStr = "";
+        for (const t of mesh.triangles) {
+          tStr += `          <triangle v1="${t.v1}" v2="${t.v2}" v3="${t.v3}" />\n`;
+        }
+        return `    <object id="${id}" name="${name}" type="model" pid="${pid}" pindex="${pindex}">
+      <mesh>
+        <vertices>
+${vStr}        </vertices>
+        <triangles>
+${tStr}        </triangles>
+      </mesh>
+    </object>\n`;
+      }
+
+      async function export3MF() {
+        const { baseMeshData, whiteMeshData } = buildSlicerMeshes();
+        const hasWhite = whiteMeshData.triangles.length > 0;
+
+        const contentTypesXML = `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml" />
+  <Default Extension="config" ContentType="text/xml" />
+</Types>`;
+
+        const relsXML = `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />
+</Relationships>`;
+
+        let objectsXML = meshTo3MFObjectXML(1, "Black_Base", baseMeshData, 10, 0);
+        let componentsXML = `        <component objectid="1" />\n`;
+
+        if (hasWhite) {
+          objectsXML += meshTo3MFObjectXML(2, "White_ArUco_Pattern", whiteMeshData, 10, 1);
+          componentsXML += `        <component objectid="2" />\n`;
+        }
+
+        const modelXML = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:BambuStudio="http://schemas.bambulab.com/package/2021">
+  <metadata name="Application">ArUco_Puck_Generator</metadata>
+  <resources>
+    <basematerials id="10">
+      <base name="Black_PLA" displaycolor="#18181B" />
+      <base name="White_PLA" displaycolor="#FFFFFF" />
+    </basematerials>
+${objectsXML}    <object id="3" name="ArUco_Puck_Assembly" type="model">
+      <components>
+${componentsXML}      </components>
+    </object>
+  </resources>
+  <build>
+    <item objectid="3" />
+  </build>
+</model>`;
+
+        // Bambu Studio / PrusaSlicer model_settings.config so extruder 1 & 2 are pre-assigned
+        const modelSettingsConfig = `<?xml version="1.0" encoding="UTF-8"?>
+<config>
+  <object id="3">
+    <metadata key="name" value="ArUco_Puck_Assembly"/>
+    <part id="1" subtype="normal_part">
+      <metadata key="name" value="Black_Base"/>
+      <metadata key="extruder" value="1"/>
+    </part>
+${
+  hasWhite
+    ? `    <part id="2" subtype="normal_part">
+      <metadata key="name" value="White_ArUco_Pattern"/>
+      <metadata key="extruder" value="2"/>
+    </part>`
+    : ""
+}
+  </object>
+</config>`;
+
+        const zip = new JSZip();
+        zip.file("[Content_Types].xml", contentTypesXML);
+        zip.folder("_rels").file(".rels", relsXML);
+        zip.folder("3D").file("3dmodel.model", modelXML);
+        zip.folder("Metadata").file("model_settings.config", modelSettingsConfig);
+
+        const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.ms-package.3dmanufacturing-3dmodel+xml" });
+        triggerDownload(blob, "ArUco_Puck_BambuStudio.3mf");
+      }
+
+      // --- Export Separate ASCII STL Files ---
+      function meshToASCIISTL(name, mesh) {
+        let stl = `solid ${name}\n`;
+        const verts = mesh.vertices;
+        for (const t of mesh.triangles) {
+          const v1 = verts[t.v1],
+            v2 = verts[t.v2],
+            v3 = verts[t.v3];
+          const ux = v2.x - v1.x,
+            uy = v2.y - v1.y,
+            uz = v2.z - v1.z;
+          const vx = v3.x - v1.x,
+            vy = v3.y - v1.y,
+            vz = v3.z - v1.z;
+          let nx = uy * vz - uz * vy;
+          let ny = uz * vx - ux * vz;
+          let nz = ux * vy - uy * vx;
+          const len = Math.hypot(nx, ny, nz) || 1;
+          nx /= len;
+          ny /= len;
+          nz /= len;
+
+          stl += `  facet normal ${nx.toFixed(5)} ${ny.toFixed(5)} ${nz.toFixed(5)}\n`;
+          stl += `    outer loop\n`;
+          stl += `      vertex ${v1.x.toFixed(4)} ${v1.y.toFixed(4)} ${v1.z.toFixed(4)}\n`;
+          stl += `      vertex ${v2.x.toFixed(4)} ${v2.y.toFixed(4)} ${v2.z.toFixed(4)}\n`;
+          stl += `      vertex ${v3.x.toFixed(4)} ${v3.y.toFixed(4)} ${v3.z.toFixed(4)}\n`;
+          stl += `    endloop\n`;
+          stl += `  endfacet\n`;
+        }
+        stl += `endsolid ${name}\n`;
+        return stl;
+      }
+
+      function exportSTLs() {
+        const { baseMeshData, whiteMeshData } = buildSlicerMeshes();
+        const baseBlob = new Blob([meshToASCIISTL("Black_Base", baseMeshData)], { type: "model/stl" });
+        triggerDownload(baseBlob, "ArUco_Puck_Black_Base.stl");
+
+        if (whiteMeshData.triangles.length > 0) {
+          setTimeout(() => {
+            const whiteBlob = new Blob([meshToASCIISTL("White_ArUco_Pattern", whiteMeshData)], { type: "model/stl" });
+            triggerDownload(whiteBlob, "ArUco_Puck_White_Pattern.stl");
+          }, 250);
+        }
+      }
+
+      function triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // --- Event Listeners ---
+      document.getElementById("export-3mf").addEventListener("click", export3MF);
+      document.getElementById("export-stl").addEventListener("click", exportSTLs);
+
+      document.getElementById("btn-preset").addEventListener("click", () => {
+        gridState = [
+          [1, 0, 1, 1, 0],
+          [1, 0, 0, 1, 1],
+          [0, 1, 1, 0, 0],
+          [0, 1, 0, 1, 1],
+          [1, 1, 0, 1, 0],
+        ];
+        renderGridUI();
+        update3DModel();
+      });
+
+      document.getElementById("btn-random").addEventListener("click", () => {
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            gridState[r][c] = Math.random() > 0.45 ? 1 : 0;
+          }
+        }
+        renderGridUI();
+        update3DModel();
+      });
+
+      document.getElementById("btn-invert").addEventListener("click", () => {
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            gridState[r][c] = gridState[r][c] === 1 ? 0 : 1;
+          }
+        }
+        renderGridUI();
+        update3DModel();
+      });
+
+      document.getElementById("btn-clear").addEventListener("click", () => {
+        for (let r = 0; r < 5; r++) {
+          for (let c = 0; c < 5; c++) {
+            gridState[r][c] = 0;
+          }
+        }
+        renderGridUI();
+        update3DModel();
+      });
+
+      // Geometry Inputs
+      const inputGridSize = document.getElementById("input-grid-size");
+      const inputRadius = document.getElementById("input-radius");
+      const inputBaseH = document.getElementById("input-base-h");
+      const inputExtH = document.getElementById("input-ext-h");
+
+      inputGridSize.addEventListener("input", (e) => {
+        params.gridSize = parseFloat(e.target.value) || 30;
+        update3DModel();
+      });
+
+      inputRadius.addEventListener("input", (e) => {
+        params.radius = Math.max(5, parseFloat(e.target.value) || 30);
+        inputGridSize.max = (params.radius * Math.SQRT2 - 1).toFixed(1);
+        update3DModel();
+      });
+
+      inputBaseH.addEventListener("input", (e) => {
+        params.baseHeight = Math.max(1, parseFloat(e.target.value) || 10);
+        update3DModel();
+      });
+
+      inputExtH.addEventListener("input", (e) => {
+        params.extrudeHeight = Math.max(0.2, parseFloat(e.target.value) || 5);
+        update3DModel();
+      });
+
+      document.getElementById("btn-reset-dims").addEventListener("click", () => {
+        params.radius = 30;
+        params.baseHeight = 10;
+        params.extrudeHeight = 5;
+        params.gridSize = 30;
+        inputRadius.value = 30;
+        inputBaseH.value = 10;
+        inputExtH.value = 5;
+        inputGridSize.value = 30;
+        update3DModel();
+      });
+
+      // Initialize App
+      renderGridUI();
+      update3DModel();
+      animate();
+    </script>
+  </body>
+</html>

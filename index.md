@@ -4,6 +4,7 @@
 
 ## Tools
 
+- [ArUco Puck Builder](./aruco-puck-builder/)
 - [Audio trim](./audio-trim/)
 - [Audio Analyzer](./audio-analyzer/)
 - [Audio visualizer](./audio-visualizer/)
