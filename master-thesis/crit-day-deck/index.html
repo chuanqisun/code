@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📢</text></svg>" />
     <title>Hold That Thought — Crit Day</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📢</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
@@ -718,6 +718,27 @@
       #s12 .split img:last-child {
         justify-self: end;
       }
+      #s12 .title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        text-align: center;
+        font-size: clamp(48px, 8vw, 150px);
+        font-weight: 300;
+        letter-spacing: -0.02em;
+        line-height: 1;
+        transition:
+          top 1s ease,
+          transform 1s ease,
+          font-size 1s ease;
+      }
+      #s12[data-at="1"] .title {
+        top: 4vh;
+        transform: none;
+        font-size: clamp(28px, 3.6vw, 64px);
+      }
       /* when the chart appears, the illustrations slide ajar to clear the stage */
       #s12 .split img {
         transition: transform 1s ease;
@@ -764,6 +785,45 @@
         text-transform: uppercase;
         color: var(--dim);
       }
+      /* click 2: the pioneers' names give way to the senses they extended */
+      #s13b .faces figcaption {
+        display: grid;
+      }
+      #s13b .faces figcaption span {
+        grid-area: 1 / 1;
+        text-align: center;
+        transition:
+          opacity 0.6s ease,
+          transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+          filter 0.6s ease;
+        transition-delay: calc(var(--i) * 120ms);
+      }
+      #s13b .faces figcaption .sense {
+        color: var(--accent);
+        font-size: 1.3em;
+        opacity: 0;
+        transform: translateY(1.2vh);
+        filter: blur(4px);
+      }
+      #s13b[data-at="2"] .faces figcaption .nm {
+        opacity: 0;
+        transform: translateY(-1.2vh);
+        filter: blur(4px);
+      }
+      #s13b[data-at="2"] .faces figcaption .sense {
+        opacity: 1;
+        transform: none;
+        filter: none;
+      }
+      #s13b .faces figure:nth-child(1) figcaption span {
+        --i: 0;
+      }
+      #s13b .faces figure:nth-child(2) figcaption span {
+        --i: 1;
+      }
+      #s13b .faces figure:nth-child(3) figcaption span {
+        --i: 2;
+      }
       #s13b .faces img {
         height: 40vh;
         width: auto;
@@ -786,12 +846,12 @@
         color: var(--accent);
         font-style: inherit;
       }
-      #s13b[data-at="1"] .line .why {
+      #s13b:not([data-at="0"]) .line .why {
         opacity: 0;
         transform: translateY(-2vh);
         filter: blur(6px);
       }
-      #s13b[data-at="1"] .line .answer {
+      #s13b:not([data-at="0"]) .line .answer {
         opacity: 1;
         transform: none;
         filter: none;
@@ -843,6 +903,7 @@
         padding: 2.4vh 4vw 3vh;
         background: #000;
         color: #fff;
+        color-scheme: dark;
         border-top: 3px solid var(--accent);
         font-family:
           system-ui,
@@ -852,7 +913,7 @@
           "Helvetica Neue",
           Arial,
           sans-serif;
-        font-size: clamp(18px, 1.8vw, 30px);
+        font-size: clamp(16px, 1.5vw, 26px);
         font-weight: 400;
         line-height: 1.5;
         letter-spacing: 0.005em;
@@ -1049,6 +1110,16 @@
       </div>
     </section>
 
+    <!-- 8 · give thoughts handles -->
+    <section class="slide" id="s8" data-steps="1">
+      <img class="art" src="assets/handle-on-data.webp" alt="A hand pulling a handle fixed to a cloud of data" />
+      <div class="legend step" data-step="1">
+        <div><b>Neural</b> = the cloud</div>
+        <div><b>Symbolic</b> = the handles</div>
+        <div><b>Real time</b> = closed loop</div>
+      </div>
+    </section>
+
     <!-- 7 · making is not specifying -->
     <section class="slide" id="s7">
       <figure class="fade-up">
@@ -1058,16 +1129,6 @@
       <figure class="paper fade-up" style="animation-delay: 0.8s">
         <img src="assets/textilify-of-making.webp" alt="The Textility of Making, first page" />
       </figure>
-    </section>
-
-    <!-- 8 · give thoughts handles -->
-    <section class="slide" id="s8" data-steps="1">
-      <img class="art" src="assets/handle-on-data.webp" alt="A hand pulling a handle fixed to a cloud of data" />
-      <div class="legend step" data-step="1">
-        <div><b>Neural</b> = the cloud</div>
-        <div><b>Symbolic</b> = the handles</div>
-        <div><b>Real time</b> = closed loop</div>
-      </div>
     </section>
 
     <!-- 9 · Dream Brush -->
@@ -1126,23 +1187,24 @@
         <img src="assets/illustration-left.webp" alt="Typing into a chat window" />
         <img src="assets/illustration-right.webp" alt="Both hands on pucks, live image morphing" />
       </div>
+      <div class="title">How to Evaluate</div>
       <svg class="step" data-step="1" id="csi" viewBox="-200 -200 400 400" aria-label="Creativity Support Index radial chart"></svg>
     </section>
 
     <!-- 13 · why this matters -->
-    <section class="slide" id="s13b" data-steps="1">
+    <section class="slide" id="s13b" data-steps="2">
       <div class="faces">
         <figure>
           <img src="assets/norbert-wiener-portrait.jpg" alt="Norbert Wiener" />
-          <figcaption>Norbert Wiener</figcaption>
+          <figcaption><span class="nm">Norbert Wiener</span><span class="sense">Body</span></figcaption>
         </figure>
         <figure>
           <img src="assets/licklider-portrait.jpg" alt="J. C. R. Licklider" />
-          <figcaption>J. C. R. Licklider</figcaption>
+          <figcaption><span class="nm">J. C. R. Licklider</span><span class="sense">Knowledge</span></figcaption>
         </figure>
         <figure>
           <img src="assets/hiroshi-ishii-portrait.jpg" alt="Hiroshi Ishii" />
-          <figcaption>Hiroshi Ishii</figcaption>
+          <figcaption><span class="nm">Hiroshi Ishii</span><span class="sense">Connection</span></figcaption>
         </figure>
       </div>
       <div class="line fade-up">
@@ -1214,15 +1276,15 @@
           "The empty quadrant is where a hand can steer meaning. This is the thesis.",
         ],
         [
+          "“Get a handle on it” is an idiom for a reason. A handle is the oldest interface for gripping something slippery.",
+          "The model supplies meaning, a symbolic layer supplies the handle, and the speed keeps it a conversation with material.",
+          "State the hypothesis (agency, creativity, joy vs. turn-based) in one sentence.",
+        ],
+        [
           "I could have used an AI avatar to give this presentation, and yet I chose to be present. You could have delegated your AI note-taker to join crit day, and yet you chose to be here.",
           "Why? Because we all enjoy the making of ideas. Not specifying goals. Not delegating to agents.",
           "Tim Ingold says making is not imposing a form on matter. The maker follows the material and responds to it as the work unfolds. A prompt is the stamp. Making needs a medium that answers back, continuously, and real time is the precondition.",
           "Delivery: pause a full beat after “chose to be here.” The questions are rhetorical. Land “making of ideas” slowly, then bring in Ingold.",
-        ],
-        [
-          "“Get a handle on it” is an idiom for a reason. A handle is the oldest interface for gripping something slippery.",
-          "The model supplies meaning, a symbolic layer supplies the handle, and the speed keeps it a conversation with material.",
-          "State the hypothesis (agency, creativity, joy vs. turn-based) in one sentence.",
         ],
         [
           "One gesture carries both what (the character 云, “cloud”) and where.",
@@ -1243,11 +1305,13 @@
           "The timeline sits in the proposal, not on the slide.",
         ],
         [
-          "Norbert Wiener: cybernetics, and second-order cybernetics. The observer is part of the loop.",
-          "J.C.R. Licklider: man-computer symbiosis. Humans and computers thinking together, in real time.",
-          "Hiroshi Ishii: tangible bits and radical atoms. Give digital information a physical form you can hold.",
+          "Key point: interaction design investigates the human condition and expands the life we experience by giving us new senses: for the body, for knowledge, and for connection.",
+          "Norbert Wiener (body): cybernetics. Machines and organisms share feedback loops, so tools extend the body.",
+          "J.C.R. Licklider (knowledge): man-computer symbiosis. Humans and computers thinking together, in real time.",
+          "Hiroshi Ishii (connection): tangible bits and radical atoms. Give digital information a physical form you can hold and share.",
           "Can technology put humans in front of the decision, in the real world, and not behind a phone screen?",
-          "Pause on “Why?”, then click: Interaction Design is Humanism.",
+          "Pause on “Why?”. Click 1: Interaction Design is Humanism. Click 2: the names become body, knowledge, connection.",
+          "Land it: this thesis extends our senses toward thinking, sense making, and creating. I think that is worth pursuing.",
         ],
         ["Hold up the puck: “I’m happy to address the thoughts you are holding now.”"],
       ];
