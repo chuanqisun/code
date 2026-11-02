@@ -1,274 +1,1038 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤌</text></svg>">
-<title>Hold That Thought: Neuro-Symbolic Coupling for Shaping Ideas in Real Time</title>
-<style>
-:root { color-scheme: light; }
-html { font-size: 100%; }
-body {
-  font-family: "Charter", "Georgia", "Times New Roman", serif;
-  font-size: 1.05rem;
-  line-height: 1.55;
-  color: #111;
-  background: #fff;
-  max-width: 40rem;
-  margin: 2.5rem auto;
-  padding: 0 1.25rem;
-}
-h1, h2, h3 { font-weight: 700; line-height: 1.25; }
-h1 { font-size: 1.7rem; text-align: center; margin: 0 0 1.5rem; }
-h2 { font-size: 1.3rem; margin: 2.2rem 0 0.6rem; }
-h3 { font-size: 1.08rem; margin: 1.6rem 0 0.4rem; }
-p { margin: 0 0 0.85rem; text-align: justify; hyphens: auto; }
-header.title-block { text-align: center; margin-bottom: 2rem; }
-header.title-block p { text-align: center; margin: 0 0 1rem; }
-ul, ol { margin: 0 0 0.85rem; padding-left: 1.6rem; }
-li { margin: 0 0 0.3rem; }
-li > p { margin-bottom: 0.3rem; }
-blockquote { margin: 0 0 1rem; padding-left: 1rem; border-left: 2px solid #999; font-style: italic; }
-a { color: inherit; text-decoration: none; }
-a[href^="http"] { text-decoration: underline; word-break: break-word; }
-a[href^="#"]:hover { text-decoration: underline; }
-code { font-family: "Menlo", "Consolas", monospace; font-size: 0.9em; }
-table { border-collapse: collapse; width: 100%; margin: 0 0 1rem; font-size: 0.92rem; line-height: 1.35; }
-th, td { border-top: 1px solid #444; border-bottom: 1px solid #444; padding: 0.3rem 0.45rem; text-align: left; vertical-align: top; }
-thead th { border-bottom: 2px solid #111; }
-td.center, th.center { text-align: center; }
-tr { page-break-inside: avoid; }
-ul.references { list-style: none; padding-left: 0; }
-ul.references li { padding-left: 2.4rem; text-indent: -2.4rem; margin-bottom: 0.45rem; font-size: 0.95rem; line-height: 1.4; text-align: left; word-break: break-word; }
-nav ul { list-style: none; padding-left: 0; }
-.backlinks { font-size: 0.85em; color: #333; white-space: nowrap; }
-.backlinks a { text-decoration: underline; padding: 0 0.1em; }
-.focus-mark { background: #eee; outline: 2px solid #bbb; }
-li:target, a[id]:target { scroll-margin-top: 4rem; }
-@page { size: Letter; margin: 1in; }
-@media print {
-  html { font-size: 10.5pt; }
-  body { max-width: none; margin: 0; padding: 0; }
-  h2, h3 { page-break-after: avoid; }
-  p, li { orphans: 3; widows: 3; }
-  table, blockquote { page-break-inside: avoid; }
-  a[href^="http"] { text-decoration: none; }
-  .draft-notes, .draft-notes-link, .backlinks { display: none; }
-  .focus-mark { background: none; outline: none; }
-}
-</style>
-</head>
-<body>
-<main>
-<header class="title-block">
-<h1>Hold That Thought: Neuro-Symbolic Coupling for Shaping Ideas in Real Time</h1>
-<p><strong>Chuanqi Sun</strong><br>
-BA, Computer Science, Dartmouth College, 2015<br>
-stack@media.mit.edu</p>
-<p>Thesis proposal for the degree of<br>
-Master of Science in Media Arts and Sciences<br>
-at the<br>
-Massachusetts Institute of Technology</p>
-<p><strong>Advisor:</strong><br>
-<strong>Hiroshi Ishii</strong><br>
-Jerome B. Wiesner Professor of Media Arts and Sciences<br>
-Media Lab, Massachusetts Institute of Technology</p>
-<p><strong>Reader:</strong><br>
-<strong>Zach Lieberman</strong><br>
-Adjunct Associate Professor of Media Arts and Sciences<br>
-Media Lab, Massachusetts Institute of Technology</p>
-<p><strong>Reader:</strong><br>
-<strong>Jean-Baptiste Labrune</strong><br>
-Research Affiliate<br>
-Media Lab, Massachusetts Institute of Technology</p>
-</header>
-<section id="abstract">
-<h2>Abstract</h2>
-<p>Historically, real-time interaction has led to breakthroughs in HCI, but its application has remained limited to data with direct spatial mappings or metaphors. Conversely, generative AI works with semantic data while lacking the structure and speed for real-time manipulation. Today, generative models are approaching interactive frame rates and sub-second response, yet human-AI interaction still relies on turn-based prompt-and-response loops. <em>Hold That Thought</em> addresses this gap through <em>neuro-symbolic coupling</em> of structured symbolic affordances with unstructured semantic data, materializing ideas as tangible <em>handles</em> that users can manipulate in real time. The work builds on foundational theories of direct manipulation, cybernetics, and tangible media, and on Tim Ingold's account of making as a continuous response to material, to extend the coupling of physical and digital bits to spatial and semantic media. Two completed systems, <em>Dream Brush</em> and <em>Parametric Diffusion</em>, provide the foundation. I will build <em>Braindump</em>, <em>Put That There Again</em>, <em>Context Pucks</em>, and <em>Sable</em> to cover getting ideas in, manipulating them, and holding them physically, and contribute interaction loops to <em>Tangible Co-ideation</em>, a multi-user, multi-AI collaboration platform at the Tangible Media Group. By evaluating the systems against conversational baselines using the Creativity Support Index (CSI) and complementary measures of agency, ownership, and joy, I test the hypothesis that neuro-symbolic coupling preserves human agency, enhances creativity, and sparks joy in human-AI collaboration.</p>
-</section>
-<section id="introduction">
-<h2>Introduction</h2>
-<p>Nearly every major step in human-computer interaction has come with a new real-time interaction paradigm. Sutherland's <em>Sketchpad</em> let a person draw and constrain geometry with a light pen and see the result immediately <a id="cite-1-1" href="#ref-1">[1]</a>. Engelbart's 1968 demonstration showed people manipulating text, links, and views in a shared, live workspace <a id="cite-2-1" href="#ref-2">[2]</a>. Shneiderman named the pattern <em>direct manipulation</em>, built on "rapid, incremental, reversible operations whose impact on the object of interest is immediately visible" <a id="cite-3-1" href="#ref-3">[3]</a>, and Hutchins, Hollan, and Norman explained why it works: it shrinks the distance between intent and action <a id="cite-4-1" href="#ref-4">[4]</a>. The Tangible Media Group carried the idea into the physical world with <em>Tangible Bits</em> and its successors <a id="cite-5-1" href="#ref-5">[5]</a>.</p>
-<p>But direct manipulation has been limited to data that has a direct spatial mapping (pixels, terrain, physical simulation) or a strong spatial metaphor (files, windows, sliders). It requires an object with a designed surrogate, and ideas, concepts, tone, and intent have none. AI took the other path. From ELIZA to ChatGPT it has accepted semantic input and produced semantic output in alternating turns. The costs of that shape are now documented: users face a <em>gulf of envisioning</em> between an intention and a prompt that anticipates what the model can do, and, unlike direct manipulation, model feedback is not immediate <a id="cite-6-1" href="#ref-6">[6]</a>.</p>
-<p>Generative models are now approaching real-time response in image, video, and speech <a id="cite-7-1" href="#ref-7">[7]</a>, <a id="cite-8-1" href="#ref-8">[8]</a>, so the turn-based shape is no longer forced by the technology. When latency falls below the threshold of perception, a series of requests becomes a coupled loop, as in the feedback between a camera and its own monitor <a id="cite-9-1" href="#ref-9">[9]</a>. This thesis assumes real-time generative AI will be available soon, and asks what to build for it.</p>
-<p>Speed alone is not enough, because a faster chat is still chat. A thought expressed in language is not something a hand can hold. The second argument for real time comes from the theory of making. Ingold contrasts a <em>hylomorphic</em> model of creation, in which a maker imposes a preconceived form on passive matter, with the practice of the craftsperson, who works <em>with</em> the material, following its flows and responding to what it does as the work unfolds <a id="cite-10-1" href="#ref-10">[10]</a>. Turn-based prompting is hylomorphic: the user specifies the form up front and the model imposes it. Creativity in Ingold's sense needs a medium that answers back continuously, which is what real time provides and a request-response loop cannot.</p>
-<p>My answer is to give thoughts handles. To <em>hold</em> a thought is to bind it to a discrete, inspectable object that a hand can manipulate. The handles are <em>neuro-symbolic</em> in a practical, interface-level sense: a neural model supplies fluid semantic content, and a symbolic layer (parameters, structures, programs, tokens) supplies the handle <a id="cite-11-1" href="#ref-11">[11]</a>. Handles make <em>shaping</em> possible, because an idea is fleshed out progressively by manipulating it instead of specifying it up front, and <em>real time</em> keeps the loop closed. This gives the thesis its central hypothesis:</p>
-<p><strong>Neuro-symbolic coupling of semantic and spatial control, with direct input and immediate output, will preserve human agency, enhance creativity, and spark joy in human-AI collaboration, compared with turn-based prompting.</strong></p>
-</section>
-<section id="contribution">
-<h2>Contribution</h2>
-<ol>
-<li><strong>Two completed systems.</strong> <em>Dream Brush</em> couples the semantics and spatial extent of calligraphic strokes to steer image generation <a id="cite-12-1" href="#ref-12">[12]</a>. <em>Parametric Diffusion</em> exposes symbolic structure as real-time handles over a diffusion model.</li>
-<li><strong>Four proposed systems and one platform contribution</strong>, covering getting ideas in, manipulating them, holding them physically, and sharing them: <em>Braindump</em> (voice and gesture input), <em>Put That There Again</em> (spatial-semantic manipulation in AR), <em>Context Pucks</em> (physical handles with adaptive affordances), <em>Sable</em> (tangible direct manipulation of audio synthesis), and interaction loops for <em>Tangible Co-ideation Across Time</em>.</li>
-<li><strong>A framework</strong> for neuro-symbolic coupling, extending the Tangible Media Group's coupling of physical and digital bits to spatial and semantic media, with an operational definition of real time.</li>
-<li><strong>A catalogue of semantic manipulations</strong> ("verbs" such as steer, blend, scale, bind) that generalize across domains.</li>
-<li><strong>Empirical evidence and design recommendations</strong> on how real-time, handle-based interaction affects creativity, agency, and joy relative to turn-based prompting.</li>
-</ol>
-</section>
-<section id="related-work">
-<h2>Related Work</h2>
-<p>This thesis builds on six bodies of work: direct manipulation and real-time interaction, the theory of making, tangible media, the semantic and turn-taking lineage of AI, cybernetics and human-AI coupling, and real-time generative media with creative computing.</p>
-<h3>Direct Manipulation and Real-Time Interaction</h3>
-<p>Beyond the foundations above <a id="cite-1-2" href="#ref-1">[1]</a>–<a id="cite-4-2" href="#ref-4">[4]</a>, the closest ancestor of this thesis's design problem is the 1997 debate between Shneiderman and Pattie Maes on <em>direct manipulation vs. interface agents</em> <a id="cite-13-1" href="#ref-13">[13]</a>. Shneiderman insisted on predictability and user responsibility. Maes argued that growing complexity means "we cannot just add more and more sliders and buttons," so some work must be delegated to agents <a id="cite-13-2" href="#ref-13">[13]</a>, <a id="cite-14-1" href="#ref-14">[14]</a>. Shneiderman's later Human-Centered AI framework calls for both high human control and high automation <a id="cite-15-1" href="#ref-15">[15]</a>. The neuro-symbolic approach is a concrete attempt to occupy that quadrant: the agent (neural) synthesizes handles, and the human manipulates them directly.</p>
-<p>Real time is also a quantity that can be defined. About 0.1 s feels instantaneous, about 1 s preserves the flow of thought but loses the feeling of operating directly on the data, and about 10 s holds attention <a id="cite-16-1" href="#ref-16">[16]</a>, <a id="cite-17-1" href="#ref-17">[17]</a>. Jota et al. found that for direct-touch pointing, 1 and 10 ms latencies were indistinguishable, while 25 and 50 ms degraded performance <a id="cite-18-1" href="#ref-18">[18]</a>.</p>
-<h3>Making, Material, and Real-Time Creativity</h3>
-<p>In <em>The Textility of Making</em>, Ingold argues that the dominant picture of making is hylomorphic, inherited from Aristotle: the maker conceives a form and imposes it on inert matter <a id="cite-10-2" href="#ref-10">[10]</a>. He proposes the textile as a better model. Weaving, basketry, and similar crafts proceed by following and joining the flows and tensions of materials, and the form emerges <em>in</em> the making and is not delivered by a prior design. For Ingold, creativity lies in this improvisatory process of responding to the material as it changes, and not in the novelty of a finished object. Thinking is not finished before the work starts. It happens through the making.</p>
-<p>This is a theoretical basis for real-time media in creative work. If making is a continuous correspondence between maker and material, then the medium must respond within the rhythm of the maker's action, or the maker is reduced to specifying and waiting. A turn-based generative model is hylomorphic by construction: the prompt is the form, the output is the matter that took it, and the user's role is to judge the result and re-specify. A real-time model with handles turns the generative model into something closer to a material that can be worked. It is plastic and responsive, and it can be pushed, pulled, and followed. Handles are how a hand joins that flow, and this is what <em>shaping</em> means in the title of this thesis.</p>
-<p>Ingold's account converges with several empirical and design traditions. Schön described design as a reflective "conversation" with the materials of a situation, in which the situation talks back to the designer <a id="cite-19-1" href="#ref-19">[19]</a>. Kirsh and Maglio's <em>epistemic actions</em> show that people manipulate external objects in order to think, not only to act <a id="cite-20-1" href="#ref-20">[20]</a>. Csikszentmihalyi's flow theory links immediate feedback and perceived control to enjoyment <a id="cite-21-1" href="#ref-21">[21]</a>. Together they motivate the measures in this thesis: creativity support, agency, and joy.</p>
-<h3>Tangible Media: From Bits and Atoms to Spatial and Semantic Media</h3>
-<p>Ishii and Ullmer's <em>Tangible Bits</em> gave physical form to digital information <a id="cite-5-2" href="#ref-5">[5]</a>, and Ullmer and Ishii's token-and-constraint framework formalized how physical tokens act as handles for digital data <a id="cite-22-1" href="#ref-22">[22]</a>. <em>Sensetable</em> and <em>Audiopad</em> tracked wireless pucks on a flat surface, each standing for an object or a parameter, the latter in service of musical performance <a id="cite-23-1" href="#ref-23">[23]</a>, <a id="cite-24-1" href="#ref-24">[24]</a>. <em>Illuminating Clay</em> and <em>SandScape</em> allowed continuous, bimanual, real-time sculpting of terrain with computed analyses projected back onto the material <a id="cite-25-1" href="#ref-25">[25]</a>, which is the tangible instance of Ingold's argument. <em>Radical Atoms</em> imagined materials that change form to reflect digital state <a id="cite-26-1" href="#ref-26">[26]</a>, and the <em>reacTable</em> brought the tabletop-puck instrument to a wide audience <a id="cite-27-1" href="#ref-27">[27]</a>.</p>
-<p>Recent work at the group brings generative AI into this lineage. <em>Tangible Co-ideation Across Time</em> embodies prompting in physical objects, such as figurines whose position tunes AI expert personas <a id="cite-28-1" href="#ref-28">[28]</a>, and revives legacy design sketchnotes with conversational AI agents <a id="cite-29-1" href="#ref-29">[29]</a>. The project page reports that tangible interaction increased spoken communication and the agency of human ideas relative to AI contributions in a 32-participant study <a id="cite-30-1" href="#ref-30">[30]</a>. I have not reviewed the study data. I contribute to this project, so I treat it as both a platform for my work and prior evidence that tangible handles change how people collaborate with AI.</p>
-<h3>The Semantic, Turn-Taking Lineage of AI and Its Critics</h3>
-<p>ELIZA established text exchange as the default interface to machine intelligence <a id="cite-31-1" href="#ref-31">[31]</a>. Bolt's <em>Put-That-There</em> is the pivotal precedent: combining connected speech with pointing, so that pronouns act as "temporary variables" referencing items on the display, the system resolved <em>that</em> and <em>there</em> through gesture but understood no meaning <a id="cite-32-1" href="#ref-32">[32]</a>. LLMs invert the situation, since they handle meaning but not <em>that</em> and <em>there</em>. <em>Put That There Again</em> closes the loop. Recent work such as Bovo et al.'s speech-plus-pointing window placement via LLMs in XR shows the idea is timely but confined to window management <a id="cite-33-1" href="#ref-33">[33]</a>.</p>
-<p>Critiques of chat interfaces converge on the cognitive diagnosis of the gulf of envisioning <a id="cite-6-2" href="#ref-6">[6]</a>. Lee proposed interfaces in which one drags one sentence onto another to interpolate between ideas, and in which context is made into a real thing in the interface <a id="cite-34-1" href="#ref-34">[34]</a>. Litt et al. argue for direct manipulation first, with AI as a complement to a malleable environment <a id="cite-35-1" href="#ref-35">[35]</a>. This is close to my approach. On the AI side, neuro-symbolic methods combine learning with symbolic reasoning <a id="cite-11-2" href="#ref-11">[11]</a>, and systems such as AlphaGeometry pair a neural proposer with a symbolic verifier <a id="cite-36-1" href="#ref-36">[36]</a>. I use the term for the <em>interface</em> layer: symbolic handles over a neural substrate, exposed for human manipulation. World models <a id="cite-37-1" href="#ref-37">[37]</a>, <a id="cite-38-1" href="#ref-38">[38]</a> are the nearest neighbor in generative AI, but they simulate physical or game worlds. This thesis concerns <em>semantic</em> simulation over ideas, and world models are a substrate for it, not a competitor.</p>
-<h3>Cybernetics, Symbiosis, and Human-AI Coupling</h3>
-<p>Wiener defined cybernetics as the study of control and communication through feedback in animals and machines <a id="cite-39-1" href="#ref-39">[39]</a>. Licklider's man-computer symbiosis predicted that human brains and computing machines would be "coupled together very tightly," and called for thinking that goes on in real time <a id="cite-40-1" href="#ref-40">[40]</a>. Clark and Chalmers' <em>extended mind</em> holds that external resources which are reliably available and trusted can be part of a cognitive process <a id="cite-41-1" href="#ref-41">[41]</a>. This gives latency a cognitive meaning, because a slow, intermittent loop is a worse candidate for extension. Clark's recent work frames generative AI as potentially "mind-extending" rather than "mind-replacing" <a id="cite-42-1" href="#ref-42">[42]</a>. At the Media Lab, Pataranutaporn's Cyborg Psychology studies human-AI systems that support human flourishing and agency <a id="cite-43-1" href="#ref-43">[43]</a>. The real-time feedback loop and agency and ownership measures in this thesis will continue that line of work.</p>
-<h3>Real-Time Generative Media and Creative Computing</h3>
-<p>Few-step distillation made diffusion fast enough for interaction <a id="cite-44-1" href="#ref-44">[44]</a>, <a id="cite-45-1" href="#ref-45">[45]</a>, StreamDiffusion added pipeline-level batching for interactive streams <a id="cite-7-2" href="#ref-7">[7]</a>, autoregressive video diffusion made video generation causal and streamable <a id="cite-46-1" href="#ref-46">[46]</a>, and Moshi demonstrated full-duplex speech with no turn-taking <a id="cite-8-2" href="#ref-8">[8]</a>. Most speeds reported for 2025–2026 systems are vendor claims, and the thesis does not depend on any of them.</p>
-<p>Conditioning research supplies candidate handles. ControlNet adds spatial conditioning <a id="cite-47-1" href="#ref-47">[47]</a>, Concept Sliders expose semantic attributes as continuous knobs <a id="cite-48-1" href="#ref-48">[48]</a>, and for audio, RAVE, DDSP, and Neural Wavetable expose structured synthesis parameters <a id="cite-49-1" href="#ref-49">[49]</a>–<a id="cite-51-1" href="#ref-51">[51]</a>. Creative coding supplies the aesthetic tradition: Krueger's <em>Videoplace</em> established real-time embodied interaction as an expressive medium <a id="cite-52-1" href="#ref-52">[52]</a>, and Levin's painterly interfaces describe an "inexhaustible, infinitely variable, dynamic" audiovisual substance <a id="cite-53-1" href="#ref-53">[53]</a>. Lieberman's work treats code itself as a creative medium. These works share the stance of the tool as an instrument that is played, which is the stance this thesis takes toward generative models.</p>
-</section>
-<section id="proposed-work">
-<h2>Proposed Work</h2>
-<h3>System Overview</h3>
-<p>The portfolio is organized around the idea lifecycle: getting an idea into the system, manipulating it, holding it physically, and sharing it.</p>
-<table>
-<thead><tr><th>System</th><th>Role in the framework</th><th>Medium</th><th>Status</th></tr></thead>
-<tbody>
-<tr><td><strong>Dream Brush</strong></td><td>Spatial and semantic control coupled in one gesture</td><td>Calligraphic canvas, diffusion</td><td><strong>Done</strong> (DIS '26 Companion <a id="cite-12-2" href="#ref-12">[12]</a>)</td></tr>
-<tr><td><strong>Parametric Diffusion</strong></td><td>Symbolic structure as handles over a generative image model</td><td>Real-time interface to diffusion</td><td><strong>Done</strong></td></tr>
-<tr><td><strong>Braindump</strong></td><td>Input: getting ideas into the system</td><td>Voice and gesture</td><td>Started; ETA end of 2026</td></tr>
-<tr><td><strong>Put That There Again</strong></td><td>Manipulation: semantic operations on ideas</td><td>CV and AR, tangible handles</td><td>Prototyped; ETA Jan. 2027</td></tr>
-<tr><td><strong>Context Pucks</strong></td><td>Physical handles with adaptive affordances</td><td>Tangible device</td><td>Designing; ETA Mar. 2027</td></tr>
-<tr><td><strong>Sable</strong></td><td>Tangible direct manipulation of creative audio synthesis</td><td>Wavetable synthesizer, tangible terrain</td><td>Proposed; starts Jan. 2027</td></tr>
-<tr><td><strong>Tangible Co-ideation Across Time</strong></td><td>Social: multi-user, multi-AI ideation</td><td>TMG platform</td><td>In development (ongoing TMG project)</td></tr>
-</tbody></table>
-<h3>Completed Work</h3>
-<p><strong>Dream Brush</strong> is a near-real-time canvas on which people steer image generation and editing with calligraphic marks. A vision model reads the written character, and the bounding box of the stroke selects the region to repaint. It couples semantics (the character) with spatial control (position, size, orientation) in one gesture <a id="cite-12-3" href="#ref-12">[12]</a>. Generation still takes seconds, and a "drying" animation masks the wait, so the system is also an honest measure of the gap between near-real-time and real-time.</p>
-<p><strong>Parametric Diffusion</strong> is a real-time interface for controlled image generation with direct manipulation of an explicit symbolic structure over a diffusion model, preserving user control and diversity in the output. It was built and shown as an art project, so no user feedback exists yet, and I make no claims about its effect on users here.</p>
-<h3>Research Questions</h3>
-<ol>
-<li><strong>What are the generalizable semantic manipulations of ideas?</strong> Which operations (steer, blend, scale, bind, pin, branch, merge) carry across domains, and how is each materialized as a handle?</li>
-<li><strong>What does real time change?</strong> Compared with turn-based prompting, how does direct input with immediate output affect creativity, agency, ownership, and enjoyment, and how do these depend on latency?</li>
-<li><strong>How should ideas get into the system?</strong> What multimodal input lets a person instantiate rich context quickly, so that input does not bottleneck manipulation?</li>
-<li><strong>Which tangible handles best support semantic manipulation?</strong> What makes a puck a better handle than a slider or a mouse?</li>
-<li><strong>What happens socially?</strong> How do communication and collaboration change when every participant is coupled to AI in real time?</li>
-</ol>
-<h3>Architecture</h3>
-<p>Each system shares a common loop: (1) <em>instantiate</em>, in which an idea enters as unstructured context (speech, gesture, sketch, text); (2) <em>reify</em>, in which a neural model proposes symbolic handles, typed parameters bound to semantic dimensions of the idea (for example, a scale from "academic" to "poetic"); (3) <em>manipulate</em>, in which the user grabs handles through spatial, tangible, or gestural input and drives a fast generative loop with immediate feedback; and (4) <em>inspect and refine</em>, in which handles can be rebound, merged, or discarded, and the agent can propose new ones. Only the fast loop (3) must be real time. The slower loops (1–2, 4) parallel the inner loop and tool-editing path in malleable software <a id="cite-35-2" href="#ref-35">[35]</a>.</p>
-<p>I define real time operationally as at least 24 frames per second of visible output with no more than 100 ms from input to perceptible response <a id="cite-16-2" href="#ref-16">[16]</a>, treating the bound as a minimum given the stricter figures for direct touch <a id="cite-18-2" href="#ref-18">[18]</a>. Few current systems satisfy both conditions for every modality. Each system will therefore use the best available models, with a Wizard-of-Oz or simulated-latency layer to test conditions beyond today's capability, and latency is a manipulated variable in the evaluation.</p>
-<h3>Design Process</h3>
-<p>The process follows Ishii's vision-driven approach, with a long-term vision driving the work rather than current technology. Each system is built as a sequence of rapid prototypes tested early with small groups of creators, in the creative-coding spirit of daily, playful sketching. Joy is a design criterion as well as an outcome: Dream Brush unexpectedly became a social drawing game, and I will look for similar unplanned uses in the tangible systems.</p>
-<h3>Evaluation</h3>
-<p><strong>Hypotheses.</strong> Relative to a turn-based prompting baseline, handle-based real-time interaction yields (H1) higher creativity support, (H2) a stronger sense of agency and ownership, and (H3) greater enjoyment. I also hypothesize (H4) that these differences shrink as latency exceeds the real-time bound.</p>
-<p><strong>Measures.</strong> The primary measure is the Creativity Support Index <a id="cite-54-1" href="#ref-54">[54]</a>, which scores six factors (exploration, expressiveness, immersion, enjoyment, results worth effort, collaboration) out of 100. Complementary measures are the Sense of Agency Scale <a id="cite-55-1" href="#ref-55">[55]</a> as a baseline trait, with task-specific agency and ownership items that I will pilot and report as unvalidated; NASA-TLX for cognitive effort <a id="cite-56-1" href="#ref-56">[56]</a>; and interaction logs, think-aloud sessions, and interviews. The qualitative analysis will attend to how participants describe their relationship to the output, as the "manager of a machine" or the "author of a craft," in the sense of Ingold's maker <a id="cite-10-3" href="#ref-10">[10]</a>.</p>
-<p><strong>Studies.</strong> All designs are proposals subject to IRB approval and committee feedback.</p>
-<ul>
-<li><em>Study A, visual and audio (Dream Brush, Parametric Diffusion, Sable).</em> A within-subjects comparison of (a) a text-prompt baseline, (b) handles at native latency, and (c) handles at simulated lower latency.</li>
-<li><em>Study B, idea manipulation (Braindump, Put That There Again, Context Pucks).</em> Participants develop an idea in (a) an LLM chat baseline, (b) a screen-based handle interface, and (c) the tangible AR system, which also tests pucks against on-screen sliders (RQ4).</li>
-<li><em>Study C, collaboration (Tangible Co-ideation Across Time).</em> Pairs or small groups ideate with shared handles, with qualitative observation of communication (RQ5).</li>
-</ul>
-<p><strong>Limitations.</strong> Simulated latency is a weaker substitute for truly real-time systems. CSI was designed for single-tool studies, so cross-system comparison needs careful task matching. Order and novelty effects, particularly with tangible hardware, can inflate enjoyment. I will counterbalance, use well-engineered baselines, and look specifically for where the new interface performs <em>worse</em>.</p>
-</section>
-<section id="timeline">
-<h2>Timeline</h2>
-<table>
-<thead><tr><th>Task / Phase</th><th class="center">Nov '26</th><th class="center">Dec</th><th class="center">Jan '27</th><th class="center">Feb</th><th class="center">Mar</th><th class="center">Apr</th><th class="center">May</th></tr></thead>
-<tbody>
-<tr><td><em>Braindump</em> implementation (ETA end of 2026)</td><td class="center">X</td><td class="center">X</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td></tr>
-<tr><td><em>Put That There Again</em> prototype to study-ready (ETA Jan. 2027)</td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td></tr>
-<tr><td><em>Context Pucks</em> design and fabrication (ETA Mar. 2027)</td><td class="center"></td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center"></td><td class="center"></td></tr>
-<tr><td><em>Sable</em> development (starts Jan. 2027)</td><td class="center"></td><td class="center"></td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center"></td><td class="center"></td></tr>
-<tr><td><em>Tangible Co-ideation</em> contributions (ongoing)</td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center"></td><td class="center"></td></tr>
-<tr><td>IRB protocol and recruitment</td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td></tr>
-<tr><td>Study A</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center">X</td><td class="center">X</td><td class="center"></td></tr>
-<tr><td>Study B</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center">X</td><td class="center">X</td><td class="center">X</td><td class="center"></td></tr>
-<tr><td>Study C</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center">X</td><td class="center"></td></tr>
-<tr><td>Analysis</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center">X</td><td class="center">X</td><td class="center">X</td></tr>
-<tr><td>Thesis writing and publications</td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center"></td><td class="center">X</td><td class="center">X</td><td class="center">X</td></tr>
-</tbody></table>
-<p><strong>Schedule risk.</strong> Studies A and B concentrate in March and April. To de-risk, Study B can begin in February with the screen-based and chat conditions, adding the puck condition when the hardware is ready.</p>
-<p><strong>Scope.</strong> Training new foundation models, large-scale deployment, actuated shape-changing hardware beyond the Context Puck, and networked remote collaboration are out of scope.</p>
-</section>
-<section id="references">
-<h2>References</h2>
-<ul class="references">
-<li id="ref-1">[1] I. E. Sutherland, "Sketchpad: A man-machine graphical communication system," Ph.D. dissertation, Dept. Elect. Eng., Massachusetts Inst. Technol., Cambridge, MA, USA, Jan. 1963. <span class="backlinks">(cited at <a href="#cite-1-1" aria-label="Back to citation 1 of reference 1">1</a> <a href="#cite-1-2" aria-label="Back to citation 2 of reference 1">2</a>)</span></li>
-<li id="ref-2">[2] D. C. Engelbart and W. K. English, "A research center for augmenting human intellect," in <em>Proc. AFIPS Fall Joint Comput. Conf.</em>, vol. 33, pt. 1, 1968, pp. 395–410, doi: 10.1145/1476589.1476645. <span class="backlinks">(cited at <a href="#cite-2-1" aria-label="Back to citation 1 of reference 2">1</a>)</span></li>
-<li id="ref-3">[3] B. Shneiderman, "Direct manipulation: A step beyond programming languages," <em>Computer</em>, vol. 16, no. 8, pp. 57–69, Aug. 1983. <span class="backlinks">(cited at <a href="#cite-3-1" aria-label="Back to citation 1 of reference 3">1</a>)</span></li>
-<li id="ref-4">[4] E. L. Hutchins, J. D. Hollan, and D. A. Norman, "Direct manipulation interfaces," <em>Human-Computer Interaction</em>, vol. 1, no. 4, pp. 311–338, 1985. <span class="backlinks">(cited at <a href="#cite-4-1" aria-label="Back to citation 1 of reference 4">1</a> <a href="#cite-4-2" aria-label="Back to citation 2 of reference 4">2</a>)</span></li>
-<li id="ref-5">[5] H. Ishii and B. Ullmer, "Tangible bits: Towards seamless interfaces between people, bits and atoms," in <em>Proc. CHI '97</em>, Atlanta, GA, USA, Mar. 1997, pp. 234–241, doi: 10.1145/258549.258715. <span class="backlinks">(cited at <a href="#cite-5-1" aria-label="Back to citation 1 of reference 5">1</a> <a href="#cite-5-2" aria-label="Back to citation 2 of reference 5">2</a>)</span></li>
-<li id="ref-6">[6] H. Subramonyam, R. Pea, C. L. Pondoc, M. Agrawala, and C. Seifert, "Bridging the gulf of envisioning: Cognitive challenges in prompt based interactions with LLMs," in <em>Proc. CHI '24</em>, Honolulu, HI, USA, May 2024, doi: 10.1145/3613904.3642754. <span class="backlinks">(cited at <a href="#cite-6-1" aria-label="Back to citation 1 of reference 6">1</a> <a href="#cite-6-2" aria-label="Back to citation 2 of reference 6">2</a>)</span></li>
-<li id="ref-7">[7] A. Kodaira et al., "StreamDiffusion: A pipeline-level solution for real-time interactive generation," arXiv:2312.12491, Dec. 2023. <span class="backlinks">(cited at <a href="#cite-7-1" aria-label="Back to citation 1 of reference 7">1</a> <a href="#cite-7-2" aria-label="Back to citation 2 of reference 7">2</a>)</span></li>
-<li id="ref-8">[8] A. Défossez et al., "Moshi: A speech-text foundation model for real-time dialogue," arXiv:2410.00037, Oct. 2024. <span class="backlinks">(cited at <a href="#cite-8-1" aria-label="Back to citation 1 of reference 8">1</a> <a href="#cite-8-2" aria-label="Back to citation 2 of reference 8">2</a>)</span></li>
-<li id="ref-9">[9] J. P. Crutchfield, "Space-time dynamics in video feedback," <em>Physica D</em>, vol. 10, no. 1–2, pp. 229–245, Jan. 1984. <span class="backlinks">(cited at <a href="#cite-9-1" aria-label="Back to citation 1 of reference 9">1</a>)</span></li>
-<li id="ref-10">[10] T. Ingold, "The textility of making," <em>Cambridge J. Econ.</em>, vol. 34, no. 1, pp. 91–102, Jan. 2010, doi: 10.1093/cje/bep042. <span class="backlinks">(cited at <a href="#cite-10-1" aria-label="Back to citation 1 of reference 10">1</a> <a href="#cite-10-2" aria-label="Back to citation 2 of reference 10">2</a> <a href="#cite-10-3" aria-label="Back to citation 3 of reference 10">3</a>)</span></li>
-<li id="ref-11">[11] A. d'Avila Garcez and L. C. Lamb, "Neurosymbolic AI: The 3rd wave," <em>Artif. Intell. Rev.</em>, vol. 56, no. 11, pp. 12387–12406, Nov. 2023, doi: 10.1007/s10462-023-10448-w. <span class="backlinks">(cited at <a href="#cite-11-1" aria-label="Back to citation 1 of reference 11">1</a> <a href="#cite-11-2" aria-label="Back to citation 2 of reference 11">2</a>)</span></li>
-<li id="ref-12">[12] C. Sun, Y. Wang, Q. Kuang, and H. Ishii, "Dream Brush: Generative painting with Chinese calligraphy," in <em>Proc. DIS Companion '26</em>, Singapore, Jun. 13–17, 2026, doi: 10.1145/3802974.3808682. <span class="backlinks">(cited at <a href="#cite-12-1" aria-label="Back to citation 1 of reference 12">1</a> <a href="#cite-12-2" aria-label="Back to citation 2 of reference 12">2</a> <a href="#cite-12-3" aria-label="Back to citation 3 of reference 12">3</a>)</span></li>
-<li id="ref-13">[13] B. Shneiderman and P. Maes, "Direct manipulation vs. interface agents," <em>interactions</em>, vol. 4, no. 6, pp. 42–61, Nov. 1997, doi: 10.1145/267505.267514. <span class="backlinks">(cited at <a href="#cite-13-1" aria-label="Back to citation 1 of reference 13">1</a> <a href="#cite-13-2" aria-label="Back to citation 2 of reference 13">2</a>)</span></li>
-<li id="ref-14">[14] P. Maes, "Agents that reduce work and information overload," <em>Commun. ACM</em>, vol. 37, no. 7, pp. 30–40, Jul. 1994, doi: 10.1145/176789.176792. <span class="backlinks">(cited at <a href="#cite-14-1" aria-label="Back to citation 1 of reference 14">1</a>)</span></li>
-<li id="ref-15">[15] B. Shneiderman, "Human-centered artificial intelligence: Reliable, safe &amp; trustworthy," <em>Int. J. Hum.–Comput. Interact.</em>, vol. 36, no. 6, pp. 495–504, 2020, doi: 10.1080/10447318.2020.1741118. <span class="backlinks">(cited at <a href="#cite-15-1" aria-label="Back to citation 1 of reference 15">1</a>)</span></li>
-<li id="ref-16">[16] J. Nielsen, "Response times: The 3 important limits," Nielsen Norman Group, 1993 (excerpt from <em>Usability Engineering</em>, Academic Press, 1993). <span class="backlinks">(cited at <a href="#cite-16-1" aria-label="Back to citation 1 of reference 16">1</a> <a href="#cite-16-2" aria-label="Back to citation 2 of reference 16">2</a>)</span></li>
-<li id="ref-17">[17] S. K. Card, G. G. Robertson, and J. D. Mackinlay, "The information visualizer, an information workspace," in <em>Proc. CHI '91</em>, New Orleans, LA, USA, 1991, pp. 181–188, doi: 10.1145/108844.108874. <span class="backlinks">(cited at <a href="#cite-17-1" aria-label="Back to citation 1 of reference 17">1</a>)</span></li>
-<li id="ref-18">[18] R. Jota, A. Ng, P. Dietz, and D. Wigdor, "How fast is fast enough? A study of the effects of latency in direct-touch pointing tasks," in <em>Proc. CHI '13</em>, Paris, France, 2013, pp. 2291–2300, doi: 10.1145/2470654.2481317. <span class="backlinks">(cited at <a href="#cite-18-1" aria-label="Back to citation 1 of reference 18">1</a> <a href="#cite-18-2" aria-label="Back to citation 2 of reference 18">2</a>)</span></li>
-<li id="ref-19">[19] D. A. Schön, <em>The Reflective Practitioner: How Professionals Think in Action</em>. New York, NY, USA: Basic Books, 1983. <span class="backlinks">(cited at <a href="#cite-19-1" aria-label="Back to citation 1 of reference 19">1</a>)</span></li>
-<li id="ref-20">[20] D. Kirsh and P. Maglio, "On distinguishing epistemic from pragmatic action," <em>Cognitive Science</em>, vol. 18, no. 4, pp. 513–549, 1994. <span class="backlinks">(cited at <a href="#cite-20-1" aria-label="Back to citation 1 of reference 20">1</a>)</span></li>
-<li id="ref-21">[21] M. Csikszentmihalyi, <em>Flow: The Psychology of Optimal Experience</em>. New York, NY, USA: Harper &amp; Row, 1990. <span class="backlinks">(cited at <a href="#cite-21-1" aria-label="Back to citation 1 of reference 21">1</a>)</span></li>
-<li id="ref-22">[22] B. Ullmer and H. Ishii, "Emerging frameworks for tangible user interfaces," <em>IBM Syst. J.</em>, vol. 39, no. 3–4, pp. 915–931, 2000, doi: 10.1147/sj.393.0915. <span class="backlinks">(cited at <a href="#cite-22-1" aria-label="Back to citation 1 of reference 22">1</a>)</span></li>
-<li id="ref-23">[23] J. Patten, H. Ishii, J. Hines, and G. Pangaro, "Sensetable: A wireless object tracking platform for tangible user interfaces," in <em>Proc. CHI '01</em>, Seattle, WA, USA, 2001, pp. 253–260, doi: 10.1145/365024.365112. <span class="backlinks">(cited at <a href="#cite-23-1" aria-label="Back to citation 1 of reference 23">1</a>)</span></li>
-<li id="ref-24">[24] J. Patten, B. Recht, and H. Ishii, "Audiopad: A tag-based interface for musical performance," in <em>Proc. NIME '02</em>, Dublin, Ireland, May 2002. <span class="backlinks">(cited at <a href="#cite-24-1" aria-label="Back to citation 1 of reference 24">1</a>)</span></li>
-<li id="ref-25">[25] B. Piper, C. Ratti, and H. Ishii, "Illuminating Clay: A 3-D tangible interface for landscape analysis," in <em>Proc. CHI '02</em>, 2002, pp. 355–362. (SandScape is the associated glass-bead system.) <span class="backlinks">(cited at <a href="#cite-25-1" aria-label="Back to citation 1 of reference 25">1</a>)</span></li>
-<li id="ref-26">[26] H. Ishii, D. Lakatos, L. Bonanni, and J.-B. Labrune, "Radical Atoms: Beyond tangible bits, toward transformable materials," <em>interactions</em>, vol. 19, no. 1, pp. 38–51, Jan.–Feb. 2012. <span class="backlinks">(cited at <a href="#cite-26-1" aria-label="Back to citation 1 of reference 26">1</a>)</span></li>
-<li id="ref-27">[27] S. Jordà, G. Geiger, M. Alonso, and M. Kaltenbrunner, "The reacTable: Exploring the synergy between live music performance and tabletop tangible interfaces," in <em>Proc. TEI '07</em>, Baton Rouge, LA, USA, 2007, pp. 139–146, doi: 10.1145/1226969.1226998. <span class="backlinks">(cited at <a href="#cite-27-1" aria-label="Back to citation 1 of reference 27">1</a>)</span></li>
-<li id="ref-28">[28] Y. L. Li, Q. Kuang, P.-P. Arslan, Y. Wang, X. Xiao, and H. Ishii, "Tangible Co-Ideation: Designing embodied prompting for creative thinking with large language models," DIS '26 Student Design Competition entry, 2026. <span class="backlinks">(cited at <a href="#cite-28-1" aria-label="Back to citation 1 of reference 28">1</a>)</span></li>
-<li id="ref-29">[29] Y. L. Li, Q. Kuang, X. Xiao, J.-B. Labrune, and H. Ishii, "Co-Ideation Across Time: Revitalizing legacy design sketchnotes with conversational AI agents to foster intergenerational collaboration," in <em>Proc. CHI '26</em>, Barcelona, Spain, Apr. 2026, doi: 10.1145/3772318.3791258. <span class="backlinks">(cited at <a href="#cite-29-1" aria-label="Back to citation 1 of reference 29">1</a>)</span></li>
-<li id="ref-30">[30] Tangible Media Group and What's Taking Form, "Tangible Co-ideation Across Time," MIT Media Lab project page. [Online]. Available: <a href="https://www.media.mit.edu/projects/tangible-co-ideation-across-time/overview/">https://www.media.mit.edu/projects/tangible-co-ideation-across-time/overview/</a> <span class="backlinks">(cited at <a href="#cite-30-1" aria-label="Back to citation 1 of reference 30">1</a>)</span></li>
-<li id="ref-31">[31] J. Weizenbaum, "ELIZA—A computer program for the study of natural language communication between man and machine," <em>Commun. ACM</em>, vol. 9, no. 1, pp. 36–45, Jan. 1966, doi: 10.1145/365153.365168. <span class="backlinks">(cited at <a href="#cite-31-1" aria-label="Back to citation 1 of reference 31">1</a>)</span></li>
-<li id="ref-32">[32] R. A. Bolt, "'Put-that-there': Voice and gesture at the graphics interface," <em>ACM SIGGRAPH Comput. Graph.</em>, vol. 14, no. 3, pp. 262–270, Jul. 1980, doi: 10.1145/965105.807503. <span class="backlinks">(cited at <a href="#cite-32-1" aria-label="Back to citation 1 of reference 32">1</a>)</span></li>
-<li id="ref-33">[33] R. Bovo, D. Giunchi, P. Cascarano, E. J. Gonzalez, and M. Gonzalez-Franco, "Revisiting Put-That-There, context aware window interactions via LLMs," arXiv:2511.02378, Nov. 2025. <span class="backlinks">(cited at <a href="#cite-33-1" aria-label="Back to citation 1 of reference 33">1</a>)</span></li>
-<li id="ref-34">[34] L. Lee, "Imagining better interfaces to language models," thesephist.com/posts/latent, May 2022. <span class="backlinks">(cited at <a href="#cite-34-1" aria-label="Back to citation 1 of reference 34">1</a>)</span></li>
-<li id="ref-35">[35] G. Litt, J. Horowitz, P. van Hardenberg, and T. Matthews, "Malleable software: Restoring user agency in a world of locked-down apps," Ink &amp; Switch, Jun. 2025. <span class="backlinks">(cited at <a href="#cite-35-1" aria-label="Back to citation 1 of reference 35">1</a> <a href="#cite-35-2" aria-label="Back to citation 2 of reference 35">2</a>)</span></li>
-<li id="ref-36">[36] T. H. Trinh, Y. Wu, Q. V. Le, H. He, and T. Luong, "Solving olympiad geometry without human demonstrations," <em>Nature</em>, vol. 625, no. 7995, pp. 476–482, Jan. 2024, doi: 10.1038/s41586-023-06747-5. <span class="backlinks">(cited at <a href="#cite-36-1" aria-label="Back to citation 1 of reference 36">1</a>)</span></li>
-<li id="ref-37">[37] D. Ha and J. Schmidhuber, "World models," arXiv:1803.10122, 2018. <span class="backlinks">(cited at <a href="#cite-37-1" aria-label="Back to citation 1 of reference 37">1</a>)</span></li>
-<li id="ref-38">[38] J. Bruce et al., "Genie: Generative interactive environments," in <em>Proc. ICML '24</em>, ser. PMLR, vol. 235, 2024, pp. 4603–4623. <span class="backlinks">(cited at <a href="#cite-38-1" aria-label="Back to citation 1 of reference 38">1</a>)</span></li>
-<li id="ref-39">[39] N. Wiener, <em>Cybernetics: Or Control and Communication in the Animal and the Machine</em>. Paris, France: Hermann; Cambridge, MA, USA: Technology Press; New York, NY, USA: Wiley, 1948. <span class="backlinks">(cited at <a href="#cite-39-1" aria-label="Back to citation 1 of reference 39">1</a>)</span></li>
-<li id="ref-40">[40] J. C. R. Licklider, "Man-computer symbiosis," <em>IRE Trans. Human Factors Electron.</em>, vol. HFE-1, no. 1, pp. 4–11, Mar. 1960. <span class="backlinks">(cited at <a href="#cite-40-1" aria-label="Back to citation 1 of reference 40">1</a>)</span></li>
-<li id="ref-41">[41] A. Clark and D. Chalmers, "The extended mind," <em>Analysis</em>, vol. 58, no. 1, pp. 7–19, Jan. 1998. <span class="backlinks">(cited at <a href="#cite-41-1" aria-label="Back to citation 1 of reference 41">1</a>)</span></li>
-<li id="ref-42">[42] A. Clark, "Extending minds with generative AI," <em>Nature Commun.</em>, vol. 16, art. 4627, 2025, doi: 10.1038/s41467-025-59906-9. <span class="backlinks">(cited at <a href="#cite-42-1" aria-label="Back to citation 1 of reference 42">1</a>)</span></li>
-<li id="ref-43">[43] P. Pataranutaporn, "Cyborg psychology: The art &amp; science of designing human-AI systems that support human flourishing," Ph.D. dissertation, Program in Media Arts and Sciences, Massachusetts Inst. Technol., Cambridge, MA, USA, 2024. <span class="backlinks">(cited at <a href="#cite-43-1" aria-label="Back to citation 1 of reference 43">1</a>)</span></li>
-<li id="ref-44">[44] S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao, "Latent consistency models: Synthesizing high-resolution images with few-step inference," arXiv:2310.04378, 2023. <span class="backlinks">(cited at <a href="#cite-44-1" aria-label="Back to citation 1 of reference 44">1</a>)</span></li>
-<li id="ref-45">[45] A. Sauer, D. Lorenz, A. Blattmann, and R. Rombach, "Adversarial diffusion distillation," arXiv:2311.17042, 2023. <span class="backlinks">(cited at <a href="#cite-45-1" aria-label="Back to citation 1 of reference 45">1</a>)</span></li>
-<li id="ref-46">[46] T. Yin et al., "From slow bidirectional to fast autoregressive video diffusion models," in <em>Proc. IEEE/CVF CVPR</em>, 2025, pp. 22963–22974, doi: 10.1109/CVPR52734.2025.02138. <span class="backlinks">(cited at <a href="#cite-46-1" aria-label="Back to citation 1 of reference 46">1</a>)</span></li>
-<li id="ref-47">[47] L. Zhang, A. Rao, and M. Agrawala, "Adding conditional control to text-to-image diffusion models," in <em>Proc. IEEE/CVF ICCV</em>, 2023, pp. 3836–3847, doi: 10.1109/ICCV51070.2023.00355. <span class="backlinks">(cited at <a href="#cite-47-1" aria-label="Back to citation 1 of reference 47">1</a>)</span></li>
-<li id="ref-48">[48] R. Gandikota, J. Materzyńska, T. Zhou, A. Torralba, and D. Bau, "Concept Sliders: LoRA adaptors for precise control in diffusion models," in <em>Computer Vision – ECCV 2024</em>, ser. LNCS, vol. 15098. Cham, Switzerland: Springer, 2025, doi: 10.1007/978-3-031-73661-2_10. <span class="backlinks">(cited at <a href="#cite-48-1" aria-label="Back to citation 1 of reference 48">1</a>)</span></li>
-<li id="ref-49">[49] A. Caillon and P. Esling, "RAVE: A variational autoencoder for fast and high-quality neural audio synthesis," arXiv:2111.05011, 2021. <span class="backlinks">(cited at <a href="#cite-49-1" aria-label="Back to citation 1 of reference 49">1</a>)</span></li>
-<li id="ref-50">[50] J. Engel, L. Hantrakul, C. Gu, and A. Roberts, "DDSP: Differentiable digital signal processing," in <em>Proc. ICLR '20</em>, 2020. See also L. Hantrakul and L.-C. Yang, "Neural Wavetable: A playable wavetable synthesizer using neural networks," NeurIPS 2018 Workshop on ML for Creativity and Design, arXiv:1811.05550.</li>
-<li id="ref-51">[51] S. Shan, L. Hantrakul, J. Chen, M. Avent, and D. Trevelyan, "Differentiable wavetable synthesis," in <em>Proc. IEEE ICASSP</em>, 2022, pp. 4598–4602, doi: 10.1109/ICASSP43922.2022.9746940. <span class="backlinks">(cited at <a href="#cite-51-1" aria-label="Back to citation 1 of reference 51">1</a>)</span></li>
-<li id="ref-52">[52] M. W. Krueger, T. Gionfriddo, and K. Hinrichsen, "VIDEOPLACE—An artificial reality," in <em>Proc. CHI '85</em>, San Francisco, CA, USA, 1985, pp. 35–40, doi: 10.1145/317456.317463. <span class="backlinks">(cited at <a href="#cite-52-1" aria-label="Back to citation 1 of reference 52">1</a>)</span></li>
-<li id="ref-53">[53] G. Levin, "Painterly interfaces for audiovisual performance," M.S. thesis, Program in Media Arts and Sciences, Massachusetts Inst. Technol., Cambridge, MA, USA, Sep. 2000. <span class="backlinks">(cited at <a href="#cite-53-1" aria-label="Back to citation 1 of reference 53">1</a>)</span></li>
-<li id="ref-54">[54] E. A. Cherry and C. Latulipe, "Quantifying the creativity support of digital tools through the Creativity Support Index," <em>ACM Trans. Comput.-Hum. Interact.</em>, vol. 21, no. 4, art. 21, May 2014, doi: 10.1145/2617588. <span class="backlinks">(cited at <a href="#cite-54-1" aria-label="Back to citation 1 of reference 54">1</a>)</span></li>
-<li id="ref-55">[55] A. Tapal, E. Oren, R. Dar, and B. Eitam, "The Sense of Agency Scale: A measure of consciously perceived control over one's mind, body, and the immediate environment," <em>Frontiers in Psychology</em>, vol. 8, art. 1552, 2017, doi: 10.3389/fpsyg.2017.01552. <span class="backlinks">(cited at <a href="#cite-55-1" aria-label="Back to citation 1 of reference 55">1</a>)</span></li>
-<li id="ref-56">[56] S. G. Hart and L. E. Staveland, "Development of NASA-TLX (Task Load Index): Results of empirical and theoretical research," in <em>Human Mental Workload</em>, P. A. Hancock and N. Meshkati, Eds. Amsterdam, The Netherlands: North-Holland, 1988, pp. 139–183. <span class="backlinks">(cited at <a href="#cite-56-1" aria-label="Back to citation 1 of reference 56">1</a>)</span></li>
-</ul>
-</section>
-</main>
-<script>
-// Mark the jump target (footnote / back-link); any click clears the mark.
-(function () {
-  var marked;
-  function clear() { if (marked) { marked.classList.remove("focus-mark"); marked = null; } }
-  function mark() {
-    clear();
-    var id = decodeURIComponent(location.hash.slice(1));
-    marked = id && document.getElementById(id);
-    if (marked) marked.classList.add("focus-mark");
-  }
-  window.addEventListener("hashchange", mark);
-  document.addEventListener("click", function (e) {
-    var a = e.target.closest && e.target.closest("a[href^='#']");
-    if (!a) clear();
-  });
-  mark();
-})();
-</script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>" />
+    <title>Hold That Thought: Neuro-Symbolic Coupling for Shaping Ideas in Real Time</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      html {
+        font-size: 100%;
+      }
+      body {
+        font-family: "Charter", "Georgia", "Times New Roman", serif;
+        font-size: 1.05rem;
+        line-height: 1.55;
+        color: #111;
+        background: #fff;
+        max-width: 40rem;
+        margin: 2.5rem auto;
+        padding: 0 1.25rem;
+      }
+      h1,
+      h2,
+      h3 {
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      h1 {
+        font-size: 1.7rem;
+        text-align: center;
+        margin: 0 0 1.5rem;
+      }
+      h2 {
+        font-size: 1.3rem;
+        margin: 2.2rem 0 0.6rem;
+      }
+      h3 {
+        font-size: 1.08rem;
+        margin: 1.6rem 0 0.4rem;
+      }
+      p {
+        margin: 0 0 0.85rem;
+        text-align: justify;
+        hyphens: auto;
+      }
+      header.title-block {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+      header.title-block p {
+        text-align: center;
+        margin: 0 0 1rem;
+      }
+      ul,
+      ol {
+        margin: 0 0 0.85rem;
+        padding-left: 1.6rem;
+      }
+      li {
+        margin: 0 0 0.3rem;
+      }
+      li > p {
+        margin-bottom: 0.3rem;
+      }
+      blockquote {
+        margin: 0 0 1rem;
+        padding-left: 1rem;
+        border-left: 2px solid #999;
+        font-style: italic;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      a[href^="http"] {
+        text-decoration: underline;
+        word-break: break-word;
+      }
+      a[href^="#"]:hover {
+        text-decoration: underline;
+      }
+      code {
+        font-family: "Menlo", "Consolas", monospace;
+        font-size: 0.9em;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0 0 1rem;
+        font-size: 0.92rem;
+        line-height: 1.35;
+      }
+      th,
+      td {
+        border-top: 1px solid #444;
+        border-bottom: 1px solid #444;
+        padding: 0.3rem 0.45rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      thead th {
+        border-bottom: 2px solid #111;
+      }
+      td.center,
+      th.center {
+        text-align: center;
+      }
+      tr {
+        page-break-inside: avoid;
+      }
+      ul.references {
+        list-style: none;
+        padding-left: 0;
+      }
+      ul.references li {
+        padding-left: 2.4rem;
+        text-indent: -2.4rem;
+        margin-bottom: 0.45rem;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        text-align: left;
+        word-break: break-word;
+      }
+      nav ul {
+        list-style: none;
+        padding-left: 0;
+      }
+      .backlinks {
+        font-size: 0.85em;
+        color: #333;
+        white-space: nowrap;
+      }
+      .backlinks a {
+        text-decoration: underline;
+        padding: 0 0.1em;
+      }
+      .focus-mark {
+        background: #eee;
+        outline: 2px solid #bbb;
+      }
+      li:target,
+      a[id]:target {
+        scroll-margin-top: 4rem;
+      }
+      @page {
+        size: Letter;
+        margin: 1in;
+      }
+      @media print {
+        html {
+          font-size: 10.5pt;
+        }
+        body {
+          max-width: none;
+          margin: 0;
+          padding: 0;
+        }
+        h2,
+        h3 {
+          page-break-after: avoid;
+        }
+        p,
+        li {
+          orphans: 3;
+          widows: 3;
+        }
+        table,
+        blockquote {
+          page-break-inside: avoid;
+        }
+        a[href^="http"] {
+          text-decoration: none;
+        }
+        .draft-notes,
+        .draft-notes-link,
+        .backlinks {
+          display: none;
+        }
+        .focus-mark {
+          background: none;
+          outline: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="title-block">
+        <h1>Hold That Thought: Neuro-Symbolic Coupling for Shaping Ideas in Real Time</h1>
+        <p>
+          <strong>Chuanqi Sun</strong><br />
+          BA, Computer Science, Dartmouth College, 2015<br />
+          stack@media.mit.edu
+        </p>
+        <p>
+          Thesis proposal for the degree of<br />
+          Master of Science in Media Arts and Sciences<br />
+          at the<br />
+          Massachusetts Institute of Technology
+        </p>
+        <p>
+          <strong>Advisor:</strong><br />
+          <strong>Hiroshi Ishii</strong><br />
+          Jerome B. Wiesner Professor of Media Arts and Sciences<br />
+          Media Lab, Massachusetts Institute of Technology
+        </p>
+        <p>
+          <strong>Reader:</strong><br />
+          <strong>Zach Lieberman</strong><br />
+          Adjunct Associate Professor of Media Arts and Sciences<br />
+          Media Lab, Massachusetts Institute of Technology
+        </p>
+        <p>
+          <strong>Reader:</strong><br />
+          <strong>Jean-Baptiste Labrune</strong><br />
+          Research Affiliate<br />
+          Media Lab, Massachusetts Institute of Technology
+        </p>
+      </header>
+      <section id="abstract">
+        <h2>Abstract</h2>
+        <p>
+          Historically, real-time interaction has led to breakthroughs in HCI, but its application has remained limited to data with direct spatial mappings or
+          metaphors. Conversely, generative AI works with semantic data while lacking the structure and speed for real-time manipulation. Today, generative
+          models are approaching interactive frame rates and sub-second response, yet human-AI interaction still relies on turn-based prompt-and-response loops.
+          <em>Hold That Thought</em> addresses this gap through <em>neuro-symbolic coupling</em> of structured symbolic affordances with unstructured semantic
+          data, materializing ideas as tangible <em>handles</em> that users can manipulate in real time. The work builds on foundational theories of direct
+          manipulation, cybernetics, and tangible media, and on Tim Ingold's account of making as a continuous response to material, to extend the coupling of
+          physical and digital bits to spatial and semantic media. Two completed systems, <em>Dream Brush</em> and <em>Parametric Diffusion</em>, provide the
+          foundation. I will build <em>Braindump</em>, <em>Put That There Again</em>, <em>Context Pucks</em>, and <em>Sable</em> to cover getting ideas in,
+          manipulating them, and holding them physically, and contribute interaction loops to <em>Tangible Co-ideation</em>, a multi-user, multi-AI
+          collaboration platform at the Tangible Media Group. By evaluating the systems against conversational baselines using the Creativity Support Index
+          (CSI) and complementary measures of agency, ownership, and joy, I test the hypothesis that neuro-symbolic coupling preserves human agency, enhances
+          creativity, and sparks joy in human-AI collaboration.
+        </p>
+      </section>
+      <section id="introduction">
+        <h2>Introduction</h2>
+        <p>
+          Nearly every major step in human-computer interaction has come with a new real-time interaction paradigm. Sutherland's <em>Sketchpad</em> let a person
+          draw and constrain geometry with a light pen and see the result immediately <a id="cite-1-1" href="#ref-1">[1]</a>. Engelbart's 1968 demonstration
+          showed people manipulating text, links, and views in a shared, live workspace <a id="cite-2-1" href="#ref-2">[2]</a>. Shneiderman named the pattern
+          <em>direct manipulation</em>, built on "rapid, incremental, reversible operations whose impact on the object of interest is immediately visible"
+          <a id="cite-3-1" href="#ref-3">[3]</a>, and Hutchins, Hollan, and Norman explained why it works: it shrinks the distance between intent and action
+          <a id="cite-4-1" href="#ref-4">[4]</a>. The Tangible Media Group carried the idea into the physical world with <em>Tangible Bits</em> and its
+          successors <a id="cite-5-1" href="#ref-5">[5]</a>.
+        </p>
+        <p>
+          But direct manipulation has been limited to data that has a direct spatial mapping (pixels, terrain, physical simulation) or a strong spatial metaphor
+          (files, windows, sliders). It requires an object with a designed surrogate, and ideas, concepts, tone, and intent have none. AI took the other path.
+          From ELIZA to ChatGPT it has accepted semantic input and produced semantic output in alternating turns. The costs of that shape are now documented:
+          users face a <em>gulf of envisioning</em> between an intention and a prompt that anticipates what the model can do, and, unlike direct manipulation,
+          model feedback is not immediate <a id="cite-6-1" href="#ref-6">[6]</a>.
+        </p>
+        <p>
+          Generative models are now approaching real-time response in image, video, and speech <a id="cite-7-1" href="#ref-7">[7]</a>,
+          <a id="cite-8-1" href="#ref-8">[8]</a>, so the turn-based shape is no longer forced by the technology. When latency falls below the threshold of
+          perception, a series of requests becomes a coupled loop, as in the feedback between a camera and its own monitor
+          <a id="cite-9-1" href="#ref-9">[9]</a>. This thesis assumes real-time generative AI will be available soon, and asks what to build for it.
+        </p>
+        <p>
+          Speed alone is not enough, because a faster chat is still chat. A thought expressed in language is not something a hand can hold. The second argument
+          for real time comes from the theory of making. Ingold contrasts a <em>hylomorphic</em> model of creation, in which a maker imposes a preconceived form
+          on passive matter, with the practice of the craftsperson, who works <em>with</em> the material, following its flows and responding to what it does as
+          the work unfolds <a id="cite-10-1" href="#ref-10">[10]</a>. Turn-based prompting is hylomorphic: the user specifies the form up front and the model
+          imposes it. Creativity in Ingold's sense needs a medium that answers back continuously, which is what real time provides and a request-response loop
+          cannot.
+        </p>
+        <p>
+          My answer is to give thoughts handles. To <em>hold</em> a thought is to bind it to a discrete, inspectable object that a hand can manipulate. The
+          handles are <em>neuro-symbolic</em> in a practical, interface-level sense: a neural model supplies fluid semantic content, and a symbolic layer
+          (parameters, structures, programs, tokens) supplies the handle <a id="cite-11-1" href="#ref-11">[11]</a>. Handles make <em>shaping</em> possible,
+          because an idea is fleshed out progressively by manipulating it instead of specifying it up front, and <em>real time</em> keeps the loop closed. This
+          gives the thesis its central hypothesis:
+        </p>
+        <p>
+          <strong
+            >Neuro-symbolic coupling of semantic and spatial control, with direct input and immediate output, will preserve human agency, enhance creativity,
+            and spark joy in human-AI collaboration, compared with turn-based prompting.</strong
+          >
+        </p>
+      </section>
+      <section id="contribution">
+        <h2>Contribution</h2>
+        <ol>
+          <li>
+            <strong>Two completed systems.</strong> <em>Dream Brush</em> couples the semantics and spatial extent of calligraphic strokes to steer image
+            generation <a id="cite-12-1" href="#ref-12">[12]</a>. <em>Parametric Diffusion</em> exposes symbolic structure as real-time handles over a diffusion
+            model.
+          </li>
+          <li>
+            <strong>Four proposed systems and one platform contribution</strong>, covering getting ideas in, manipulating them, holding them physically, and
+            sharing them: <em>Braindump</em> (voice and gesture input), <em>Put That There Again</em> (spatial-semantic manipulation in AR),
+            <em>Context Pucks</em> (physical handles with adaptive affordances), <em>Sable</em> (tangible direct manipulation of audio synthesis), and
+            interaction loops for <em>Tangible Co-ideation Across Time</em>.
+          </li>
+          <li>
+            <strong>A framework</strong> for neuro-symbolic coupling, extending the Tangible Media Group's coupling of physical and digital bits to spatial and
+            semantic media, with an operational definition of real time.
+          </li>
+          <li><strong>A catalogue of semantic manipulations</strong> ("verbs" such as steer, blend, scale, bind) that generalize across domains.</li>
+          <li>
+            <strong>Empirical evidence and design recommendations</strong> on how real-time, handle-based interaction affects creativity, agency, and joy
+            relative to turn-based prompting.
+          </li>
+        </ol>
+      </section>
+      <section id="related-work">
+        <h2>Related Work</h2>
+        <p>
+          This thesis builds on six bodies of work: direct manipulation and real-time interaction, the theory of making, tangible media, the semantic and
+          turn-taking lineage of AI, cybernetics and human-AI coupling, and real-time generative media with creative computing.
+        </p>
+        <h3>Direct Manipulation and Real-Time Interaction</h3>
+        <p>
+          Beyond the foundations above <a id="cite-1-2" href="#ref-1">[1]</a>–<a id="cite-4-2" href="#ref-4">[4]</a>, the closest ancestor of this thesis's
+          design problem is the 1997 debate between Shneiderman and Pattie Maes on <em>direct manipulation vs. interface agents</em>
+          <a id="cite-13-1" href="#ref-13">[13]</a>. Shneiderman insisted on predictability and user responsibility. Maes argued that growing complexity means
+          "we cannot just add more and more sliders and buttons," so some work must be delegated to agents <a id="cite-13-2" href="#ref-13">[13]</a>,
+          <a id="cite-14-1" href="#ref-14">[14]</a>. Shneiderman's later Human-Centered AI framework calls for both high human control and high automation
+          <a id="cite-15-1" href="#ref-15">[15]</a>. The neuro-symbolic approach is a concrete attempt to occupy that quadrant: the agent (neural) synthesizes
+          handles, and the human manipulates them directly.
+        </p>
+        <p>
+          Real time is also a quantity that can be defined. About 0.1 s feels instantaneous, about 1 s preserves the flow of thought but loses the feeling of
+          operating directly on the data, and about 10 s holds attention <a id="cite-16-1" href="#ref-16">[16]</a>, <a id="cite-17-1" href="#ref-17">[17]</a>.
+          Jota et al. found that for direct-touch pointing, 1 and 10 ms latencies were indistinguishable, while 25 and 50 ms degraded performance
+          <a id="cite-18-1" href="#ref-18">[18]</a>.
+        </p>
+        <h3>Making, Material, and Real-Time Creativity</h3>
+        <p>
+          In <em>The Textility of Making</em>, Ingold argues that the dominant picture of making is hylomorphic, inherited from Aristotle: the maker conceives a
+          form and imposes it on inert matter <a id="cite-10-2" href="#ref-10">[10]</a>. He proposes the textile as a better model. Weaving, basketry, and
+          similar crafts proceed by following and joining the flows and tensions of materials, and the form emerges <em>in</em> the making and is not delivered
+          by a prior design. For Ingold, creativity lies in this improvisatory process of responding to the material as it changes, and not in the novelty of a
+          finished object. Thinking is not finished before the work starts. It happens through the making.
+        </p>
+        <p>
+          This is a theoretical basis for real-time media in creative work. If making is a continuous correspondence between maker and material, then the medium
+          must respond within the rhythm of the maker's action, or the maker is reduced to specifying and waiting. A turn-based generative model is hylomorphic
+          by construction: the prompt is the form, the output is the matter that took it, and the user's role is to judge the result and re-specify. A real-time
+          model with handles turns the generative model into something closer to a material that can be worked. It is plastic and responsive, and it can be
+          pushed, pulled, and followed. Handles are how a hand joins that flow, and this is what <em>shaping</em> means in the title of this thesis.
+        </p>
+        <p>
+          Ingold's account converges with several empirical and design traditions. Schön described design as a reflective "conversation" with the materials of a
+          situation, in which the situation talks back to the designer <a id="cite-19-1" href="#ref-19">[19]</a>. Kirsh and Maglio's
+          <em>epistemic actions</em> show that people manipulate external objects in order to think, not only to act <a id="cite-20-1" href="#ref-20">[20]</a>.
+          Csikszentmihalyi's flow theory links immediate feedback and perceived control to enjoyment <a id="cite-21-1" href="#ref-21">[21]</a>. Together they
+          motivate the measures in this thesis: creativity support, agency, and joy.
+        </p>
+        <h3>Tangible Media: From Bits and Atoms to Spatial and Semantic Media</h3>
+        <p>
+          Ishii and Ullmer's <em>Tangible Bits</em> gave physical form to digital information <a id="cite-5-2" href="#ref-5">[5]</a>, and Ullmer and Ishii's
+          token-and-constraint framework formalized how physical tokens act as handles for digital data <a id="cite-22-1" href="#ref-22">[22]</a>.
+          <em>Sensetable</em> and <em>Audiopad</em> tracked wireless pucks on a flat surface, each standing for an object or a parameter, the latter in service
+          of musical performance <a id="cite-23-1" href="#ref-23">[23]</a>, <a id="cite-24-1" href="#ref-24">[24]</a>. <em>Illuminating Clay</em> and
+          <em>SandScape</em> allowed continuous, bimanual, real-time sculpting of terrain with computed analyses projected back onto the material
+          <a id="cite-25-1" href="#ref-25">[25]</a>, which is the tangible instance of Ingold's argument. <em>Radical Atoms</em> imagined materials that change
+          form to reflect digital state <a id="cite-26-1" href="#ref-26">[26]</a>, and the <em>reacTable</em> brought the tabletop-puck instrument to a wide
+          audience <a id="cite-27-1" href="#ref-27">[27]</a>.
+        </p>
+        <p>
+          Recent work at the group brings generative AI into this lineage. <em>Tangible Co-ideation Across Time</em> embodies prompting in physical objects,
+          such as figurines whose position tunes AI expert personas <a id="cite-28-1" href="#ref-28">[28]</a>, and revives legacy design sketchnotes with
+          conversational AI agents <a id="cite-29-1" href="#ref-29">[29]</a>. The project page reports that tangible interaction increased spoken communication
+          and the agency of human ideas relative to AI contributions in a 32-participant study <a id="cite-30-1" href="#ref-30">[30]</a>. I have not reviewed
+          the study data. I contribute to this project, so I treat it as both a platform for my work and prior evidence that tangible handles change how people
+          collaborate with AI.
+        </p>
+        <h3>The Semantic, Turn-Taking Lineage of AI and Its Critics</h3>
+        <p>
+          ELIZA established text exchange as the default interface to machine intelligence <a id="cite-31-1" href="#ref-31">[31]</a>. Bolt's
+          <em>Put-That-There</em> is the pivotal precedent: combining connected speech with pointing, so that pronouns act as "temporary variables" referencing
+          items on the display, the system resolved <em>that</em> and <em>there</em> through gesture but understood no meaning
+          <a id="cite-32-1" href="#ref-32">[32]</a>. LLMs invert the situation, since they handle meaning but not <em>that</em> and <em>there</em>.
+          <em>Put That There Again</em> closes the loop. Recent work such as Bovo et al.'s speech-plus-pointing window placement via LLMs in XR shows the idea
+          is timely but confined to window management <a id="cite-33-1" href="#ref-33">[33]</a>.
+        </p>
+        <p>
+          Critiques of chat interfaces converge on the cognitive diagnosis of the gulf of envisioning <a id="cite-6-2" href="#ref-6">[6]</a>. Lee proposed
+          interfaces in which one drags one sentence onto another to interpolate between ideas, and in which context is made into a real thing in the interface
+          <a id="cite-34-1" href="#ref-34">[34]</a>. Litt et al. argue for direct manipulation first, with AI as a complement to a malleable environment
+          <a id="cite-35-1" href="#ref-35">[35]</a>. This is close to my approach. On the AI side, neuro-symbolic methods combine learning with symbolic
+          reasoning <a id="cite-11-2" href="#ref-11">[11]</a>, and systems such as AlphaGeometry pair a neural proposer with a symbolic verifier
+          <a id="cite-36-1" href="#ref-36">[36]</a>. I use the term for the <em>interface</em> layer: symbolic handles over a neural substrate, exposed for
+          human manipulation. World models <a id="cite-37-1" href="#ref-37">[37]</a>, <a id="cite-38-1" href="#ref-38">[38]</a> are the nearest neighbor in
+          generative AI, but they simulate physical or game worlds. This thesis concerns <em>semantic</em> simulation over ideas, and world models are a
+          substrate for it, not a competitor.
+        </p>
+        <h3>Cybernetics, Symbiosis, and Human-AI Coupling</h3>
+        <p>
+          Wiener defined cybernetics as the study of control and communication through feedback in animals and machines
+          <a id="cite-39-1" href="#ref-39">[39]</a>. Licklider's man-computer symbiosis predicted that human brains and computing machines would be "coupled
+          together very tightly," and called for thinking that goes on in real time <a id="cite-40-1" href="#ref-40">[40]</a>. Clark and Chalmers'
+          <em>extended mind</em> holds that external resources which are reliably available and trusted can be part of a cognitive process
+          <a id="cite-41-1" href="#ref-41">[41]</a>. This gives latency a cognitive meaning, because a slow, intermittent loop is a worse candidate for
+          extension. Clark's recent work frames generative AI as potentially "mind-extending" rather than "mind-replacing"
+          <a id="cite-42-1" href="#ref-42">[42]</a>. At the Media Lab, Pataranutaporn's Cyborg Psychology studies human-AI systems that support human
+          flourishing and agency <a id="cite-43-1" href="#ref-43">[43]</a>. The real-time feedback loop and agency and ownership measures in this thesis will
+          continue that line of work.
+        </p>
+        <h3>Real-Time Generative Media and Creative Computing</h3>
+        <p>
+          Few-step distillation made diffusion fast enough for interaction <a id="cite-44-1" href="#ref-44">[44]</a>, <a id="cite-45-1" href="#ref-45">[45]</a>,
+          StreamDiffusion added pipeline-level batching for interactive streams <a id="cite-7-2" href="#ref-7">[7]</a>, autoregressive video diffusion made
+          video generation causal and streamable <a id="cite-46-1" href="#ref-46">[46]</a>, and Moshi demonstrated full-duplex speech with no turn-taking
+          <a id="cite-8-2" href="#ref-8">[8]</a>. Most speeds reported for 2025–2026 systems are vendor claims, and the thesis does not depend on any of them.
+        </p>
+        <p>
+          Conditioning research supplies candidate handles. ControlNet adds spatial conditioning <a id="cite-47-1" href="#ref-47">[47]</a>, Concept Sliders
+          expose semantic attributes as continuous knobs <a id="cite-48-1" href="#ref-48">[48]</a>, and for audio, RAVE, DDSP, and Neural Wavetable expose
+          structured synthesis parameters <a id="cite-49-1" href="#ref-49">[49]</a>–<a id="cite-51-1" href="#ref-51">[51]</a>. Creative coding supplies the
+          aesthetic tradition: Krueger's <em>Videoplace</em> established real-time embodied interaction as an expressive medium
+          <a id="cite-52-1" href="#ref-52">[52]</a>, and Levin's painterly interfaces describe an "inexhaustible, infinitely variable, dynamic" audiovisual
+          substance <a id="cite-53-1" href="#ref-53">[53]</a>. Lieberman's work treats code itself as a creative medium. These works share the stance of the
+          tool as an instrument that is played, which is the stance this thesis takes toward generative models.
+        </p>
+      </section>
+      <section id="proposed-work">
+        <h2>Proposed Work</h2>
+        <h3>System Overview</h3>
+        <p>The portfolio is organized around the idea lifecycle: getting an idea into the system, manipulating it, holding it physically, and sharing it.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>System</th>
+              <th>Role in the framework</th>
+              <th>Medium</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Dream Brush</strong></td>
+              <td>Spatial and semantic control coupled in one gesture</td>
+              <td>Calligraphic canvas, diffusion</td>
+              <td><strong>Done</strong> (DIS '26 Companion <a id="cite-12-2" href="#ref-12">[12]</a>)</td>
+            </tr>
+            <tr>
+              <td><strong>Parametric Diffusion</strong></td>
+              <td>Symbolic structure as handles over a generative image model</td>
+              <td>Real-time interface to diffusion</td>
+              <td><strong>Done</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Braindump</strong></td>
+              <td>Input: getting ideas into the system</td>
+              <td>Voice and gesture</td>
+              <td>Started; ETA end of 2026</td>
+            </tr>
+            <tr>
+              <td><strong>Put That There Again</strong></td>
+              <td>Manipulation: semantic operations on ideas</td>
+              <td>CV and AR, tangible handles</td>
+              <td>Prototyped; ETA Jan. 2027</td>
+            </tr>
+            <tr>
+              <td><strong>Context Pucks</strong></td>
+              <td>Physical handles with adaptive affordances</td>
+              <td>Tangible device</td>
+              <td>Designing; ETA Mar. 2027</td>
+            </tr>
+            <tr>
+              <td><strong>Sable</strong></td>
+              <td>Tangible direct manipulation of creative audio synthesis</td>
+              <td>Wavetable synthesizer, tangible terrain</td>
+              <td>Proposed; starts Jan. 2027</td>
+            </tr>
+            <tr>
+              <td><strong>Tangible Co-ideation Across Time</strong></td>
+              <td>Social: multi-user, multi-AI ideation</td>
+              <td>TMG platform</td>
+              <td>In development (ongoing TMG project)</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>Completed Work</h3>
+        <p>
+          <strong>Dream Brush</strong> is a near-real-time canvas on which people steer image generation and editing with calligraphic marks. A vision model
+          reads the written character, and the bounding box of the stroke selects the region to repaint. It couples semantics (the character) with spatial
+          control (position, size, orientation) in one gesture <a id="cite-12-3" href="#ref-12">[12]</a>. Generation still takes seconds, and a "drying"
+          animation masks the wait, so the system is also an honest measure of the gap between near-real-time and real-time.
+        </p>
+        <p>
+          <strong>Parametric Diffusion</strong> is a real-time interface for controlled image generation with direct manipulation of an explicit symbolic
+          structure over a diffusion model, preserving user control and diversity in the output. It was built and shown as an art project, so no user feedback
+          exists yet, and I make no claims about its effect on users here.
+        </p>
+        <h3>Research Questions</h3>
+        <ol>
+          <li>
+            <strong>What are the generalizable semantic manipulations of ideas?</strong> Which operations (steer, blend, scale, bind, pin, branch, merge) carry
+            across domains, and how is each materialized as a handle?
+          </li>
+          <li>
+            <strong>What does real time change?</strong> Compared with turn-based prompting, how does direct input with immediate output affect creativity,
+            agency, ownership, and enjoyment, and how do these depend on latency?
+          </li>
+          <li>
+            <strong>How should ideas get into the system?</strong> What multimodal input lets a person instantiate rich context quickly, so that input does not
+            bottleneck manipulation?
+          </li>
+          <li><strong>Which tangible handles best support semantic manipulation?</strong> What makes a puck a better handle than a slider or a mouse?</li>
+          <li><strong>What happens socially?</strong> How do communication and collaboration change when every participant is coupled to AI in real time?</li>
+        </ol>
+        <h3>Architecture</h3>
+        <p>
+          Each system shares a common loop: (1) <em>instantiate</em>, in which an idea enters as unstructured context (speech, gesture, sketch, text); (2)
+          <em>reify</em>, in which a neural model proposes symbolic handles, typed parameters bound to semantic dimensions of the idea (for example, a scale
+          from "academic" to "poetic"); (3) <em>manipulate</em>, in which the user grabs handles through spatial, tangible, or gestural input and drives a fast
+          generative loop with immediate feedback; and (4) <em>inspect and refine</em>, in which handles can be rebound, merged, or discarded, and the agent can
+          propose new ones. Only the fast loop (3) must be real time. The slower loops (1–2, 4) parallel the inner loop and tool-editing path in malleable
+          software <a id="cite-35-2" href="#ref-35">[35]</a>.
+        </p>
+        <p>
+          I define real time operationally as at least 24 frames per second of visible output with no more than 100 ms from input to perceptible response
+          <a id="cite-16-2" href="#ref-16">[16]</a>, treating the bound as a minimum given the stricter figures for direct touch
+          <a id="cite-18-2" href="#ref-18">[18]</a>. Few current systems satisfy both conditions for every modality. Each system will therefore use the best
+          available models, with a Wizard-of-Oz or simulated-latency layer to test conditions beyond today's capability, and latency is a manipulated variable
+          in the evaluation.
+        </p>
+        <h3>Design Process</h3>
+        <p>
+          The process follows Ishii's vision-driven approach, with a long-term vision driving the work rather than current technology. Each system is built as a
+          sequence of rapid prototypes tested early with small groups of creators, in the creative-coding spirit of daily, playful sketching. Joy is a design
+          criterion as well as an outcome: Dream Brush unexpectedly became a social drawing game, and I will look for similar unplanned uses in the tangible
+          systems.
+        </p>
+        <h3>Evaluation</h3>
+        <p>
+          <strong>Hypotheses.</strong> Relative to a turn-based prompting baseline, handle-based real-time interaction yields (H1) higher creativity support,
+          (H2) a stronger sense of agency and ownership, and (H3) greater enjoyment. I also hypothesize (H4) that these differences shrink as latency exceeds
+          the real-time bound.
+        </p>
+        <p>
+          <strong>Measures.</strong> The primary measure is the Creativity Support Index <a id="cite-54-1" href="#ref-54">[54]</a>, which scores six factors
+          (exploration, expressiveness, immersion, enjoyment, results worth effort, collaboration) out of 100. Complementary measures are the Sense of Agency
+          Scale <a id="cite-55-1" href="#ref-55">[55]</a> as a baseline trait, with task-specific agency and ownership items that I will pilot and report as
+          unvalidated; NASA-TLX for cognitive effort <a id="cite-56-1" href="#ref-56">[56]</a>; and interaction logs, think-aloud sessions, and interviews. The
+          qualitative analysis will attend to how participants describe their relationship to the output, as the "manager of a machine" or the "author of a
+          craft," in the sense of Ingold's maker <a id="cite-10-3" href="#ref-10">[10]</a>.
+        </p>
+        <p><strong>Studies.</strong> All designs are proposals subject to IRB approval and committee feedback.</p>
+        <ul>
+          <li>
+            <em>Study A, visual and audio (Dream Brush, Parametric Diffusion, Sable).</em> A within-subjects comparison of (a) a text-prompt baseline, (b)
+            handles at native latency, and (c) handles at simulated lower latency.
+          </li>
+          <li>
+            <em>Study B, idea manipulation (Braindump, Put That There Again, Context Pucks).</em> Participants develop an idea in (a) an LLM chat baseline, (b)
+            a screen-based handle interface, and (c) the tangible AR system, which also tests pucks against on-screen sliders (RQ4).
+          </li>
+          <li>
+            <em>Study C, collaboration (Tangible Co-ideation Across Time).</em> Pairs or small groups ideate with shared handles, with qualitative observation
+            of communication (RQ5).
+          </li>
+        </ul>
+        <p>
+          <strong>Limitations.</strong> Simulated latency is a weaker substitute for truly real-time systems. CSI was designed for single-tool studies, so
+          cross-system comparison needs careful task matching. Order and novelty effects, particularly with tangible hardware, can inflate enjoyment. I will
+          counterbalance, use well-engineered baselines, and look specifically for where the new interface performs <em>worse</em>.
+        </p>
+      </section>
+      <section id="timeline">
+        <h2>Timeline</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Task / Phase</th>
+              <th class="center">Nov '26</th>
+              <th class="center">Dec</th>
+              <th class="center">Jan '27</th>
+              <th class="center">Feb</th>
+              <th class="center">Mar</th>
+              <th class="center">Apr</th>
+              <th class="center">May</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><em>Braindump</em> implementation (ETA end of 2026)</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td><em>Put That There Again</em> prototype to study-ready (ETA Jan. 2027)</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td><em>Context Pucks</em> design and fabrication (ETA Mar. 2027)</td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td><em>Sable</em> development (starts Jan. 2027)</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td><em>Tangible Co-ideation</em> contributions (ongoing)</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td>IRB protocol and recruitment</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td>Study A</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td>Study B</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td>Study C</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center"></td>
+            </tr>
+            <tr>
+              <td>Analysis</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+            </tr>
+            <tr>
+              <td>Thesis writing and publications</td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center"></td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+              <td class="center">X</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          <strong>Schedule risk.</strong> Studies A and B concentrate in March and April. To de-risk, Study B can begin in February with the screen-based and
+          chat conditions, adding the puck condition when the hardware is ready.
+        </p>
+        <p>
+          <strong>Scope.</strong> Training new foundation models, large-scale deployment, actuated shape-changing hardware beyond the Context Puck, and
+          networked remote collaboration are out of scope.
+        </p>
+      </section>
+      <section id="references">
+        <h2>References</h2>
+        <ul class="references">
+          <li id="ref-1">
+            [1] I. E. Sutherland, "Sketchpad: A man-machine graphical communication system," Ph.D. dissertation, Dept. Elect. Eng., Massachusetts Inst.
+            Technol., Cambridge, MA, USA, Jan. 1963.
+            <span class="backlinks"
+              >(cited at <a href="#cite-1-1" aria-label="Back to citation 1 of reference 1">1</a>
+              <a href="#cite-1-2" aria-label="Back to citation 2 of reference 1">2</a>)</span
+            >
+          </li>
+          <li id="ref-2">
+            [2] D. C. Engelbart and W. K. English, "A research center for augmenting human intellect," in <em>Proc. AFIPS Fall Joint Comput. Conf.</em>, vol.
+            33, pt. 1, 1968, pp. 395–410, doi: 10.1145/1476589.1476645.
+            <span class="backlinks">(cited at <a href="#cite-2-1" aria-label="Back to citation 1 of reference 2">1</a>)</span>
+          </li>
+          <li id="ref-3">
+            [3] B. Shneiderman, "Direct manipulation: A step beyond programming languages," <em>Computer</em>, vol. 16, no. 8, pp. 57–69, Aug. 1983.
+            <span class="backlinks">(cited at <a href="#cite-3-1" aria-label="Back to citation 1 of reference 3">1</a>)</span>
+          </li>
+          <li id="ref-4">
+            [4] E. L. Hutchins, J. D. Hollan, and D. A. Norman, "Direct manipulation interfaces," <em>Human-Computer Interaction</em>, vol. 1, no. 4, pp.
+            311–338, 1985.
+            <span class="backlinks"
+              >(cited at <a href="#cite-4-1" aria-label="Back to citation 1 of reference 4">1</a>
+              <a href="#cite-4-2" aria-label="Back to citation 2 of reference 4">2</a>)</span
+            >
+          </li>
+          <li id="ref-5">
+            [5] H. Ishii and B. Ullmer, "Tangible bits: Towards seamless interfaces between people, bits and atoms," in <em>Proc. CHI '97</em>, Atlanta, GA,
+            USA, Mar. 1997, pp. 234–241, doi: 10.1145/258549.258715.
+            <span class="backlinks"
+              >(cited at <a href="#cite-5-1" aria-label="Back to citation 1 of reference 5">1</a>
+              <a href="#cite-5-2" aria-label="Back to citation 2 of reference 5">2</a>)</span
+            >
+          </li>
+          <li id="ref-6">
+            [6] H. Subramonyam, R. Pea, C. L. Pondoc, M. Agrawala, and C. Seifert, "Bridging the gulf of envisioning: Cognitive challenges in prompt based
+            interactions with LLMs," in <em>Proc. CHI '24</em>, Honolulu, HI, USA, May 2024, doi: 10.1145/3613904.3642754.
+            <span class="backlinks"
+              >(cited at <a href="#cite-6-1" aria-label="Back to citation 1 of reference 6">1</a>
+              <a href="#cite-6-2" aria-label="Back to citation 2 of reference 6">2</a>)</span
+            >
+          </li>
+          <li id="ref-7">
+            [7] A. Kodaira et al., "StreamDiffusion: A pipeline-level solution for real-time interactive generation," arXiv:2312.12491, Dec. 2023.
+            <span class="backlinks"
+              >(cited at <a href="#cite-7-1" aria-label="Back to citation 1 of reference 7">1</a>
+              <a href="#cite-7-2" aria-label="Back to citation 2 of reference 7">2</a>)</span
+            >
+          </li>
+          <li id="ref-8">
+            [8] A. Défossez et al., "Moshi: A speech-text foundation model for real-time dialogue," arXiv:2410.00037, Oct. 2024.
+            <span class="backlinks"
+              >(cited at <a href="#cite-8-1" aria-label="Back to citation 1 of reference 8">1</a>
+              <a href="#cite-8-2" aria-label="Back to citation 2 of reference 8">2</a>)</span
+            >
+          </li>
+          <li id="ref-9">
+            [9] J. P. Crutchfield, "Space-time dynamics in video feedback," <em>Physica D</em>, vol. 10, no. 1–2, pp. 229–245, Jan. 1984.
+            <span class="backlinks">(cited at <a href="#cite-9-1" aria-label="Back to citation 1 of reference 9">1</a>)</span>
+          </li>
+          <li id="ref-10">
+            [10] T. Ingold, "The textility of making," <em>Cambridge J. Econ.</em>, vol. 34, no. 1, pp. 91–102, Jan. 2010, doi: 10.1093/cje/bep042.
+            <span class="backlinks"
+              >(cited at <a href="#cite-10-1" aria-label="Back to citation 1 of reference 10">1</a>
+              <a href="#cite-10-2" aria-label="Back to citation 2 of reference 10">2</a>
+              <a href="#cite-10-3" aria-label="Back to citation 3 of reference 10">3</a>)</span
+            >
+          </li>
+          <li id="ref-11">
+            [11] A. d'Avila Garcez and L. C. Lamb, "Neurosymbolic AI: The 3rd wave," <em>Artif. Intell. Rev.</em>, vol. 56, no. 11, pp. 12387–12406, Nov. 2023,
+            doi: 10.1007/s10462-023-10448-w.
+            <span class="backlinks"
+              >(cited at <a href="#cite-11-1" aria-label="Back to citation 1 of reference 11">1</a>
+              <a href="#cite-11-2" aria-label="Back to citation 2 of reference 11">2</a>)</span
+            >
+          </li>
+          <li id="ref-12">
+            [12] C. Sun, Y. Wang, Q. Kuang, and H. Ishii, "Dream Brush: Generative painting with Chinese calligraphy," in <em>Proc. DIS Companion '26</em>,
+            Singapore, Jun. 13–17, 2026, doi: 10.1145/3802974.3808682.
+            <span class="backlinks"
+              >(cited at <a href="#cite-12-1" aria-label="Back to citation 1 of reference 12">1</a>
+              <a href="#cite-12-2" aria-label="Back to citation 2 of reference 12">2</a>
+              <a href="#cite-12-3" aria-label="Back to citation 3 of reference 12">3</a>)</span
+            >
+          </li>
+          <li id="ref-13">
+            [13] B. Shneiderman and P. Maes, "Direct manipulation vs. interface agents," <em>interactions</em>, vol. 4, no. 6, pp. 42–61, Nov. 1997, doi:
+            10.1145/267505.267514.
+            <span class="backlinks"
+              >(cited at <a href="#cite-13-1" aria-label="Back to citation 1 of reference 13">1</a>
+              <a href="#cite-13-2" aria-label="Back to citation 2 of reference 13">2</a>)</span
+            >
+          </li>
+          <li id="ref-14">
+            [14] P. Maes, "Agents that reduce work and information overload," <em>Commun. ACM</em>, vol. 37, no. 7, pp. 30–40, Jul. 1994, doi:
+            10.1145/176789.176792. <span class="backlinks">(cited at <a href="#cite-14-1" aria-label="Back to citation 1 of reference 14">1</a>)</span>
+          </li>
+          <li id="ref-15">
+            [15] B. Shneiderman, "Human-centered artificial intelligence: Reliable, safe &amp; trustworthy," <em>Int. J. Hum.–Comput. Interact.</em>, vol. 36,
+            no. 6, pp. 495–504, 2020, doi: 10.1080/10447318.2020.1741118.
+            <span class="backlinks">(cited at <a href="#cite-15-1" aria-label="Back to citation 1 of reference 15">1</a>)</span>
+          </li>
+          <li id="ref-16">
+            [16] J. Nielsen, "Response times: The 3 important limits," Nielsen Norman Group, 1993 (excerpt from <em>Usability Engineering</em>, Academic Press,
+            1993).
+            <span class="backlinks"
+              >(cited at <a href="#cite-16-1" aria-label="Back to citation 1 of reference 16">1</a>
+              <a href="#cite-16-2" aria-label="Back to citation 2 of reference 16">2</a>)</span
+            >
+          </li>
+          <li id="ref-17">
+            [17] S. K. Card, G. G. Robertson, and J. D. Mackinlay, "The information visualizer, an information workspace," in <em>Proc. CHI '91</em>, New
+            Orleans, LA, USA, 1991, pp. 181–188, doi: 10.1145/108844.108874.
+            <span class="backlinks">(cited at <a href="#cite-17-1" aria-label="Back to citation 1 of reference 17">1</a>)</span>
+          </li>
+          <li id="ref-18">
+            [18] R. Jota, A. Ng, P. Dietz, and D. Wigdor, "How fast is fast enough? A study of the effects of latency in direct-touch pointing tasks," in
+            <em>Proc. CHI '13</em>, Paris, France, 2013, pp. 2291–2300, doi: 10.1145/2470654.2481317.
+            <span class="backlinks"
+              >(cited at <a href="#cite-18-1" aria-label="Back to citation 1 of reference 18">1</a>
+              <a href="#cite-18-2" aria-label="Back to citation 2 of reference 18">2</a>)</span
+            >
+          </li>
+          <li id="ref-19">
+            [19] D. A. Schön, <em>The Reflective Practitioner: How Professionals Think in Action</em>. New York, NY, USA: Basic Books, 1983.
+            <span class="backlinks">(cited at <a href="#cite-19-1" aria-label="Back to citation 1 of reference 19">1</a>)</span>
+          </li>
+          <li id="ref-20">
+            [20] D. Kirsh and P. Maglio, "On distinguishing epistemic from pragmatic action," <em>Cognitive Science</em>, vol. 18, no. 4, pp. 513–549, 1994.
+            <span class="backlinks">(cited at <a href="#cite-20-1" aria-label="Back to citation 1 of reference 20">1</a>)</span>
+          </li>
+          <li id="ref-21">
+            [21] M. Csikszentmihalyi, <em>Flow: The Psychology of Optimal Experience</em>. New York, NY, USA: Harper &amp; Row, 1990.
+            <span class="backlinks">(cited at <a href="#cite-21-1" aria-label="Back to citation 1 of reference 21">1</a>)</span>
+          </li>
+          <li id="ref-22">
+            [22] B. Ullmer and H. Ishii, "Emerging frameworks for tangible user interfaces," <em>IBM Syst. J.</em>, vol. 39, no. 3–4, pp. 915–931, 2000, doi:
+            10.1147/sj.393.0915. <span class="backlinks">(cited at <a href="#cite-22-1" aria-label="Back to citation 1 of reference 22">1</a>)</span>
+          </li>
+          <li id="ref-23">
+            [23] J. Patten, H. Ishii, J. Hines, and G. Pangaro, "Sensetable: A wireless object tracking platform for tangible user interfaces," in
+            <em>Proc. CHI '01</em>, Seattle, WA, USA, 2001, pp. 253–260, doi: 10.1145/365024.365112.
+            <span class="backlinks">(cited at <a href="#cite-23-1" aria-label="Back to citation 1 of reference 23">1</a>)</span>
+          </li>
+          <li id="ref-24">
+            [24] J. Patten, B. Recht, and H. Ishii, "Audiopad: A tag-based interface for musical performance," in <em>Proc. NIME '02</em>, Dublin, Ireland, May
+            2002. <span class="backlinks">(cited at <a href="#cite-24-1" aria-label="Back to citation 1 of reference 24">1</a>)</span>
+          </li>
+          <li id="ref-25">
+            [25] B. Piper, C. Ratti, and H. Ishii, "Illuminating Clay: A 3-D tangible interface for landscape analysis," in <em>Proc. CHI '02</em>, 2002, pp.
+            355–362. (SandScape is the associated glass-bead system.)
+            <span class="backlinks">(cited at <a href="#cite-25-1" aria-label="Back to citation 1 of reference 25">1</a>)</span>
+          </li>
+          <li id="ref-26">
+            [26] H. Ishii, D. Lakatos, L. Bonanni, and J.-B. Labrune, "Radical Atoms: Beyond tangible bits, toward transformable materials,"
+            <em>interactions</em>, vol. 19, no. 1, pp. 38–51, Jan.–Feb. 2012.
+            <span class="backlinks">(cited at <a href="#cite-26-1" aria-label="Back to citation 1 of reference 26">1</a>)</span>
+          </li>
+          <li id="ref-27">
+            [27] S. Jordà, G. Geiger, M. Alonso, and M. Kaltenbrunner, "The reacTable: Exploring the synergy between live music performance and tabletop
+            tangible interfaces," in <em>Proc. TEI '07</em>, Baton Rouge, LA, USA, 2007, pp. 139–146, doi: 10.1145/1226969.1226998.
+            <span class="backlinks">(cited at <a href="#cite-27-1" aria-label="Back to citation 1 of reference 27">1</a>)</span>
+          </li>
+          <li id="ref-28">
+            [28] Y. L. Li, Q. Kuang, P.-P. Arslan, Y. Wang, X. Xiao, and H. Ishii, "Tangible Co-Ideation: Designing embodied prompting for creative thinking
+            with large language models," DIS '26 Student Design Competition entry, 2026.
+            <span class="backlinks">(cited at <a href="#cite-28-1" aria-label="Back to citation 1 of reference 28">1</a>)</span>
+          </li>
+          <li id="ref-29">
+            [29] Y. L. Li, Q. Kuang, X. Xiao, J.-B. Labrune, and H. Ishii, "Co-Ideation Across Time: Revitalizing legacy design sketchnotes with conversational
+            AI agents to foster intergenerational collaboration," in <em>Proc. CHI '26</em>, Barcelona, Spain, Apr. 2026, doi: 10.1145/3772318.3791258.
+            <span class="backlinks">(cited at <a href="#cite-29-1" aria-label="Back to citation 1 of reference 29">1</a>)</span>
+          </li>
+          <li id="ref-30">
+            [30] Tangible Media Group and What's Taking Form, "Tangible Co-ideation Across Time," MIT Media Lab project page. [Online]. Available:
+            <a href="https://www.media.mit.edu/projects/tangible-co-ideation-across-time/overview/"
+              >https://www.media.mit.edu/projects/tangible-co-ideation-across-time/overview/</a
+            >
+            <span class="backlinks">(cited at <a href="#cite-30-1" aria-label="Back to citation 1 of reference 30">1</a>)</span>
+          </li>
+          <li id="ref-31">
+            [31] J. Weizenbaum, "ELIZA—A computer program for the study of natural language communication between man and machine," <em>Commun. ACM</em>, vol.
+            9, no. 1, pp. 36–45, Jan. 1966, doi: 10.1145/365153.365168.
+            <span class="backlinks">(cited at <a href="#cite-31-1" aria-label="Back to citation 1 of reference 31">1</a>)</span>
+          </li>
+          <li id="ref-32">
+            [32] R. A. Bolt, "'Put-that-there': Voice and gesture at the graphics interface," <em>ACM SIGGRAPH Comput. Graph.</em>, vol. 14, no. 3, pp. 262–270,
+            Jul. 1980, doi: 10.1145/965105.807503.
+            <span class="backlinks">(cited at <a href="#cite-32-1" aria-label="Back to citation 1 of reference 32">1</a>)</span>
+          </li>
+          <li id="ref-33">
+            [33] R. Bovo, D. Giunchi, P. Cascarano, E. J. Gonzalez, and M. Gonzalez-Franco, "Revisiting Put-That-There, context aware window interactions via
+            LLMs," arXiv:2511.02378, Nov. 2025.
+            <span class="backlinks">(cited at <a href="#cite-33-1" aria-label="Back to citation 1 of reference 33">1</a>)</span>
+          </li>
+          <li id="ref-34">
+            [34] L. Lee, "Imagining better interfaces to language models," thesephist.com/posts/latent, May 2022.
+            <span class="backlinks">(cited at <a href="#cite-34-1" aria-label="Back to citation 1 of reference 34">1</a>)</span>
+          </li>
+          <li id="ref-35">
+            [35] G. Litt, J. Horowitz, P. van Hardenberg, and T. Matthews, "Malleable software: Restoring user agency in a world of locked-down apps," Ink &amp;
+            Switch, Jun. 2025.
+            <span class="backlinks"
+              >(cited at <a href="#cite-35-1" aria-label="Back to citation 1 of reference 35">1</a>
+              <a href="#cite-35-2" aria-label="Back to citation 2 of reference 35">2</a>)</span
+            >
+          </li>
+          <li id="ref-36">
+            [36] T. H. Trinh, Y. Wu, Q. V. Le, H. He, and T. Luong, "Solving olympiad geometry without human demonstrations," <em>Nature</em>, vol. 625, no.
+            7995, pp. 476–482, Jan. 2024, doi: 10.1038/s41586-023-06747-5.
+            <span class="backlinks">(cited at <a href="#cite-36-1" aria-label="Back to citation 1 of reference 36">1</a>)</span>
+          </li>
+          <li id="ref-37">
+            [37] D. Ha and J. Schmidhuber, "World models," arXiv:1803.10122, 2018.
+            <span class="backlinks">(cited at <a href="#cite-37-1" aria-label="Back to citation 1 of reference 37">1</a>)</span>
+          </li>
+          <li id="ref-38">
+            [38] J. Bruce et al., "Genie: Generative interactive environments," in <em>Proc. ICML '24</em>, ser. PMLR, vol. 235, 2024, pp. 4603–4623.
+            <span class="backlinks">(cited at <a href="#cite-38-1" aria-label="Back to citation 1 of reference 38">1</a>)</span>
+          </li>
+          <li id="ref-39">
+            [39] N. Wiener, <em>Cybernetics: Or Control and Communication in the Animal and the Machine</em>. Paris, France: Hermann; Cambridge, MA, USA:
+            Technology Press; New York, NY, USA: Wiley, 1948.
+            <span class="backlinks">(cited at <a href="#cite-39-1" aria-label="Back to citation 1 of reference 39">1</a>)</span>
+          </li>
+          <li id="ref-40">
+            [40] J. C. R. Licklider, "Man-computer symbiosis," <em>IRE Trans. Human Factors Electron.</em>, vol. HFE-1, no. 1, pp. 4–11, Mar. 1960.
+            <span class="backlinks">(cited at <a href="#cite-40-1" aria-label="Back to citation 1 of reference 40">1</a>)</span>
+          </li>
+          <li id="ref-41">
+            [41] A. Clark and D. Chalmers, "The extended mind," <em>Analysis</em>, vol. 58, no. 1, pp. 7–19, Jan. 1998.
+            <span class="backlinks">(cited at <a href="#cite-41-1" aria-label="Back to citation 1 of reference 41">1</a>)</span>
+          </li>
+          <li id="ref-42">
+            [42] A. Clark, "Extending minds with generative AI," <em>Nature Commun.</em>, vol. 16, art. 4627, 2025, doi: 10.1038/s41467-025-59906-9.
+            <span class="backlinks">(cited at <a href="#cite-42-1" aria-label="Back to citation 1 of reference 42">1</a>)</span>
+          </li>
+          <li id="ref-43">
+            [43] P. Pataranutaporn, "Cyborg psychology: The art &amp; science of designing human-AI systems that support human flourishing," Ph.D. dissertation,
+            Program in Media Arts and Sciences, Massachusetts Inst. Technol., Cambridge, MA, USA, 2024.
+            <span class="backlinks">(cited at <a href="#cite-43-1" aria-label="Back to citation 1 of reference 43">1</a>)</span>
+          </li>
+          <li id="ref-44">
+            [44] S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao, "Latent consistency models: Synthesizing high-resolution images with few-step inference,"
+            arXiv:2310.04378, 2023. <span class="backlinks">(cited at <a href="#cite-44-1" aria-label="Back to citation 1 of reference 44">1</a>)</span>
+          </li>
+          <li id="ref-45">
+            [45] A. Sauer, D. Lorenz, A. Blattmann, and R. Rombach, "Adversarial diffusion distillation," arXiv:2311.17042, 2023.
+            <span class="backlinks">(cited at <a href="#cite-45-1" aria-label="Back to citation 1 of reference 45">1</a>)</span>
+          </li>
+          <li id="ref-46">
+            [46] T. Yin et al., "From slow bidirectional to fast autoregressive video diffusion models," in <em>Proc. IEEE/CVF CVPR</em>, 2025, pp. 22963–22974,
+            doi: 10.1109/CVPR52734.2025.02138.
+            <span class="backlinks">(cited at <a href="#cite-46-1" aria-label="Back to citation 1 of reference 46">1</a>)</span>
+          </li>
+          <li id="ref-47">
+            [47] L. Zhang, A. Rao, and M. Agrawala, "Adding conditional control to text-to-image diffusion models," in <em>Proc. IEEE/CVF ICCV</em>, 2023, pp.
+            3836–3847, doi: 10.1109/ICCV51070.2023.00355.
+            <span class="backlinks">(cited at <a href="#cite-47-1" aria-label="Back to citation 1 of reference 47">1</a>)</span>
+          </li>
+          <li id="ref-48">
+            [48] R. Gandikota, J. Materzyńska, T. Zhou, A. Torralba, and D. Bau, "Concept Sliders: LoRA adaptors for precise control in diffusion models," in
+            <em>Computer Vision – ECCV 2024</em>, ser. LNCS, vol. 15098. Cham, Switzerland: Springer, 2025, doi: 10.1007/978-3-031-73661-2_10.
+            <span class="backlinks">(cited at <a href="#cite-48-1" aria-label="Back to citation 1 of reference 48">1</a>)</span>
+          </li>
+          <li id="ref-49">
+            [49] A. Caillon and P. Esling, "RAVE: A variational autoencoder for fast and high-quality neural audio synthesis," arXiv:2111.05011, 2021.
+            <span class="backlinks">(cited at <a href="#cite-49-1" aria-label="Back to citation 1 of reference 49">1</a>)</span>
+          </li>
+          <li id="ref-50">
+            [50] J. Engel, L. Hantrakul, C. Gu, and A. Roberts, "DDSP: Differentiable digital signal processing," in <em>Proc. ICLR '20</em>, 2020. See also L.
+            Hantrakul and L.-C. Yang, "Neural Wavetable: A playable wavetable synthesizer using neural networks," NeurIPS 2018 Workshop on ML for Creativity and
+            Design, arXiv:1811.05550.
+          </li>
+          <li id="ref-51">
+            [51] S. Shan, L. Hantrakul, J. Chen, M. Avent, and D. Trevelyan, "Differentiable wavetable synthesis," in <em>Proc. IEEE ICASSP</em>, 2022, pp.
+            4598–4602, doi: 10.1109/ICASSP43922.2022.9746940.
+            <span class="backlinks">(cited at <a href="#cite-51-1" aria-label="Back to citation 1 of reference 51">1</a>)</span>
+          </li>
+          <li id="ref-52">
+            [52] M. W. Krueger, T. Gionfriddo, and K. Hinrichsen, "VIDEOPLACE—An artificial reality," in <em>Proc. CHI '85</em>, San Francisco, CA, USA, 1985,
+            pp. 35–40, doi: 10.1145/317456.317463.
+            <span class="backlinks">(cited at <a href="#cite-52-1" aria-label="Back to citation 1 of reference 52">1</a>)</span>
+          </li>
+          <li id="ref-53">
+            [53] G. Levin, "Painterly interfaces for audiovisual performance," M.S. thesis, Program in Media Arts and Sciences, Massachusetts Inst. Technol.,
+            Cambridge, MA, USA, Sep. 2000. <span class="backlinks">(cited at <a href="#cite-53-1" aria-label="Back to citation 1 of reference 53">1</a>)</span>
+          </li>
+          <li id="ref-54">
+            [54] E. A. Cherry and C. Latulipe, "Quantifying the creativity support of digital tools through the Creativity Support Index,"
+            <em>ACM Trans. Comput.-Hum. Interact.</em>, vol. 21, no. 4, art. 21, May 2014, doi: 10.1145/2617588.
+            <span class="backlinks">(cited at <a href="#cite-54-1" aria-label="Back to citation 1 of reference 54">1</a>)</span>
+          </li>
+          <li id="ref-55">
+            [55] A. Tapal, E. Oren, R. Dar, and B. Eitam, "The Sense of Agency Scale: A measure of consciously perceived control over one's mind, body, and the
+            immediate environment," <em>Frontiers in Psychology</em>, vol. 8, art. 1552, 2017, doi: 10.3389/fpsyg.2017.01552.
+            <span class="backlinks">(cited at <a href="#cite-55-1" aria-label="Back to citation 1 of reference 55">1</a>)</span>
+          </li>
+          <li id="ref-56">
+            [56] S. G. Hart and L. E. Staveland, "Development of NASA-TLX (Task Load Index): Results of empirical and theoretical research," in
+            <em>Human Mental Workload</em>, P. A. Hancock and N. Meshkati, Eds. Amsterdam, The Netherlands: North-Holland, 1988, pp. 139–183.
+            <span class="backlinks">(cited at <a href="#cite-56-1" aria-label="Back to citation 1 of reference 56">1</a>)</span>
+          </li>
+        </ul>
+      </section>
+    </main>
+    <script>
+      // Mark the jump target (footnote / back-link); any click clears the mark.
+      (function () {
+        var marked;
+        function clear() {
+          if (marked) {
+            marked.classList.remove("focus-mark");
+            marked = null;
+          }
+        }
+        function mark() {
+          clear();
+          var id = decodeURIComponent(location.hash.slice(1));
+          marked = id && document.getElementById(id);
+          if (marked) marked.classList.add("focus-mark");
+        }
+        window.addEventListener("hashchange", mark);
+        document.addEventListener("click", function (e) {
+          var a = e.target.closest && e.target.closest("a[href^='#']");
+          if (!a) clear();
+        });
+        mark();
+      })();
+    </script>
+  </body>
 </html>

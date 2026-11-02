@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📢</text></svg>" />
     <title>Hold That Thought — Crit Day</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -655,7 +656,10 @@
       }
       #s11 .cap span {
         grid-area: 1 / 1;
-        transition: opacity 0.6s ease, transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), filter 0.6s ease;
+        transition:
+          opacity 0.6s ease,
+          transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+          filter 0.6s ease;
         transition-delay: calc(var(--i) * 90ms);
       }
       #s11 .cap .stp {
@@ -675,11 +679,21 @@
         transform: none;
         filter: none;
       }
-      #s11 .tile:nth-child(1) .cap span { --i: 0; }
-      #s11 .tile:nth-child(2) .cap span { --i: 1; }
-      #s11 .tile:nth-child(3) .cap span { --i: 2; }
-      #s11 .tile:nth-child(4) .cap span { --i: 3; }
-      #s11 .tile:nth-child(5) .cap span { --i: 4; }
+      #s11 .tile:nth-child(1) .cap span {
+        --i: 0;
+      }
+      #s11 .tile:nth-child(2) .cap span {
+        --i: 1;
+      }
+      #s11 .tile:nth-child(3) .cap span {
+        --i: 2;
+      }
+      #s11 .tile:nth-child(4) .cap span {
+        --i: 3;
+      }
+      #s11 .tile:nth-child(5) .cap span {
+        --i: 4;
+      }
       #s11 .tile.step {
         transform: translateY(3vh);
       }
@@ -758,7 +772,10 @@
       }
       #s13b .line span {
         grid-area: 1 / 1;
-        transition: opacity 0.7s ease, transform 0.9s cubic-bezier(0.22, 1, 0.36, 1), filter 0.7s ease;
+        transition:
+          opacity 0.7s ease,
+          transform 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+          filter 0.7s ease;
       }
       #s13b .line .answer {
         opacity: 0;
@@ -910,17 +927,26 @@
         <div class="panel">
           <img src="assets/sketchpad.jpg" alt="Sketchpad" />
           <div class="scrim"></div>
-          <div class="cap"><span class="label">1963</span><div class="name">Sketchpad</div></div>
+          <div class="cap">
+            <span class="label">1963</span>
+            <div class="name">Sketchpad</div>
+          </div>
         </div>
         <div class="panel">
           <img src="assets/1st-mouse.webp" alt="Engelbart's first mouse prototype" style="object-position: 38% 50%" />
           <div class="scrim"></div>
-          <div class="cap"><span class="label">1968</span><div class="name">The Mouse</div></div>
+          <div class="cap">
+            <span class="label">1968</span>
+            <div class="name">The Mouse</div>
+          </div>
         </div>
         <div class="panel">
           <img src="assets/intouch.webp" alt="inTouch" />
           <div class="scrim"></div>
-          <div class="cap"><span class="label">1998</span><div class="name">inTouch</div></div>
+          <div class="cap">
+            <span class="label">1998</span>
+            <div class="name">inTouch</div>
+          </div>
         </div>
       </div>
     </section>
@@ -931,17 +957,26 @@
         <div class="panel">
           <img src="assets/lisp-repl-emacs-slime.png" alt="Lisp REPL" style="object-fit: contain" />
           <div class="scrim"></div>
-          <div class="cap"><span class="label">1958</span><div class="name">Lisp REPL</div></div>
+          <div class="cap">
+            <span class="label">1958</span>
+            <div class="name">Lisp REPL</div>
+          </div>
         </div>
         <div class="panel">
           <img src="assets/eliza-conversation.png" alt="ELIZA" style="object-fit: contain" />
           <div class="scrim"></div>
-          <div class="cap"><span class="label">1966</span><div class="name">ELIZA</div></div>
+          <div class="cap">
+            <span class="label">1966</span>
+            <div class="name">ELIZA</div>
+          </div>
         </div>
         <div class="panel">
           <img src="assets/claude-code.webp" alt="Claude Code" style="object-fit: contain" />
           <div class="scrim"></div>
-          <div class="cap"><span class="label">2025</span><div class="name">Claude Code</div></div>
+          <div class="cap">
+            <span class="label">2025</span>
+            <div class="name">Claude Code</div>
+          </div>
         </div>
       </div>
     </section>
