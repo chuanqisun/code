@@ -953,6 +953,17 @@
         transition: width 0.4s ease;
         opacity: 0.6;
       }
+      /* 10-minute clock: starts on slide 1, same 2px thickness as the bar */
+      #timer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 5px;
+        height: 2px;
+        background: #fff;
+        z-index: 11;
+        pointer-events: none;
+              }
     </style>
   </head>
   <body>
@@ -1220,6 +1231,7 @@
     </section>
 
     <div id="progress"></div>
+    <div id="timer"></div>
     <div id="notes"></div>
 
     <script>
@@ -1324,7 +1336,25 @@
         return +(s.dataset.steps || 0);
       }
 
+      // 10-minute timer: starts when slide 1 is first opened
+      const TALK_MS = 10 * 60 * 1000;
+      let t0 = null;
+      function tickTimer() {
+        if (t0 === null) return;
+        const f = Math.min(1, (performance.now() - t0) / TALK_MS);
+        document.getElementById("timer").style.left = `calc(${f * 100}% - ${f * 5}px)`;
+        if (f < 1) requestAnimationFrame(tickTimer);
+      }
+
       function apply() {
+        if (cur === 0) {
+          // back on the cold open: reset the clock
+          t0 = null;
+          document.getElementById("timer").style.left = "0";
+        } else if (t0 === null) {
+          t0 = performance.now();
+          tickTimer();
+        }
         slides.forEach((s, i) => {
           const on = i === cur;
           s.classList.toggle("active", on);
