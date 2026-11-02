@@ -273,21 +273,50 @@
       }
 
       /* ---------- 4 · quadrant ---------- */
-      .axis {
+      .ax-cols,
+      .ax-rows {
         position: absolute;
-        font-family: var(--mono);
-        font-size: clamp(10px, 1vw, 16px);
-        letter-spacing: 0.3em;
-        color: #fff;
+        display: grid;
+        gap: 2px;
+      }
+      .ax-cols {
+        left: 14vw;
+        right: 3vw;
+        top: 2vh;
+        height: 9vh;
+        grid-template-columns: 1fr 1fr;
+      }
+      .ax-rows {
+        left: 1vw;
+        width: 12.5vw;
+        top: 13vh;
+        bottom: 4vh;
+        grid-template-rows: 1fr 1fr;
+      }
+      .ax {
         background: #000;
-        padding: 0.4em 0.8em;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-size: clamp(18px, 2.4vw, 42px);
+        font-weight: 600;
         text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .ax small {
+        font-size: 0.4em;
+        font-weight: 400;
+        letter-spacing: 0.3em;
+        color: var(--accent);
       }
       .quad {
         position: absolute;
-        left: 7vw;
+        left: 14vw;
         right: 3vw;
-        top: 9vh;
+        top: 13vh;
         bottom: 4vh;
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -510,6 +539,19 @@
         letter-spacing: 0.1em;
       }
 
+      #s7 .line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 5vh;
+        text-align: center;
+        font-style: italic;
+        font-weight: 300;
+        letter-spacing: -0.02em;
+        font-size: clamp(34px, 6vw, 108px);
+        color: #fff;
+      }
+
       /* ---------- 8 · handles ---------- */
       #s8 {
         background: #f9f9f9;
@@ -518,39 +560,78 @@
       #s8 .art {
         position: absolute;
         left: 4vw;
-        top: 0;
-        height: 100%;
-        width: auto;
-      }
-      #s8 .legend {
-        position: absolute;
-        left: 52vw;
-        right: 5vw;
         top: 50%;
         transform: translateY(-50%);
+        height: 80%;
+        width: auto;
+      }
+      #s8 .right {
+        position: absolute;
+        left: 46vw;
+        right: 4vw;
+        top: 0;
+        bottom: 0;
         display: flex;
         flex-direction: column;
-        gap: 4.5vh;
+        justify-content: center;
+        gap: 6vh;
       }
-      #s8 .legend div {
-        font-size: clamp(28px, 4.8vw, 88px);
+      #s8 .heading h2 {
+        margin: 0;
+        font-size: clamp(30px, 4.2vw, 76px);
+        font-weight: 300;
+        letter-spacing: -0.02em;
+        line-height: 1.08;
+      }
+      #s8 .heading h2 b {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.2em;
+      }
+      /* one concept at a time: its keywords light up and its definition shows */
+      #s8 .heading .hl {
+        transition: color 0.6s ease;
+      }
+      #s8[data-at="1"] .hl[data-k="1"],
+      #s8[data-at="2"] .hl[data-k="2"],
+      #s8[data-at="3"] .hl[data-k="3"],
+      #s8[data-at="4"] .hl[data-k="4"] {
+        color: var(--accent);
+      }
+      #s8 .stack {
+        display: grid;
+      }
+      #s8 .stack > div {
+        grid-area: 1 / 1;
+        opacity: 0;
+        transition: opacity 0.6s ease;
+      }
+      #s8[data-at="1"] .stack > [data-k="1"],
+      #s8[data-at="2"] .stack > [data-k="2"],
+      #s8[data-at="3"] .stack > [data-k="3"],
+      #s8[data-at="4"] .stack > [data-k="4"] {
+        opacity: 1;
+      }
+      #s8 .defs {
+        display: flex;
+        flex-direction: column;
+        gap: 1.6vh;
+      }
+      #s8 .defs .rule {
+        height: 2px;
+        background: #000;
+        margin-bottom: 2.4vh;
+      }
+      #s8 .stack > div {
+        font-size: clamp(20px, 2.4vw, 44px);
         font-weight: 300;
         letter-spacing: -0.02em;
         line-height: 1.1;
       }
-      #s8 .legend b {
+      #s8 .defs b {
         font-weight: 400;
         font-style: italic;
         color: var(--accent);
-      }
-      #s8 .legend span {
-        display: block;
-        font-family: var(--mono);
-        font-size: clamp(10px, 1.1vw, 18px);
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: #000;
-        margin-top: 0.8vh;
       }
       #s8 .ph-tag {
         background: #fff;
@@ -566,6 +647,13 @@
         color: var(--accent);
         max-width: 30vw;
         line-height: 1.5;
+      }
+
+      .done {
+        position: absolute;
+        top: 4vh;
+        left: 3vw;
+        z-index: 2;
       }
 
       /* ---------- 9 · dream brush ---------- */
@@ -805,12 +893,12 @@
         transform: translateY(1.2vh);
         filter: blur(4px);
       }
-      #s13b[data-at="2"] .faces figcaption .nm {
+      #s13b:not([data-at="0"]) .faces figcaption .nm {
         opacity: 0;
         transform: translateY(-1.2vh);
         filter: blur(4px);
       }
-      #s13b[data-at="2"] .faces figcaption .sense {
+      #s13b:not([data-at="0"]) .faces figcaption .sense {
         opacity: 1;
         transform: none;
         filter: none;
@@ -830,34 +918,11 @@
         filter: grayscale(1) contrast(1.05);
         opacity: 0.9;
       }
-      #s13b .line span {
-        grid-area: 1 / 1;
-        transition:
-          opacity 0.7s ease,
-          transform 0.9s cubic-bezier(0.22, 1, 0.36, 1),
-          filter 0.7s ease;
-      }
-      #s13b .line .answer {
-        opacity: 0;
-        transform: translateY(2vh);
-        filter: blur(6px);
-      }
       #s13b .line em {
         color: var(--accent);
         font-style: inherit;
       }
-      #s13b:not([data-at="0"]) .line .why {
-        opacity: 0;
-        transform: translateY(-2vh);
-        filter: blur(6px);
-      }
-      #s13b:not([data-at="0"]) .line .answer {
-        opacity: 1;
-        transform: none;
-        filter: none;
-      }
       #s13b .line {
-        display: grid;
         font-style: italic;
         position: absolute;
         left: 0;
@@ -963,7 +1028,7 @@
         background: #fff;
         z-index: 11;
         pointer-events: none;
-              }
+      }
     </style>
   </head>
   <body>
@@ -985,7 +1050,13 @@
         <h1>Hold That Thought</h1>
         <div class="sub">Neuro-Symbolic Coupling for Shaping Ideas in Real Time</div>
       </div>
-      <div class="foot">Chuanqi Sun · Advisor Hiroshi Ishii · Readers Zach Lieberman, Jean-Baptiste Labrune</div>
+      <div class="foot">
+        Chuanqi Sun · Advisor Hiroshi Ishii · Readers Zach Lieberman, Jean-Baptiste Labrune
+        <div style="margin-top: 1.2em">
+          With John Maeda, Theresa Horstman, Lucy Li, Quincy Kuang, Yuhan Wang, Avril Cui, Connie Huang, Fyona Shi, Shuji Hosokawa, Sophia Loiselle, and friends
+          from Tangible Media Group, Media Lab and Microsoft Corporation
+        </div>
+      </div>
     </section>
 
     <!-- 2 · the gulf (prompt-animation.html, restarted on entry) -->
@@ -1067,7 +1138,7 @@
         <div><img class="px" src="assets/logos/chatjimmy.webp" alt="ChatJimmy" />ChatJimmy</div>
         <div><img src="assets/logos/krea.png" alt="Krea" />Krea</div>
       </div>
-      <div class="msg step" data-step="2">When AI becomes <em>real time</em><br />Symbolics and Semantics will be <em>indistinguishable</em></div>
+      <div class="msg step" data-step="2"><em>Real time</em> AI is here<br />It’s just trapped in <em>chat</em></div>
     </section>
 
     <!-- 5 · modern put-that-there: we lost the pointing -->
@@ -1088,11 +1159,14 @@
 
     <!-- 6 · the quadrant -->
     <section class="slide" id="s4" data-steps="5">
-      <div class="axis" style="left: 7vw; right: 3vw; top: 2.5vh; display: flex; justify-content: space-around">
-        <span>Output · spatial</span><span>Output · semantic</span>
+      <div class="ax-cols">
+        <div class="ax"><small>Output</small>Spatial</div>
+        <div class="ax"><small>Output</small>Semantic</div>
       </div>
-      <div class="axis" style="left: 3vw; top: 27%; transform: translate(-50%, -50%) rotate(-90deg); white-space: nowrap">Input · spatial</div>
-      <div class="axis" style="left: 3vw; top: 73%; transform: translate(-50%, -50%) rotate(-90deg); white-space: nowrap">Input · semantic</div>
+      <div class="ax-rows">
+        <div class="ax"><small>Input</small>Spatial</div>
+        <div class="ax"><small>Input</small>Semantic</div>
+      </div>
       <div class="quad">
         <div class="cell">
           <img class="fly" src="assets/put-that-there.webp" alt="" style="object-position: 50% 45%" />
@@ -1122,34 +1196,37 @@
     </section>
 
     <!-- 8 · give thoughts handles -->
-    <section class="slide" id="s8" data-steps="1">
+    <section class="slide" id="s8" data-steps="4">
       <img class="art" src="assets/handle-on-data.webp" alt="A hand pulling a handle fixed to a cloud of data" />
-      <div class="legend step" data-step="1">
-        <div><b>Neural</b> = the cloud</div>
-        <div><b>Symbolic</b> = the handles</div>
-        <div><b>Real time</b> = closed loop</div>
+      <div class="right">
+        <div class="heading">
+          <h2>
+            <b>Hold That Thought:</b><span class="hl" data-k="1">Neuro</span>-<span class="hl" data-k="2">Symbolic</span>
+            <span class="hl" data-k="3">Coupling</span> for <span class="hl" data-k="4">Shaping Ideas</span> in <span class="hl" data-k="3">Real Time</span>
+          </h2>
+        </div>
+        <div class="defs">
+          <div class="rule step" data-step="1"></div>
+          <div class="stack">
+            <div data-k="1"><b>Neuro:</b> Deal with ambiguous semantic information</div>
+            <div data-k="2"><b>Symbolic:</b> Using intuitive handles with tangible quality</div>
+            <div data-k="3"><b>Real Time Coupling:</b> Closed feedback loop</div>
+            <div data-k="4"><b>Shaping Ideas:</b> with more agency, creativity, and joy</div>
+          </div>
+        </div>
       </div>
-    </section>
-
-    <!-- 7 · making is not specifying -->
-    <section class="slide" id="s7">
-      <figure class="fade-up">
-        <img src="assets/tim-ingold.webp" alt="Tim Ingold" />
-        <figcaption class="credit">Portrait: Tim Ingold</figcaption>
-      </figure>
-      <figure class="paper fade-up" style="animation-delay: 0.8s">
-        <img src="assets/textilify-of-making.webp" alt="The Textility of Making, first page" />
-      </figure>
     </section>
 
     <!-- 9 · Dream Brush -->
     <section class="slide" id="s9">
       <img class="bleed" src="assets/dream-brush.jpg" alt="Dream Brush" />
       <div class="corner cap label">DIS ’26 & CVPR ’26</div>
+      <div class="done cap label">Completed Work 1</div>
     </section>
 
     <!-- 10 · Parametric Diffusion -->
     <section class="slide" id="s10">
+      <div class="done cap label">Completed Work 2</div>
       <div class="strip">
         <div class="panel">
           <img src="assets/hands.gif" alt="" />
@@ -1168,6 +1245,7 @@
 
     <!-- 11 · what I will build -->
     <section class="slide" id="s11" data-steps="6">
+      <div class="done cap label">Proposed Work</div>
       <div class="row">
         <div class="tile step" data-step="1">
           <div class="media"><img src="assets/braindump.webp" alt="Braindump" /></div>
@@ -1175,11 +1253,11 @@
         </div>
         <div class="tile step" data-step="2">
           <div class="media"><img src="assets/put-that-there-again.webp" alt="Put That There Again" /></div>
-          <div class="cap"><span class="proj">Put That There Again</span><span class="stp">Manipulate</span></div>
+          <div class="cap"><span class="proj">Put That There Again</span><span class="stp">Visualize</span></div>
         </div>
         <div class="tile step" data-step="3">
           <div class="media"><video src="assets/puck-grammar.mp4" muted loop playsinline></video></div>
-          <div class="cap"><span class="proj">Puck Grammar</span><span class="stp">Hold</span></div>
+          <div class="cap"><span class="proj">Puck Grammar</span><span class="stp">Manipulate</span></div>
         </div>
         <div class="tile step" data-step="4">
           <div class="media"><img src="assets/sable-web.png" alt="Sable" /></div>
@@ -1202,6 +1280,18 @@
       <svg class="step" data-step="1" id="csi" viewBox="-200 -200 400 400" aria-label="Creativity Support Index radial chart"></svg>
     </section>
 
+    <!-- 7 · making is not specifying -->
+    <section class="slide" id="s7">
+      <figure class="fade-up">
+        <img src="assets/tim-ingold.webp" alt="Tim Ingold" />
+        <figcaption class="credit">Portrait: Tim Ingold</figcaption>
+      </figure>
+      <figure class="paper fade-up" style="animation-delay: 0.8s">
+        <img src="assets/textilify-of-making.webp" alt="The Textility of Making, first page" />
+      </figure>
+      <div class="line fade-up" style="animation-delay: 1.6s">Why?</div>
+    </section>
+
     <!-- 13 · why this matters -->
     <section class="slide" id="s13b" data-steps="2">
       <div class="faces">
@@ -1218,16 +1308,13 @@
           <figcaption><span class="nm">Hiroshi Ishii</span><span class="sense">Connection</span></figcaption>
         </figure>
       </div>
-      <div class="line fade-up">
-        <span class="why">Why?</span>
-        <span class="answer">Interaction Design is <em>Humanism</em>.</span>
-      </div>
+      <div class="line step" data-step="2">Interaction Design is <em>Humanism</em>.</div>
     </section>
 
     <!-- 14 · Q&A -->
     <section class="slide" id="s13">
       <img class="hero" src="assets/hand-puck-4.webp" alt="A hand holding the Context Puck" />
-      <div class="title">Q&amp;A</div>
+      <div class="title">Your Thoughts?</div>
     </section>
 
     <div id="progress"></div>
@@ -1290,13 +1377,7 @@
         [
           "“Get a handle on it” is an idiom for a reason. A handle is the oldest interface for gripping something slippery.",
           "The model supplies meaning, a symbolic layer supplies the handle, and the speed keeps it a conversation with material.",
-          "State the hypothesis (agency, creativity, joy vs. turn-based) in one sentence.",
-        ],
-        [
-          "I could have used an AI avatar to give this presentation, and yet I chose to be present. You could have delegated your AI note-taker to join crit day, and yet you chose to be here.",
-          "Why? Because we all enjoy the making of ideas. Not specifying goals. Not delegating to agents.",
-          "Tim Ingold says making is not imposing a form on matter. The maker follows the material and responds to it as the work unfolds. A prompt is the stamp. Making needs a medium that answers back, continuously, and real time is the precondition.",
-          "Delivery: pause a full beat after “chose to be here.” The questions are rhetorical. Land “making of ideas” slowly, then bring in Ingold.",
+          "Click 1: Neuro, deal with ambiguous semantic information. Click 2: Symbolic, intuitive handles with tangible quality. Click 3: Coupling and Real Time together, a closed feedback loop. Click 4: Shaping ideas, with more agency, creativity, and joy. State the hypothesis (agency, creativity, joy vs. turn-based) in one sentence.",
         ],
         [
           "One gesture carries both what (the character 云, “cloud”) and where.",
@@ -1304,10 +1385,10 @@
         ],
         ["Symbolic structure over a diffusion model, real time, shown as art.", "No user data yet. That’s what this thesis will produce."],
         [
-          "20 seconds, one sentence per tile, left to right. Then one click: each project name becomes its step. The loop is get in, manipulate, hold, sculpt, share.",
+          "20 seconds, one sentence per tile, left to right. Then one click: each project name becomes its step. The loop is get in, visualize, manipulate, sculpt, share.",
           "Get in: Braindump. Voice and gesture get an idea into the system.",
-          "Manipulate: Put That There Again. Point and speak to move things around.",
-          "Hold: Context Pucks. A physical handle on the idea. This is the title.",
+          "Visualize: Put That There Again. Point and speak to move things around.",
+          "Manipulate: Context Pucks. A physical handle on the idea. This is the title.",
           "Sculpt: Sable. Shape the output continuously with parametric controls.",
           "Share: TangibleCo-ideation. Hands on a shared table. It is a TMG project I contribute to.",
           "Be honest that Sable is a web sketch, not a finished system.",
@@ -1317,12 +1398,18 @@
           "The timeline sits in the proposal, not on the slide.",
         ],
         [
+          "I could have used an AI avatar to give this presentation, and yet I chose to be present. You could have delegated your AI note-taker to join crit day, and yet you chose to be here.",
+          "Why? Because we all enjoy the making of ideas. Not specifying goals. Not delegating to agents.",
+          "Tim Ingold says making is not imposing a form on matter. The maker follows the material and responds to it as the work unfolds. A prompt is the stamp. Making needs a medium that answers back, continuously, and real time is the precondition.",
+          "Delivery: pause a full beat after “chose to be here.” The questions are rhetorical. Land “making of ideas” slowly, then bring in Ingold.",
+        ],
+        [
           "Key point: interaction design investigates the human condition and expands the life we experience by giving us new senses: for the body, for knowledge, and for connection.",
           "Norbert Wiener (body): cybernetics. Machines and organisms share feedback loops, so tools extend the body.",
           "J.C.R. Licklider (knowledge): man-computer symbiosis. Humans and computers thinking together, in real time.",
           "Hiroshi Ishii (connection): tangible bits and radical atoms. Give digital information a physical form you can hold and share.",
           "Can technology put humans in front of the decision, in the real world, and not behind a phone screen?",
-          "Pause on “Why?”. Click 1: Interaction Design is Humanism. Click 2: the names become body, knowledge, connection.",
+          "Click 1: the names become body, knowledge, connection. Click 2: Interaction Design is Humanism.",
           "Land it: this thesis extends our senses toward thinking, sense making, and creating. I think that is worth pursuing.",
         ],
         ["Hold up the puck: “I’m happy to address the thoughts you are holding now.”"],
