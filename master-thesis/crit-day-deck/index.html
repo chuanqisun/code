@@ -480,6 +480,19 @@
         font-style: normal;
       }
 
+      /* ---------- 0 · cold open ---------- */
+      #s0 .imagine {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: clamp(48px, 8vw, 144px);
+        font-style: italic;
+        font-weight: 300;
+        letter-spacing: -0.02em;
+      }
+
       /* ---------- 5 · split ---------- */
       #s5 .split {
         position: absolute;
@@ -849,6 +862,13 @@
         overflow: visible;
       }
 
+      #s12 .csi-cap {
+        position: absolute;
+        left: 50%;
+        bottom: 4vh;
+        transform: translateX(-50%);
+      }
+
       /* ---------- 13 · why this matters ---------- */
       #s13b .faces {
         position: absolute;
@@ -917,6 +937,20 @@
         width: auto;
         filter: grayscale(1) contrast(1.05);
         opacity: 0.9;
+      }
+      #s13b .keys {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 4vh;
+        display: flex;
+        justify-content: center;
+        gap: 4vw;
+        font-family: var(--mono);
+        font-size: clamp(14px, 1.8vw, 30px);
+        letter-spacing: 0.25em;
+        text-transform: uppercase;
+        color: var(--accent);
       }
       #s13b .line em {
         color: var(--accent);
@@ -1018,7 +1052,7 @@
         transition: width 0.4s ease;
         opacity: 0.6;
       }
-      /* 10-minute clock: starts on slide 1, same 2px thickness as the bar */
+      /* 10-minute clock: starts on the "Imagine…" reveal, same 2px thickness as the bar */
       #timer {
         position: fixed;
         left: 0;
@@ -1033,7 +1067,9 @@
   </head>
   <body>
     <!-- 0 · cold open -->
-    <section class="slide" id="s0"></section>
+    <section class="slide" id="s0" data-steps="1">
+      <div class="imagine step" data-step="1">Imagine…</div>
+    </section>
 
     <!-- 1 · title -->
     <section class="slide" id="s1">
@@ -1158,7 +1194,7 @@
     </section>
 
     <!-- 6 · the quadrant -->
-    <section class="slide" id="s4" data-steps="5">
+    <section class="slide" id="s4" data-steps="4">
       <div class="ax-cols">
         <div class="ax"><small>Output</small>Spatial</div>
         <div class="ax"><small>Output</small>Semantic</div>
@@ -1170,23 +1206,23 @@
       <div class="quad">
         <div class="cell">
           <img class="fly" src="assets/put-that-there.webp" alt="" style="object-position: 50% 45%" />
-          <div class="cap label step" data-step="2">Direct manipulation</div>
+          <div class="cap label">Direct manipulation</div>
         </div>
-        <div class="cell empty step" data-step="5">
+        <div class="cell empty step" data-step="4">
           <div class="big">Hold That Thought</div>
           <div class="cap label" style="position: absolute; left: 2vw; bottom: 2vw">Neuro-Symbolic Manipulation</div>
         </div>
         <div class="cell">
           <img class="fly" src="assets/openai-astra-demo.webp" alt="" style="object-position: 40% 50%" />
-          <div class="typo step" data-step="3">
+          <div class="typo step" data-step="2">
             <div class="prompt">“a cat in a hat”</div>
-            <div class="takes step" data-step="4">
+            <div class="takes step" data-step="3">
               <img src="assets/cat-in-hat-03.webp" alt="" />
               <img src="assets/cat-in-hat-02.webp" alt="" />
               <img src="assets/cat-in-hat-01.webp" alt="" />
             </div>
           </div>
-          <div class="cap label step" data-step="3">Prompt → image</div>
+          <div class="cap label">Prompt → image</div>
         </div>
         <div class="cell step" data-step="1">
           <img src="assets/chatgpt-essay-draft-screenshot.png" alt="" style="object-position: 50% 0" />
@@ -1278,6 +1314,7 @@
       </div>
       <div class="title">How to Evaluate</div>
       <svg class="step" data-step="1" id="csi" viewBox="-200 -200 400 400" aria-label="Creativity Support Index radial chart"></svg>
+      <div class="csi-cap cap label step" data-step="1">Creativity Support Index</div>
     </section>
 
     <!-- 7 · making is not specifying -->
@@ -1293,7 +1330,7 @@
     </section>
 
     <!-- 13 · why this matters -->
-    <section class="slide" id="s13b" data-steps="2">
+    <section class="slide" id="s13b" data-steps="3">
       <div class="faces">
         <figure>
           <img src="assets/norbert-wiener-portrait.jpg" alt="Norbert Wiener" />
@@ -1309,6 +1346,7 @@
         </figure>
       </div>
       <div class="line step" data-step="2">Interaction Design is <em>Humanism</em>.</div>
+      <div class="keys step" data-step="3"><span>Sense-making</span><span>Thinking</span><span>Creating</span></div>
     </section>
 
     <!-- 14 · Q&A -->
@@ -1352,16 +1390,24 @@
 
       // Speaker notes, one entry per slide (paragraphs). Toggle with N.
       const NOTES = [
-        ["The friend scene: “Hold that thought.” Pull the puck from your pocket on “mysterious object.” (~40 s, the only slide longer than 30 s.)"],
+        [
+          "The friend scene: “Hold that thought.” Pull the puck from your pocket on “mysterious object.” (~40 s, the only slide longer than 30 s.)",
+          "One click: “Imagine…”",
+        ],
         ["Thank the committee, then back to the puck."],
         [
           "Exhausted by prompting. Six agents (say “half a dozen”), context switching, and the work no longer feels like yours.",
           "“A ghostly gulf between you and the work.”",
           "Narrate lightly during the streaming; go silent once the six threads appear. Hard cut to the next slide.",
         ],
-        ["Sketchpad, the mouse, inTouch (and Tangible Bits). Each one made something live.", "Name Shneiderman’s “direct manipulation” here in one breath."],
+        [
+          "Sketchpad, the mouse, inTouch (and Tangible Bits). Each one made something live.",
+          "Authors: Sketchpad, Ivan Sutherland (1963). The mouse, Douglas Engelbart and Bill English (1968). inTouch, Scott Brave and Andrew Dahley at the Media Lab (1998).",
+          "Name Shneiderman’s “direct manipulation” here in one breath.",
+        ],
         [
           "The other track: conversation. The Lisp REPL, ELIZA, Claude Code: sixty-plus years of talking to machines, and every one of them is turn-based. You type, you wait, you read.",
+          "Authors: Lisp, John McCarthy (1958). ELIZA, Joseph Weizenbaum (1966). Claude Code, Anthropic (2025).",
         ],
         [
           "Two tracks, about to collide. Spatial and real time on one side; semantic and turn-based on the other.",
@@ -1370,9 +1416,12 @@
         ],
         ["Bolt’s Put-That-There had a hand and a voice but no understanding. LLMs have understanding but no hand.", "Hint at Put That There Again."],
         [
-          "Direct manipulation lives where input and output are both spatial.",
-          "Ideas have no spatial surrogate, so we left them to the chat box. One prompt, three different cats in hats: semantic input cannot pin down spatial output.",
-          "The empty quadrant is where a hand can steer meaning. This is the thesis.",
+          "Arrive with direct manipulation and text to image, both labeled. Direct manipulation lives where input and output are both spatial.",
+          "Click 1: chat. Ideas have no spatial surrogate, so we left them to the chat box.",
+          "Click 2: chat example, the prompt “a cat in a hat”.",
+          "Click 3: three different cats in hats from one prompt. Semantic input cannot pin down spatial output.",
+          "Click 4: the empty quadrant, Hold That Thought, is where a hand can steer meaning. This is the thesis.",
+          "George Lakoff: we already think about ideas through natural metaphors of lived experience (grasping an idea, a high-level view, holding a thought). The body gives meaning its spatial handles.",
         ],
         [
           "“Get a handle on it” is an idiom for a reason. A handle is the oldest interface for gripping something slippery.",
@@ -1409,7 +1458,7 @@
           "J.C.R. Licklider (knowledge): man-computer symbiosis. Humans and computers thinking together, in real time.",
           "Hiroshi Ishii (connection): tangible bits and radical atoms. Give digital information a physical form you can hold and share.",
           "Can technology put humans in front of the decision, in the real world, and not behind a phone screen?",
-          "Click 1: the names become body, knowledge, connection. Click 2: Interaction Design is Humanism.",
+          "Click 1: the names become body, knowledge, connection. Click 2: Interaction Design is Humanism. Click 3: the keywords sense-making, thinking, creating.",
           "Land it: this thesis extends our senses toward thinking, sense making, and creating. I think that is worth pursuing.",
         ],
         ["Hold up the puck: “I’m happy to address the thoughts you are holding now.”"],
@@ -1423,7 +1472,7 @@
         return +(s.dataset.steps || 0);
       }
 
-      // 10-minute timer: starts when slide 1 is first opened
+      // 10-minute timer: starts when "Imagine…" is revealed on slide 0
       const TALK_MS = 10 * 60 * 1000;
       let t0 = null;
       function tickTimer() {
@@ -1434,8 +1483,8 @@
       }
 
       function apply() {
-        if (cur === 0) {
-          // back on the cold open: reset the clock
+        if (cur === 0 && step === 0) {
+          // back before the reveal: reset the clock
           t0 = null;
           document.getElementById("timer").style.left = "0";
         } else if (t0 === null) {
