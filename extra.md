@@ -4,6 +4,7 @@
 - [Life Choice Live](./life-choice-live/)
 - [Live Sketch](./live-sketch/)
 - [Master Thesis](./master-thesis/)
+- [Master Thesis Crit Deck](./master-thesis/crit-day-deck/)
 - [Synthetic Memory](./synthetic-memory/simulation-01.md)
 - [Thank You](./thank-you/)
 - [TMG 30](./tmg-30/)

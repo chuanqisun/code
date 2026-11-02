@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Microplastics Essay Draft — Parallel Threads</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #ffffff;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <script>
+      // ============================================================================
+      // REPLACE YOUR CONTENT HERE INSIDE THE BACKTICKS (` `)
+      // ============================================================================
+      const PROMPT_TEXT = "> Write a draft of an essay about microplastics";
+
+      const ESSAY_TEXT = `Plastic is a familiar part of modern life. It protects food, makes medical equipment safer, and provides an inexpensive material for countless products. Yet the durability that makes plastic useful also creates a lasting environmental problem. As plastic waste breaks apart, it produces tiny fragments known as microplastics. These particles have been found in oceans, rivers, soil, food, and even the air. Although scientists are still studying their effects, the growing presence of microplastics raises important questions about how plastic is produced, used, and discarded.
+
+Microplastics are generally defined as plastic particles smaller than five millimeters. Some are manufactured at a small size for specific uses, but many form when larger plastic items deteriorate. Sunlight, heat, and physical wear can break bottles, bags, fishing gear, and packaging into smaller pieces. Microplastics also come from everyday activities. Synthetic clothing can shed fibers during washing, while vehicle tires release tiny particles as they wear down on roads.
+
+Once released, these particles can travel far from their original sources. Wastewater treatment systems capture many microplastics, but some still pass through into waterways. Wind can carry lightweight fibers through the air, and rain can transport particles from streets into streams. As a result, microplastics have been detected in places far from major cities, including remote mountain regions and deep ocean waters. Their widespread distribution makes them difficult to collect and remove.
+
+One major concern is the effect of microplastics on wildlife. Fish, seabirds, and other animals may mistake plastic particles for food or consume them along with their prey. In some circumstances, ingested plastic can interfere with feeding or cause physical harm. Microplastics can also carry other substances, although the extent to which this increases risks to organisms depends on the conditions. Researchers continue to investigate how exposure affects different species and ecosystems over time.
+
+People are exposed to microplastics as well, including through food, water, and air. Scientists have detected plastic particles in human tissues, but detecting a substance does not by itself establish how harmful it is. More research is needed to determine which kinds and levels of exposure may cause health effects. This uncertainty should not be mistaken for proof of safety, but it also calls for care in describing risks without overstating what is known.
+
+Reducing microplastic pollution will require action at several stages of the plastic lifecycle. Manufacturers can design products that shed fewer particles and use less unnecessary packaging. Improved waste collection, recycling systems, and wastewater treatment can help prevent plastics from entering the environment. Governments can support research, set standards, and encourage alternatives where appropriate. Individuals can contribute by reducing unnecessary single-use plastics, disposing of waste responsibly, and choosing durable products when possible. However, personal choices alone cannot solve a problem created by production and disposal systems operating on a large scale.
+
+Microplastics illustrate how the effects of convenience can persist long after a product has been used. Their small size makes them easy to overlook, but their widespread presence makes them an environmental issue worth addressing. By reducing plastic leakage and continuing to study its consequences, society can begin to limit a problem that is easier to prevent than to reverse.`;
+      // ============================================================================
+
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const fontSize = 18;
+      const lineHeight = 26;
+      const columns = 80;
+      const responseStartRow = 3; // Row 0 is prompt, Row 1-2 blank, Row 3+ is response
+      const maxVisibleEssayRows = 44; // Keeps each thread neatly contained in its row slot
+
+      let charWidth, pageWidth, colSpacingX, rowSpacingY;
+      let width, height, dpr;
+
+      function resize() {
+        dpr = window.devicePixelRatio || 1;
+        width = window.innerWidth;
+        height = window.innerHeight;
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = width + "px";
+        canvas.style.height = height + "px";
+        ctx.font = `${fontSize}px "Courier New", Courier, monospace`;
+        charWidth = ctx.measureText("M").width;
+        pageWidth = columns * charWidth;
+        colSpacingX = pageWidth + 140;
+        rowSpacingY = (responseStartRow + maxVisibleEssayRows + 5) * lineHeight;
+      }
+      window.addEventListener("resize", resize);
+      resize();
+
+      // Seeded PRNG so each thread has deterministic shuffling & randomized timing
+      function createRNG(seed) {
+        let s = seed >>> 0;
+        return function () {
+          s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+          return s / 4294967296;
+        };
+      }
+
+      // Wrap a single paragraph into column-width lines
+      function wrapParagraph(para, maxCols) {
+        const words = para.trim().split(/\s+/);
+        const lines = [];
+        let current = "";
+        for (const word of words) {
+          if ((current + word).length > maxCols) {
+            lines.push(current.padEnd(maxCols, " "));
+            current = word + " ";
+          } else {
+            current += word + " ";
+          }
+        }
+        if (current.trim().length > 0) {
+          lines.push(current.padEnd(maxCols, " "));
+        }
+        lines.push(" ".repeat(maxCols)); // Blank line after each paragraph
+        return lines;
+      }
+
+      const baseParagraphs = ESSAY_TEXT.replace(/\r\n/g, "\n")
+        .split(/\n\s*\n/)
+        .filter((p) => p.trim().length > 0);
+
+      // Create 6 parallel threads (3 per row, 2 rows) with shuffled paragraphs and randomized timing
+      const threads = [];
+      for (let i = 0; i < 6; i++) {
+        const rng = createRNG((i + 1) * 987654321);
+        const gridCol = i % 3;
+        const gridRow = Math.floor(i / 3);
+
+        // Build a large pool of shuffled paragraphs so even looping feels varied
+        const wrappedLines = [];
+        for (let cycle = 0; cycle < 6; cycle++) {
+          const shuffled = [...baseParagraphs];
+          // Thread 0 keeps original order on first cycle; all others shuffle immediately
+          if (i > 0 || cycle > 0) {
+            for (let j = shuffled.length - 1; j > 0; j--) {
+              const k = Math.floor(rng() * (j + 1));
+              [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
+            }
+          }
+          for (const p of shuffled) {
+            wrappedLines.push(...wrapParagraph(p, columns));
+          }
+        }
+
+        threads.push({
+          index: i,
+          gridCol,
+          gridRow,
+          lines: wrappedLines,
+          totalChars: 0,
+          // Thread 0 is our hero thread; Threads 1-5 have randomized speeds, head-starts, and jitter
+          speedMultiplier: i === 0 ? 1.0 : 0.72 + rng() * 0.65,
+          initialChars: i === 0 ? 0 : Math.floor(rng() * 1400),
+          jitterPhase: rng() * Math.PI * 2,
+          promptOffset: i === 0 ? 0 : (rng() - 0.5) * 0.6,
+        });
+      }
+
+      threads.forEach((t) => {
+        t.totalChars = t.initialChars;
+      });
+
+      function getThreadOrigin(thread) {
+        return {
+          x: thread.gridCol * colSpacingX,
+          y: thread.gridRow * rowSpacingY,
+        };
+      }
+
+      let started = performance.now();
+      let last = started;
+
+      // Start framed with Thread 0's prompt comfortably in view
+      let zoom = 1.25;
+      let camX = PROMPT_TEXT.length * charWidth * 0.5;
+      let camY = lineHeight * 1.5;
+      let targetZoom = zoom;
+      let targetX = camX;
+      let targetY = camY;
+
+      // Timeline constants (in seconds)
+      const T_PROMPT_START = 0.5;
+      const T_PROMPT_END = 2.3; // Finishes typing prompt on Thread 0
+      const T_PAUSE_BEFORE_ZOOM = 2.9; // Pause to read the full prompt
+      const T_ZOOM_OUT = 6.2; // seconds after stream start when the camera begins pulling out to the six-thread view
+      const T_STREAM_START = 4.3; // 1.4s of zoomed-in blinking cursor before stream starts
+
+      // Stream stage progression (seconds after T_STREAM_START):
+      // 0: Character Level (18x)
+      // 1: Word Level (4.8x)
+      // 2: Line Level - 1 Thread (0.95x)
+      // 3: 6 Parallel Threads - 2 Rows of 3 (continues indefinitely)
+      function getStage(streamTime) {
+        if (streamTime < 1.8) return 0; // CHARACTER LEVEL
+        if (streamTime < 3.5) return 1; // WORD LEVEL
+        if (streamTime < 6.2) return 2; // LINE LEVEL (1 Thread)
+        return 3; // 6 PARALLEL THREADS (2 Rows of 3, forever)
+      }
+
+      // Compute the scrolled state of a thread so it stays neatly inside its vertical slot
+      function getThreadState(thread, count) {
+        const origin = getThreadOrigin(thread);
+        const absEssayRow = Math.floor(count / columns);
+        const col = count % columns;
+
+        // Scroll the thread's essay lines upward once it fills its vertical box
+        const scrollOffset = Math.max(0, absEssayRow - (maxVisibleEssayRows - 1));
+        const localEssayRow = absEssayRow - scrollOffset;
+        const displayRow = responseStartRow + localEssayRow;
+
+        const cursorX = origin.x + col * charWidth;
+        const cursorY = origin.y + displayRow * lineHeight;
+
+        return {
+          origin,
+          absEssayRow,
+          col,
+          scrollOffset,
+          localEssayRow,
+          displayRow,
+          cursorX,
+          cursorY,
+        };
+      }
+
+      function frame(now) {
+        const elapsed = (now - started) / 1000;
+        const dt = Math.min((now - last) / 1000, 0.1);
+        last = now;
+
+        const hero = threads[0];
+
+        // PHASE 1: Whole prompt in view on Thread 0
+        if (elapsed < T_PAUSE_BEFORE_ZOOM) {
+          targetZoom = 1.25;
+          targetX = PROMPT_TEXT.length * charWidth * 0.5;
+          targetY = lineHeight * 1.5;
+        }
+        // PHASE 2: Camera zooms 18x into Thread 0's output cursor, blinking
+        else if (elapsed < T_STREAM_START) {
+          const state = getThreadState(hero, 0);
+          targetZoom = 18;
+          targetX = state.origin.x + 1.5 * charWidth;
+          targetY = state.cursorY + fontSize * 0.45;
+        }
+        // PHASE 3: Streaming + Direct Jump from 1 Thread to 6 Parallel Threads
+        else {
+          const streamTime = elapsed - T_STREAM_START;
+          const stage = getStage(streamTime);
+
+          const baseSpeeds = [22, 95, 480, 560];
+          const baseSpeed = baseSpeeds[stage];
+
+          // Advance all 6 threads with randomized speed bursts
+          for (const t of threads) {
+            const burst = 0.75 + 0.45 * Math.sin(streamTime * 2.7 + t.jitterPhase);
+            const rate = baseSpeed * t.speedMultiplier * (t.index === 0 && stage < 2 ? 1 : burst);
+            t.totalChars += rate * dt;
+          }
+
+          const heroState = getThreadState(hero, Math.floor(hero.totalChars));
+
+          if (stage === 0) {
+            // LEVEL 0: CHARACTER LEVEL (18x)
+            targetZoom = 18;
+            const chunkCol = Math.floor(heroState.col / 3) * 3 + 1.5;
+            targetX = heroState.origin.x + chunkCol * charWidth;
+            targetY = heroState.cursorY + fontSize * 0.45;
+          } else if (stage === 1) {
+            // LEVEL 1: WORD LEVEL (4.8x)
+            targetZoom = 4.8;
+            const wordCol = Math.floor(heroState.col / 14) * 14 + 7;
+            targetX = heroState.origin.x + wordCol * charWidth;
+            targetY = heroState.cursorY + fontSize * 0.45;
+          } else if (stage === 2) {
+            // LEVEL 2: LINE LEVEL (1 Thread)
+            targetZoom = 0.95;
+            targetX = heroState.origin.x + pageWidth * 0.5;
+            targetY = heroState.cursorY - lineHeight * 6;
+          } else {
+            // LEVEL 3: 6 PARALLEL THREADS (3 per row, 2 rows — continues forever)
+            const totalWidth6 = 2 * colSpacingX + pageWidth;
+            const totalHeight6 = rowSpacingY + (responseStartRow + maxVisibleEssayRows) * lineHeight;
+            targetZoom = Math.min((width * 0.92) / totalWidth6, (height * 0.9) / totalHeight6);
+            targetX = totalWidth6 * 0.5;
+            targetY = totalHeight6 * 0.49;
+          }
+        }
+
+        // Mechanical camera snap
+        const snapSpeed = 24;
+        const ease = 1 - Math.exp(-snapSpeed * dt);
+
+        const logZoom = Math.log(zoom) + (Math.log(targetZoom) - Math.log(zoom)) * ease;
+        zoom = Math.exp(logZoom);
+        camX += (targetX - camX) * ease;
+        camY += (targetY - camY) * ease;
+
+        // Render
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(zoom, zoom);
+        ctx.translate(-camX, -camY);
+
+        ctx.fillStyle = "#000000";
+        ctx.font = `${fontSize}px "Courier New", Courier, monospace`;
+        ctx.textBaseline = "top";
+
+        // View frustum bounds in world coordinates for culling
+        const halfW = width / 2 / zoom;
+        const halfH = height / 2 / zoom;
+        const viewLeft = camX - halfW;
+        const viewRight = camX + halfW;
+        const viewTop = camY - halfH;
+        const viewBottom = camY + halfH;
+
+        // Only the hero thread exists until the zoom-out; the other five fade in during it
+        const streamElapsed = elapsed - T_STREAM_START;
+        const othersAlpha = Math.max(0, Math.min(1, (streamElapsed - T_ZOOM_OUT) / 1.5));
+
+        for (const thread of threads) {
+          if (thread.index !== 0 && othersAlpha <= 0) continue;
+          ctx.globalAlpha = thread.index === 0 ? 1 : othersAlpha;
+          const origin = getThreadOrigin(thread);
+
+          // Frustum cull threads that are completely off-screen
+          if (origin.x + pageWidth < viewLeft - 50 || origin.x > viewRight + 50) continue;
+          if (origin.y + rowSpacingY < viewTop - 50 || origin.y > viewBottom + 50) continue;
+
+          // 1. Draw Prompt Line (Row 0 of this thread)
+          const tPromptProgress = Math.max(0, Math.min(1, (elapsed - (T_PROMPT_START + thread.promptOffset)) / (T_PROMPT_END - T_PROMPT_START)));
+          const promptChars = Math.floor(tPromptProgress * PROMPT_TEXT.length);
+          ctx.fillText(PROMPT_TEXT.slice(0, promptChars), origin.x, origin.y);
+
+          // 2. Draw Streamed Essay Lines & Cursor
+          if (elapsed < T_PAUSE_BEFORE_ZOOM) {
+            const showBlink = elapsed < T_PROMPT_START || elapsed > T_PROMPT_END ? Math.floor(elapsed * 3) % 2 === 0 : true;
+            if (showBlink) {
+              ctx.fillRect(origin.x + promptChars * charWidth, origin.y, charWidth, fontSize + 2);
+            }
+          } else if (elapsed < T_STREAM_START) {
+            const state = getThreadState(thread, 0);
+            const showBlink = Math.floor(elapsed * 3.5) % 2 === 0;
+            if (showBlink) {
+              ctx.fillRect(state.cursorX, state.cursorY, charWidth, fontSize + 2);
+            }
+          } else {
+            const count = Math.floor(thread.totalChars);
+            const state = getThreadState(thread, count);
+
+            for (let localR = 0; localR <= state.localEssayRow; localR++) {
+              const drawY = origin.y + (responseStartRow + localR) * lineHeight;
+              if (drawY + lineHeight < viewTop || drawY > viewBottom) continue;
+
+              const absR = state.scrollOffset + localR;
+              const lineText = thread.lines[absR % thread.lines.length];
+              const str = localR === state.localEssayRow ? lineText.slice(0, state.col) : lineText;
+              ctx.fillText(str, origin.x, drawY);
+            }
+
+            // Draw active streaming block cursor for this thread
+            ctx.fillRect(state.cursorX, state.cursorY, charWidth, fontSize + 2);
+          }
+        }
+
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
