@@ -55,7 +55,7 @@
 
 ## Experiments Feed
 
-- [Sounds like a broken record](./broken-record/) #audio#sketch
+- [Sounds like a broken record](./broken-record/) interactive sketching on a record #audio#sketch
 - [Puck Grammar](./tangible-grammar/) dictionary of metaphor based interaction design #concept#interaction
 - [WT-01](./wt-01/) wavetable synthesizer #audio#music
 - [Laptop Sonar](./laptop-sonar/) detect hand position with laptop speakers and microphone #audio#sensing
