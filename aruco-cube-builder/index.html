@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ArUco Cube (modular)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/math/ConvexHull.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/geometries/ConvexGeometry.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      body {
+        font-family: monospace;
+        margin: 0;
+        display: flex;
+        height: 100vh;
+      }
+      aside {
+        width: 360px;
+        padding: 8px;
+        overflow-y: auto;
+        border-right: 1px solid;
+        box-sizing: border-box;
+      }
+      #view {
+        flex: 1;
+      }
+      fieldset {
+        margin-bottom: 8px;
+      }
+      label {
+        display: block;
+        margin: 2px 0;
+      }
+      input[type="number"] {
+        width: 6em;
+      }
+      #net {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+      #net div {
+        border: 1px solid;
+        padding: 2px;
+        text-align: center;
+      }
+      #net canvas {
+        width: 100%;
+        image-rendering: pixelated;
+        display: block;
+        border: 1px solid;
+        box-sizing: border-box;
+      }
+      #net input {
+        width: 4em;
+      }
+    </style>
+  </head>
+  <body>
+    <aside>
+      <div id="status">loading dictionary...</div>
+      <fieldset>
+        <legend>Unfolded cube (ArUco 4x4_50 ID per face)</legend>
+        <div id="net"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Dimensions (mm)</legend>
+        <label>Cube size <input id="size" type="number" value="40" min="5" step="1" /></label>
+        <label>Marker size (6x6 cells incl. black border) <input id="marker" type="number" value="30" min="6" step="1" /></label>
+        <label>Plate thickness (= recess depth) <input id="plate" type="number" value="2" min="0.4" step="0.2" /></label>
+        <label>Pattern depth (colored layers) <input id="pattern" type="number" value="0.6" min="0.2" step="0.2" /></label>
+        <label>Clearance per side <input id="clear" type="number" value="0.2" min="0" step="0.05" /></label>
+      </fieldset>
+      <fieldset>
+        <legend>Edges</legend>
+        <label
+          >Type
+          <select id="edge">
+            <option value="none">none</option>
+            <option value="chamfer">chamfer</option>
+            <option value="fillet">fillet</option>
+          </select>
+        </label>
+        <label>Size <input id="edgeSize" type="number" value="3" min="0.2" step="0.5" /></label>
+      </fieldset>
+      <fieldset>
+        <legend>Preview</legend>
+        <label
+          ><select id="mode">
+            <option value="assembled">assembled</option>
+            <option value="layout">print layout</option>
+          </select></label
+        >
+      </fieldset>
+      <button id="b3mf" disabled>Export .3MF (body + 6 plates)</button>
+      <button id="bstl" disabled>Export .STLs (zip)</button>
+      <pre id="info"></pre>
+    </aside>
+    <div id="view"></div>
+
+    <script>
+      // ---------- Dictionary (fetched from official OpenCV source) ----------
+      const DICT_URLS = [
+        "https://raw.githubusercontent.com/opencv/opencv/4.9.0/modules/objdetect/src/aruco/predefined_dictionaries.hpp",
+        "https://raw.githubusercontent.com/opencv/opencv/4.x/modules/objdetect/src/aruco/predefined_dictionaries.hpp",
+        "https://cdn.jsdelivr.net/gh/opencv/opencv@4.9.0/modules/objdetect/src/aruco/predefined_dictionaries.hpp",
+      ];
+      const N_IDS = 50;
+      let dict = null; // dict[id] = 4x4 array of 0/1 (1 = white)
+
+      async function loadDictionary() {
+        let lastErr;
+        for (const url of DICT_URLS) {
+          try {
+            const txt = (await (await fetch(url)).text()).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+            const start = txt.indexOf("DICT_4X4_1000_BYTES");
+            const eq = txt.indexOf("=", start);
+            const end = txt.indexOf("};", eq);
+            const nums = txt
+              .slice(eq + 1, end)
+              .match(/\d+/g)
+              .map(Number);
+            const d = [];
+            for (let id = 0; id < N_IDS; id++) {
+              const bytes = [nums[id * 8], nums[id * 8 + 1]];
+              const bits = [];
+              for (let i = 0; i < 16; i++) bits.push((bytes[i >> 3] >> (7 - (i & 7))) & 1);
+              d.push([0, 1, 2, 3].map((r) => bits.slice(r * 4, r * 4 + 4)));
+            }
+            return d;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr;
+      }
+
+      // ---------- State / UI ----------
+      const FACES = [
+        { name: "top", n: [0, 0, 1], u: [0, 1, 0], row: 1, col: 2, id: 0 },
+        { name: "left", n: [-1, 0, 0], u: [0, 0, 1], row: 2, col: 1, id: 1 },
+        { name: "front", n: [0, -1, 0], u: [0, 0, 1], row: 2, col: 2, id: 2 },
+        { name: "right", n: [1, 0, 0], u: [0, 0, 1], row: 2, col: 3, id: 3 },
+        { name: "back", n: [0, 1, 0], u: [0, 0, 1], row: 2, col: 4, id: 4 },
+        { name: "bottom", n: [0, 0, -1], u: [0, -1, 0], row: 3, col: 2, id: 5 },
+      ];
+      const $ = (id) => document.getElementById(id);
+      const net = $("net");
+      net.style.gridTemplateRows = "repeat(3, auto)";
+
+      for (const f of FACES) {
+        const d = document.createElement("div");
+        d.style.gridRow = f.row;
+        d.style.gridColumn = f.col;
+        d.innerHTML = `${f.name}<br><input type="number" min="0" max="${N_IDS - 1}" step="1" value="${f.id}"><canvas width="6" height="6"></canvas>`;
+        net.appendChild(d);
+        f.input = d.querySelector("input");
+        f.canvas = d.querySelector("canvas");
+        f.input.addEventListener("input", () => {
+          f.id = Math.min(N_IDS - 1, Math.max(0, parseInt(f.input.value) || 0));
+          refresh();
+        });
+      }
+
+      // black cell at 6x6 marker grid position (border ring + black bits)
+      const isBlack = (F, r, c) => {
+        if (r < 0 || r > 5 || c < 0 || c > 5) return false;
+        if (r === 0 || r === 5 || c === 0 || c === 5) return true;
+        return !!dict && !dict[F.id][r - 1][c - 1];
+      };
+
+      function drawNet() {
+        for (const f of FACES) {
+          const g = f.canvas.getContext("2d");
+          g.fillStyle = "#fff";
+          g.fillRect(0, 0, 6, 6);
+          g.fillStyle = "#000";
+          for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) if (isBlack(f, r, c)) g.fillRect(c, r, 1, 1);
+        }
+      }
+
+      const num = (id, def, min) => {
+        const v = parseFloat($(id).value);
+        return Math.max(min, isNaN(v) ? def : v);
+      };
+      const P = () => ({
+        size: num("size", 40, 5),
+        marker: num("marker", 30, 6),
+        plate: num("plate", 2, 0.4),
+        pattern: num("pattern", 0.6, 0.2),
+        clear: num("clear", 0.2, 0),
+        edge: $("edge").value,
+        edgeSize: num("edgeSize", 3, 0.2),
+      });
+      document.querySelectorAll("aside input[id], aside select").forEach((e) => e.addEventListener("input", refresh));
+
+      // ---------- Geometry (Z-up, mm) ----------
+      const nonIndexed = (g) => (g.index ? g.toNonIndexed() : g);
+
+      function extractMesh(geom) {
+        const pos = nonIndexed(geom).attributes.position.array;
+        const vertices = [],
+          triangles = [],
+          map = new Map();
+        const vi = (x, y, z) => {
+          const k = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+          if (map.has(k)) return map.get(k);
+          vertices.push({ x, y, z });
+          map.set(k, vertices.length - 1);
+          return vertices.length - 1;
+        };
+        for (let i = 0; i < pos.length; i += 9)
+          triangles.push({
+            v1: vi(pos[i], pos[i + 1], pos[i + 2]),
+            v2: vi(pos[i + 3], pos[i + 4], pos[i + 5]),
+            v3: vi(pos[i + 6], pos[i + 7], pos[i + 8]),
+          });
+        return { vertices, triangles };
+      }
+      function merge(list) {
+        const vertices = [],
+          triangles = [];
+        for (const m of list) {
+          const o = vertices.length;
+          for (const v of m.vertices) vertices.push(v);
+          for (const t of m.triangles) triangles.push({ v1: t.v1 + o, v2: t.v2 + o, v3: t.v3 + o });
+        }
+        return { vertices, triangles };
+      }
+      function meshToGeom(mesh) {
+        const a = [];
+        for (const t of mesh.triangles)
+          for (const k of [t.v1, t.v2, t.v3]) {
+            const v = mesh.vertices[k];
+            a.push(v.x, v.y, v.z);
+          }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
+        g.computeVertexNormals();
+        return g;
+      }
+
+      // Body: hull whose flat faces are replaced by a frame + square recess (half-size q, depth d).
+      function pocketBody(hull, S, f, q, d) {
+        const h = S / 2;
+        const src = nonIndexed(hull).attributes.position.array;
+        const out = [];
+        for (let i = 0; i < src.length; i += 9) {
+          let flat = false;
+          for (let ax = 0; ax < 3 && !flat; ax++)
+            for (const sg of [-1, 1]) {
+              if (Math.abs(src[i + ax] - sg * h) < 1e-4 && Math.abs(src[i + 3 + ax] - sg * h) < 1e-4 && Math.abs(src[i + 6 + ax] - sg * h) < 1e-4) {
+                flat = true;
+                break;
+              }
+            }
+          if (!flat) for (let k = 0; k < 9; k++) out.push(src[i + k]);
+        }
+
+        for (const F of FACES) {
+          const n = new THREE.Vector3(...F.n),
+            u = new THREE.Vector3(...F.u);
+          const r = new THREE.Vector3().crossVectors(u, n);
+          const nr = r.clone().negate(),
+            nu = u.clone().negate();
+          const pt = (a, b, z) =>
+            n
+              .clone()
+              .multiplyScalar(h - z)
+              .addScaledVector(r, a)
+              .addScaledVector(u, b);
+          const tri = (p0, p1, p2, nrm) => {
+            const c = new THREE.Vector3().crossVectors(p1.clone().sub(p0), p2.clone().sub(p0));
+            if (c.length() < 1e-9) return;
+            if (c.dot(nrm) < 0) [p1, p2] = [p2, p1];
+            out.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+          };
+          const quad = (p0, p1, p2, p3, nrm) => {
+            tri(p0, p1, p2, nrm);
+            tri(p0, p2, p3, nrm);
+          };
+          const rot = ([a, b], k) => {
+            for (let i = 0; i < k; i++) [a, b] = [-b, a];
+            return [a, b];
+          };
+          const v = ([a, b]) => pt(a, b, 0);
+
+          // flat frame between outer square (half f) and recess square (half q)
+          for (let k = 0; k < 4; k++) quad(v(rot([-f, f], k)), v(rot([f, f], k)), v(rot([q, q], k)), v(rot([-q, q], k)), n);
+
+          // recess floor + walls (walls face into the recess)
+          quad(pt(-q, -q, d), pt(q, -q, d), pt(q, q, d), pt(-q, q, d), n);
+          quad(pt(-q, -q, 0), pt(-q, q, 0), pt(-q, q, d), pt(-q, -q, d), r);
+          quad(pt(q, -q, 0), pt(q, q, 0), pt(q, q, d), pt(q, -q, d), nr);
+          quad(pt(-q, -q, 0), pt(q, -q, 0), pt(q, -q, d), pt(-q, -q, d), u);
+          quad(pt(-q, q, 0), pt(q, q, 0), pt(q, q, d), pt(-q, q, d), nu);
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+        return g;
+      }
+
+      // Plate in print orientation: marker face on Z=0, centered on XY, thickness d.
+      // Print coords relate to face coords (a right, b up, depth) by x=-a, y=b, z=depth (mirrored so the face reads right).
+      function plateMeshes(F, m, d, pat) {
+        const cell = m / 6;
+        const whites = [],
+          blacks = [];
+        const box = (w, hgt, z0, z1, x, y) => {
+          const g = new THREE.BoxGeometry(w, hgt, z1 - z0);
+          g.translate(x, y, (z0 + z1) / 2);
+          return extractMesh(g);
+        };
+        if (d - pat > 1e-6) whites.push(box(m, m, pat, d, 0, 0));
+        for (let row = 0; row < 6; row++)
+          for (let col = 0; col < 6; col++) {
+            const a = (col + 0.5 - 3) * cell,
+              b = -(row + 0.5 - 3) * cell;
+            (isBlack(F, row, col) ? blacks : whites).push(box(cell, cell, 0, pat, -a, b));
+          }
+        return { white: merge(whites), black: merge(blacks) };
+      }
+
+      function buildParts() {
+        const p = P();
+        const S = p.size;
+        const e = p.edge === "none" ? 0 : Math.min(p.edgeSize, S / 2 - 0.1);
+        const c = p.clear;
+        const d = Math.min(p.plate, S / 4);
+        const pat = Math.min(p.pattern, d);
+        const margin = Math.max(e, d + 0.8);
+        const m = Math.max(3, Math.min(p.marker, S - 2 * margin - 2 * c));
+        const q = m / 2 + c;
+        const flat = S / 2 - e;
+
+        let hull;
+        if (!e) hull = new THREE.BoxGeometry(S, S, S);
+        else {
+          const h = S / 2,
+            k = h - e,
+            pts = [],
+            seen = new Set();
+          const add = (x, y, z) => {
+            const key = [x, y, z].map((v) => v.toFixed(5)).join();
+            if (!seen.has(key)) {
+              seen.add(key);
+              pts.push(new THREE.Vector3(x, y, z));
+            }
+          };
+          const N = 8;
+          for (const sx of [-1, 1])
+            for (const sy of [-1, 1])
+              for (const sz of [-1, 1]) {
+                if (p.edge === "chamfer") {
+                  add(sx * h, sy * k, sz * k);
+                  add(sx * k, sy * h, sz * k);
+                  add(sx * k, sy * k, sz * h);
+                } else {
+                  for (let i = 0; i <= N; i++)
+                    for (let j = 0; j <= N; j++) {
+                      const th = ((i / N) * Math.PI) / 2,
+                        ph = ((j / N) * Math.PI) / 2;
+                      add(sx * (k + e * Math.sin(th) * Math.cos(ph)), sy * (k + e * Math.sin(th) * Math.sin(ph)), sz * (k + e * Math.cos(th)));
+                    }
+                }
+              }
+          hull = new THREE.ConvexGeometry(pts);
+        }
+        const bodyG = pocketBody(hull, S, flat, q, d);
+        bodyG.translate(0, 0, S / 2);
+        const body = extractMesh(bodyG);
+        const plates = FACES.map((F) => ({ F, ...plateMeshes(F, m, d, pat) }));
+        return { body, plates, S, e, m, cell: m / 6, d, pat, q, p };
+      }
+
+      // Print-bed layout: slot 0 = body, slots 1..6 = plates; positions relative to bed center
+      function layout(S, m) {
+        const pitch = Math.max(S, m) + 10;
+        return Array.from({ length: 7 }, (_, i) => [((i % 4) - 1.5) * pitch, (0.5 - Math.floor(i / 4)) * pitch]);
+      }
+
+      // ---------- Preview ----------
+      const view = $("view");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xdddddd);
+      const camera = new THREE.PerspectiveCamera(40, 1, 1, 3000);
+      camera.up.set(0, 0, 1);
+      camera.position.set(80, -100, 80);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      view.appendChild(renderer.domElement);
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 20);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const dl = new THREE.DirectionalLight(0xffffff, 0.8);
+      dl.position.set(50, -80, 100);
+      scene.add(dl);
+      const dl2 = new THREE.DirectionalLight(0xffffff, 0.4);
+      dl2.position.set(-50, 80, -40);
+      scene.add(dl2);
+      const grid = new THREE.GridHelper(300, 30, 0x888888, 0xbbbbbb);
+      grid.rotation.x = Math.PI / 2;
+      scene.add(grid);
+      const group = new THREE.Group();
+      scene.add(group);
+      const matW = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+      const matB = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
+
+      function resize() {
+        renderer.setSize(view.clientWidth, view.clientHeight);
+        camera.aspect = view.clientWidth / view.clientHeight;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", resize);
+      resize();
+      (function loop() {
+        requestAnimationFrame(loop);
+        controls.update();
+        renderer.render(scene, camera);
+      })();
+
+      let lastMode = null;
+      function refresh() {
+        drawNet();
+        while (group.children.length) {
+          const o = group.children[0];
+          o.traverse((x) => x.geometry && x.geometry.dispose());
+          group.remove(o);
+        }
+        const g = buildParts();
+        const mode = $("mode").value;
+        const slots = layout(g.S, g.m);
+
+        const bodyMesh = new THREE.Mesh(meshToGeom(g.body), matW);
+        if (mode === "layout") bodyMesh.position.set(slots[0][0], slots[0][1], 0);
+        group.add(bodyMesh);
+
+        g.plates.forEach((pl, i) => {
+          const holder = new THREE.Group();
+          holder.add(new THREE.Mesh(meshToGeom(pl.white), matW));
+          holder.add(new THREE.Mesh(meshToGeom(pl.black), matB));
+          if (mode === "layout") holder.position.set(slots[i + 1][0], slots[i + 1][1], 0);
+          else {
+            const n = new THREE.Vector3(...pl.F.n),
+              u = new THREE.Vector3(...pl.F.u);
+            const r = new THREE.Vector3().crossVectors(u, n);
+            const M = new THREE.Matrix4().makeBasis(r.clone().negate(), u, n.clone().negate());
+            const t = n
+              .clone()
+              .multiplyScalar(g.S / 2)
+              .add(new THREE.Vector3(0, 0, g.S / 2));
+            M.setPosition(t);
+            holder.matrixAutoUpdate = false;
+            holder.matrix.copy(M);
+          }
+          group.add(holder);
+        });
+
+        if (mode !== lastMode) {
+          controls.target.set(0, 0, mode === "layout" ? 0 : g.S / 2);
+          lastMode = mode;
+        }
+
+        const p = g.p;
+        $("info").textContent =
+          `cell: ${g.cell.toFixed(2)} mm\nplate: ${g.m.toFixed(1)} x ${g.m.toFixed(1)} x ${g.d.toFixed(1)} mm` +
+          `\nrecess: ${(2 * g.q).toFixed(2)} x ${(2 * g.q).toFixed(2)} x ${g.d.toFixed(1)} mm` +
+          (p.marker > g.m + 1e-6 ? "\n(marker clamped to fit)" : "") +
+          (p.plate > g.d + 1e-6 ? "\n(thickness clamped)" : "") +
+          `\nedge: ${g.e.toFixed(1)} mm\npattern depth: ${g.pat.toFixed(1)} mm`;
+      }
+
+      // ---------- Export ----------
+      function objXML(id, name, mesh, pindex) {
+        const v = mesh.vertices.map((v) => `<vertex x="${v.x.toFixed(4)}" y="${v.y.toFixed(4)}" z="${v.z.toFixed(4)}"/>`).join("\n");
+        const t = mesh.triangles.map((t) => `<triangle v1="${t.v1}" v2="${t.v2}" v3="${t.v3}"/>`).join("\n");
+        return `<object id="${id}" name="${name}" type="model" pid="10" pindex="${pindex}"><mesh><vertices>\n${v}\n</vertices><triangles>\n${t}\n</triangles></mesh></object>\n`;
+      }
+
+      async function export3MF() {
+        const g = buildParts();
+        const slots = layout(g.S, g.m);
+        const types = `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="config" ContentType="text/xml"/></Types>`;
+        const rels = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`;
+
+        let objs = "",
+          items = "",
+          cfg = "";
+        const addItem = (assemblyId, slot) => {
+          items += `<item objectid="${assemblyId}" transform="1 0 0 0 1 0 0 0 1 ${(128 + slots[slot][0]).toFixed(3)} ${(128 + slots[slot][1]).toFixed(3)} 0"/>\n`;
+        };
+
+        // body: mesh id 1, assembly id 2
+        objs += objXML(1, "Body", g.body, 1);
+        objs += `<object id="2" name="Cube_Body" type="model"><components><component objectid="1"/></components></object>\n`;
+        cfg += `<object id="2"><metadata key="name" value="Cube_Body"/>
+<part id="1" subtype="normal_part"><metadata key="name" value="Body"/><metadata key="extruder" value="1"/></part></object>\n`;
+        addItem(2, 0);
+
+        // plates: white id 3+3i, black id 4+3i, assembly id 5+3i
+        g.plates.forEach((pl, i) => {
+          const w = 3 + 3 * i,
+            b = 4 + 3 * i,
+            a = 5 + 3 * i;
+          const nm = `Face_${pl.F.name}_ID${pl.F.id}`;
+          objs += objXML(w, `${nm}_white`, pl.white, 1);
+          objs += objXML(b, `${nm}_black`, pl.black, 0);
+          objs += `<object id="${a}" name="${nm}" type="model"><components><component objectid="${w}"/><component objectid="${b}"/></components></object>\n`;
+          cfg += `<object id="${a}"><metadata key="name" value="${nm}"/>
+<part id="${w}" subtype="normal_part"><metadata key="name" value="${nm}_white"/><metadata key="extruder" value="1"/></part>
+<part id="${b}" subtype="normal_part"><metadata key="name" value="${nm}_black"/><metadata key="extruder" value="2"/></part></object>\n`;
+          addItem(a, i + 1);
+        });
+
+        const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+<metadata name="Application">ArUco_Cube_Generator</metadata>
+<resources>
+<basematerials id="10"><base name="Black" displaycolor="#111111"/><base name="White" displaycolor="#FFFFFF"/></basematerials>
+${objs}</resources>
+<build>
+${items}</build>
+</model>`;
+        const settings = `<?xml version="1.0" encoding="UTF-8"?>\n<config>\n${cfg}</config>`;
+
+        const zip = new JSZip();
+        zip.file("[Content_Types].xml", types);
+        zip.folder("_rels").file(".rels", rels);
+        zip.folder("3D").file("3dmodel.model", model);
+        zip.folder("Metadata").file("model_settings.config", settings);
+        download(await zip.generateAsync({ type: "blob" }), "ArUco_Cube_Modular.3mf");
+      }
+
+      function toSTL(name, mesh) {
+        const V = mesh.vertices;
+        let s = `solid ${name}\n`;
+        for (const t of mesh.triangles) {
+          const a = V[t.v1],
+            b = V[t.v2],
+            c = V[t.v3];
+          const ux = b.x - a.x,
+            uy = b.y - a.y,
+            uz = b.z - a.z,
+            vx = c.x - a.x,
+            vy = c.y - a.y,
+            vz = c.z - a.z;
+          let nx = uy * vz - uz * vy,
+            ny = uz * vx - ux * vz,
+            nz = ux * vy - uy * vx;
+          const l = Math.hypot(nx, ny, nz) || 1;
+          s +=
+            `facet normal ${nx / l} ${ny / l} ${nz / l}\nouter loop\n` +
+            [a, b, c].map((p) => `vertex ${p.x.toFixed(4)} ${p.y.toFixed(4)} ${p.z.toFixed(4)}\n`).join("") +
+            `endloop\nendfacet\n`;
+        }
+        return s + `endsolid ${name}\n`;
+      }
+      async function exportSTLs() {
+        const g = buildParts();
+        const zip = new JSZip();
+        zip.file("body.stl", toSTL("body", g.body));
+        g.plates.forEach((pl) => {
+          const nm = `face_${pl.F.name}_ID${pl.F.id}`;
+          zip.file(`${nm}_white.stl`, toSTL(nm + "_white", pl.white));
+          zip.file(`${nm}_black.stl`, toSTL(nm + "_black", pl.black));
+        });
+        download(await zip.generateAsync({ type: "blob" }), "ArUco_Cube_STLs.zip");
+      }
+      function download(blob, name) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      }
+      $("b3mf").onclick = export3MF;
+      $("bstl").onclick = exportSTLs;
+
+      // ---------- Init ----------
+      refresh();
+      loadDictionary()
+        .then((d) => {
+          dict = d;
+          $("status").textContent = `DICT_4X4_50 loaded (${N_IDS} ids)`;
+          $("b3mf").disabled = $("bstl").disabled = false;
+          refresh();
+        })
+        .catch((e) => {
+          $("status").textContent = "dictionary load failed: " + e.message;
+        });
+    </script>
+  </body>
+</html>
