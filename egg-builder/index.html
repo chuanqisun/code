@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Egg Builder</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      body {
+        font-family: monospace;
+        background: #fff;
+        color: #000;
+        margin: 1em;
+      }
+      label {
+        margin-right: 1em;
+        white-space: nowrap;
+      }
+      input,
+      select,
+      button {
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Egg Builder</h1>
+
+    <p>
+      <label
+        >Mode
+        <select id="mode">
+          <option value="realistic">Realistic</option>
+          <option value="pixel">Pixel art</option>
+        </select>
+      </label>
+      <label>White radius (mm) <input id="radius" type="number" value="20" min="5" max="100" step="1" /></label>
+    </p>
+    <p id="opts-realistic">
+      <label>Yolk size (% of radius) <input id="yolk" type="number" value="32" min="15" max="55" step="1" /></label>
+      <label>Shape seed <input id="seed" type="number" value="7" step="1" /></label>
+      <button id="newshape">New shape</button>
+    </p>
+    <p id="opts-pixel" style="display: none">
+      <label>Outline height (mm) <input id="hOutline" type="number" value="2" min="0.4" step="0.2" /></label>
+      <label>White height (mm) <input id="hWhite" type="number" value="3" min="0.4" step="0.2" /></label>
+      <label>Yolk height (mm) <input id="hYolk" type="number" value="5" min="0.4" step="0.2" /></label>
+    </p>
+    <p>
+      <button id="b3mf">Download .3mf</button>
+      <button id="bstl">Download .stl</button>
+      <span id="info"></span>
+    </p>
+
+    <div id="view" style="width: 100%; height: 70vh; border: 1px solid #000"></div>
+    <p>Drag to rotate, right-drag to pan, scroll to zoom. In the 3MF each color is a separate part with its own filament.</p>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      /* =====================================================
+   REALISTIC MODE
+   Returns parts: [{name, hex, v, t(flat indices), extruder}]
+   ===================================================== */
+      function rng(seed) {
+        let a = (seed * 2654435761) >>> 0;
+        return () => {
+          a = (a + 0x6d2b79f5) >>> 0;
+          let t = a;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      class Mesh {
+        constructor() {
+          this.v = [];
+          this.t = [];
+        }
+        add(x, y, z) {
+          this.v.push(x, y, z);
+          return this.v.length / 3 - 1;
+        }
+        tri(a, b, c) {
+          this.t.push(a, b, c);
+        }
+      }
+
+      function bridge(m, A, B) {
+        const S = A.length;
+        for (let i = 0; i < S; i++) {
+          const j = (i + 1) % S;
+          m.tri(A[i], B[i], A[j]);
+          m.tri(A[j], B[i], B[j]);
+        }
+      }
+
+      function buildRealistic() {
+        const R = parseFloat($("radius").value) || 20;
+        const ry = (R * (parseFloat($("yolk").value) || 32)) / 100;
+        const seed = parseInt($("seed").value) || 0;
+        const k = R / 20;
+        const T = 3.2 * k;
+        const F = 1.5 * k;
+        const yh = ry * 0.75;
+        const S = 128,
+          N = 40,
+          M = 20;
+
+        const rand = rng(seed);
+        const harm = [];
+        for (let h = 1; h <= 6; h++) harm.push({ h, a: (0.16 / h) * (0.4 + 0.6 * rand()), p: rand() * Math.PI * 2 });
+        const outline = (th) => {
+          let r = 1;
+          for (const q of harm) r += q.a * Math.cos(q.h * th + q.p);
+          return Math.max(R * r, ry * 1.7);
+        };
+
+        const white = new Mesh();
+        const top = white.add(0, 0, T);
+        const rings = [];
+        for (let n = 0; n <= N; n++) {
+          const tt = n / N;
+          const u = 1 - (1 - tt) * (1 - tt);
+          const ring = [];
+          for (let i = 0; i < S; i++) {
+            const th = (i / S) * Math.PI * 2;
+            const r = outline(th);
+            const rho = ry + u * (r - ry);
+            const e = Math.min(0.6, (2.5 * k) / (r - ry));
+            let h = F * (1 - 0.3 * u) + (T - F) * Math.exp(-6 * u);
+            if (u > 1 - e) {
+              const s = (u - (1 - e)) / e;
+              h *= Math.sqrt(Math.max(0, 1 - s * s));
+            }
+            if (n === N) h = 0;
+            ring.push(white.add(rho * Math.cos(th), rho * Math.sin(th), h));
+          }
+          rings.push(ring);
+        }
+        for (let i = 0; i < S; i++) white.tri(top, rings[0][i], rings[0][(i + 1) % S]);
+        for (let n = 0; n < N; n++) bridge(white, rings[n], rings[n + 1]);
+        const bot = white.add(0, 0, 0);
+        const rim = rings[N];
+        for (let i = 0; i < S; i++) white.tri(bot, rim[(i + 1) % S], rim[i]);
+
+        const yolk = new Mesh();
+        const apex = yolk.add(0, 0, T + yh);
+        const yr = [];
+        for (let j = 1; j <= M; j++) {
+          const phi = ((j / M) * Math.PI) / 2;
+          const rho = ry * Math.sin(phi),
+            z = T + yh * Math.cos(phi);
+          const ring = [];
+          for (let i = 0; i < S; i++) {
+            const th = (i / S) * Math.PI * 2;
+            ring.push(yolk.add(rho * Math.cos(th), rho * Math.sin(th), z));
+          }
+          yr.push(ring);
+        }
+        for (let i = 0; i < S; i++) yolk.tri(apex, yr[0][i], yr[0][(i + 1) % S]);
+        for (let j = 0; j < M - 1; j++) bridge(yolk, yr[j], yr[j + 1]);
+        const yb = yolk.add(0, 0, T);
+        const last = yr[M - 1];
+        for (let i = 0; i < S; i++) yolk.tri(yb, last[(i + 1) % S], last[i]);
+
+        return [
+          { name: "Egg_White", hex: "#f4f1ea", v: white.v, t: white.t, rough: 0.25, double: true },
+          { name: "Egg_Yolk", hex: "#f2a20c", v: yolk.v, t: yolk.t, rough: 0.15 },
+        ];
+      }
+
+      /* =====================================================
+   PIXEL MODE
+   ===================================================== */
+      const PW = 32,
+        PH = 26;
+      const COLORS = {
+        K: { name: "Black", hex: "#111111" },
+        W: { name: "White", hex: "#FFFFFF" },
+        Y: { name: "Yellow", hex: "#F5B800" },
+      };
+
+      function buildPixels() {
+        const cx = (PW - 1) / 2,
+          cy = (PH - 1) / 2;
+        const mask = [],
+          g = [];
+        for (let r = 0; r < PH; r++) {
+          mask[r] = [];
+          g[r] = [];
+          for (let c = 0; c < PW; c++) {
+            const dx = (c - cx) / (PW / 2),
+              dy = (r - cy) / (PH / 2);
+            const a = Math.atan2(dy, dx);
+            const rad = 1 + 0.05 * Math.sin(3 * a + 1) + 0.04 * Math.cos(5 * a);
+            mask[r][c] = dx * dx + dy * dy <= rad * rad * 0.97;
+            g[r][c] = ".";
+          }
+        }
+        const m = (r, c) => r >= 0 && r < PH && c >= 0 && c < PW && mask[r][c];
+        const outline = (r, c) => m(r, c) && !(m(r - 1, c) && m(r + 1, c) && m(r, c - 1) && m(r, c + 1));
+        const yx = cx,
+          yy = cy - 1.5;
+        for (let r = 0; r < PH; r++)
+          for (let c = 0; c < PW; c++) {
+            if (!m(r, c)) continue;
+            const dx = c - yx,
+              dy = r - yy,
+              d = Math.hypot(dx, dy);
+            let t;
+            if (outline(r, c)) t = "K";
+            else if (d <= 5.2) {
+              t = "Y";
+              if (dx >= -3.5 && dx <= -1 && dy >= -3.5 && dy <= -1.5 && d < 4.8) t = "H";
+            } else t = "W";
+            g[r][c] = t;
+          }
+        return g;
+      }
+      const pixels = buildPixels();
+
+      function pixelParams() {
+        return {
+          R: Math.max(1, parseFloat($("radius").value) || 20),
+          hK: parseFloat($("hOutline").value) || 2,
+          hW: parseFloat($("hWhite").value) || 3,
+          hY: parseFloat($("hYolk").value) || 5,
+        };
+      }
+
+      function segmentsOf(t, p) {
+        if (t === "K") return [["K", 0, p.hK]];
+        if (t === "W") return [["W", 0, p.hW]];
+        if (t === "Y") return [["Y", 0, p.hY]];
+        if (t === "H") {
+          const d = Math.min(1, p.hY / 2);
+          return [
+            ["Y", 0, p.hY - d],
+            ["W", p.hY - d, p.hY],
+          ];
+        }
+        return [];
+      }
+
+      function subtract(lo, hi, cuts) {
+        let rem = [[lo, hi]];
+        for (const [a, b] of cuts) {
+          const next = [];
+          for (const [s, e] of rem) {
+            if (b <= s || a >= e) {
+              next.push([s, e]);
+              continue;
+            }
+            if (a > s) next.push([s, a]);
+            if (b < e) next.push([b, e]);
+          }
+          rem = next;
+        }
+        return rem.filter(([s, e]) => e - s > 1e-6);
+      }
+
+      function buildPixel() {
+        const p = pixelParams();
+        const px = (2 * p.R) / PW;
+        const segs = pixels.map((row) => row.map((t) => segmentsOf(t, p)));
+        const segAt = (r, c) => (r < 0 || r >= PH || c < 0 || c >= PW ? [] : segs[r][c]);
+        const parts = {};
+
+        function part(key) {
+          if (parts[key]) return parts[key];
+          const pt = { v: [], t: [], map: new Map() };
+          pt.idx = (x, y, z) => {
+            const k = x.toFixed(4) + "," + y.toFixed(4) + "," + z.toFixed(4);
+            let i = pt.map.get(k);
+            if (i === undefined) {
+              i = pt.v.length / 3;
+              pt.v.push(x, y, z);
+              pt.map.set(k, i);
+            }
+            return i;
+          };
+          pt.quad = (a, b, c, d) => pt.t.push(a, b, c, a, c, d);
+          return (parts[key] = pt);
+        }
+
+        for (let r = 0; r < PH; r++)
+          for (let c = 0; c < PW; c++) {
+            const x0 = (c - PW / 2) * px,
+              x1 = x0 + px;
+            const y0 = (PH / 2 - r - 1) * px,
+              y1 = y0 + px;
+            for (const [key, zl, zh] of segs[r][c]) {
+              const pt = part(key),
+                idx = pt.idx;
+              pt.quad(idx(x0, y0, zh), idx(x1, y0, zh), idx(x1, y1, zh), idx(x0, y1, zh));
+              pt.quad(idx(x0, y0, zl), idx(x0, y1, zl), idx(x1, y1, zl), idx(x1, y0, zl));
+              const sides = [
+                [0, 1, [x1, y0], [x1, y1]],
+                [0, -1, [x0, y1], [x0, y0]],
+                [-1, 0, [x1, y1], [x0, y1]],
+                [1, 0, [x0, y0], [x1, y0]],
+              ];
+              for (const [dr, dc, P, Q] of sides) {
+                const cuts = segAt(r + dr, c + dc)
+                  .filter((s) => s[0] === key)
+                  .map((s) => [s[1], s[2]]);
+                for (const [a, b] of subtract(zl, zh, cuts)) pt.quad(idx(P[0], P[1], a), idx(Q[0], Q[1], a), idx(Q[0], Q[1], b), idx(P[0], P[1], b));
+              }
+            }
+          }
+        return ["K", "W", "Y"]
+          .filter((k) => parts[k])
+          .map((k) => ({
+            name: COLORS[k].name,
+            hex: COLORS[k].hex,
+            v: parts[k].v,
+            t: parts[k].t,
+            rough: 0.6,
+          }));
+      }
+
+      /* =====================================================
+   PREVIEW
+   ===================================================== */
+      const view = $("view");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+      const camera = new THREE.PerspectiveCamera(40, view.clientWidth / view.clientHeight, 1, 2000);
+      camera.up.set(0, 0, 1);
+      camera.position.set(0, -75, 65);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(view.clientWidth, view.clientHeight);
+      view.appendChild(renderer.domElement);
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 2);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+      sun.position.set(40, -55, 95);
+      scene.add(sun);
+      const group = new THREE.Group();
+      scene.add(group);
+
+      let parts = [];
+
+      function update() {
+        const pixel = $("mode").value === "pixel";
+        $("opts-realistic").style.display = pixel ? "none" : "";
+        $("opts-pixel").style.display = pixel ? "" : "none";
+        parts = pixel ? buildPixel() : buildRealistic();
+
+        while (group.children.length) {
+          const o = group.children[0];
+          o.geometry.dispose();
+          o.material.dispose();
+          group.remove(o);
+        }
+        for (const part of parts) {
+          const pos = [];
+          for (const i of part.t) pos.push(part.v[i * 3], part.v[i * 3 + 1], part.v[i * 3 + 2]);
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+          geo.computeVertexNormals();
+          group.add(
+            new THREE.Mesh(
+              geo,
+              new THREE.MeshStandardMaterial({
+                color: part.hex,
+                roughness: part.rough,
+                side: part.double ? THREE.DoubleSide : THREE.FrontSide,
+              }),
+            ),
+          );
+        }
+        const R = parseFloat($("radius").value) || 20;
+        info.textContent = pixel ? `${parts.length} colors, ${(2 * R).toFixed(1)} x ${((PH / PW) * 2 * R).toFixed(1)} mm` : `${parts.length} colors`;
+      }
+
+      (function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      })();
+      window.addEventListener("resize", () => {
+        camera.aspect = view.clientWidth / view.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(view.clientWidth, view.clientHeight);
+      });
+
+      /* =====================================================
+   EXPORT
+   ===================================================== */
+      function download(blob, name) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+
+      function binarySTL(m) {
+        const n = m.t.length / 3;
+        const buf = new ArrayBuffer(84 + n * 50);
+        const dv = new DataView(buf);
+        dv.setUint32(80, n, true);
+        let o = 84;
+        for (let i = 0; i < n; i++) {
+          const [a, b, c] = [0, 1, 2].map((k) => {
+            const q = m.t[i * 3 + k] * 3;
+            return [m.v[q], m.v[q + 1], m.v[q + 2]];
+          });
+          const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
+            w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+          const nx = u[1] * w[2] - u[2] * w[1],
+            ny = u[2] * w[0] - u[0] * w[2],
+            nz = u[0] * w[1] - u[1] * w[0];
+          const l = Math.hypot(nx, ny, nz) || 1;
+          [nx / l, ny / l, nz / l, ...a, ...b, ...c].forEach((f) => {
+            dv.setFloat32(o, f, true);
+            o += 4;
+          });
+          o += 2;
+        }
+        return buf;
+      }
+
+      async function exportSTL() {
+        const prefix = $("mode").value === "pixel" ? "pixel_egg" : "egg";
+        if (parts.length > 1) {
+          const zip = new JSZip();
+          for (const part of parts) zip.file(`${prefix}_${part.name}.stl`, binarySTL(part));
+          download(await zip.generateAsync({ type: "blob" }), `${prefix}_stl.zip`);
+        } else {
+          download(new Blob([binarySTL(parts[0])], { type: "model/stl" }), `${prefix}.stl`);
+        }
+      }
+
+      async function export3MF() {
+        const pixel = $("mode").value === "pixel";
+        const asmId = parts.length + 1;
+        let objects = "";
+        parts.forEach((part, i) => {
+          let vs = "",
+            ts = "";
+          for (let k = 0; k < part.v.length; k += 3)
+            vs += `<vertex x="${part.v[k].toFixed(4)}" y="${part.v[k + 1].toFixed(4)}" z="${part.v[k + 2].toFixed(4)}"/>\n`;
+          for (let k = 0; k < part.t.length; k += 3) ts += `<triangle v1="${part.t[k]}" v2="${part.t[k + 1]}" v3="${part.t[k + 2]}"/>\n`;
+          objects += `<object id="${i + 1}" name="${part.name}" type="model"><mesh><vertices>\n${vs}</vertices><triangles>\n${ts}</triangles></mesh></object>\n`;
+        });
+        const asmName = pixel ? "Pixel_Egg" : "Sunny_Side_Up_Egg";
+        const comps = parts.map((_, i) => `<component objectid="${i + 1}"/>`).join("");
+        const model = `<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+<metadata name="Application">EggBuilder</metadata>
+<metadata name="BambuStudio:3mfVersion">1</metadata>
+<resources>
+${objects}<object id="${asmId}" name="${asmName}" type="model"><components>${comps}</components></object>
+</resources>
+<build><item objectid="${asmId}" transform="1 0 0 0 1 0 0 0 1 128 128 0" printable="1"/></build>
+</model>`;
+        const settings = `<?xml version="1.0" encoding="UTF-8"?>
+<config>
+<object id="${asmId}">
+<metadata key="name" value="${asmName}"/>
+${parts.map((part, i) => `<part id="${i + 1}" subtype="normal_part"><metadata key="name" value="${part.name}"/><metadata key="extruder" value="${i + 1}"/></part>`).join("\n")}
+</object>
+</config>`;
+        const zip = new JSZip();
+        zip.file(
+          "[Content_Types].xml",
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="config" ContentType="text/xml"/></Types>`,
+        );
+        zip.file(
+          "_rels/.rels",
+          `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>`,
+        );
+        zip.file("3D/3dmodel.model", model);
+        zip.file("Metadata/model_settings.config", settings);
+        download(await zip.generateAsync({ type: "blob", compression: "DEFLATE" }), pixel ? "pixel_egg_bambu.3mf" : "sunny_side_up_egg.3mf");
+      }
+
+      /* ---------- Events ---------- */
+      ["mode", "radius", "yolk", "seed", "hOutline", "hWhite", "hYolk"].forEach((id) => $(id).addEventListener("input", update));
+      $("newshape").addEventListener("click", () => {
+        $("seed").value = Math.floor(Math.random() * 100000);
+        update();
+      });
+      $("b3mf").addEventListener("click", export3MF);
+      $("bstl").addEventListener("click", exportSTL);
+      update();
+    </script>
+  </body>
+</html>
