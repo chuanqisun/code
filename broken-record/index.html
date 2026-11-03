@@ -1,0 +1,537 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Broken Record</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💿</text></svg>" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        cursor: crosshair;
+        touch-action: none;
+      }
+      polyline {
+        fill: none;
+        stroke: #fff;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+    </style>
+  </head>
+  <body>
+    <svg id="canvas"></svg>
+    <script>
+      const svg = document.getElementById("canvas");
+      const NS = "http://www.w3.org/2000/svg";
+
+      const BASE_SPEED = 1; // rad/s
+      const ACCEL = BASE_SPEED * 0.87; // rad/s²
+      const TAU = Math.PI * 2;
+
+      const spinners = [];
+      let line = null;
+      let points = null;
+      let cx = innerWidth / 2;
+      let cy = innerHeight / 2;
+
+      addEventListener("resize", () => {
+        cx = innerWidth / 2;
+        cy = innerHeight / 2;
+      });
+
+      const show = (el, pts) => el.setAttribute("points", pts.join(" "));
+
+      // Shared by both engines (identical in 02 and 03)
+      function computeLineProps(offsets) {
+        let length = 0;
+        let sumX = 0;
+        let sumY = 0;
+        let avgDist = 0;
+
+        for (let i = 0; i < offsets.length; i++) {
+          const [dx, dy] = offsets[i];
+          sumX += dx;
+          sumY += dy;
+          avgDist += Math.hypot(dx, dy);
+          if (i > 0) {
+            const [px, py] = offsets[i - 1];
+            length += Math.hypot(dx - px, dy - py);
+          }
+        }
+        avgDist /= offsets.length;
+
+        const comAngle = Math.atan2(sumY / offsets.length, sumX / offsets.length);
+        // Higher minimum weight (0.45) so even a single small line hits with real authority
+        const weight = Math.min(Math.max(length / 180, 0.45), 1.2);
+        const radiusFactor = Math.min(avgDist / 500, 1.0);
+
+        // Fundamental Sub-Bass: 40Hz (wide lines) to 62Hz (tight center lines)
+        const baseFreq = 62 - radiusFactor * 22;
+
+        return { weight, baseFreq, comAngle };
+      }
+
+      // =========================================================
+      // CLEAN HIGH-ENERGY WHOOF ENGINE (from 15-sound-track-02)
+      // - 2 oscillators per layer: sub sine (1x) + sawtooth (2x) through a lowpass
+      // - Shepard-style layers whose envelopes always sum to a constant (no pile-ups)
+      // - Energy comes from filter brightness & pulse depth, not from distortion
+      // - All params glide at audio rate (setTargetAtTime) -> no zipper crackle
+      // - Gain-staged with headroom, gentle saturation, then a limiter
+      // =========================================================
+      class HighEnergyWhoofEngine {
+        constructor() {
+          this.ctx = null;
+          this.layers = [];
+          this.NUM_LAYERS = 4;
+          this.drive = null;
+          this.layerPushes = new Float32Array(this.NUM_LAYERS);
+        }
+
+        init(ctx, output) {
+          this.ctx = ctx;
+
+          // Remove inaudible sub-rumble that only eats headroom
+          const highpass = ctx.createBiquadFilter();
+          highpass.type = "highpass";
+          highpass.frequency.value = 32;
+          highpass.Q.value = 0.7;
+
+          // Drive keeps worst-case input under ±1 so the tanh curve only ever soft-saturates
+          this.drive = ctx.createGain();
+          this.drive.gain.value = 0.55;
+
+          const saturator = ctx.createWaveShaper();
+          const N = 4096;
+          const curve = new Float32Array(N);
+          const k = 2.2;
+          for (let i = 0; i < N; i++) {
+            const x = (i * 2) / (N - 1) - 1;
+            curve[i] = Math.tanh(k * x) / Math.tanh(k);
+          }
+          saturator.curve = curve;
+          saturator.oversample = "4x";
+
+          // Limiter: catches peaks transparently
+          const limiter = ctx.createDynamicsCompressor();
+          limiter.threshold.value = -6;
+          limiter.knee.value = 3;
+          limiter.ratio.value = 20;
+          limiter.attack.value = 0.002;
+          limiter.release.value = 0.12;
+
+          const master = ctx.createGain();
+          master.gain.value = 0.8; // ~-2 dB ceiling
+
+          highpass.connect(this.drive);
+          this.drive.connect(saturator);
+          saturator.connect(limiter);
+          limiter.connect(master);
+          master.connect(output);
+
+          for (let i = 0; i < this.NUM_LAYERS; i++) {
+            const subOsc = ctx.createOscillator();
+            subOsc.type = "sine";
+            const subGain = ctx.createGain();
+            subGain.gain.value = 0.55;
+
+            const sawOsc = ctx.createOscillator();
+            sawOsc.type = "sawtooth";
+            const sawGain = ctx.createGain();
+            sawGain.gain.value = 0.3;
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = "lowpass";
+            filter.Q.value = 1.1; // light emphasis, no resonant spikes
+            filter.frequency.value = 200;
+
+            const layerGain = ctx.createGain();
+            layerGain.gain.value = 0;
+
+            subOsc.connect(subGain).connect(layerGain);
+            sawOsc.connect(sawGain).connect(filter).connect(layerGain);
+            layerGain.connect(highpass);
+
+            subOsc.frequency.value = 55;
+            sawOsc.frequency.value = 110;
+            subOsc.start();
+            sawOsc.start();
+
+            this.layers.push({ subOsc, sawOsc, filter, layerGain });
+          }
+        }
+
+        update(dt, spinners, totalWeight, weightedSpeed, weightedBaseFreq) {
+          if (!this.ctx) return;
+          const t = this.ctx.currentTime;
+          const glide = (param, v, tc = 0.015) => param.setTargetAtTime(v, t, tc);
+
+          if (spinners.length === 0) {
+            for (const layer of this.layers) glide(layer.layerGain.gain, 0, 0.05);
+            return;
+          }
+
+          const avgSpeed = weightedSpeed / totalWeight;
+          const avgBaseFreq = weightedBaseFreq / totalWeight;
+
+          // Octaves of speed climbed since BASE_SPEED, and a 0..1 energy ramp
+          const speedOctaves = Math.max(0, Math.log2(Math.max(avgSpeed / BASE_SPEED, 1)));
+          const energy = Math.min(speedOctaves / 5.5, 1.0);
+
+          glide(this.drive.gain, 0.55 + energy * 0.25, 0.1); // peak input stays < 1
+
+          const shepardCycle = (speedOctaves * 0.22) % 1.0;
+          const baseGearShift = Math.floor(speedOctaves * 0.68);
+
+          this.layerPushes.fill(0);
+
+          for (let s = 0; s < spinners.length; s++) {
+            const sp = spinners[s];
+            const w = sp.audio.weight;
+            const visualAngle = sp.unwrappedPhase + sp.audio.comAngle;
+
+            // Frame-sampled optical strobe (wagon-wheel effect)
+            const opticalCos = 0.5 + 0.5 * Math.cos(sp.phase + sp.audio.comAngle);
+            const sharpOptical = opticalCos * opticalCos;
+
+            // Sub-harmonic divider: each layer pulses every 1, 2, 4, 8... rotations
+            for (let i = 0; i < this.NUM_LAYERS; i++) {
+              const divider = Math.pow(2, Math.max(0, baseGearShift + i - 1));
+              const subCos = 0.5 + 0.5 * Math.cos(visualAngle / divider);
+              this.layerPushes[i] += (subCos * subCos * 0.65 + sharpOptical * 0.35) * w;
+            }
+          }
+
+          // More lines -> fuller, but grows slowly and is capped
+          const density = Math.min(0.75 + Math.sqrt(totalWeight) * 0.25, 1.2);
+          const octaveSpan = 1.8 + energy * 1.0;
+          const maxCutoff = 1200 + energy * 2800;
+
+          for (let i = 0; i < this.NUM_LAYERS; i++) {
+            const layer = this.layers[i];
+            const progress = (shepardCycle + i / this.NUM_LAYERS) % 1.0;
+
+            // sin² windows offset by 1/4 always sum to 2 -> divide by 2 for constant loudness
+            const bell = Math.sin(progress * Math.PI);
+            const envelope = (bell * bell) / 2;
+
+            const pulse = this.layerPushes[i] / totalWeight;
+
+            const f = avgBaseFreq * Math.pow(2, progress * octaveSpan) * (0.94 + 0.12 * pulse);
+            const cutoff = Math.min(f * (2.5 + (6 + energy * 6) * pulse), maxCutoff);
+            const gate = 0.2 + 0.8 * pulse;
+            const gain = envelope * density * gate * (0.75 + 0.25 * energy);
+
+            glide(layer.subOsc.frequency, f);
+            glide(layer.sawOsc.frequency, f * 2);
+            glide(layer.filter.frequency, cutoff);
+            glide(layer.layerGain.gain, gain);
+          }
+        }
+      }
+
+      // =========================================================
+      // PURE SUB-BASS SINE SWARM ENGINE (from 16-sound-track-03)
+      // - Only 4 Sine Oscillators total (ultra-lightweight, never crashes)
+      // - Driven through warm analog saturation for chest-hitting weight
+      // - 100% Phase-Locked to the visual Center-of-Mass & Screen Strobe
+      // =========================================================
+      class SubSineWhoofEngine {
+        constructor() {
+          this.ctx = null;
+          this.layers = [];
+          this.NUM_LAYERS = 4;
+          this.masterDriveGain = null;
+
+          this.smoothFreq = new Float32Array(this.NUM_LAYERS).fill(55);
+          this.smoothGain = new Float32Array(this.NUM_LAYERS).fill(0);
+          this.layerPushes = new Float32Array(this.NUM_LAYERS);
+        }
+
+        init(ctx, output) {
+          this.ctx = ctx;
+
+          // 1. Sub-28Hz DC protection
+          const dcBlocker = ctx.createBiquadFilter();
+          dcBlocker.type = "highpass";
+          dcBlocker.frequency.value = 28;
+          dcBlocker.Q.value = 0.7;
+
+          // 2. Sub-Bass Shelf (+6.5dB below 85Hz)
+          const bassBoost = ctx.createBiquadFilter();
+          bassBoost.type = "lowshelf";
+          bassBoost.frequency.value = 85;
+          bassBoost.gain.value = 6.5;
+
+          // 3. Anti-Mud Scoop (-4dB at 250Hz)
+          const mudScoop = ctx.createBiquadFilter();
+          mudScoop.type = "peaking";
+          mudScoop.frequency.value = 250;
+          mudScoop.Q.value = 1.3;
+          mudScoop.gain.value = -4.0;
+
+          // 4. Dynamic Pre-Saturator Drive (Scales with speed)
+          this.masterDriveGain = ctx.createGain();
+          this.masterDriveGain.gain.value = 1.4;
+
+          // 5. Soft-Clipper Overdrive (Turns pure sine waves into warm, punchy cinema sub-bass)
+          const saturator = ctx.createWaveShaper();
+          const curve = new Float32Array(2048);
+          for (let i = 0; i < 2048; i++) {
+            const x = (i * 2) / 2048 - 1;
+            curve[i] = Math.tanh(x * 2.4);
+          }
+          saturator.curve = curve;
+          saturator.oversample = "2x";
+
+          // 6. Brickwall Loudness Limiter
+          const limiter = ctx.createDynamicsCompressor();
+          limiter.threshold.value = -8;
+          limiter.knee.value = 6;
+          limiter.ratio.value = 12;
+          limiter.attack.value = 0.003;
+          limiter.release.value = 0.08;
+
+          const masterOut = ctx.createGain();
+          masterOut.gain.value = 0.92;
+
+          dcBlocker.connect(bassBoost);
+          bassBoost.connect(mudScoop);
+          mudScoop.connect(this.masterDriveGain);
+          this.masterDriveGain.connect(saturator);
+          saturator.connect(limiter);
+          limiter.connect(masterOut);
+          masterOut.connect(output);
+
+          // Build the 4 permanent Sub-Bass Sine layers
+          for (let i = 0; i < this.NUM_LAYERS; i++) {
+            const subOsc = ctx.createOscillator();
+            subOsc.type = "sine";
+
+            const layerGain = ctx.createGain();
+            layerGain.gain.value = 0;
+
+            subOsc.connect(layerGain);
+            layerGain.connect(dcBlocker);
+
+            subOsc.start();
+            this.layers.push({ subOsc, layerGain });
+          }
+        }
+
+        update(dt, spinners, totalWeight, weightedSpeed, weightedBaseFreq) {
+          if (!this.ctx || spinners.length === 0) return;
+
+          const avgSpeed = weightedSpeed / totalWeight;
+          const avgBaseFreq = weightedBaseFreq / totalWeight;
+
+          const speedOctaves = Math.max(0, Math.log2(Math.max(avgSpeed / BASE_SPEED, 1)));
+          const energyFactor = Math.min(speedOctaves / 5.5, 1.0);
+
+          this.masterDriveGain.gain.value = 1.3 + energyFactor * 1.5;
+
+          const shepardCycle = (speedOctaves * 0.22) % 1.0;
+          const baseGearShift = Math.floor(speedOctaves * 0.68);
+
+          this.layerPushes.fill(0);
+
+          for (let s = 0; s < spinners.length; s++) {
+            const sp = spinners[s];
+            const w = sp.audio.weight;
+            const visualAngle = sp.unwrappedPhase + sp.audio.comAngle;
+
+            // 1. Frame-Sampled Optical Strobe (captures the 60fps wagon-wheel effect)
+            const opticalCos = 0.5 + 0.5 * Math.cos(sp.phase + sp.audio.comAngle);
+            const sharpOptical = Math.pow(opticalCos, 2.2);
+
+            // 2. Sub-Harmonic Visual Divider (hits every 1st, 2nd, 4th, 8th... rotation)
+            for (let i = 0; i < this.NUM_LAYERS; i++) {
+              const gearExp = Math.max(0, baseGearShift + i - 1);
+              const divider = Math.pow(2, gearExp);
+
+              const subCos = 0.5 + 0.5 * Math.cos(visualAngle / divider);
+              const subWhoof = Math.pow(subCos, 2.5);
+
+              this.layerPushes[i] += (subWhoof * 0.65 + sharpOptical * 0.35) * w;
+            }
+          }
+
+          const swarmDensity = Math.min(0.85 + Math.pow(totalWeight, 0.5) * 0.65, 2.6);
+          const smoothAlpha = 1 - Math.exp(-dt * 105);
+          const octaveSpan = 1.8 + energyFactor * 0.8; // Up to 2.6 octaves
+
+          for (let i = 0; i < this.NUM_LAYERS; i++) {
+            const layer = this.layers[i];
+
+            const progress = (shepardCycle + i / this.NUM_LAYERS) % 1.0;
+            const windowBell = Math.sin(progress * Math.PI);
+            const envelope = windowBell * windowBell;
+
+            const pulse = this.layerPushes[i] / totalWeight;
+
+            const subFreq = avgBaseFreq * Math.pow(2, progress * octaveSpan);
+            const targetSubPitch = subFreq * (0.88 + 0.45 * pulse);
+
+            const ampGate = 0.06 + 0.94 * pulse;
+            const targetGain = envelope * swarmDensity * ampGate * (0.65 + 0.35 * energyFactor) * 0.65;
+
+            this.smoothFreq[i] += (targetSubPitch - this.smoothFreq[i]) * smoothAlpha;
+            this.smoothGain[i] += (targetGain - this.smoothGain[i]) * smoothAlpha;
+
+            layer.subOsc.frequency.value = this.smoothFreq[i];
+            layer.layerGain.gain.value = this.smoothGain[i];
+          }
+        }
+      }
+
+      // =========================================================
+      // MIXER
+      // - One shared AudioContext; each engine renders into its own bus
+      // - Both engines peak around -4 dB after their own limiters, so each bus
+      //   is pulled down ~6 dB so the in-phase sum still has headroom
+      // - The sub engine is heavily saturated (near-square, higher RMS), so it
+      //   gets trimmed slightly more than the brighter whoof engine
+      // - A gentle mix limiter guards against the rare stacked peak
+      // =========================================================
+      class Mixer {
+        constructor(engines) {
+          this.ctx = null;
+          this.engines = engines; // [{ engine, gain }]
+        }
+
+        init() {
+          if (this.ctx) {
+            if (this.ctx.state === "suspended") this.ctx.resume();
+            return;
+          }
+
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const ctx = this.ctx;
+
+          const limiter = ctx.createDynamicsCompressor();
+          limiter.threshold.value = -3;
+          limiter.knee.value = 2;
+          limiter.ratio.value = 20;
+          limiter.attack.value = 0.002;
+          limiter.release.value = 0.1;
+          limiter.connect(ctx.destination);
+
+          for (const { engine, gain } of this.engines) {
+            const bus = ctx.createGain();
+            bus.gain.value = gain;
+            bus.connect(limiter);
+            engine.init(ctx, bus);
+          }
+        }
+
+        update(dt, spinners, totalWeight, weightedSpeed, weightedBaseFreq) {
+          for (const { engine } of this.engines) {
+            engine.update(dt, spinners, totalWeight, weightedSpeed, weightedBaseFreq);
+          }
+        }
+      }
+
+      const soundEngine = new Mixer([
+        { engine: new HighEnergyWhoofEngine(), gain: 0.55 },
+        { engine: new SubSineWhoofEngine(), gain: 0.5 },
+      ]);
+
+      // =========================================================
+      // DRAWING & VISUAL RENDER LOOP
+      // =========================================================
+      function add(e) {
+        points.push([e.clientX, e.clientY]);
+        show(line, points);
+      }
+
+      function finish() {
+        if (points.length > 1) {
+          const offsets = points.map(([x, y]) => [x - cx, y - cy]);
+          spinners.push({
+            line,
+            offsets,
+            phase: 0,
+            unwrappedPhase: 0,
+            speed: BASE_SPEED,
+            audio: computeLineProps(offsets),
+          });
+        } else {
+          line.remove();
+        }
+        line = points = null;
+      }
+
+      svg.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        soundEngine.init();
+        svg.setPointerCapture(e.pointerId);
+        line = document.createElementNS(NS, "polyline");
+        svg.appendChild(line);
+        points = [];
+        add(e);
+      });
+
+      svg.addEventListener("pointermove", (e) => {
+        if (!line) return;
+        for (const c of e.getCoalescedEvents?.() ?? [e]) add(c);
+      });
+
+      svg.addEventListener("pointerup", (e) => {
+        if (!line || e.button !== 0) return;
+        add(e);
+        finish();
+      });
+
+      svg.addEventListener("pointercancel", () => {
+        if (line) finish();
+      });
+
+      let last = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - last) / 1000, 0.1);
+        last = now;
+
+        let totalWeight = 0;
+        let weightedSpeed = 0;
+        let weightedBaseFreq = 0;
+
+        for (let i = 0; i < spinners.length; i++) {
+          const s = spinners[i];
+          const dPhase = (s.speed + 0.5 * ACCEL * dt) * dt;
+
+          s.unwrappedPhase = (s.unwrappedPhase + dPhase) % (TAU * 2048);
+          s.phase = s.unwrappedPhase % TAU;
+          s.speed += ACCEL * dt;
+
+          const cos = Math.cos(s.phase);
+          const sin = Math.sin(s.phase);
+
+          show(
+            s.line,
+            s.offsets.map(([dx, dy]) => [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos]),
+          );
+
+          const w = s.audio.weight;
+          totalWeight += w;
+          weightedSpeed += s.speed * w;
+          weightedBaseFreq += s.audio.baseFreq * w;
+        }
+
+        soundEngine.update(dt, spinners, totalWeight, weightedSpeed, weightedBaseFreq);
+
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    </script>
+  </body>
+</html>
