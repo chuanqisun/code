@@ -1,195 +1,288 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <title>ArUco 4x4 Webcam Detector</title>
-    <!-- Load js-aruco2 core dependencies -->
+    <meta charset="utf-8" />
+    <title>ArUco webcam detector</title>
     <script src="https://cdn.jsdelivr.net/npm/js-aruco2@2.0.0/src/cv.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-aruco2@2.0.0/src/aruco.js"></script>
   </head>
   <body>
-    <h1>ArUco 4x4 Detector</h1>
+    <h1>ArUco webcam detector</h1>
 
-    <div>
-      <label for="cameraSelect">Select Webcam: </label>
-      <select id="cameraSelect">
-        <option value="">-- Choose Camera --</option>
-      </select>
-      <button id="startButton">Start Camera</button>
-      <button id="stopButton" disabled>Stop</button>
-    </div>
+    <label>
+      Camera
+      <select id="camera"></select>
+    </label>
+    <button id="refresh">Find cameras</button>
+    <button id="start" disabled>Start</button>
+    <button id="stop" disabled>Stop</button>
 
-    <p id="status">Loading dictionaries...</p>
+    <p>
+      <label>
+        Marker mode
+        <select id="mode">
+          <option value="4">OpenCV 4×4</option>
+          <option value="5">OpenCV 5×5</option>
+        </select>
+      </label>
+      <label>
+        <input id="unknown" type="checkbox" />
+        Show unknown candidates
+      </label>
+    </p>
 
-    <!-- Hidden video element to capture the webcam stream -->
-    <video id="video" playsinline muted style="display: none"></video>
-
-    <!-- Main display and analysis canvas -->
-    <canvas id="canvas" width="640" height="480"></canvas>
+    <p id="status">Loading dictionaries…</p>
+    <p id="results"></p>
+    <video id="video" playsinline muted hidden></video>
+    <canvas id="canvas"></canvas>
 
     <script>
-      // OpenCV DICT_4X4_50, IDs 0–49, in row-major bit order.
-      AR.DICTIONARIES.ARUCO_4X4_50 = {
-        nBits: 16,
-        tau: 2,
-        codeList: [
-          0xb532, 0x0f9a, 0x332d, 0x9946, 0x549e, 0x79cd, 0x9e2e, 0xc4f2, 0xfeda, 0xcf56, 0xf991, 0x11a7, 0x0eb7, 0x2a0f, 0x24b1, 0x263e, 0x4665, 0x6600,
-          0x6c5e, 0x76af, 0x868b, 0xb02b, 0xccd5, 0xdd82, 0xfe47, 0x9471, 0xace4, 0xa554, 0x2123, 0x346f, 0x4415, 0x57b2, 0x9ecf, 0xf0cb, 0x08ae, 0x0929,
-          0x1875, 0x04ff, 0x0df6, 0x1c5a, 0x1718, 0x2a28, 0x328c, 0x38b2, 0x24e8, 0x2eeb, 0x2d3f, 0x4b64, 0x502e, 0x5013,
-        ],
-      };
-
-      const detector = new AR.Detector({
-        dictionaryName: "ARUCO_4X4_50",
-        // js-aruco2 uses a strict < comparison: 2 allows one bit error.
-        maxHammingDistance: 2,
-      });
-
-      const video = document.getElementById("video");
-      const canvas = document.getElementById("canvas");
+      const $ = (id) => document.getElementById(id);
+      const camera = $("camera");
+      const video = $("video");
+      const canvas = $("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      const cameraSelect = document.getElementById("cameraSelect");
-      const startButton = document.getElementById("startButton");
-      const stopButton = document.getElementById("stopButton");
-      const statusText = document.getElementById("status");
+      const status = $("status");
+      const results = $("results");
 
-      let currentStream = null;
-      let animationFrameId = null;
+      let stream = null;
+      let frame = null;
+      let generation = 0;
+      let detectors = {};
 
-      // 3. Enumerate video devices
-      async function getCameras() {
-        try {
-          // Query permissions first so device labels are visible
-          const initialStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          initialStream.getTracks().forEach((track) => track.stop());
+      // OpenCV stores each marker as four rotations of its bytes.
+      // The first rotation is sufficient: js-aruco2 handles rotation.
+      function readDictionary(source, size) {
+        const name = `DICT_${size}X${size}_1000_BYTES`;
+        const start = source.indexOf(name);
+        if (start < 0) throw new Error(`Missing ${name}`);
 
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter((d) => d.kind === "videoinput");
+        const end = source.indexOf(";", start);
+        if (end < 0) throw new Error(`Incomplete ${name}`);
 
-          cameraSelect.innerHTML = "";
-          videoDevices.forEach((device, index) => {
-            const option = document.createElement("option");
-            option.value = device.deviceId;
-            option.text = device.label || `Camera ${index + 1}`;
-            cameraSelect.appendChild(option);
+        const body = source.slice(source.indexOf("=", start) + 1, end);
+        const groups = [...body.matchAll(/\{\s*([\d\s,]+)\s*\}/g)].map((match) =>
+          match[1]
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean)
+            .map(Number),
+        );
+
+        const bytesPerMarker = Math.ceil((size * size) / 8);
+        if (groups.length !== 4000 || groups.some((group) => group.length !== bytesPerMarker)) {
+          throw new Error(`Unexpected format for ${name}`);
+        }
+
+        return groups.filter((_, index) => index % 4 === 0);
+      }
+
+      async function loadDictionaries() {
+        if (!window.AR || !window.CV) {
+          throw new Error("Could not load js-aruco2.");
+        }
+
+        const url = "https://raw.githubusercontent.com/opencv/opencv/4.10.0/" + "modules/objdetect/src/aruco/predefined_dictionaries.hpp";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Could not load OpenCV dictionaries.");
+        const source = await response.text();
+
+        for (const size of [4, 5]) {
+          const name = `OPENCV_${size}`;
+          AR.DICTIONARIES[name] = {
+            nBits: size * size,
+            tau: 1,
+            codeList: readDictionary(source, size),
+          };
+
+          const detector = new AR.Detector({
+            dictionaryName: name,
+            maxHammingDistance: 1,
           });
 
-          statusText.innerText = "Cameras loaded. Select one and click Start Camera.";
-        } catch (err) {
-          console.error(err);
-          statusText.innerText = "Camera access error: " + err.message;
+          // Exact matches only. This also avoids scanning all 1000 codes.
+          detector.dictionary.find = function (bits) {
+            const code = bits.map((row) => row.join("")).join("");
+            const found = this.codes[code];
+            return found ? { id: found.id, distance: 0 } : null;
+          };
+
+          // Preserve normal decoding, then optionally report black-bordered
+          // candidates that do not match the selected dictionary.
+          const originalGetMarker = detector.getMarker;
+          detector.getMarker = function (image, corners) {
+            const known = originalGetMarker.call(this, image, corners);
+            if (known || !$("unknown").checked) return known;
+
+            const grid = this.dictionary.markSize;
+            const cell = Math.floor(image.width / grid);
+            const threshold = (cell * cell) >> 1;
+            const bits = [];
+
+            for (let y = 0; y < grid; y++) {
+              for (let x = 0; x < grid; x++) {
+                const white =
+                  CV.countNonZero(image, {
+                    x: x * cell,
+                    y: y * cell,
+                    width: cell,
+                    height: cell,
+                  }) > threshold;
+
+                if (x === 0 || y === 0 || x === grid - 1 || y === grid - 1) {
+                  if (white) return null;
+                } else {
+                  if (!bits[y - 1]) bits[y - 1] = [];
+                  bits[y - 1].push(white ? 1 : 0);
+                }
+              }
+            }
+
+            // Canonical rotation gives a repeatable raw pattern.
+            let rotated = bits;
+            const variants = [];
+            for (let i = 0; i < 4; i++) {
+              variants.push(rotated.map((row) => row.join("")).join(""));
+              rotated = this.rotate(rotated);
+            }
+            variants.sort();
+            return { id: null, corners, raw: variants[0] };
+          };
+
+          detectors[size] = detector;
         }
       }
 
-      // 4. Start webcam with selected deviceId
-      async function startCamera(deviceId) {
-        if (currentStream) {
-          stopCamera();
-        }
+      async function listCameras() {
+        try {
+          if (!navigator.mediaDevices) {
+            throw new Error("Camera access requires localhost or HTTPS.");
+          }
 
-        const constraints = {
-          video: {
-            deviceId: deviceId ? { exact: deviceId } : undefined,
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-          },
-        };
+          // Permission makes camera labels available.
+          const temporary = await navigator.mediaDevices.getUserMedia({ video: true });
+          temporary.getTracks().forEach((track) => track.stop());
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const cameras = devices.filter((device) => device.kind === "videoinput");
+          const previous = camera.value;
+          camera.replaceChildren();
+
+          cameras.forEach((device, i) => {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.textContent = device.label || `Camera ${i + 1}`;
+            camera.append(option);
+          });
+
+          if (cameras.some((device) => device.deviceId === previous)) {
+            camera.value = previous;
+          }
+          $("start").disabled = cameras.length === 0;
+          status.textContent = cameras.length ? "Select a camera and start." : "No cameras found.";
+        } catch (error) {
+          status.textContent = `Camera error: ${error.message}`;
+        }
+      }
+
+      function stopCamera() {
+        generation++;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        stream = null;
+        video.srcObject = null;
+        $("stop").disabled = true;
+        $("start").disabled = camera.options.length === 0;
+        results.textContent = "";
+      }
+
+      async function startCamera() {
+        stopCamera();
+        const request = generation;
+        $("start").disabled = true;
 
         try {
-          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-          video.srcObject = currentStream;
-          await video.play();
+          const next = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: camera.value },
+              width: { ideal: 640 },
+              height: { ideal: 480 },
+            },
+            audio: false,
+          });
 
-          canvas.width = video.videoWidth || 640;
-          canvas.height = video.videoHeight || 480;
-
-          startButton.disabled = true;
-          stopButton.disabled = false;
-          cameraSelect.disabled = true;
-          statusText.innerText = "Detecting 4x4 ArUco markers...";
-
-          requestAnimationFrame(tick);
-        } catch (err) {
-          console.error(err);
-          statusText.innerText = "Failed to start camera: " + err.message;
-        }
-      }
-
-      // 5. Stop camera
-      function stopCamera() {
-        if (animationFrameId) {
-          cancelAnimationFrame(animationFrameId);
-        }
-        if (currentStream) {
-          currentStream.getTracks().forEach((track) => track.stop());
-          currentStream = null;
-        }
-        startButton.disabled = false;
-        stopButton.disabled = true;
-        cameraSelect.disabled = false;
-        statusText.innerText = "Camera stopped.";
-      }
-
-      // 6. Processing loop
-      function tick() {
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-          // Run detection
-          const markers = detector.detect(imageData);
-
-          // Draw markers
-          drawMarkers(markers);
-        }
-        animationFrameId = requestAnimationFrame(tick);
-      }
-
-      // 7. Visual overlays for detected markers
-      function drawMarkers(markers) {
-        for (let i = 0; i < markers.length; i++) {
-          const marker = markers[i];
-          const corners = marker.corners;
-
-          // Draw bounding box
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = "lime";
-          ctx.beginPath();
-          ctx.moveTo(corners[0].x, corners[0].y);
-          for (let j = 1; j < corners.length; j++) {
-            ctx.lineTo(corners[j].x, corners[j].y);
+          if (request !== generation) {
+            next.getTracks().forEach((track) => track.stop());
+            return;
           }
-          ctx.closePath();
-          ctx.stroke();
 
-          // Highlight top-left orientation corner (corner 0)
-          ctx.fillStyle = "red";
-          ctx.beginPath();
-          ctx.arc(corners[0].x, corners[0].y, 4, 0, 2 * Math.PI);
-          ctx.fill();
+          stream = next;
+          video.srcObject = stream;
+          await video.play();
+          if (request !== generation) return;
 
-          // Draw ID label
-          ctx.font = "16px monospace";
-          ctx.fillStyle = "blue";
-          ctx.fillText("ID: " + marker.id, corners[0].x, corners[0].y - 8);
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          $("stop").disabled = false;
+          status.textContent = "Detecting. Select a marker mode.";
+          tick();
+        } catch (error) {
+          if (request !== generation) return;
+          stopCamera();
+          status.textContent = `Could not start camera: ${error.message}`;
         }
       }
 
-      // Event Listeners
-      startButton.addEventListener("click", () => {
-        startCamera(cameraSelect.value);
-      });
+      function tick() {
+        if (!stream) return;
+        try {
+          if (video.readyState >= 2) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const markers = detectors[$("mode").value].detect(image);
 
-      stopButton.addEventListener("click", stopCamera);
+            results.textContent = markers.length
+              ? markers.map((marker) => (marker.id === null ? `Unknown: ${marker.raw}` : `ID ${marker.id}`)).join(" | ")
+              : "No markers detected.";
 
-      cameraSelect.addEventListener("change", () => {
-        if (currentStream) {
-          startCamera(cameraSelect.value);
+            for (const marker of markers) {
+              const corners = marker.corners;
+              ctx.strokeStyle = marker.id === null ? "orange" : "lime";
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.moveTo(corners[0].x, corners[0].y);
+              for (const corner of corners.slice(1)) {
+                ctx.lineTo(corner.x, corner.y);
+              }
+              ctx.closePath();
+              ctx.stroke();
+
+              ctx.font = "16px sans-serif";
+              ctx.fillStyle = marker.id === null ? "orange" : "lime";
+              ctx.fillText(marker.id === null ? "Unknown" : `ID ${marker.id}`, corners[0].x, Math.max(16, corners[0].y - 5));
+            }
+          }
+          frame = requestAnimationFrame(tick);
+        } catch (error) {
+          stopCamera();
+          status.textContent = `Detection error: ${error.message || error}`;
         }
-      });
+      }
 
-      // Run camera enumeration on load
-      getCameras();
+      $("refresh").addEventListener("click", listCameras);
+      $("start").addEventListener("click", startCamera);
+      $("stop").addEventListener("click", () => {
+        stopCamera();
+        status.textContent = "Camera stopped.";
+      });
+      window.addEventListener("pagehide", stopCamera);
+
+      loadDictionaries()
+        .then(listCameras)
+        .catch((error) => {
+          status.textContent = `Initialization error: ${error.message || error}`;
+        });
     </script>
   </body>
 </html>
