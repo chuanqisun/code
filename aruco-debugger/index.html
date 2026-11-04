@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ArUco 4x4 Webcam Detector</title>
+    <!-- Load js-aruco2 core dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/js-aruco2@2.0.0/src/cv.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-aruco2@2.0.0/src/aruco.js"></script>
+  </head>
+  <body>
+    <h1>ArUco 4x4 Detector</h1>
+
+    <div>
+      <label for="cameraSelect">Select Webcam: </label>
+      <select id="cameraSelect">
+        <option value="">-- Choose Camera --</option>
+      </select>
+      <button id="startButton">Start Camera</button>
+      <button id="stopButton" disabled>Stop</button>
+    </div>
+
+    <p id="status">Loading dictionaries...</p>
+
+    <!-- Hidden video element to capture the webcam stream -->
+    <video id="video" playsinline muted style="display: none"></video>
+
+    <!-- Main display and analysis canvas -->
+    <canvas id="canvas" width="640" height="480"></canvas>
+
+    <script>
+      // OpenCV DICT_4X4_50, IDs 0–49, in row-major bit order.
+      AR.DICTIONARIES.ARUCO_4X4_50 = {
+        nBits: 16,
+        tau: 2,
+        codeList: [
+          0xb532, 0x0f9a, 0x332d, 0x9946, 0x549e, 0x79cd, 0x9e2e, 0xc4f2, 0xfeda, 0xcf56, 0xf991, 0x11a7, 0x0eb7, 0x2a0f, 0x24b1, 0x263e, 0x4665, 0x6600,
+          0x6c5e, 0x76af, 0x868b, 0xb02b, 0xccd5, 0xdd82, 0xfe47, 0x9471, 0xace4, 0xa554, 0x2123, 0x346f, 0x4415, 0x57b2, 0x9ecf, 0xf0cb, 0x08ae, 0x0929,
+          0x1875, 0x04ff, 0x0df6, 0x1c5a, 0x1718, 0x2a28, 0x328c, 0x38b2, 0x24e8, 0x2eeb, 0x2d3f, 0x4b64, 0x502e, 0x5013,
+        ],
+      };
+
+      const detector = new AR.Detector({
+        dictionaryName: "ARUCO_4X4_50",
+        // js-aruco2 uses a strict < comparison: 2 allows one bit error.
+        maxHammingDistance: 2,
+      });
+
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const cameraSelect = document.getElementById("cameraSelect");
+      const startButton = document.getElementById("startButton");
+      const stopButton = document.getElementById("stopButton");
+      const statusText = document.getElementById("status");
+
+      let currentStream = null;
+      let animationFrameId = null;
+
+      // 3. Enumerate video devices
+      async function getCameras() {
+        try {
+          // Query permissions first so device labels are visible
+          const initialStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          initialStream.getTracks().forEach((track) => track.stop());
+
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter((d) => d.kind === "videoinput");
+
+          cameraSelect.innerHTML = "";
+          videoDevices.forEach((device, index) => {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.text = device.label || `Camera ${index + 1}`;
+            cameraSelect.appendChild(option);
+          });
+
+          statusText.innerText = "Cameras loaded. Select one and click Start Camera.";
+        } catch (err) {
+          console.error(err);
+          statusText.innerText = "Camera access error: " + err.message;
+        }
+      }
+
+      // 4. Start webcam with selected deviceId
+      async function startCamera(deviceId) {
+        if (currentStream) {
+          stopCamera();
+        }
+
+        const constraints = {
+          video: {
+            deviceId: deviceId ? { exact: deviceId } : undefined,
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+        };
+
+        try {
+          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+          video.srcObject = currentStream;
+          await video.play();
+
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+
+          startButton.disabled = true;
+          stopButton.disabled = false;
+          cameraSelect.disabled = true;
+          statusText.innerText = "Detecting 4x4 ArUco markers...";
+
+          requestAnimationFrame(tick);
+        } catch (err) {
+          console.error(err);
+          statusText.innerText = "Failed to start camera: " + err.message;
+        }
+      }
+
+      // 5. Stop camera
+      function stopCamera() {
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+        }
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+          currentStream = null;
+        }
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        cameraSelect.disabled = false;
+        statusText.innerText = "Camera stopped.";
+      }
+
+      // 6. Processing loop
+      function tick() {
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+          // Run detection
+          const markers = detector.detect(imageData);
+
+          // Draw markers
+          drawMarkers(markers);
+        }
+        animationFrameId = requestAnimationFrame(tick);
+      }
+
+      // 7. Visual overlays for detected markers
+      function drawMarkers(markers) {
+        for (let i = 0; i < markers.length; i++) {
+          const marker = markers[i];
+          const corners = marker.corners;
+
+          // Draw bounding box
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "lime";
+          ctx.beginPath();
+          ctx.moveTo(corners[0].x, corners[0].y);
+          for (let j = 1; j < corners.length; j++) {
+            ctx.lineTo(corners[j].x, corners[j].y);
+          }
+          ctx.closePath();
+          ctx.stroke();
+
+          // Highlight top-left orientation corner (corner 0)
+          ctx.fillStyle = "red";
+          ctx.beginPath();
+          ctx.arc(corners[0].x, corners[0].y, 4, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // Draw ID label
+          ctx.font = "16px monospace";
+          ctx.fillStyle = "blue";
+          ctx.fillText("ID: " + marker.id, corners[0].x, corners[0].y - 8);
+        }
+      }
+
+      // Event Listeners
+      startButton.addEventListener("click", () => {
+        startCamera(cameraSelect.value);
+      });
+
+      stopButton.addEventListener("click", stopCamera);
+
+      cameraSelect.addEventListener("change", () => {
+        if (currentStream) {
+          startCamera(cameraSelect.value);
+        }
+      });
+
+      // Run camera enumeration on load
+      getCameras();
+    </script>
+  </body>
+</html>

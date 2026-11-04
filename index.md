@@ -4,6 +4,7 @@
 
 ## Tools
 
+- [ArUco Debugger](./aruco-debugger/)
 - [Audio trim](./audio-trim/)
 - [Audio Analyzer](./audio-analyzer/)
 - [Audio visualizer](./audio-visualizer/)
