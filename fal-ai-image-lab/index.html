@@ -666,6 +666,36 @@
         { value: "4", label: "4 (lenient)" },
       ];
 
+      const kleinFormatChoices = [
+        { value: "png", label: "png" },
+        { value: "jpeg", label: "jpeg" },
+        { value: "webp", label: "webp" },
+      ];
+
+      const kleinBoolChoices = (def) => [
+        { value: "true", label: "true" + (def ? " (default)" : "") },
+        { value: "false", label: "false" },
+      ];
+
+      const kleinOptions = (sizeDefault, sizeChoices) => [
+        { key: "image_size", label: "Image size", type: "select", default: sizeDefault, choices: sizeChoices },
+        { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 4 },
+        { key: "output_format", label: "Format", type: "select", default: "png", choices: kleinFormatChoices },
+        { key: "enable_prompt_expansion", label: "Prompt Expansion", type: "select", default: "true", choices: kleinBoolChoices(true) },
+        { key: "seed", label: "Seed (number)", type: "number", default: "" },
+      ];
+
+      const buildKleinInput = (input, options) => {
+        if (options.image_size) input.image_size = options.image_size;
+        input.num_images = options.num_images || 1;
+        if (options.output_format) input.output_format = options.output_format;
+        if (options.enable_prompt_expansion !== undefined && options.enable_prompt_expansion !== "") {
+          input.enable_prompt_expansion = options.enable_prompt_expansion === "true";
+        }
+        if (options.seed !== undefined && options.seed !== "" && options.seed !== null) input.seed = Number(options.seed);
+        return input;
+      };
+
       const flux3Options = [
         { key: "aspect_ratio", label: "Aspect Ratio", type: "select", default: "auto", choices: flux3AspectChoices },
         { key: "resolution", label: "Resolution", type: "select", default: "1k", choices: flux3ResolutionChoices },
@@ -994,6 +1024,28 @@
               input.enable_prompt_expansion = options.enable_prompt_expansion === "true";
             }
             return input;
+          },
+        }),
+
+        new FalModelProvider({
+          id: "blackforestlabs/flux-3/klein/text-to-image",
+          label: "blackforestlabs/flux-3/klein/text-to-image",
+          endpoint: "blackforestlabs/flux-3/klein/text-to-image",
+          capabilities: { imageToImage: false },
+          options: kleinOptions("square_hd", fluxSizeChoices),
+          buildInput({ prompt, options }) {
+            return buildKleinInput({ prompt }, options);
+          },
+        }),
+
+        new FalModelProvider({
+          id: "blackforestlabs/flux-3/klein/edit-image",
+          label: "blackforestlabs/flux-3/klein/edit-image",
+          endpoint: "blackforestlabs/flux-3/klein/edit-image",
+          capabilities: { imageToImage: true },
+          options: kleinOptions("", [{ value: "", label: "Auto (first reference)" }, ...fluxSizeChoices]),
+          buildInput({ prompt, imageDataUrls, options }) {
+            return buildKleinInput({ prompt, image_urls: imageDataUrls }, options);
           },
         }),
       ];
@@ -1411,6 +1463,11 @@
             this.renderModelControls();
           } else if (this.selectedModelId === "fal-ai/nano-banana" || this.selectedModelId === "fal-ai/nano-banana-2") {
             this.selectedModelId = "fal-ai/nano-banana-2/edit";
+            this.elements.modelSelect.value = this.selectedModelId;
+            set("selectedModelId", this.selectedModelId, this.store);
+            this.renderModelControls();
+          } else if (this.selectedModelId === "blackforestlabs/flux-3/klein/text-to-image") {
+            this.selectedModelId = "blackforestlabs/flux-3/klein/edit-image";
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
