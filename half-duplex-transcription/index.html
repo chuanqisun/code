@@ -157,6 +157,7 @@
       <div class="provider-picker">
         <label for="provider-select"><strong>Provider:</strong></label>
         <select id="provider-select">
+          <option value="elevenlabs_scribe_rt">ElevenLabs Scribe v2 Realtime (WebSocket)</option>
           <option value="llm_speech">LLM Speech</option>
           <option value="mai_transcribe_2">MAI Transcribe-2</option>
           <option value="azure">Azure Fast Transcription</option>
@@ -201,6 +202,7 @@
       const METRICS_TICK_MS = 100;
       const STORAGE_PREFIX = "stt_cfg_";
       const PROVIDER_STORAGE_KEY = "stt_selected_provider";
+      const ELEVENLABS_API = "api.elevenlabs.io";
       const TRANSCRIBE_PATH = "/speechtotext/transcriptions:transcribe";
 
       const UI_STATES = {
@@ -220,6 +222,19 @@
       };
 
       const providers = {
+        // Realtime WebSocket provider. Browsers can't set headers on a WebSocket, so we exchange the API key
+        // for a single-use token (REST, header auth) and pass it as ?token= on the socket URL.
+        elevenlabs_scribe_rt: {
+          id: "elevenlabs_scribe_rt",
+          name: "ElevenLabs Scribe v2 Realtime",
+          audioFormat: "pcm", // raw 16 kHz mono PCM16, no WAV header
+          fields: [
+            { id: "key", label: "API Key", type: "password", placeholder: "xi-api-key...", width: "240px", required: true },
+            { id: "language", label: "Language", type: "text", placeholder: "Auto (e.g. en)", width: "90px" },
+          ],
+          transcribe: elevenLabsRealtimeTranscribe,
+        },
+
         llm_speech: azureSpeechProvider({
           id: "llm_speech",
           name: "LLM Speech",
@@ -491,14 +506,19 @@
         Object.assign(metrics, { transmitStartTime: Date.now(), state: "uploading" });
 
         try {
-          const { url, headers, body } = buildRequest(currentProvider, config, audioStream, recorder);
-          const resp = await fetch(url, { method: "POST", headers, body: body.pipeThrough(meterStream()), duplex: "half" });
-          metrics.state = "reading response";
+          let text;
+          if (currentProvider.transcribe) {
+            text = await currentProvider.transcribe(config, audioStream);
+          } else {
+            const { url, headers, body } = buildRequest(currentProvider, config, audioStream, recorder);
+            const resp = await fetch(url, { method: "POST", headers, body: body.pipeThrough(meterStream()), duplex: "half" });
+            metrics.state = "reading response";
 
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-
-          const text = currentProvider.parseResponse(await resp.json());
-          Object.assign(metrics, { resultTime: Date.now(), state: "done" });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+            text = currentProvider.parseResponse(await resp.json());
+          }
+          // Realtime providers stamp resultTime when the final message arrives; HTTP ones stamp it here.
+          Object.assign(metrics, { resultTime: metrics.resultTime ?? Date.now(), state: "done" });
           output.value = text;
           setStatus(`Done. ${text.length} chars. Latency: ${metrics.resultTime - metrics.stopTime}ms`);
         } catch (err) {
@@ -651,6 +671,90 @@
 
       // ───────────────────────── Provider helpers ─────────────────────────
 
+      // ElevenLabs Scribe v2 Realtime over a raw WebSocket (manual commit strategy).
+      // Docs: https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime
+      async function elevenLabsRealtimeTranscribe(config, audioStream) {
+        const key = config.key.trim();
+
+        metrics.state = "fetching token";
+        const tokenResp = await fetch(`https://${ELEVENLABS_API}/v1/single-use-token/realtime_scribe`, { method: "POST", headers: { "xi-api-key": key } });
+        if (!tokenResp.ok) throw new Error(`Token HTTP ${tokenResp.status}: ${await tokenResp.text()}`);
+        const { token } = await tokenResp.json();
+
+        const params = new URLSearchParams({ model_id: "scribe_v2_realtime", audio_format: `pcm_${SAMPLE_RATE}`, commit_strategy: "manual", token });
+        if (config.language?.trim()) params.set("language_code", config.language.trim());
+
+        metrics.state = "connecting";
+        const ws = new WebSocket(`wss://${ELEVENLABS_API}/v1/speech-to-text/realtime?${params}`);
+
+        // Resolves with the final transcript after *our* commit; rejects on any error / premature close.
+        const result = new Promise((resolve, reject) => {
+          const segments = []; // auto-committed segments (server commits at ~36s without a manual commit)
+          let commitSent = false;
+          let partial = "";
+          const show = () => (output.value = [...segments, partial].filter(Boolean).join(" "));
+
+          ws.onmessage = ({ data }) => {
+            const msg = JSON.parse(data);
+            switch (msg.message_type) {
+              case "session_started":
+                break;
+              case "partial_transcript":
+                partial = msg.text ?? "";
+                show();
+                break;
+              case "committed_transcript":
+                partial = "";
+                if (msg.text?.trim()) segments.push(msg.text.trim());
+                if (commitSent) {
+                  metrics.resultTime = Date.now(); // Stop→Result ends here
+                  resolve(segments.join(" "));
+                } else show();
+                break;
+              default:
+                if (msg.message_type === "warning") console.warn("Scribe warning:", msg.warning);
+                else if (msg.error || msg.message_type?.endsWith("_error")) reject(new Error(`${msg.message_type}: ${msg.error ?? JSON.stringify(msg)}`));
+            }
+          };
+          ws.onerror = () => reject(new Error("WebSocket error"));
+          ws.onclose = (e) => reject(new Error(`WebSocket closed before result (${e.code} ${e.reason})`));
+          ws.markCommitSent = () => (commitSent = true);
+        });
+        result.catch(() => {}); // avoid unhandled-rejection noise; awaited below
+
+        await Promise.race([new Promise((r) => (ws.onopen = r)), result]);
+
+        // Send audio. We hold back one chunk so the last one can carry commit:true
+        // (no separate empty-commit message needed), which is sent the instant the stream ends.
+        const send = (bytes, commit) => {
+          if (commit) ws.markCommitSent();
+          ws.send(JSON.stringify({ message_type: "input_audio_chunk", audio_base_64: bytesToBase64(bytes), commit, sample_rate: SAMPLE_RATE }));
+          metrics.transmitted += bytes.byteLength;
+        };
+
+        try {
+          metrics.state = "streaming";
+          let held = null;
+          for await (const chunk of audioStream) {
+            if (held) send(held, false);
+            held = chunk;
+          }
+          if (!held) throw new Error("No audio recorded");
+          send(held, true);
+          metrics.state = "committed, awaiting transcript";
+          return await result;
+        } finally {
+          ws.onclose = ws.onerror = null;
+          ws.close();
+        }
+      }
+
+      function bytesToBase64(bytes) {
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return btoa(bin);
+      }
+
       function azureSpeechProvider({ id, name, audioFormat, apiVersion, fields, baseUrl, definition }) {
         return {
           id,
@@ -746,6 +850,7 @@
       // ───────────────────────── Recorders ─────────────────────────
 
       function createRecorder(format) {
+        if (format === "pcm") return new WavRecorder({ header: false });
         return format === "wav" ? new WavRecorder() : new WebmRecorder();
       }
 
@@ -756,13 +861,17 @@
         onData = null;
         onStop = null;
 
+        constructor({ header = true } = {}) {
+          this.header = header; // false => raw PCM16 stream (no WAV header)
+        }
+
         async start(stream) {
           this.state = "recording";
           this.context = new AudioContext({ sampleRate: SAMPLE_RATE });
           this.source = this.context.createMediaStreamSource(stream);
           this.processor = this.context.createScriptProcessor(PCM_BUFFER_FRAMES, 1, 1);
 
-          this.onData?.(createWavHeader());
+          if (this.header) this.onData?.(createWavHeader());
           this.processor.onaudioprocess = ({ inputBuffer }) => this.state === "recording" && this.onData?.(float32To16BitPCM(inputBuffer.getChannelData(0)));
 
           this.source.connect(this.processor);
@@ -778,7 +887,9 @@
           this.onStop?.();
         }
 
-        finalizeChunks([, ...pcmChunks]) {
+        finalizeChunks(chunks) {
+          if (!this.header) return chunks;
+          const [, ...pcmChunks] = chunks;
           const dataLength = pcmChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
           return [createWavHeader(SAMPLE_RATE, 1, dataLength), ...pcmChunks];
         }
