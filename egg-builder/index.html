@@ -218,6 +218,27 @@
             } else t = "W";
             g[r][c] = t;
           }
+        // Pixels of one color touching only at a corner make a non-manifold edge
+        // (4 faces on one vertical edge). Bridge them by recoloring an inside pixel.
+        const col = (r, c) => (r < 0 || r >= PH || c < 0 || c >= PW ? "." : g[r][c]);
+        for (let changed = true; changed; ) {
+          changed = false;
+          for (let r = 0; r < PH - 1; r++)
+            for (let c = 0; c < PW - 1; c++)
+              for (const [ar, ac, br, bc] of [
+                [r, c, r + 1, c + 1],
+                [r, c + 1, r + 1, c],
+              ]) {
+                const t = g[ar][ac];
+                if (t !== "K" || g[br][bc] !== t) continue;
+                const o1 = [ar, bc],
+                  o2 = [br, ac];
+                if (col(...o1) === t || col(...o2) === t) continue;
+                const pick = [o1, o2].find(([y, x]) => g[y][x] === "W") || [o1, o2].find(([y, x]) => g[y][x] === ".");
+                g[pick[0]][pick[1]] = t;
+                changed = true;
+              }
+        }
         return g;
       }
       const pixels = buildPixels();
@@ -235,13 +256,9 @@
         if (t === "K") return [["K", 0, p.hK]];
         if (t === "W") return [["W", 0, p.hW]];
         if (t === "Y") return [["Y", 0, p.hY]];
-        if (t === "H") {
-          const d = Math.min(1, p.hY / 2);
-          return [
-            ["Y", 0, p.hY - d],
-            ["W", p.hY - d, p.hY],
-          ];
-        }
+        // Highlight: a full-height white column. Every pixel is a column from z=0, so each
+        // color part is a simple heightfield (no floating caps that can touch along a line).
+        if (t === "H") return [["W", 0, p.hY]];
         return [];
       }
 
@@ -268,6 +285,8 @@
         const segs = pixels.map((row) => row.map((t) => segmentsOf(t, p)));
         const segAt = (r, c) => (r < 0 || r >= PH || c < 0 || c >= PW ? [] : segs[r][c]);
         const parts = {};
+        const levels = {};
+        for (const row of segs) for (const cell of row) for (const [k, a, b] of cell) (levels[k] ||= new Set()).add(+a.toFixed(4)).add(+b.toFixed(4));
 
         function part(key) {
           if (parts[key]) return parts[key];
@@ -307,7 +326,16 @@
                 const cuts = segAt(r + dr, c + dc)
                   .filter((s) => s[0] === key)
                   .map((s) => [s[1], s[2]]);
-                for (const [a, b] of subtract(zl, zh, cuts)) pt.quad(idx(P[0], P[1], a), idx(Q[0], Q[1], a), idx(Q[0], Q[1], b), idx(P[0], P[1], b));
+                // split at every z level of this part so shared vertical edges have matching vertices
+                const zs = [...levels[key]].filter((z) => z > zl + 1e-6 && z < zh - 1e-6);
+                for (const [a0, b0] of subtract(zl, zh, cuts)) {
+                  const bounds = [a0, ...zs.filter((z) => z > a0 + 1e-6 && z < b0 - 1e-6), b0];
+                  for (let q = 0; q < bounds.length - 1; q++) {
+                    const a = bounds[q],
+                      b = bounds[q + 1];
+                    pt.quad(idx(P[0], P[1], a), idx(Q[0], Q[1], a), idx(Q[0], Q[1], b), idx(P[0], P[1], b));
+                  }
+                }
               }
             }
           }
