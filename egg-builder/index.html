@@ -43,9 +43,9 @@
       <button id="newshape">New shape</button>
     </p>
     <p id="opts-pixel" style="display: none">
-      <label>Outline height (mm) <input id="hOutline" type="number" value="2" min="0.4" step="0.2" /></label>
-      <label>White height (mm) <input id="hWhite" type="number" value="3" min="0.4" step="0.2" /></label>
-      <label>Yolk height (mm) <input id="hYolk" type="number" value="5" min="0.4" step="0.2" /></label>
+      <label>Outline thickness (mm) <input id="hOutline" type="number" value="2" min="0.4" step="0.2" /></label>
+      <label>White thickness (mm) <input id="hWhite" type="number" value="1" min="0.4" step="0.2" /></label>
+      <label>Yolk thickness (mm) <input id="hYolk" type="number" value="2" min="0.4" step="0.2" /></label>
     </p>
     <p>
       <button id="b3mf">Download .3mf</button>
@@ -247,18 +247,23 @@
         return {
           R: Math.max(1, parseFloat($("radius").value) || 20),
           hK: parseFloat($("hOutline").value) || 2,
-          hW: parseFloat($("hWhite").value) || 3,
-          hY: parseFloat($("hYolk").value) || 5,
+          hW: parseFloat($("hWhite").value) || 1,
+          hY: parseFloat($("hYolk").value) || 2,
         };
       }
 
+      // Wedding-cake layering (values are thicknesses, bottom to top):
+      //  1. bottom: full per-pixel colors (black outline, white, yellow), whole egg
+      //  2. middle: solid white, everything inside the outline
+      //  3. top: yolk area only, yellow with the white highlight
       function segmentsOf(t, p) {
-        if (t === "K") return [["K", 0, p.hK]];
-        if (t === "W") return [["W", 0, p.hW]];
-        if (t === "Y") return [["Y", 0, p.hY]];
-        // Highlight: a full-height white column. Every pixel is a column from z=0, so each
-        // color part is a simple heightfield (no floating caps that can touch along a line).
-        if (t === "H") return [["W", 0, p.hY]];
+        const z1 = p.hK,
+          z2 = z1 + p.hW,
+          z3 = z2 + p.hY;
+        if (t === "K") return [["K", 0, z1]];
+        if (t === "W") return [["W", 0, z2]];
+        if (t === "Y") return [["Y", 0, z1], ["W", z1, z2], ["Y", z2, z3]];
+        if (t === "H") return [["Y", 0, z1], ["W", z1, z3]]; // yellow below, white through middle + top
         return [];
       }
 
