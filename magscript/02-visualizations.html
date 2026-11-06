@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>magscript tiles</title>
+<style>
+  body{margin:16px;font:13px/1.4 system-ui,sans-serif;color:#111;background:#fff}
+  h1{font-size:14px;font-weight:600;margin:0 0 2px}
+  p{margin:0 0 14px;color:#777}
+  #grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .tile{border:1px solid #ddd}
+  canvas{display:block;width:100%;aspect-ratio:220/150;touch-action:none;cursor:grab}
+  .cap{padding:5px 8px;border-top:1px solid #eee;position:relative}
+  .cap span{display:block;color:#777}
+  .cap button{position:absolute;right:6px;top:5px;border:0;background:none;color:#999;font:inherit;cursor:pointer}
+  .cap button:hover{color:#111}
+</style>
+</head>
+<body>
+<h1>magscript — motion grammar tiles</h1>
+<p>● N-up / dark half = N pole · ○ S-up · grey = soft iron · faint ring = bumper, magnets never touch. Drag magnets. Click empty space: shake (or the tile's own action). Numbers refer to 01-ideas.md.</p>
+<div id="grid"></div>
+<script src="matter.min.js"></script>
+<script>
+const W=220,H=150,R=9,RB=13,LP=6,PI=Math.PI; // R = magnet, RB = bumper (safe zone, no touching)
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const mk=o=>Object.assign({x:0,y:0,a:0,vx:0,vy:0,w:0,s:1},o);
+const D=(x,y,a=0,o={})=>mk({x,y,a,...o});          // dipole puck
+const P=(x,y,q=1,o={})=>mk({x,y,mono:q,...o});     // vertical puck (top-down: N-up or S-up)
+const S=(x,y,o={})=>mk({x,y,soft:1,...o});         // soft iron
+const poles=b=>{
+  if(b.soft)return[];
+  if(b.mono!==undefined)return[[b.x,b.y,b.mono*b.s]];
+  const c=Math.cos(b.a)*LP,s=Math.sin(b.a)*LP;
+  return[[b.x+c,b.y+s,b.s],[b.x-c,b.y-s,-b.s]];
+};
+const blocked=(w,a,b)=>{
+  const sh=w.shield;if(!sh||!sh.on)return false;
+  if((a.x-sh.x)*(b.x-sh.x)>=0)return false;
+  const y=a.y+(sh.x-a.x)/(b.x-a.x)*(b.y-a.y);
+  return y>=sh.y0&&y<=sh.y1;
+};
+
+const M=Matter,DT=1000/60,D2=DT*DT,VMAX=8,FMAX=4;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+// Matter handles translation + collisions (every puck has a solid R-radius body, walls are thick
+// static rects, speed < R so nothing can tunnel). Magnetic forces/torques are added by hand.
+function build(w){
+  const e=w.eng=M.Engine.create({gravity:{x:0,y:0,scale:0},positionIterations:12,velocityIterations:8});
+  const add=[];
+  for(const b of w.bodies){
+    const st=!!(b.fixed||b.pin);
+    const m=M.Bodies.circle(b.x,b.y,RB,{isStatic:st,restitution:.3,friction:0,frictionStatic:0,
+      frictionAir:1-w.damp,slop:.02});
+    if(!st){M.Body.setMass(m,1);M.Body.setInertia(m,Infinity);M.Body.setVelocity(m,{x:b.vx,y:b.vy});}
+    b.m=m;b.snap={x:b.x,y:b.y,a:b.a,vx:b.vx,vy:b.vy};add.push(m);
+  }
+  if(w.box){const t=100,o={isStatic:true,restitution:.3,friction:0};
+    add.push(M.Bodies.rectangle(W/2,-t/2,W+2*t,t,o),M.Bodies.rectangle(W/2,H+t/2,W+2*t,t,o),
+             M.Bodies.rectangle(-t/2,H/2,t,H+2*t,o),M.Bodies.rectangle(W+t/2,H/2,t,H+2*t,o));}
+  M.Composite.add(e.world,add);
+}
+const restore=b=>{const s=b.snap;b.x=s.x;b.y=s.y;b.a=s.a;b.vx=s.vx;b.vy=s.vy;b.w=0;};
+
+function step(w){
+  const bs=w.bodies,K=w.K,T=Math.max(w.temp,w.noise);
+  for(const b of bs){
+    b.fx=b.fy=b.tq=0;
+    if(!b.fixed&&!b.pin&&w.g){b.fx=w.g[0];b.fy=w.g[1];}
+    if(w.B&&!b.mono&&!b.soft)for(const[px,py,q]of poles(b))
+      b.tq+=(px-b.x)*q*w.B[1]-(py-b.y)*q*w.B[0];
+    if(T>.01&&!b.fixed){b.fx+=rnd(-.25,.25)*T;b.fy+=rnd(-.25,.25)*T;b.tq+=rnd(-1.5,1.5)*T;}
+  }
+  w.temp*=.993;
+  for(let i=0;i<bs.length;i++)for(let j=i+1;j<bs.length;j++){
+    const a=bs[i],b=bs[j];
+    if(a.fixed&&b.fixed||blocked(w,a,b))continue;
+    if(a.soft||b.soft){
+      const s=a.soft?a:b,m=a.soft?b:a;if(m.soft)continue;
+      for(const[px,py,q]of poles(m)){
+        const ex=px-s.x,ey=py-s.y,d2=ex*ex+ey*ey+30,f=K*.9*Math.abs(q)/(d2*Math.sqrt(d2));
+        s.fx+=f*ex;s.fy+=f*ey;
+      }
+      continue;
+    }
+    const pa=poles(a),pb=poles(b);
+    for(const[ax,ay,qa]of pa)for(const[bx,by,qb]of pb){
+      const ex=ax-bx,ey=ay-by,d2=ex*ex+ey*ey+30,f=K*qa*qb/(d2*Math.sqrt(d2)),fx=f*ex,fy=f*ey;
+      a.fx+=fx;a.fy+=fy;a.tq+=(ax-a.x)*fy-(ay-a.y)*fx;
+      b.fx-=fx;b.fy-=fy;b.tq-=(bx-b.x)*fy-(by-b.y)*fx;
+    }
+  }
+  const h=w.held,p=w.ptr;
+  if(h){
+    if(h.dial){h.a=Math.atan2(p.y-h.y,p.x-h.x);h.w=0;}
+    else if(h.grab){h.x=clamp(p.x,RB,W-RB);h.y=clamp(p.y,RB,H-RB);}
+    else if(!h.fixed&&!h.pin){h.fx+=w.dk*(p.x-h.x);h.fy+=w.dk*(p.y-h.y);}
+  }
+  for(const b of bs){
+    if(b.fixed)continue;
+    if(!b.norot&&b.mono===undefined&&!b.soft&&!(b.dial&&h===b)){
+      b.w=clamp((b.w+clamp(b.tq,-50,50)/w.I)*w.wd,-.4,.4);b.a+=b.w;
+    }
+    if(!b.m.isStatic){
+      const f=Math.hypot(b.fx,b.fy),k=f>FMAX?FMAX/f:1;
+      M.Body.applyForce(b.m,b.m.position,{x:b.fx*k/D2,y:b.fy*k/D2});
+    }
+  }
+  M.Engine.update(w.eng,DT);
+  for(const b of bs){
+    const m=b.m;
+    if(!m.isStatic){b.x=m.position.x;b.y=m.position.y;b.vx=m.velocity.x;b.vy=m.velocity.y;}
+    if(!isFinite(b.x+b.y+b.vx+b.vy+b.a+b.w)||Math.abs(b.x-W/2)>600||Math.abs(b.y-H/2)>600){restore(b);continue;}
+    const v=Math.hypot(b.vx,b.vy);if(v>VMAX){b.vx*=VMAX/v;b.vy*=VMAX/v;}
+    if(b.track&&!b.fixed){
+      const[x0,y0,x1,y1]=b.track,dx=x1-x0,dy=y1-y0,l2=dx*dx+dy*dy;
+      const t=((b.x-x0)*dx+(b.y-y0)*dy)/l2,c=clamp(t,0,1);
+      let u=(b.vx*dx+b.vy*dy)/l2;if(c!==t)u=0;
+      b.x=x0+c*dx;b.y=y0+c*dy;b.vx=u*dx;b.vy=u*dy;
+    }
+    if(w.box&&!b.pin&&!b.fixed){b.x=clamp(b.x,RB,W-RB);b.y=clamp(b.y,RB,H-RB);}
+  }
+  // hard safety net: bumpers may never overlap, whatever the solver did
+  for(let it=0;it<4;it++)for(let i=0;i<bs.length;i++)for(let j=i+1;j<bs.length;j++){
+    const A=bs[i],B=bs[j],sa=A.m.isStatic,sb=B.m.isStatic;if(sa&&sb)continue;
+    let dx=B.x-A.x,dy=B.y-A.y,d=Math.hypot(dx,dy);if(d>=2*RB)continue;
+    if(d<1e-6){dx=1;dy=0;d=1;}
+    const o=(2*RB-d)/d,ka=sa?0:sb?1:.5,kb=sb?0:sa?1:.5;
+    A.x-=dx*o*ka;A.y-=dy*o*ka;B.x+=dx*o*kb;B.y+=dy*o*kb;
+    for(const q of[A,B])if(w.box&&!q.m.isStatic){q.x=clamp(q.x,RB,W-RB);q.y=clamp(q.y,RB,H-RB);}
+  }
+  if(w.hook)w.hook(w);
+  for(const b of bs){
+    const m=b.m;
+    if(m.isStatic){if(m.position.x!==b.x||m.position.y!==b.y)M.Body.setPosition(m,{x:b.x,y:b.y});}
+    else{M.Body.setPosition(m,{x:b.x,y:b.y});M.Body.setVelocity(m,{x:b.vx,y:b.vy});}
+  }
+}
+
+function draw(w,c){
+  c.clearRect(0,0,W,H);
+  c.strokeStyle=c.fillStyle='#111';c.lineWidth=1;c.font='11px system-ui,sans-serif';
+  if(w.draw)w.draw(c,w);
+  c.strokeStyle='#111';c.lineWidth=1;
+  for(const b of w.bodies){
+    c.strokeStyle='#ddd';c.beginPath();c.arc(b.x,b.y,RB,0,2*PI);c.stroke();c.strokeStyle='#111';
+    c.beginPath();c.arc(b.x,b.y,R,0,2*PI);
+    if(b.soft){c.fillStyle='#bbb';c.fill();c.stroke();continue;}
+    c.fillStyle=b.mono>0?'#111':'#fff';c.fill();c.stroke();
+    if(b.mono===undefined){
+      c.beginPath();c.arc(b.x,b.y,R,b.a-PI/2,b.a+PI/2);c.closePath();c.fillStyle='#111';c.fill();
+    }
+  }
+  c.fillStyle='#111';
+}
+
+const dflt=()=>({bodies:[],damp:.9,wd:.9,I:90,dk:.05,K:800,box:true,temp:0,noise:0,g:null,B:null,
+  held:null,ptr:{x:0,y:0},onClick:w=>{w.temp=1}});
+const scatter=(n,f)=>{const o=[];
+  for(let i=0;i<n*200&&o.length<n;i++){const x=rnd(22,W-22),y=rnd(22,H-22);
+    if(o.every(q=>Math.hypot(q.x-x,q.y-y)>2*RB+4))o.push(f(x,y));}
+  return o;};
+const ring=(n,cx,cy,r,f)=>Array.from({length:n},(_,i)=>{const t=i/n*2*PI;return f(cx+r*Math.cos(t),cy+r*Math.sin(t),t,i)});
+const line=(c,x0,y0,x1,y1)=>{c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.stroke();};
+
+const T=[
+{n:'01',t:'Snap',d:'agree, merge — drag one close',s:()=>({bodies:[D(55,75,0),D(165,75,0)]})},
+{n:'02',t:'Cushion',d:'disagree, reject — push N into N',s:()=>({bodies:[D(60,75,0,{fixed:1}),D(165,75,PI,{norot:1})]})},
+{n:'03',t:'Forced Marriage',d:'override, coerce — push hard',s:()=>({dk:.14,bodies:[D(60,75,0,{fixed:1}),D(165,75,PI,{norot:1})]})},
+{n:'04',t:'Orbit',d:'explore, linger — circle the bearing',s:()=>({bodies:[D(110,75,0,{pin:1}),D(175,75,0)]})},
+{n:'09',t:'Angular Dialing',d:'cos θ as similarity — turn the dial',s:()=>{
+  const r=D(70,75,0,{pin:1,norot:1}),m=D(150,75,.9,{pin:1,norot:1,dial:1});
+  return{bodies:[r,m],onClick:()=>{},draw:(c)=>{
+    const k=Math.cos(m.a-r.a),word=k>.7?'synonym':k<-.7?'antonym':Math.abs(k)<.3?'unrelated':'';
+    c.textAlign='center';c.fillText('cos θ = '+k.toFixed(2)+'  '+word,110,135);
+  }};}},
+{n:'12',t:'Flip',d:'invert — push N into the bearing',s:()=>({bodies:[D(110,75,.05,{pin:1}),D(35,75,PI,{norot:1})]})},
+{n:'16',t:'Ring',d:'closed loop, dogma — click to shake',s:()=>({bodies:scatter(6,(x,y)=>D(x,y,rnd(0,6.3)))})},
+{n:'17',t:'Tug-of-War',d:'dilemma, weighing — move the anchors',s:()=>({
+  bodies:[D(110,75,.3,{pin:1}),D(30,75,0,{fixed:1,grab:1,s:2.5}),D(190,75,0,{fixed:1,grab:1,s:1})]})},
+{n:'18',t:'Majority Vote',d:'consensus — click inputs to flip',s:()=>({
+  bodies:[D(110,75,.2,{pin:1}),...[-90,30,150].map((g,i)=>{const t=g*PI/180;
+    return D(110+50*Math.cos(t),75+50*Math.sin(t),t+(i==2?0:PI),{fixed:1,toggle:1})})]})},
+{n:'19',t:'Geometric Frustration',d:'trilemma — three that can’t agree',s:()=>({noise:.06,
+  bodies:ring(3,110,75,16,(x,y)=>D(x,y,rnd(0,6.3),{pin:1}))})},
+{n:'20',t:'Newton’s Cradle',d:'domino effect — push the first',s:()=>({damp:.96,dk:.06,
+  draw:c=>{c.strokeStyle='#ccc';line(c,10,75,210,75)},
+  bodies:[0,1,2,3,4].map(i=>D(40+i*35,75,i%2?PI:0,{norot:1,track:[10,75,210,75]}))})},
+{n:'23',t:'Siege',d:'quarantine — the trapped one',s:()=>({
+  bodies:[...ring(6,110,75,45,(x,y)=>P(x,y,1,{fixed:1})),P(118,75,1)]})},
+{n:'27',t:'Gear Train',d:'ripple — turn the first',s:()=>({
+  bodies:[0,1,2,3].map(i=>D(48+i*34,75,0,{pin:1,dial:i==0}))})},
+{n:'28',t:'Swarm Annealing',d:'emergent themes — click to shake',s:()=>({temp:1,
+  bodies:scatter(12,(x,y)=>D(x,y,rnd(0,6.3)))})},
+{n:'29',t:'Bifurcation',d:'forced choice — push between',s:()=>({
+  bodies:[P(140,62,1,{fixed:1}),P(140,88,1,{fixed:1}),P(35,75.5,1)]})},
+{n:'31',t:'Iron Bridge',d:'common ground — drop the steel ball',s:()=>({
+  bodies:[D(50,75,0,{fixed:1}),D(170,75,PI,{fixed:1}),S(110,30)]})},
+{n:'35',t:'Mu-Metal Firewall',d:'compartmentalize — click to toggle',s:()=>{
+  const sh={x:100,y0:30,y1:120,on:true};
+  return{shield:sh,onClick:()=>{sh.on=!sh.on},
+    draw:c=>{c.lineWidth=3;c.setLineDash(sh.on?[]:[3,5]);line(c,sh.x,sh.y0,sh.x,sh.y1);c.setLineDash([])},
+    bodies:[D(40,75,0,{fixed:1}),D(165,75,0)]};}},
+{n:'36',t:'Hysteretic Imprint',d:'learn — swipe to write, click to erase',s:()=>{
+  const cells=Array(8).fill(0);
+  return{bodies:[],onClick:()=>cells.fill(0),
+    onDrag:(p,q)=>{if(Math.abs(p.y-75)<14){const i=Math.round((p.x-30)/20);
+      if(i>=0&&i<8&&p.x!==q.x)cells[i]=Math.sign(p.x-q.x);}},
+    draw:c=>{c.textAlign='center';
+      cells.forEach((v,i)=>{const x=30+i*20;c.strokeStyle='#999';c.strokeRect(x-10,65,20,20);
+        c.fillStyle=v?'#111':'#ccc';c.fillText(v>0?'→':v<0?'←':'·',x,79);});}};}},
+{n:'40',t:'Eddy-Current Brake',d:'deliberation — copper lane is slower',s:()=>{
+  const mkl=y=>[D(25,y,0,{norot:1,track:[10,y,210,y]}),D(195,y,0,{fixed:1})];
+  const a=mkl(40),b=mkl(110);
+  return{damp:.98,onClick:w=>w.reset(),bodies:[...a,...b],
+    draw:c=>{c.fillStyle='#eee';c.fillRect(75,24,70,32);c.fillStyle='#777';c.textAlign='center';c.fillText('Cu',110,44)},
+    hook:()=>{if(a[0].x>75&&a[0].x<145){a[0].vx*=.94}}};}},
+{n:'41',t:'Slider Track',d:'spectrum — push from below',s:()=>{
+  const b=P(110,75,1,{track:[30,75,190,75]});
+  return{bodies:[b,P(110,125,1)],
+    draw:c=>{c.strokeStyle='#ccc';line(c,30,75,190,75);c.fillStyle='#111';c.textAlign='center';
+      c.fillText(((b.x-30)/160).toFixed(2),110,20)}};}},
+{n:'42',t:'Detent Rail',d:'quantize — drag along the rail',s:()=>{
+  const b=P(20,75,1,{track:[20,75,200,75]});
+  return{dk:.08,bodies:[b],
+    hook:()=>{b.vx-=.12*Math.sin(2*PI*(b.x-20)/30)},
+    draw:c=>{c.strokeStyle='#ccc';line(c,20,75,200,75);c.fillStyle='#999';
+      for(let i=0;i<=6;i++){c.beginPath();c.arc(20+i*30,88,1.5,0,2*PI);c.fill()}
+      c.fillStyle='#111';c.textAlign='center';c.fillText('step '+Math.round((b.x-20)/30),110,20)}};}},
+{n:'43',t:'Gravity Ramp',d:'prior vs evidence — lift the ball up',s:()=>({g:[0,.1],damp:.97,
+  bodies:[P(110,22,-1,{fixed:1}),P(110,130,1)]})},
+{n:'47',t:'Escape Velocity',d:'threshold — flick the ball out',s:()=>({
+  bodies:[P(110,75,-1,{fixed:1,s:.3}),...ring(4,110,75,56,(x,y)=>P(x,y,1,{fixed:1,s:.3})),P(110+RB*2,75,1)]})},
+{n:'48',t:'Ratchet',d:'irreversible — orbit clockwise only',s:()=>{
+  const b=D(110,75,0,{pin:1});let mx=0;
+  return{bodies:[b,D(172,75,PI)],
+    hook:()=>{if(b.a<mx){b.a=mx;b.w=Math.max(0,b.w)}else mx=b.a},
+    draw:c=>{c.textAlign='center';c.fillText('turns '+(mx/2/PI).toFixed(2),110,20)}};}},
+{n:'49',t:'Pendulum',d:'free association — swing it',s:()=>{
+  const bob=D(150,100,0,{vx:1.5});
+  return{g:[0,.03],damp:.995,
+    bodies:[D(60,130,0,{fixed:1}),D(165,132,PI,{fixed:1}),bob],
+    hook:()=>{const dx=bob.x-110,dy=bob.y-10,d=Math.hypot(dx,dy);
+      if(d>100){const nx=dx/d,ny=dy/d;bob.x=110+nx*100;bob.y=10+ny*100;
+        const vn=bob.vx*nx+bob.vy*ny;if(vn>0){bob.vx-=vn*nx;bob.vy-=vn*ny}}},
+    draw:c=>{c.strokeStyle='#999';line(c,110,10,bob.x,bob.y)}};}},
+{n:'50',t:'Pinball Bumpers',d:'serendipity — drop through critiques',s:()=>{
+  const ball=P(rnd(40,180),8,1),pins=[];
+  for(let r=0;r<3;r++)for(let x=r%2?56:14;x<215;x+=84)pins.push(P(x,40+r*40,1,{fixed:1,s:.1}));
+  return{g:[0,.3],damp:.985,noise:.8,box:false,bodies:[...pins,ball],
+    hook:()=>{if(ball.y>H+10||ball.y<-60||ball.x<-10||ball.x>W+10){ball.x=rnd(30,190);ball.y=8;ball.vx=ball.vy=0}}};}},
+{n:'54',t:'Resonant Pluck',d:'afterthought — click to pluck',s:()=>{
+  const b=D(75,75,1.5,{pin:1});
+  return{wd:.97,bodies:[b,D(150,75,0,{fixed:1})],onClick:()=>{b.w+=.35}};}},
+{n:'60',t:'Global Field Bias',d:'zeitgeist — click to rotate the field',s:()=>{
+  const w={B:[.25,0],wd:.85,bodies:[]};
+  for(const y of[35,75,115])for(const x of[70,110,150])w.bodies.push(D(x,y,rnd(0,6.3),{pin:1}));
+  w.onClick=w=>{w.B=[-w.B[1],w.B[0]]};
+  w.draw=(c,w)=>{c.strokeStyle='#999';line(c,20,20,20+w.B[0]*60,20+w.B[1]*60)};
+  return w;}},
+];
+
+const grid=document.getElementById('grid');
+const dpr=window.devicePixelRatio||1;
+const tiles=T.map(def=>{
+  const el=document.createElement('div');el.className='tile';
+  el.innerHTML='<canvas></canvas><div class="cap"><b></b><span></span><button>reset</button></div>';
+  el.querySelector('b').textContent=def.n+' '+def.t;
+  el.querySelector('span').textContent=def.d;
+  grid.appendChild(el);
+  const cv=el.querySelector('canvas');cv.width=W*dpr;cv.height=H*dpr;
+  const c=cv.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);
+  const t={cv,c,vis:false};
+  t.reset=()=>{t.w=Object.assign(dflt(),def.s());t.w.reset=t.reset;build(t.w);t.acc=0;};
+  t.reset();
+  const pt=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}};
+  let down=null,moved=0,hit=null;
+  cv.onpointerdown=e=>{
+    const p=pt(e),w=t.w;down=p;moved=0;w.ptr=p;hit=null;let best=R+8;
+    for(const b of w.bodies){
+      if(b.fixed&&!b.grab&&!b.toggle)continue;
+      if(b.pin&&!b.dial)continue;
+      const d=Math.hypot(b.x-p.x,b.y-p.y);if(d<best){best=d;hit=b}
+    }
+    w.held=hit&&!hit.toggle?hit:null;
+    cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing';
+  };
+  cv.onpointermove=e=>{
+    if(!down)return;const p=pt(e),w=t.w,q=w.ptr;
+    moved+=Math.hypot(p.x-q.x,p.y-q.y);w.ptr=p;
+    if(!w.held&&w.onDrag)w.onDrag(p,q,w);
+  };
+  cv.onpointerup=e=>{
+    const w=t.w;
+    if(moved<4){if(hit&&hit.toggle)hit.a+=PI;else if(!hit)w.onClick(w,w.ptr);}
+    w.held=null;down=null;cv.style.cursor='grab';
+  };
+  el.querySelector('button').onclick=t.reset;
+  new IntersectionObserver(es=>{t.vis=es[0].isIntersecting}).observe(cv);
+  return t;
+});
+let last=performance.now();
+(function loop(now){
+  const dt=Math.min(now-last,100);last=now;
+  for(const t of tiles)if(t.vis){
+    t.acc+=dt;
+    for(let n=0;t.acc>=DT&&n<4;n++){step(t.w);t.acc-=DT}
+    if(t.acc>DT)t.acc=0;
+    draw(t.w,t.c);
+  }
+  requestAnimationFrame(loop);
+})(last);
+</script>
+</body>
+</html>
