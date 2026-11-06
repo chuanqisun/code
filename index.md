@@ -55,7 +55,7 @@
 
 ## Experiments Feed
 
-- [MagScript](./magscript/) force grammar with magnets #concept#interaction
+- [MagScript](./magscript/) force grammar with magnets #concept#interaction#simulation
 - [$1 Gesture Recognizer](./1-dollar-gesture/) #explainer
 - [Egg Builder](./egg-builder/) model a sunny-side-up for 3D printing #tool#cad#3d
 - [ArUco Cube Builder](./aruco-cube-builder/) make ArUco dice for 3D printing #tool#cad#cv
