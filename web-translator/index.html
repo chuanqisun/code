@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Realtime Transcriber & GPT-6 Luna Translator</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 850px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        background: #f9f9fb;
+        color: #111;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 1rem;
+        align-items: center;
+        background: #fff;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+      }
+      button,
+      select,
+      input {
+        padding: 8px 10px;
+        font-size: 0.95rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      input[type="password"] {
+        flex: 1;
+        min-width: 200px;
+      }
+      button {
+        cursor: pointer;
+        background: #f0f0f0;
+      }
+      button:hover:not(:disabled) {
+        background: #e4e4e4;
+      }
+      button:disabled,
+      select:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+      .status {
+        font-size: 0.85rem;
+        color: #555;
+        margin-bottom: 0.75rem;
+      }
+      #transcript-box {
+        background: #fff;
+        border: 1px solid #ccc;
+        padding: 1rem;
+        height: 450px;
+        overflow-y: auto;
+        border-radius: 6px;
+        line-height: 1.5;
+      }
+      .sentence-pair {
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f0f0f0;
+      }
+      .orig {
+        color: #666;
+        font-size: 0.9rem;
+      }
+      .trans {
+        color: #000;
+        font-weight: 500;
+        font-size: 1.08rem;
+        margin-top: 2px;
+      }
+      .interim {
+        color: #888;
+        font-style: italic;
+        padding-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <input type="password" id="api-key" placeholder="OpenAI API Key (sk-...)" autocomplete="off" />
+      <select id="lang-select">
+        <option value="ja-JP">Japanese</option>
+        <option value="es-ES">Spanish</option>
+        <option value="fr-FR">French</option>
+        <option value="de-DE">German</option>
+        <option value="zh-CN">Chinese (Mandarin)</option>
+        <option value="ko-KR">Korean</option>
+        <option value="ru-RU">Russian</option>
+        <option value="en-US">English (US)</option>
+      </select>
+      <button id="start-btn">Start</button>
+      <button id="stop-btn" disabled>Stop</button>
+      <button id="clear-btn">Clear</button>
+      <button id="pip-btn" title="Pop out an always-on-top minimalist overlay">🗗 Popout Overlay</button>
+    </div>
+
+    <div class="status" id="status">Status: Idle (Ensure sys2mic.sh is running, enter API key, then click Start)</div>
+
+    <div id="transcript-box">
+      <div id="final-container"></div>
+      <div id="interim-span" class="interim"></div>
+    </div>
+
+    <script type="module">
+      import OpenAI from "https://esm.sh/openai";
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Web Speech API is not supported in this browser. Please use Chromium, Chrome, or Edge.");
+      }
+
+      const apiKeyInput = document.getElementById("api-key");
+      const langSelect = document.getElementById("lang-select");
+      const startBtn = document.getElementById("start-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const clearBtn = document.getElementById("clear-btn");
+      const pipBtn = document.getElementById("pip-btn");
+      const finalContainer = document.getElementById("final-container");
+      const interimSpan = document.getElementById("interim-span");
+      const statusText = document.getElementById("status");
+      const transcriptBox = document.getElementById("transcript-box");
+
+      let recognition = null;
+      let isTranscribing = false;
+      let openai = null;
+      let overlayIframeDoc = null;
+
+      // 1. Load & Save API Key in LocalStorage
+      apiKeyInput.value = localStorage.getItem("openai_api_key") || "";
+      apiKeyInput.addEventListener("input", () => {
+        localStorage.setItem("openai_api_key", apiKeyInput.value.trim());
+        initOpenAI();
+      });
+
+      function initOpenAI() {
+        const key = apiKeyInput.value.trim();
+        if (key) {
+          openai = new OpenAI({ apiKey: key, dangerouslyAllowBrowser: true });
+        } else {
+          openai = null;
+        }
+      }
+      initOpenAI();
+
+      // 2. Translate via OpenAI GPT-6 Luna
+      async function translateSentence(text) {
+        if (!openai) return "[No API Key provided]";
+        try {
+          const response = await openai.chat.completions.create({
+            model: "gpt-6-luna",
+            reasoning_effort: "none", // Fast, low-latency setting for real-time translation
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a real-time translator. Translate the user text into natural, concise English. Output ONLY the English translation. If the text is already in English, output it as-is.",
+              },
+              { role: "user", content: text },
+            ],
+          });
+          return response.choices[0]?.message?.content?.trim() || "";
+        } catch (err) {
+          console.error("Translation Error:", err);
+          return `[Error: ${err.message}]`;
+        }
+      }
+
+      // 3. UI & Overlay Sync Helpers
+      function addFinishedSentence(originalText) {
+        const id = "sent-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+        const html = `
+        <div class="orig">${escapeHtml(originalText)}</div>
+        <div class="trans" id="${id}">Translating...</div>
+      `;
+
+        // Add to Main Window
+        const el = document.createElement("div");
+        el.className = "sentence-pair";
+        el.innerHTML = html;
+        finalContainer.appendChild(el);
+        scrollToBottom(transcriptBox);
+
+        // Add to Popout Overlay Iframe (if open)
+        if (overlayIframeDoc) {
+          const pipEl = overlayIframeDoc.createElement("div");
+          pipEl.className = "sentence-pair";
+          pipEl.innerHTML = html;
+          overlayIframeDoc.getElementById("final-container").appendChild(pipEl);
+          scrollToBottom(overlayIframeDoc.scrollingElement || overlayIframeDoc.body);
+        }
+
+        // Trigger async translation with gpt-6-luna
+        translateSentence(originalText).then((translatedText) => {
+          const transNode = document.getElementById(id);
+          if (transNode) transNode.textContent = translatedText;
+          scrollToBottom(transcriptBox);
+
+          if (overlayIframeDoc) {
+            const pipTransNode = overlayIframeDoc.getElementById(id);
+            if (pipTransNode) pipTransNode.textContent = translatedText;
+            scrollToBottom(overlayIframeDoc.scrollingElement || overlayIframeDoc.body);
+          }
+        });
+      }
+
+      function updateInterim(text) {
+        interimSpan.textContent = text;
+        scrollToBottom(transcriptBox);
+        if (overlayIframeDoc) {
+          const pipInterim = overlayIframeDoc.getElementById("interim-span");
+          if (pipInterim) {
+            pipInterim.textContent = text;
+            scrollToBottom(overlayIframeDoc.scrollingElement || overlayIframeDoc.body);
+          }
+        }
+      }
+
+      function scrollToBottom(el) {
+        if (el) el.scrollTop = el.scrollHeight;
+      }
+
+      function escapeHtml(str) {
+        return str.replace(/[&<>'"]/g, (tag) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[tag]);
+      }
+
+      // 4. Popout Minimalist Iframe Overlay
+      pipBtn.addEventListener("click", async () => {
+        let win;
+        try {
+          // Use Chrome's Document Picture-in-Picture API for a true borderless "Always-on-Top" window
+          if ("documentPictureInPicture" in window) {
+            win = await window.documentPictureInPicture.requestWindow({ width: 550, height: 220 });
+          } else {
+            // Fallback to minimal popup shell
+            win = window.open("", "TranslatorOverlay", "width=550,height=220,menubar=no,toolbar=no,location=no,status=no");
+          }
+        } catch (e) {
+          console.error("Popup failed:", e);
+          return;
+        }
+
+        win.document.title = "Live Subtitles";
+        win.document.body.style.cssText = "margin:0; padding:0; overflow:hidden; background:#111; height:100vh; width:100vw;";
+
+        // Create the iframe inside the minimalist shell
+        const iframe = win.document.createElement("iframe");
+        iframe.style.cssText = "width:100%; height:100%; border:none; display:block;";
+        win.document.body.appendChild(iframe);
+
+        overlayIframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        overlayIframeDoc.open();
+        overlayIframeDoc.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: system-ui, sans-serif; background: #121212; color: #fff; margin: 0; padding: 12px; overflow-y: auto; line-height: 1.4; }
+            .sentence-pair { margin-bottom: 10px; border-bottom: 1px solid #2a2a2a; padding-bottom: 6px; }
+            .orig { color: #999; font-size: 0.82rem; }
+            .trans { color: #58a6ff; font-weight: 600; font-size: 1.05rem; margin-top: 2px; }
+            .interim { color: #777; font-style: italic; font-size: 0.9rem; padding-top: 4px; }
+          </style>
+        </head>
+        <body>
+          <div id="final-container">${finalContainer.innerHTML}</div>
+          <div id="interim-span" class="interim">${interimSpan.textContent}</div>
+        </body>
+        </html>
+      `);
+        overlayIframeDoc.close();
+        scrollToBottom(overlayIframeDoc.scrollingElement || overlayIframeDoc.body);
+
+        win.addEventListener("pagehide", () => {
+          overlayIframeDoc = null;
+        });
+      });
+
+      // 5. Speech Recognition Engine
+      function initRecognition() {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = langSelect.value;
+
+        recognition.onstart = () => {
+          statusText.textContent = `Status: Listening (${recognition.lang}) & Translating via gpt-6-luna...`;
+        };
+
+        recognition.onresult = (event) => {
+          let interimTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              if (transcript.trim()) addFinishedSentence(transcript.trim());
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+          updateInterim(interimTranscript);
+        };
+
+        recognition.onerror = (event) => {
+          if (event.error === "no-speech") return;
+          console.error("Speech recognition error:", event.error);
+          if (event.error === "not-allowed") {
+            stopTranscription();
+            alert("Microphone access denied.");
+          }
+        };
+
+        recognition.onend = () => {
+          if (isTranscribing) {
+            try {
+              recognition.start();
+            } catch (e) {}
+          } else {
+            statusText.textContent = "Status: Stopped.";
+          }
+        };
+      }
+
+      startBtn.addEventListener("click", () => {
+        if (!apiKeyInput.value.trim()) {
+          if (!confirm("No OpenAI API key entered. Start transcription without translation?")) return;
+        }
+        initRecognition();
+        isTranscribing = true;
+        recognition.start();
+
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        langSelect.disabled = true;
+      });
+
+      function stopTranscription() {
+        isTranscribing = false;
+        if (recognition) recognition.stop();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        langSelect.disabled = false;
+        statusText.textContent = "Status: Stopped.";
+      }
+
+      stopBtn.addEventListener("click", stopTranscription);
+
+      clearBtn.addEventListener("click", () => {
+        finalContainer.innerHTML = "";
+        updateInterim("");
+        if (overlayIframeDoc) {
+          const pipFinal = overlayIframeDoc.getElementById("final-container");
+          if (pipFinal) pipFinal.innerHTML = "";
+        }
+      });
+    </script>
+  </body>
+</html>

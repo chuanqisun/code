@@ -52,6 +52,7 @@
 - [Tax estimator](https://chuanqisun.github.io/tax/)
 - [Type bundler](./type-bundler/)
 - [Webcam](./webcam/)
+- [Web Translator](./web-translator/) use browser speech api to transcribe, and openai to translate
 
 ## Experiments Feed
 
