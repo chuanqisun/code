@@ -71,7 +71,7 @@
 - [Fractal Terminal](./fractal-terminal/) infinite terminal displaying texts via zooming #typography#tui
 - [Variable Font Canvas](./variable-font-canvas/) drawing with font metrics #typography
 - [Timesdraw](./timesdraw/) predict next 2 seconds of line sketch #ml#sketch
-- [Drawing++](chuanqisun.github.io/dpp/) class projects #sketch#art
+- [Drawing++](https://chuanqisun.github.io/dpp/) class projects #sketch#art
 
 ## Experiments Archive
 
