@@ -56,7 +56,7 @@
 
 ## Experiments Feed
 
-- [Zen Tile](https://chuanqisun.github.io/zen-tile/) tile a surface by sketching #game#art
+- [Zen Tile](https://chuanqisun.github.io/zen-tile/) tile a surface by sketching #game#art#sketch
 - [MagScript](./magscript/) force grammar with magnets #concept#interaction#simulation
 - [$1 Gesture Recognizer](./1-dollar-gesture/) #explainer
 - [Egg Builder](./egg-builder/) model a sunny-side-up for 3D printing #tool#cad#3d
@@ -71,6 +71,7 @@
 - [Fractal Terminal](./fractal-terminal/) infinite terminal displaying texts via zooming #typography#tui
 - [Variable Font Canvas](./variable-font-canvas/) drawing with font metrics #typography
 - [Timesdraw](./timesdraw/) predict next 2 seconds of line sketch #ml#sketch
+- [Drawing++](chuanqisun.github.io/dpp/) class projects #sketch#art
 
 ## Experiments Archive
 
