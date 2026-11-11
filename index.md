@@ -175,6 +175,7 @@
 - [Find free time](./prompts/find-free-time.md)
 - [Google AI](./prompts/google-ai.md)
 - [Lecture notes](./prompts/lecture-notes.md)
+- [Modern Web Guide](https://developer.chrome.com/docs/modern-web-guidance/guides.md.txt)
 - [OpenAI](./prompts/openai.md)
 - [OpenAI Agents SDK](./prompts/openai-agents-sdk.md)
 - [Parse research](./prompts/academic.md)
