@@ -337,6 +337,168 @@
       .hidden-file-input {
         display: none;
       }
+
+      [hidden] {
+        display: none !important;
+      }
+
+      .message-annotation-badge {
+        position: absolute;
+        left: 38px;
+        top: 12px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: bold;
+        color: white;
+        background-color: #d93025;
+        pointer-events: none;
+      }
+
+      .message-annotation-badge.markup {
+        background-color: #1a73e8;
+      }
+
+      .message-annotation-badge.unused {
+        background-color: #888;
+      }
+
+      /* Mask / markup editor */
+      .annot-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        font-family: sans-serif;
+        color: var(--color-text-primary, #333);
+        line-height: 1.4;
+      }
+
+      .annot-modal {
+        background: var(--color-white, white);
+        border: 1px solid var(--color-border-medium, #ccc);
+        border-radius: 4px;
+        padding: 12px;
+        max-width: 100%;
+        max-height: 100%;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        outline: none;
+      }
+
+      .annot-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        align-items: center;
+      }
+
+      .annot-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+      }
+
+      .annot-modal button {
+        padding: 6px 12px;
+      }
+
+      .annot-modal button:disabled {
+        opacity: 0.4;
+        cursor: default;
+        background-color: transparent;
+      }
+
+      .annot-modal button.annot-active {
+        background-color: var(--color-action-button-hover, #eee);
+        color: var(--color-text-primary, #333);
+        border-color: var(--color-text-secondary, #555);
+      }
+
+      .annot-modal label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .annot-modal input[type="color"] {
+        width: 32px;
+        height: 28px;
+        padding: 0;
+        margin: 0;
+        border: 1px solid var(--color-border-medium, #ccc);
+        border-radius: 4px;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .annot-modal input[type="range"] {
+        width: 110px;
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+
+      .annot-hint {
+        font-size: 14px;
+        color: var(--color-text-secondary, #555);
+      }
+
+      .annot-stage-wrap {
+        display: flex;
+        justify-content: center;
+        min-height: 60px;
+      }
+
+      .annot-loading {
+        align-self: center;
+        color: var(--color-text-secondary, #555);
+        padding: 24px;
+      }
+
+      .annot-stage {
+        position: relative;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        cursor: crosshair;
+        border: 1px solid var(--color-border-medium, #ccc);
+        background:
+          conic-gradient(#e8e8e8 25%, #fff 0 50%, #e8e8e8 0 75%, #fff 0) 0 0 / 16px 16px;
+      }
+
+      .annot-stage > img,
+      .annot-stage > canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        pointer-events: none;
+        -webkit-user-drag: none;
+      }
+
+      .annot-footer {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+      }
+
+      .annot-spacer {
+        flex: 1;
+      }
+
+      .annot-modal [hidden] {
+        display: none !important;
+      }
     </style>
   </head>
 
@@ -497,6 +659,538 @@
         }
       }
 
+      /**
+       * AnnotationEditor: modal for painting an edit mask or a markup annotation over an image.
+       *
+       *   const result = await AnnotationEditor.open({ imageUrl, annotation });
+       *   // { kind: "mask"|"markup", dataUrl } | null (removed) | undefined (cancelled)
+       *
+       * Brush/stroke sizes are expressed as a percentage of the image's long edge, so they look
+       * the same on any resolution. The drawing canvas is natural-size; the base image is a
+       * separate <img> underneath and is never drawn into the exported canvas.
+       */
+      class AnnotationEditor {
+        static MAX_HISTORY = 30;
+        static MAX_HISTORY_BYTES = 400 * 1024 * 1024;
+        static MASK_TINT = "#ff3b30"; // internal paint colour in mask mode (shown at 50% opacity)
+
+        static TOOLS = {
+          mask: [
+            ["brush", "Brush"],
+            ["eraser", "Eraser"],
+          ],
+          markup: [
+            ["pen", "Pen"],
+            ["arrow", "Arrow"],
+            ["ellipse", "Ellipse"],
+            ["rect", "Rectangle"],
+            ["text", "Text"],
+            ["eraser", "Eraser"],
+          ],
+        };
+
+        static HINTS = {
+          mask: "Paint the area to change. White = edit, black = keep.",
+          markup: "Draw circles, arrows and notes to guide the edit.",
+        };
+
+        static open({ imageUrl, annotation } = {}) {
+          return new Promise((resolve) => new AnnotationEditor(imageUrl, annotation, resolve));
+        }
+
+        constructor(imageUrl, annotation, resolve) {
+          this.resolve = resolve;
+          this.closed = false;
+          this.kind = annotation?.kind === "markup" ? "markup" : "mask";
+          this.tool = AnnotationEditor.TOOLS[this.kind][0][0];
+          this.color = "#ff2d2d";
+          this.sizes = { mask: 4, markup: 0.7 }; // % of long edge
+          this.undoStack = [];
+          this.redoStack = [];
+          this.drag = null;
+          this.prevFocus = document.activeElement;
+
+          this.buildDom();
+          this.bindGlobal();
+          this.loadImage(imageUrl, annotation);
+        }
+
+        // ---------- DOM ----------
+
+        el(tag, cls, text, parent) {
+          const e = document.createElement(tag);
+          if (cls) e.className = cls;
+          if (text != null) e.textContent = text;
+          if (parent) parent.appendChild(e);
+          return e;
+        }
+
+        button(label, onClick, parent) {
+          const b = this.el("button", "", label, parent);
+          b.type = "button";
+          b.addEventListener("click", onClick);
+          return b;
+        }
+
+        buildDom() {
+          const root = (this.backdrop = this.el("div", "annot-backdrop"));
+          const modal = (this.modal = this.el("div", "annot-modal", null, root));
+          modal.tabIndex = -1;
+          modal.setAttribute("role", "dialog");
+          modal.setAttribute("aria-modal", "true");
+
+          const bar = this.el("div", "annot-toolbar", null, modal);
+          this.modeGroup = this.el("div", "annot-group", null, bar);
+          this.modeButtons = {};
+          for (const [kind, label] of [["mask", "Mask"], ["markup", "Markup"]]) {
+            this.modeButtons[kind] = this.button(label, () => this.setKind(kind), this.modeGroup);
+          }
+          this.toolGroup = this.el("div", "annot-group", null, bar);
+
+          const opts = this.el("div", "annot-group", null, bar);
+          this.colorLabel = this.el("label", "", "Color", opts);
+          this.colorInput = document.createElement("input");
+          this.colorInput.type = "color";
+          this.colorInput.value = this.color;
+          this.colorInput.addEventListener("input", () => (this.color = this.colorInput.value));
+          this.colorLabel.appendChild(this.colorInput);
+
+          const sizeLabel = (this.sizeLabel = this.el("label", "", "Size", opts));
+          this.sizeInput = document.createElement("input");
+          this.sizeInput.type = "range";
+          this.sizeInput.addEventListener("input", () => (this.sizes[this.kind] = parseFloat(this.sizeInput.value)));
+          sizeLabel.appendChild(this.sizeInput);
+
+          const acts = this.el("div", "annot-group", null, bar);
+          this.undoBtn = this.button("Undo", () => this.undo(), acts);
+          this.redoBtn = this.button("Redo", () => this.redo(), acts);
+          this.invertBtn = this.button("Invert", () => this.invert(), acts);
+          this.button("Clear", () => this.clear(), acts);
+
+          this.hint = this.el("div", "annot-hint", null, modal);
+
+          this.stageWrap = this.el("div", "annot-stage-wrap", null, modal);
+          this.loading = this.el("div", "annot-loading", "Loading…", this.stageWrap);
+
+          const foot = this.el("div", "annot-footer", null, modal);
+          this.button("Cancel", () => this.finish(undefined), foot);
+          this.el("span", "annot-spacer", null, foot);
+          this.button("Remove annotation", () => this.finish(null), foot);
+          this.saveBtn = this.button("Save", () => this.save(), foot);
+          this.saveBtn.disabled = true;
+
+          document.body.appendChild(root);
+          this.refreshUi();
+          modal.focus();
+        }
+
+        buildStage() {
+          const { naturalWidth: w, naturalHeight: h } = this.img;
+          this.w = w;
+          this.h = h;
+          const stage = (this.stage = this.el("div", "annot-stage"));
+          this.img.removeAttribute("width");
+          stage.appendChild(this.img);
+          this.layer = this.el("canvas", "", null, stage);
+          this.preview = this.el("canvas", "", null, stage);
+          for (const c of [this.layer, this.preview]) {
+            c.width = w;
+            c.height = h;
+          }
+          this.ctx = this.layer.getContext("2d", { willReadFrequently: true });
+          this.pctx = this.preview.getContext("2d");
+
+          this.loading.remove();
+          this.stageWrap.appendChild(stage);
+          this.fit();
+
+          stage.addEventListener("pointerdown", (e) => this.onDown(e));
+          stage.addEventListener("pointermove", (e) => this.onMove(e));
+          stage.addEventListener("pointerup", (e) => this.onUp(e));
+          stage.addEventListener("pointercancel", (e) => this.onCancel(e));
+        }
+
+        // Size the stage in CSS pixels: fit within ~90vw x ~70vh, keep aspect, upscale at most 2x.
+        fit() {
+          if (!this.stage) return;
+          const s = Math.min((window.innerWidth * 0.9) / this.w, (window.innerHeight * 0.7) / this.h, 2);
+          this.stage.style.width = Math.max(1, Math.round(this.w * s)) + "px";
+          this.stage.style.height = Math.max(1, Math.round(this.h * s)) + "px";
+        }
+
+        refreshUi() {
+          const kind = this.kind;
+          for (const k in this.modeButtons) this.modeButtons[k].classList.toggle("annot-active", k === kind);
+          this.hint.textContent = AnnotationEditor.HINTS[kind];
+
+          this.toolGroup.textContent = "";
+          for (const [id, label] of AnnotationEditor.TOOLS[kind]) {
+            const b = this.button(label, () => {
+              this.tool = id;
+              this.refreshUi();
+            }, this.toolGroup);
+            b.classList.toggle("annot-active", id === this.tool);
+          }
+
+          this.colorLabel.hidden = kind !== "markup";
+          this.invertBtn.hidden = kind !== "mask";
+          this.sizeLabel.firstChild.textContent = kind === "mask" ? "Brush size" : "Stroke";
+          this.sizeInput.min = kind === "mask" ? 0.5 : 0.2;
+          this.sizeInput.max = kind === "mask" ? 15 : 3;
+          this.sizeInput.step = 0.1;
+          this.sizeInput.value = this.sizes[kind];
+
+          this.undoBtn.disabled = !this.undoStack.length;
+          this.redoBtn.disabled = !this.redoStack.length;
+          if (this.layer) this.layer.style.opacity = kind === "mask" ? "0.5" : "1";
+        }
+
+        // ---------- lifecycle ----------
+
+        bindGlobal() {
+          this.onKey = (e) => {
+            // Keep keys away from the page while the modal is open; inputs still work (default not prevented).
+            e.stopPropagation();
+            if (e.type !== "keydown") return;
+            const mod = e.ctrlKey || e.metaKey;
+            if (e.key === "Escape") {
+              e.preventDefault();
+              this.finish(undefined);
+            } else if (mod && e.key.toLowerCase() === "z") {
+              e.preventDefault();
+              e.shiftKey ? this.redo() : this.undo();
+            } else if (mod && e.key.toLowerCase() === "y") {
+              e.preventDefault();
+              this.redo();
+            }
+          };
+          this.onResize = () => this.fit();
+          window.addEventListener("keydown", this.onKey, true);
+          window.addEventListener("keyup", this.onKey, true);
+          window.addEventListener("keypress", this.onKey, true);
+          window.addEventListener("resize", this.onResize);
+
+          // Cancel on backdrop click, but only if the press also started on the backdrop.
+          let downOnBackdrop = false;
+          this.backdrop.addEventListener("pointerdown", (e) => (downOnBackdrop = e.target === this.backdrop));
+          this.backdrop.addEventListener("click", (e) => {
+            if (downOnBackdrop && e.target === this.backdrop) this.finish(undefined);
+          });
+        }
+
+        loadImage(url, annotation) {
+          const img = (this.img = new Image());
+          img.alt = "";
+          img.draggable = false;
+          if (!/^(data|blob):/i.test(url || "")) img.crossOrigin = "anonymous";
+          img.onload = async () => {
+            if (this.closed) return;
+            if (!img.naturalWidth || !img.naturalHeight) return img.onerror();
+            this.buildStage();
+            if (annotation?.dataUrl) await this.restore(annotation);
+            if (this.closed) return;
+            this.saveBtn.disabled = false;
+            this.refreshUi();
+          };
+          img.onerror = () => {
+            if (this.closed) return;
+            alert("Could not load the image for annotation.");
+            this.finish(undefined);
+          };
+          img.src = url;
+        }
+
+        // Put a previously exported annotation back on the drawing layer.
+        async restore(annotation) {
+          const prev = new Image();
+          prev.src = annotation.dataUrl;
+          try {
+            await prev.decode();
+          } catch {
+            return;
+          }
+          if (this.kind === "markup") {
+            this.ctx.drawImage(prev, 0, 0, this.w, this.h);
+            return;
+          }
+          // Mask PNG is black/white; convert luminance to alpha on the tinted layer.
+          const tmp = document.createElement("canvas");
+          tmp.width = this.w;
+          tmp.height = this.h;
+          const t = tmp.getContext("2d", { willReadFrequently: true });
+          t.drawImage(prev, 0, 0, this.w, this.h);
+          const src = t.getImageData(0, 0, this.w, this.h);
+          const out = this.ctx.createImageData(this.w, this.h);
+          const [r, g, b] = this.tintRgb();
+          for (let i = 0; i < src.data.length; i += 4) {
+            out.data[i] = r;
+            out.data[i + 1] = g;
+            out.data[i + 2] = b;
+            out.data[i + 3] = src.data[i]; // red channel of a gray image = luminance
+          }
+          this.ctx.putImageData(out, 0, 0);
+        }
+
+        tintRgb() {
+          const n = parseInt(AnnotationEditor.MASK_TINT.slice(1), 16);
+          return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+        }
+
+        finish(value) {
+          if (this.closed) return;
+          this.closed = true;
+          window.removeEventListener("keydown", this.onKey, true);
+          window.removeEventListener("keyup", this.onKey, true);
+          window.removeEventListener("keypress", this.onKey, true);
+          window.removeEventListener("resize", this.onResize);
+          if (this.img) this.img.onload = this.img.onerror = null;
+          this.backdrop.remove(); // drops all element listeners with it
+          this.undoStack = this.redoStack = null;
+          try {
+            this.prevFocus?.focus?.();
+          } catch {}
+          this.resolve(value);
+        }
+
+        // ---------- history ----------
+
+        snapshot() {
+          return this.ctx.getImageData(0, 0, this.w, this.h);
+        }
+
+        pushUndo() {
+          this.undoStack.push(this.snapshot());
+          this.redoStack = [];
+          const bytes = this.w * this.h * 4;
+          const max = Math.max(2, Math.min(AnnotationEditor.MAX_HISTORY, Math.floor(AnnotationEditor.MAX_HISTORY_BYTES / bytes)));
+          while (this.undoStack.length > max) this.undoStack.shift();
+          this.refreshUi();
+        }
+
+        undo() {
+          if (!this.undoStack?.length || this.drag) return;
+          this.redoStack.push(this.snapshot());
+          this.ctx.putImageData(this.undoStack.pop(), 0, 0);
+          this.refreshUi();
+        }
+
+        redo() {
+          if (!this.redoStack?.length || this.drag) return;
+          this.undoStack.push(this.snapshot());
+          this.ctx.putImageData(this.redoStack.pop(), 0, 0);
+          this.refreshUi();
+        }
+
+        // ---------- mode / bulk actions ----------
+
+        isEmpty() {
+          const d = this.snapshot().data;
+          for (let i = 3; i < d.length; i += 4) if (d[i]) return false;
+          return true;
+        }
+
+        setKind(kind) {
+          if (kind === this.kind || !this.ctx) return;
+          if (!this.isEmpty()) {
+            if (!confirm("Switching mode will clear the current drawing. Continue?")) return;
+            this.ctx.clearRect(0, 0, this.w, this.h);
+          }
+          this.kind = kind;
+          this.tool = AnnotationEditor.TOOLS[kind][0][0];
+          this.undoStack = [];
+          this.redoStack = [];
+          this.refreshUi();
+        }
+
+        clear() {
+          if (!this.ctx || this.isEmpty()) return;
+          this.pushUndo();
+          this.ctx.clearRect(0, 0, this.w, this.h);
+        }
+
+        invert() {
+          if (!this.ctx) return;
+          this.pushUndo();
+          const im = this.snapshot();
+          const [r, g, b] = this.tintRgb();
+          for (let i = 0; i < im.data.length; i += 4) {
+            im.data[i] = r;
+            im.data[i + 1] = g;
+            im.data[i + 2] = b;
+            im.data[i + 3] = 255 - im.data[i + 3];
+          }
+          this.ctx.putImageData(im, 0, 0);
+        }
+
+        // ---------- drawing ----------
+
+        lineWidth() {
+          return (this.sizes[this.kind] / 100) * Math.max(this.w, this.h);
+        }
+
+        point(e) {
+          const r = this.layer.getBoundingClientRect(); // canvas box, excludes the stage border
+          return {
+            x: ((e.clientX - r.left) / r.width) * this.w,
+            y: ((e.clientY - r.top) / r.height) * this.h,
+          };
+        }
+
+        // Configure a context for the current tool's stroke style.
+        setStyle(ctx, erase) {
+          const lw = this.lineWidth();
+          ctx.lineCap = ctx.lineJoin = "round";
+          ctx.globalCompositeOperation = erase ? "destination-out" : "source-over";
+          const color = this.kind === "mask" ? AnnotationEditor.MASK_TINT : this.color;
+          ctx.strokeStyle = ctx.fillStyle = erase ? "#000" : color;
+          ctx.lineWidth = erase && this.kind === "markup" ? lw * 4 : lw;
+        }
+
+        stroke(a, b) {
+          const ctx = this.ctx;
+          this.setStyle(ctx, this.tool === "eraser");
+          ctx.beginPath();
+          if (a.x === b.x && a.y === b.y) {
+            ctx.arc(a.x, a.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
+        }
+
+        drawShape(ctx, tool, a, b) {
+          this.setStyle(ctx, false);
+          const lw = ctx.lineWidth;
+          ctx.beginPath();
+          if (tool === "rect") {
+            ctx.rect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+            ctx.stroke();
+          } else if (tool === "ellipse") {
+            const rx = Math.abs(b.x - a.x) / 2;
+            const ry = Math.abs(b.y - a.y) / 2;
+            ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, rx, ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (tool === "arrow") {
+            const len = Math.hypot(b.x - a.x, b.y - a.y);
+            if (len < 1) return;
+            const head = Math.min(len, lw * 4 + Math.max(this.w, this.h) * 0.01);
+            const ang = Math.atan2(b.y - a.y, b.x - a.x);
+            const ux = Math.cos(ang);
+            const uy = Math.sin(ang);
+            // Shaft stops inside the head so the round cap doesn't poke past the tip.
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x - ux * head * 0.8, b.y - uy * head * 0.8);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(b.x, b.y);
+            ctx.lineTo(b.x - ux * head + uy * head * 0.45, b.y - uy * head - ux * head * 0.45);
+            ctx.lineTo(b.x - ux * head - uy * head * 0.45, b.y - uy * head + ux * head * 0.45);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        placeText(p) {
+          const text = prompt("Text to place on the image:");
+          if (!text || !text.trim()) return;
+          this.pushUndo();
+          const ctx = this.ctx;
+          this.setStyle(ctx, false);
+          const size = Math.max(12, this.lineWidth() * 6);
+          ctx.font = `bold ${size}px sans-serif`;
+          ctx.textBaseline = "middle";
+          // Light outline keeps notes legible on any background.
+          ctx.lineWidth = Math.max(2, size / 8);
+          ctx.strokeStyle = "rgba(255,255,255,0.9)";
+          text.split("\n").forEach((line, i) => {
+            const y = p.y + i * size * 1.2;
+            ctx.strokeText(line, p.x, y);
+            ctx.fillText(line, p.x, y);
+          });
+        }
+
+        onDown(e) {
+          if (this.drag || (e.pointerType === "mouse" && e.button !== 0)) return;
+          e.preventDefault();
+          const p = this.point(e);
+          if (this.tool === "text") return this.placeText(p);
+          this.stage.setPointerCapture(e.pointerId);
+          this.pushUndo();
+          this.drag = { id: e.pointerId, start: p, last: p };
+          if (this.tool === "brush" || this.tool === "pen" || this.tool === "eraser") this.stroke(p, p);
+        }
+
+        onMove(e) {
+          const d = this.drag;
+          if (!d || e.pointerId !== d.id) return;
+          const events = e.getCoalescedEvents?.() ?? [];
+          for (const ev of events.length ? events : [e]) {
+            const p = this.point(ev);
+            if (d.start && ["brush", "pen", "eraser"].includes(this.tool)) {
+              this.stroke(d.last, p);
+            }
+            d.last = p;
+          }
+          if (["arrow", "ellipse", "rect"].includes(this.tool)) {
+            this.pctx.clearRect(0, 0, this.w, this.h);
+            this.drawShape(this.pctx, this.tool, d.start, d.last);
+          }
+        }
+
+        onUp(e) {
+          const d = this.drag;
+          if (!d || e.pointerId !== d.id) return;
+          d.last = this.point(e);
+          if (["arrow", "ellipse", "rect"].includes(this.tool)) {
+            this.pctx.clearRect(0, 0, this.w, this.h);
+            const moved = Math.hypot(d.last.x - d.start.x, d.last.y - d.start.y) > 1;
+            if (moved) this.drawShape(this.ctx, this.tool, d.start, d.last);
+            else this.undoStack.pop(); // nothing drawn: drop the speculative snapshot
+          }
+          this.drag = null;
+          this.refreshUi();
+        }
+
+        onCancel(e) {
+          const d = this.drag;
+          if (!d || e.pointerId !== d.id) return;
+          this.pctx.clearRect(0, 0, this.w, this.h);
+          this.ctx.putImageData(this.undoStack.pop(), 0, 0); // roll back the partial stroke
+          this.drag = null;
+          this.refreshUi();
+        }
+
+        // ---------- export ----------
+
+        save() {
+          if (!this.ctx || this.drag) return;
+          if (this.isEmpty()) return this.finish(null);
+          let canvas = this.layer;
+          if (this.kind === "mask") {
+            // White where painted (alpha), opaque black elsewhere.
+            const white = document.createElement("canvas");
+            white.width = this.w;
+            white.height = this.h;
+            const wc = white.getContext("2d");
+            wc.drawImage(this.layer, 0, 0);
+            wc.globalCompositeOperation = "source-in";
+            wc.fillStyle = "#fff";
+            wc.fillRect(0, 0, this.w, this.h);
+
+            canvas = document.createElement("canvas");
+            canvas.width = this.w;
+            canvas.height = this.h;
+            const c = canvas.getContext("2d");
+            c.fillStyle = "#000";
+            c.fillRect(0, 0, this.w, this.h);
+            c.drawImage(white, 0, 0);
+          }
+          this.finish({ kind: this.kind, dataUrl: canvas.toDataURL("image/png") });
+        }
+      }
+
       class FalModelProvider {
         constructor(definition) {
           Object.assign(this, definition);
@@ -526,9 +1220,24 @@
             }
 
             input.value = state[option.key] ?? option.default ?? "";
-            input.addEventListener("change", onChange);
+            input.addEventListener("change", () => {
+              this.updateOptionVisibility(container);
+              onChange();
+            });
             input.addEventListener("input", onChange);
             container.appendChild(input);
+          }
+
+          this.updateOptionVisibility(container);
+        }
+
+        // Options with `visibleWhen(values)` only show when relevant (e.g. GIF frame controls).
+        updateOptionVisibility(container) {
+          const values = this.readOptions(container);
+          for (const option of this.options || []) {
+            if (!option.visibleWhen) continue;
+            const el = container.querySelector(`[data-option-key="${option.key}"]`);
+            if (el) el.hidden = !option.visibleWhen(values);
           }
         }
 
@@ -552,14 +1261,16 @@
             .map((m) => m.text.trim())
             .filter(Boolean)
             .join("\n\n");
-          const imageDataUrls = nonEmpty.filter((m) => m.image).map((m) => m.image.dataUrl);
-          return { prompt, imageDataUrls };
+          const imageMessages = nonEmpty.filter((m) => m.image);
+          const imageDataUrls = imageMessages.map((m) => m.image.dataUrl);
+          const annotation = imageMessages[0]?.image.annotation || null;
+          return { prompt, imageDataUrls, annotation };
         }
 
         async generate({ client, messages, options }) {
-          const { prompt, imageDataUrls } = this.buildMessagesInput(messages);
+          const { prompt, imageDataUrls, annotation } = this.buildMessagesInput(messages);
           const input = {
-            ...this.buildInput({ prompt, imageDataUrls, options }),
+            ...this.buildInput({ prompt, imageDataUrls, annotation, options }),
             sync_mode: true,
           };
 
@@ -738,27 +1449,73 @@
         { value: "opaque", label: "opaque" },
       ];
 
-      const openaiFormatChoices = [
-        { value: "png", label: "png" },
-        { value: "jpeg", label: "jpeg" },
-        { value: "webp", label: "webp" },
+      const openaiReasoningChoices = [
+        { value: "low", label: "low" },
+        { value: "medium", label: "medium" },
+        { value: "high", label: "high" },
+      ];
+
+      const openaiEditFormatChoices = ["png", "jpeg", "webp", "gif"].map((v) => ({ value: v, label: v }));
+      const openaiTextFormatChoices = [...openaiEditFormatChoices, { value: "svg", label: "svg" }];
+
+      const openaiSvgModelChoices = ["gpt-6-astra", "gpt-5.5", "gpt-5.4", "gpt-5.6-terra", "gpt-6-luna", "gpt-6-sol"].map((v) => ({
+        value: v,
+        label: `svg: ${v}`,
+      }));
+
+      const isGif = (values) => values.output_format === "gif";
+      const isSvg = (values) => values.output_format === "svg";
+
+      const openaiGifOptions = [
+        { key: "frame_count", label: "GIF frames (2-16)", type: "number", default: 9, min: 2, max: 16, visibleWhen: isGif },
+        { key: "frame_duration_ms", label: "GIF ms/frame (20-2000)", type: "number", default: 200, min: 20, max: 2000, step: 10, visibleWhen: isGif },
+      ];
+
+      const openaiOptions = ({ sizeDefault, formatChoices }) => [
+        { key: "image_size", label: "Image size", type: "select", default: sizeDefault, choices: openaiSizeChoices },
+        { key: "quality", label: "Quality", type: "select", default: "high", choices: openaiQualityChoices },
+        { key: "reasoning_effort", label: "Reasoning", type: "select", default: "high", choices: openaiReasoningChoices },
+        { key: "background", label: "Background", type: "select", default: "auto", choices: openaiBackgroundChoices },
+        { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 10, visibleWhen: (v) => !isSvg(v) },
+        { key: "output_format", label: "Format", type: "select", default: "png", choices: formatChoices },
+        ...openaiGifOptions,
       ];
 
       const openaiTextOptions = [
-        { key: "image_size", label: "Image size", type: "select", default: "landscape_4_3", choices: openaiSizeChoices },
-        { key: "quality", label: "Quality", type: "select", default: "high", choices: openaiQualityChoices },
-        { key: "background", label: "Background", type: "select", default: "auto", choices: openaiBackgroundChoices },
-        { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 10 },
-        { key: "output_format", label: "Format", type: "select", default: "png", choices: openaiFormatChoices },
+        ...openaiOptions({ sizeDefault: "landscape_4_3", formatChoices: openaiTextFormatChoices }),
+        { key: "svg_model", label: "SVG vectorizer model", type: "select", default: "gpt-6-astra", choices: openaiSvgModelChoices, visibleWhen: isSvg },
       ];
 
-      const openaiEditOptions = [
-        { key: "image_size", label: "Image size", type: "select", default: "auto", choices: openaiSizeChoices },
-        { key: "quality", label: "Quality", type: "select", default: "high", choices: openaiQualityChoices },
-        { key: "background", label: "Background", type: "select", default: "auto", choices: openaiBackgroundChoices },
-        { key: "num_images", label: "Number", type: "number", default: 1, min: 1, max: 10 },
-        { key: "output_format", label: "Format", type: "select", default: "png", choices: openaiFormatChoices },
-      ];
+      const openaiEditOptions = openaiOptions({ sizeDefault: "auto", formatChoices: openaiEditFormatChoices });
+
+      const buildOpenaiInput = (input, options) => {
+        if (options.image_size) input.image_size = options.image_size;
+        if (options.quality) input.quality = options.quality;
+        if (options.reasoning_effort) input.reasoning_effort = options.reasoning_effort;
+        if (options.background) input.background = options.background;
+        if (options.num_images) input.num_images = Number(options.num_images);
+        if (options.output_format) input.output_format = options.output_format;
+
+        if (isGif(options)) {
+          if (options.frame_count) input.frame_count = Number(options.frame_count);
+          if (options.frame_duration_ms) input.frame_duration_ms = Number(options.frame_duration_ms);
+        }
+
+        if (isSvg(options)) {
+          input.num_images = 1; // API requires exactly 1 image for SVG output
+          if (options.svg_model) input.svg_model = options.svg_model;
+        }
+
+        return input;
+      };
+
+      // Mask / markup belong to the first input image (the image being edited).
+      const buildOpenaiEditInput = (input, annotation, options) => {
+        buildOpenaiInput(input, options);
+        if (annotation?.kind === "mask") input.mask_url = annotation.dataUrl;
+        if (annotation?.kind === "markup") input.markup_image_url = annotation.dataUrl;
+        return input;
+      };
 
       const MODELS = [
         new FalModelProvider({
@@ -822,70 +1579,46 @@
         }),
 
         new FalModelProvider({
-          id: "openai/gpt-image-2.5/flare/text-to-image",
-          label: "openai/gpt-image-2.5/flare/text-to-image",
-          endpoint: "openai/gpt-image-2.5/flare/text-to-image",
+          id: "openai/gpt-image-2.6/flare/text-to-image",
+          label: "openai/gpt-image-2.6/flare/text-to-image",
+          endpoint: "openai/gpt-image-2.6/flare/text-to-image",
           capabilities: { imageToImage: false },
           options: openaiTextOptions,
           buildInput({ prompt, options }) {
-            const input = { prompt };
-            if (options.image_size) input.image_size = options.image_size;
-            if (options.quality) input.quality = options.quality;
-            if (options.background) input.background = options.background;
-            if (options.num_images) input.num_images = Number(options.num_images);
-            if (options.output_format) input.output_format = options.output_format;
-            return input;
+            return buildOpenaiInput({ prompt }, options);
           },
         }),
 
         new FalModelProvider({
-          id: "openai/gpt-image-2.5/flare/edit",
-          label: "openai/gpt-image-2.5/flare/edit",
-          endpoint: "openai/gpt-image-2.5/flare/edit",
+          id: "openai/gpt-image-2.6/flare/edit",
+          label: "openai/gpt-image-2.6/flare/edit",
+          endpoint: "openai/gpt-image-2.6/flare/edit",
           capabilities: { imageToImage: true },
           options: openaiEditOptions,
-          buildInput({ prompt, imageDataUrls, options }) {
-            const input = { prompt, image_urls: imageDataUrls };
-            if (options.image_size) input.image_size = options.image_size;
-            if (options.quality) input.quality = options.quality;
-            if (options.background) input.background = options.background;
-            if (options.num_images) input.num_images = Number(options.num_images);
-            if (options.output_format) input.output_format = options.output_format;
-            return input;
+          buildInput({ prompt, imageDataUrls, annotation, options }) {
+            return buildOpenaiEditInput({ prompt, image_urls: imageDataUrls }, annotation, options);
           },
         }),
 
         new FalModelProvider({
-          id: "openai/gpt-image-2.5/sunburst/text-to-image",
-          label: "openai/gpt-image-2.5/sunburst/text-to-image",
-          endpoint: "openai/gpt-image-2.5/sunburst/text-to-image",
+          id: "openai/gpt-image-2.6/sunburst/text-to-image",
+          label: "openai/gpt-image-2.6/sunburst/text-to-image",
+          endpoint: "openai/gpt-image-2.6/sunburst/text-to-image",
           capabilities: { imageToImage: false },
           options: openaiTextOptions,
           buildInput({ prompt, options }) {
-            const input = { prompt };
-            if (options.image_size) input.image_size = options.image_size;
-            if (options.quality) input.quality = options.quality;
-            if (options.background) input.background = options.background;
-            if (options.num_images) input.num_images = Number(options.num_images);
-            if (options.output_format) input.output_format = options.output_format;
-            return input;
+            return buildOpenaiInput({ prompt }, options);
           },
         }),
 
         new FalModelProvider({
-          id: "openai/gpt-image-2.5/sunburst/edit",
-          label: "openai/gpt-image-2.5/sunburst/edit",
-          endpoint: "openai/gpt-image-2.5/sunburst/edit",
+          id: "openai/gpt-image-2.6/sunburst/edit",
+          label: "openai/gpt-image-2.6/sunburst/edit",
+          endpoint: "openai/gpt-image-2.6/sunburst/edit",
           capabilities: { imageToImage: true },
           options: openaiEditOptions,
-          buildInput({ prompt, imageDataUrls, options }) {
-            const input = { prompt, image_urls: imageDataUrls };
-            if (options.image_size) input.image_size = options.image_size;
-            if (options.quality) input.quality = options.quality;
-            if (options.background) input.background = options.background;
-            if (options.num_images) input.num_images = Number(options.num_images);
-            if (options.output_format) input.output_format = options.output_format;
-            return input;
+          buildInput({ prompt, imageDataUrls, annotation, options }) {
+            return buildOpenaiEditInput({ prompt, image_urls: imageDataUrls }, annotation, options);
           },
         }),
 
@@ -1232,6 +1965,17 @@
           }
           item.appendChild(thumbnail);
 
+          const annotation = message.image?.annotation;
+          if (annotation) {
+            // Only the first input image is edited, so only its mask/markup is sent.
+            const isFirstImage = this.messages.find((m) => m.image)?.id === message.id;
+            const badge = document.createElement("span");
+            badge.className = `message-annotation-badge ${annotation.kind}${isFirstImage ? "" : " unused"}`;
+            badge.title = isFirstImage ? `${annotation.kind} attached` : `${annotation.kind} ignored: only the first image's ${annotation.kind} is sent`;
+            badge.textContent = annotation.kind;
+            item.appendChild(badge);
+          }
+
           const textarea = document.createElement("textarea");
           textarea.className = "message-textarea";
           textarea.title = "message-text";
@@ -1293,12 +2037,39 @@
               this.saveMessages();
             });
             buttonsContainer.appendChild(removeImageButton);
+
+            const annotateButton = document.createElement("button");
+            annotateButton.className = "message-button";
+            annotateButton.innerHTML = "🖌️";
+            annotateButton.title = "edit-mask-or-markup (GPT Image 2.6 edit; applies to the first image)";
+            annotateButton.addEventListener("click", () => this.editAnnotation(message.id));
+            buttonsContainer.appendChild(annotateButton);
           }
 
           item.appendChild(buttonsContainer);
           this.sortable.attach(item, message.id);
 
           return item;
+        }
+
+        async editAnnotation(id) {
+          const message = this.messages.find((m) => m.id === id);
+          if (!message?.image) return;
+
+          const result = await AnnotationEditor.open({
+            imageUrl: message.image.dataUrl,
+            annotation: message.image.annotation || null,
+          });
+          if (result === undefined) return; // cancelled
+
+          // The image may have been replaced/removed while the editor was open.
+          const current = this.messages.find((m) => m.id === id);
+          if (current?.image !== message.image) return;
+
+          if (result) current.image.annotation = result;
+          else delete current.image.annotation;
+          this.renderMessages();
+          this.saveMessages();
         }
 
         handleReorder(fromId, targetId, isTop) {
@@ -1320,9 +2091,9 @@
         }
 
         buildOutputRequest({ modelId, parameters }) {
-          const { prompt, imageDataUrls } = this.model.buildMessagesInput(this.messages);
+          const { prompt, imageDataUrls, annotation } = this.model.buildMessagesInput(this.messages);
           const input = {
-            ...this.model.buildInput({ prompt, imageDataUrls, options: parameters }),
+            ...this.model.buildInput({ prompt, imageDataUrls, annotation, options: parameters }),
             sync_mode: true,
           };
 
@@ -1431,7 +2202,10 @@
           }
         }
 
-        useImageAsInput(imageUrl) {
+        async useImageAsInput(imageUrl) {
+          // Edit endpoints expect raster input: flatten SVG (and GIF, first frame) to PNG.
+          const dataUrl = FalImageLab.isVectorOrAnimated(imageUrl) ? await FalImageLab.rasterizeToPng(imageUrl) : imageUrl;
+
           this.messages.push({
             id: String(this.nextId++),
             text: "",
@@ -1439,7 +2213,7 @@
               name: "generated-image.png",
               mimeType: "image/png",
               size: 0,
-              dataUrl: imageUrl,
+              dataUrl,
             },
           });
           this.renderMessages();
@@ -1451,13 +2225,13 @@
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
-          } else if (this.selectedModelId === "openai/gpt-image-2.5/flare/text-to-image") {
-            this.selectedModelId = "openai/gpt-image-2.5/flare/edit";
+          } else if (this.selectedModelId === "openai/gpt-image-2.6/flare/text-to-image") {
+            this.selectedModelId = "openai/gpt-image-2.6/flare/edit";
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
-          } else if (this.selectedModelId === "openai/gpt-image-2.5/sunburst/text-to-image") {
-            this.selectedModelId = "openai/gpt-image-2.5/sunburst/edit";
+          } else if (this.selectedModelId === "openai/gpt-image-2.6/sunburst/text-to-image") {
+            this.selectedModelId = "openai/gpt-image-2.6/sunburst/edit";
             this.elements.modelSelect.value = this.selectedModelId;
             set("selectedModelId", this.selectedModelId, this.store);
             this.renderModelControls();
@@ -1514,6 +2288,11 @@
             image.src = imageUrl;
             image.alt = "Generated Image";
             image.style.display = "block";
+            // SVGs may have only a viewBox (no intrinsic size) and would collapse to 0px.
+            if (/^data:image\/svg\+xml|\.svg(\?|#|$)/i.test(imageUrl)) {
+              imageContainer.style.width = "100%";
+              image.style.width = "100%";
+            }
             imageContainer.appendChild(image);
 
             const useAsInputButton = document.createElement("button");
@@ -1542,6 +2321,8 @@
           const pre = document.createElement("pre");
           const inputDetails = { ...(output.input || output.request?.input || {}) };
           delete inputDetails.image_urls;
+          if (inputDetails.mask_url) inputDetails.mask_url = "(mask image)";
+          if (inputDetails.markup_image_url) inputDetails.markup_image_url = "(markup image)";
           pre.textContent = JSON.stringify(
             {
               modelId: output.modelId || "unknown",
@@ -1632,6 +2413,37 @@
           if (elapsedMs == null) return "unknown";
           if (elapsedMs < 1000) return `${elapsedMs}ms`;
           return `${(elapsedMs / 1000).toFixed(1)}s`;
+        }
+
+        static isVectorOrAnimated(url) {
+          return /^data:image\/(svg\+xml|gif)[;,]/i.test(url) || /\.(svg|gif)(\?|#|$)/i.test(url);
+        }
+
+        static async rasterizeToPng(url) {
+          try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = url;
+            await img.decode();
+
+            let width = img.naturalWidth || 1024;
+            let height = img.naturalHeight || 1024;
+            // Vectors have no fixed resolution; render them at a useful size.
+            const longEdge = Math.max(width, height);
+            if (/svg/i.test(url) && longEdge < 1024) {
+              width = Math.round((width * 1024) / longEdge);
+              height = Math.round((height * 1024) / longEdge);
+            }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+            return canvas.toDataURL("image/png");
+          } catch (error) {
+            console.warn("Could not rasterize image, using original", error);
+            return url;
+          }
         }
 
         static fileToDataUrl(file) {
