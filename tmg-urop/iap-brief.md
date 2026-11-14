@@ -48,8 +48,8 @@ You can also propose your own project if it ties meaning to a handle and goes th
 
 - You can read papers quickly to extract original ideas and gain inspiration.
 - You know some study design and statistics (R or Python), or want to learn. Qualitative coding is a plus.
-- You write clearly and knows how to de-slop AI output.
-- You are a tool maker, not just a consumer. You can show me a tool you made for yourself.
+- You write clearly and know how to de-slop AI output.
+- You are a tool maker, not just a consumer. Bonus if you can show me a tool you made.
 - HCI or cognitive science coursework helps but isn't required.
 - Electronics and mechanical engineering experience a plus for physical projects.
 
