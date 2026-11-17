@@ -47,6 +47,7 @@
 - [Pointer Debugger](./pointer-debugger/)
 - [QR code generator](./qr-code-generator/)
 - [Scale meter](./scale-meter/)
+- [Social Media Crawler](./social-media-crawler/) programmatic content download #tool
 - [Spectrogram Recorder](./spectrogram-recorder/)
 - [Subtitle Editor](./subtitle-editor/)
 - [Tax estimator](https://chuanqisun.github.io/tax/)
