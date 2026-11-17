@@ -1,0 +1,950 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Recursive Arms (WebGL compositing)</title>
+  </head>
+  <body>
+    <select id="cameras"></select>
+    <button id="rotate">rotate 90°</button> <span id="rotation"></span>
+    <label><input type="checkbox" id="hideJoints" /> hide joints</label>
+    <label><input type="checkbox" id="debugLines" /> gesture lines</label>
+    <fieldset id="euro" style="display: inline-block; vertical-align: top">
+      <legend>
+        <label><input type="checkbox" id="euroOn" checked /> One Euro filter</label> (arm joints)
+      </legend>
+      <label>min cutoff (Hz, lower = smoother at rest) <input type="range" id="minCutoff" min="0.01" max="5" step="0.01" value="1" /> <span></span></label
+      ><br />
+      <label>beta (higher = less lag when moving) <input type="range" id="beta" min="0" max="0.1" step="0.001" value="0.01" /> <span></span></label><br />
+      <label>d cutoff (Hz, speed smoothing) <input type="range" id="dCutoff" min="0.1" max="5" step="0.1" value="1" /> <span></span></label>
+    </fieldset>
+    <p id="status">loading model...</p>
+    <div style="position: relative; width: fit-content; margin: 0 auto">
+      <!-- video stays in the DOM (so frames keep decoding) but is hidden; the canvas shows it (rotated) plus the
+           recursive arms, and sets the layout size since its shape changes with the rotation -->
+      <video id="video" autoplay playsinline muted style="position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0"></video>
+      <canvas id="canvas" style="display: block; background: #111"></canvas>
+    </div>
+    <pre id="output"></pre>
+
+    <script type="module">
+      import { FilesetResolver, PoseLandmarker, ImageSegmenter } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs";
+
+      // Full camera frame as the base, recursive arm cut-outs on top. Nothing leaves the GPU except the pose landmarks:
+      // the pose model shares the display canvas's WebGL2 context, so its person mask is a texture there,
+      // and one fragment shader draws every recursion level (arm region ∩ person mask, filled with video).
+      // There are no per-arm offscreen canvases: each level maps the output pixel back into source-video
+      // space through the inverse of its transform, then evaluates the arm cut-out there.
+
+      // Arm chains: shoulder -> elbow -> wrist -> hand (hand = average of pinky/index/thumb)
+      const ARMS = {
+        left: { shoulder: 11, elbow: 13, wrist: 15, hand: [17, 19, 21] },
+        right: { shoulder: 12, elbow: 14, wrist: 16, hand: [18, 20, 22] },
+      };
+      const SIDES = ["right", "left"]; // index used in the shader: 0 = right, 1 = left
+      const ARM_WIDTHS = [0.5, 0.4, 0.45]; // upper arm, forearm, hand (relative to shoulder width)
+      const JOINT_NAMES = ["shoulder", "elbow", "wrist", "hand"];
+      const SEGS_PER_ARM = 3;
+      const MIN_VIS = 0.5;
+
+      const DEPTH = 8; // arms per recursion chain
+      const CHAINS = 2; // one chain starting from each real arm
+      // Level 0 of each chain is the real arm in place, which the full-frame video base already shows,
+      // so only levels 1..DEPTH-1 are composited.
+      const MAX_LEVELS = (DEPTH - 1) * CHAINS;
+      const SHRINK = 0.8; // scale factor per level
+      const REST = Math.PI / 2; // shoulder->hand angle that adds no rotation (arm hanging straight down)
+      const DOT_RADIUS = 2;
+      const MAX_DOTS = DEPTH * CHAINS * 4;
+
+      // Choreography (one cycle):
+      //   closed  --palms together TOGGLE_HOLD_MS-->  opening (arms grow out, GROW_TOTAL_MS)  -->  open
+      //   open    --palms on ears EAR_HOLD_MS-->      folding (arms retract, reverse animation) --> head
+      //   head    --palms together-->                 closed (head gone; palms must separate before reopening)
+      //   open    --palms together TOGGLE_HOLD_MS-->  closing (arms retract) --> closed
+      // The head is a copy of the real head (ellipse ∩ hair + face-skin masks), held between the palms.
+      const HEAD_LANDMARKS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      const HAIR = 1,
+        FACE_SKIN = 3;
+      const HEAD_THRESHOLD = 0.5; // hair + face-skin confidence above this is head
+
+      // Palms on ears: the real left palm near the left ear AND the real right palm near the right ear
+      const LEFT_EAR = 7,
+        RIGHT_EAR = 8;
+      const LEFT_EYE = 2,
+        RIGHT_EYE = 5;
+      const EAR_CLOSE = 1.0; // palm-ear distance that counts as close, relative to eye-to-eye distance
+      const EAR_HOLD_MS = 500;
+      // As the held head grows, it grows sub-linearly (about the point between the palms) so it doesn't cover
+      // the hands: shown scale = raw scale ^ HEAD_GROWTH. Still exactly 1 when the head appears.
+      const HEAD_GROWTH = 0.7;
+
+      // Palms together: closer than PALMS_CLOSE eye-to-eye distances. Growing: each level scales up from 0 over
+      // GROW_LEVEL_MS, starting GROW_STAGGER_MS after its parent, so the last level lands at GROW_TOTAL_MS;
+      // retracting plays it backwards (deepest level shrinks first).
+      const PALMS_CLOSE = 1.0;
+      const TOGGLE_HOLD_MS = 600;
+      // Opening hold must be steady: if either palm moves more than PALMS_STEADY eye-to-eye distances from
+      // where it was when the hold started, the timer restarts from the new position.
+      const PALMS_STEADY = 0.5;
+      const GROW_TOTAL_MS = 500;
+      const GROW_STAGGER_MS = 50;
+      const GROW_LEVEL_MS = GROW_TOTAL_MS - (DEPTH - 2) * GROW_STAGGER_MS; // 200 ms with DEPTH = 8
+
+      const video = document.getElementById("video");
+
+      // ---------- Camera rotation (quarter turns clockwise), remembered across reloads ----------
+      // Everything downstream (models, masks, compositing) works on the rotated frame, so landscape and
+      // portrait cameras both look upright. At 0° the video is used directly; otherwise each frame is drawn
+      // rotated into rotCanvas first.
+      const ROTATION_KEY = "dpp.rotation";
+      let rotation = Number(localStorage.getItem(ROTATION_KEY)) % 4 || 0;
+      const rotCanvas = document.createElement("canvas");
+      const rotCtx = rotCanvas.getContext("2d");
+      let frame = video; // this frame's source: the video, or rotCanvas when rotated
+      let rotationChanged = false; // the loop re-calibrates the held head after a rotation
+      const rotationLabel = document.getElementById("rotation");
+      const showRotation = () => (rotationLabel.textContent = `${rotation * 90}°`);
+      showRotation();
+      document.getElementById("rotate").onclick = () => {
+        rotation = (rotation + 1) % 4;
+        localStorage.setItem(ROTATION_KEY, rotation);
+        showRotation();
+        rotationChanged = true;
+      };
+
+      // Draws the current video frame with the rotation applied; returns the source to use this frame
+      function rotatedFrame() {
+        if (rotation === 0) return video;
+        const w = video.videoWidth,
+          h = video.videoHeight;
+        const sideways = rotation % 2 === 1;
+        const W = sideways ? h : w,
+          H = sideways ? w : h;
+        if (rotCanvas.width !== W || rotCanvas.height !== H) {
+          rotCanvas.width = W;
+          rotCanvas.height = H;
+        }
+        rotCtx.setTransform(1, 0, 0, 1, W / 2, H / 2);
+        rotCtx.rotate((rotation * Math.PI) / 2);
+        rotCtx.drawImage(video, -w / 2, -h / 2);
+        return rotCanvas;
+      }
+      const canvas = document.getElementById("canvas");
+      const select = document.getElementById("cameras");
+      const hideJoints = document.getElementById("hideJoints");
+      const debugLinesToggle = document.getElementById("debugLines");
+      const status = document.getElementById("status");
+      const output = document.getElementById("output");
+
+      // ---------- One Euro filter (Casiez et al. 2012) on every arm joint, tunable from the page ----------
+      // The recursion accumulates each arm's shoulder->hand angle, so base jitter grows with depth;
+      // filtering the joints before the recursion steadies every level.
+      const euro = { on: true, minCutoff: 1, beta: 0.01, dCutoff: 1 };
+      document.getElementById("euroOn").onchange = (e) => (euro.on = e.target.checked);
+      for (const key of ["minCutoff", "beta", "dCutoff"]) {
+        const input = document.getElementById(key),
+          label = input.nextElementSibling;
+        const sync = () => (label.textContent = euro[key] = Number(input.value));
+        input.oninput = sync;
+        sync();
+      }
+
+      const smoothingFactor = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
+
+      class OneEuro {
+        x = null;
+        dx = 0;
+        t = 0;
+        filter(x, t) {
+          // t in seconds
+          if (this.x === null || !euro.on || t <= this.t) {
+            if (this.x === null || !euro.on) this.dx = 0;
+            this.x = x;
+            this.t = t;
+            return x;
+          }
+          const dt = t - this.t;
+          this.dx += smoothingFactor(euro.dCutoff, dt) * ((x - this.x) / dt - this.dx);
+          const cutoff = euro.minCutoff + euro.beta * Math.abs(this.dx);
+          this.x += smoothingFactor(cutoff, dt) * (x - this.x);
+          this.t = t;
+          return this.x;
+        }
+      }
+
+      // Filters a 2D point (px), keeping its other fields (e.g. visibility)
+      class PointFilter {
+        fx = new OneEuro();
+        fy = new OneEuro();
+        filter(p, t) {
+          return { ...p, x: this.fx.filter(p.x, t), y: this.fy.filter(p.y, t) };
+        }
+      }
+      // One filter per joint (shoulder, elbow, wrist, hand) per arm
+      const filters = {
+        left: Array.from({ length: 4 }, () => new PointFilter()),
+        right: Array.from({ length: 4 }, () => new PointFilter()),
+        head: new PointFilter(), // head ellipse centre
+        eyeL: new PointFilter(), // eyes track the real head's pose while the hands cover the ears
+        eyeR: new PointFilter(),
+        earL: new PointFilter(),
+        earR: new PointFilter(),
+      };
+
+      // ---------- WebGL compositor (shares its context with MediaPipe) ----------
+      const gl = canvas.getContext("webgl2");
+
+      const VS = `#version 300 es
+      void main() { // one triangle covering the viewport
+        vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+        gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+      }`;
+      const FS = `#version 300 es
+      precision highp float;
+      uniform sampler2D uVideo, uPerson, uHair, uFace;
+      uniform vec2 uSize;                          // canvas size in px (= video size)
+      uniform vec4 uSeg[${2 * SEGS_PER_ARM}];      // per side: capsule endpoints a.xy, b.xy in source px
+      uniform float uHalfW[${2 * SEGS_PER_ARM}];
+      uniform int uSegCount[2];
+      uniform int uLevels;
+      uniform int uSide[${MAX_LEVELS}];                 // which arm each level draws
+      uniform vec3 uInvX[${MAX_LEVELS}], uInvY[${MAX_LEVELS}]; // inverse affine: canvas px -> source px
+      uniform float uScale[${MAX_LEVELS}];
+      uniform vec2 uDots[${MAX_DOTS}];
+      uniform int uDotCount;
+      uniform vec4 uHead;                          // head ellipse cx, cy, rx, ry in source px
+      uniform int uHeadCount;
+      uniform vec3 uHeadInvX[${CHAINS}], uHeadInvY[${CHAINS}];
+      uniform float uHeadScale;
+      uniform float uHeadThreshold;
+      uniform vec4 uDbg[3];                        // debug lines a.xy, b.xy in canvas px
+      uniform float uDbgClose[3];                  // 1 when that pair counts as close
+      uniform int uDbgCount;
+      uniform float uDotR;
+      out vec4 outColor;
+
+      // Antialiased coverage from a signed distance in px, like canvas 2D's edge antialiasing
+      float cover(float d) { return clamp(0.5 - d, 0.0, 1.0); }
+
+      // Arm region of one side at source position q: union of round-capped capsules.
+      // Distance is in source px; times s (the layer's scale) gives output px, so edges stay 1px soft.
+      float armCover(vec2 q, int side, float s) {
+        float arm = 0.0;
+        for (int j = 0; j < ${SEGS_PER_ARM}; j++) {
+          if (j >= uSegCount[side]) break;
+          int k = side * ${SEGS_PER_ARM} + j;
+          vec2 a = uSeg[k].xy, ba = uSeg[k].zw - a, pa = q - a;
+          float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+          arm += cover((length(pa - ba * h) - uHalfW[k]) * s) * (1.0 - arm);
+        }
+        return arm;
+      }
+
+      void main() {
+        vec2 p = vec2(gl_FragCoord.x, uSize.y - gl_FragCoord.y); // canvas 2D pixel coordinates
+        vec3 ph = vec3(p, 1.0);
+        vec3 col = texture(uVideo, p / uSize).rgb; // full camera frame as the base layer
+
+        // Recursion levels back to front, each composited source-over onto the previous ones
+        for (int l = 0; l < ${MAX_LEVELS}; l++) {
+          if (l >= uLevels) break;
+          vec2 q = vec2(dot(uInvX[l], ph), dot(uInvY[l], ph)); // this pixel in source-video space
+          // the per-arm canvas was video-sized, so nothing exists outside it
+          if (any(lessThan(q, vec2(0.0))) || any(greaterThanEqual(q, uSize))) continue;
+
+          float arm = armCover(q, uSide[l], uScale[l]);
+          if (arm <= 0.0) continue; // skip both texture fetches outside the arm region
+
+          vec2 uv = q / uSize; // MediaPipe textures and the video upload both have row 0 at the top
+          float alpha = arm * texture(uPerson, uv).r;
+          col = mix(col, texture(uVideo, uv).rgb, alpha);
+        }
+
+        // Held head: ellipse ∩ (hair + face-skin), filled with video
+        for (int i = 0; i < ${CHAINS}; i++) {
+          if (i >= uHeadCount) break;
+          vec2 q = vec2(dot(uHeadInvX[i], ph), dot(uHeadInvY[i], ph));
+          if (any(lessThan(q, vec2(0.0))) || any(greaterThanEqual(q, uSize))) continue;
+          vec2 n = (q - uHead.xy) / uHead.zw;
+          float k = max(length(n), 1e-6);
+          // first-order distance to the ellipse edge in source px, times scale for output px
+          float e = cover((k - 1.0) / length(n / (k * uHead.zw)) * uHeadScale);
+          if (e <= 0.0) continue;
+          vec2 uv = q / uSize;
+          float m = texture(uHair, uv).r + texture(uFace, uv).r > uHeadThreshold ? 1.0 : 0.0;
+          col = mix(col, texture(uVideo, uv).rgb, e * m);
+        }
+
+        // Landmark dots on top
+        float d = 0.0;
+        for (int i = 0; i < ${MAX_DOTS}; i++) {
+          if (i >= uDotCount) break;
+          d = max(d, cover(length(p - uDots[i]) - uDotR));
+        }
+        col = mix(col, vec3(1.0), d); // white joint dots
+
+        // Debug lines (palm-palm or palm-ear) on top of everything: green when close, yellow otherwise
+        for (int i = 0; i < 3; i++) {
+          if (i >= uDbgCount) break;
+          vec2 a = uDbg[i].xy, ba = uDbg[i].zw - a, pa = p - a;
+          float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+          float c = cover(length(pa - ba * h) - 1.0);
+          col = mix(col, uDbgClose[i] > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 1.0, 0.0), c);
+        }
+
+        outColor = vec4(col, 1.0);
+      }`;
+
+      function compile(type, src) {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        return s;
+      }
+      const program = gl.createProgram();
+      gl.attachShader(program, compile(gl.VERTEX_SHADER, VS));
+      gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FS));
+      gl.linkProgram(program);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+      const U = {};
+      for (const name of [
+        "uVideo",
+        "uPerson",
+        "uHair",
+        "uFace",
+        "uSize",
+        "uSeg",
+        "uHalfW",
+        "uSegCount",
+        "uLevels",
+        "uSide",
+        "uInvX",
+        "uInvY",
+        "uScale",
+        "uDots",
+        "uDotCount",
+        "uDotR",
+        "uHead",
+        "uHeadCount",
+        "uHeadInvX",
+        "uHeadInvY",
+        "uHeadScale",
+        "uHeadThreshold",
+        "uDbg",
+        "uDbgClose",
+        "uDbgCount",
+      ]) {
+        U[name] = gl.getUniformLocation(program, name);
+      }
+      gl.useProgram(program);
+      gl.uniform1i(U.uVideo, 0);
+      gl.uniform1i(U.uPerson, 1);
+      gl.uniform1i(U.uHair, 2);
+      gl.uniform1i(U.uFace, 3);
+      gl.uniform1f(U.uHeadThreshold, HEAD_THRESHOLD);
+      gl.uniform1f(U.uDotR, DOT_RADIUS);
+      gl.useProgram(null);
+
+      const vao = gl.createVertexArray(); // empty: the vertex shader uses gl_VertexID only
+      let videoTex = gl.createTexture();
+      // Arms are drawn scaled and rotated, so sample bilinearly like canvas 2D's drawImage smoothing.
+      // Sampler objects override MediaPipe's texture filtering without modifying their textures.
+      function makeSampler(filter) {
+        const s = gl.createSampler();
+        gl.samplerParameteri(s, gl.TEXTURE_MIN_FILTER, filter);
+        gl.samplerParameteri(s, gl.TEXTURE_MAG_FILTER, filter);
+        gl.samplerParameteri(s, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.samplerParameteri(s, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        return s;
+      }
+      const videoSampler = makeSampler(gl.LINEAR);
+      // The mask may be a 32-bit float texture, which is only filterable with this extension.
+      const maskSampler = makeSampler(gl.getExtension("OES_texture_float_linear") ? gl.LINEAR : gl.NEAREST);
+      gl.bindTexture(gl.TEXTURE_2D, videoTex);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1); // resized on first frame
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      let videoTexW = 1,
+        videoTexH = 1;
+
+      const segData = new Float32Array(2 * SEGS_PER_ARM * 4);
+      const halfW = new Float32Array(2 * SEGS_PER_ARM);
+      const segCount = new Int32Array(2);
+      const sideData = new Int32Array(MAX_LEVELS);
+      const invX = new Float32Array(MAX_LEVELS * 3);
+      const invY = new Float32Array(MAX_LEVELS * 3);
+      const scaleData = new Float32Array(MAX_LEVELS);
+      const dotData = new Float32Array(MAX_DOTS * 2);
+      const dbgData = new Float32Array(3 * 4);
+      const dbgClose = new Float32Array(3);
+      let debugLines = null; // this frame's gesture pairs [{a, b, close}], set before render
+      const headInvX = new Float32Array(CHAINS * 3);
+      const headInvY = new Float32Array(CHAINS * 3);
+      const UNITS = 4; // texture units we use
+
+      // Inverse of P = anchor + R(rot) * (q - origin) * scale, as two rows: q = [rowX; rowY] * (P, 1)
+      function writeInverse(xf, rowX, rowY, i) {
+        const c = Math.cos(xf.rot) / xf.scale,
+          s = Math.sin(xf.rot) / xf.scale;
+        const ax = xf.anchor.x,
+          ay = xf.anchor.y;
+        rowX.set([c, s, xf.origin.x - (c * ax + s * ay)], i * 3);
+        rowY.set([-s, c, xf.origin.y - (-s * ax + c * ay)], i * 3);
+      }
+
+      // MediaPipe drives this context too, so leave every bit of state we touch the way we found it.
+      function withOwnGLState(fn) {
+        const saved = {
+          fb: gl.getParameter(gl.FRAMEBUFFER_BINDING),
+          program: gl.getParameter(gl.CURRENT_PROGRAM),
+          vao: gl.getParameter(gl.VERTEX_ARRAY_BINDING),
+          viewport: gl.getParameter(gl.VIEWPORT),
+          active: gl.getParameter(gl.ACTIVE_TEXTURE),
+          unpackBuf: gl.getParameter(gl.PIXEL_UNPACK_BUFFER_BINDING),
+          flipY: gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL),
+          premul: gl.getParameter(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL),
+          caps: [gl.BLEND, gl.SCISSOR_TEST, gl.DEPTH_TEST, gl.STENCIL_TEST, gl.CULL_FACE, gl.RASTERIZER_DISCARD].map((c) => [c, gl.isEnabled(c)]),
+          units: [],
+        };
+        for (let i = 0; i < UNITS; i++) {
+          gl.activeTexture(gl.TEXTURE0 + i);
+          saved.units.push([gl.getParameter(gl.TEXTURE_BINDING_2D), gl.getParameter(gl.SAMPLER_BINDING)]);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        for (const [c] of saved.caps) gl.disable(c);
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        try {
+          fn();
+        } finally {
+          for (let i = 0; i < UNITS; i++) {
+            gl.activeTexture(gl.TEXTURE0 + i);
+            gl.bindTexture(gl.TEXTURE_2D, saved.units[i][0]);
+            gl.bindSampler(i, saved.units[i][1]);
+          }
+          gl.activeTexture(saved.active);
+          for (const [c, on] of saved.caps) if (on) gl.enable(c);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, saved.flipY);
+          gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, saved.premul);
+          gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, saved.unpackBuf);
+          gl.viewport(...saved.viewport);
+          gl.bindVertexArray(saved.vao);
+          gl.useProgram(saved.program);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, saved.fb);
+        }
+      }
+
+      // segs: {right: [{a, b, halfWidth}], left: [...]}; levels: [{side, anchor, rot, scale, shoulder}];
+      // dots: [{x, y}]; heads: {ellipse, xfs: [{anchor, origin, rot, scale}]} or null;
+      // masks are MPMask in this context, or null when there is no pose
+      function render(segs, levels, dots, heads, personMask, hairMask, faceMask) {
+        withOwnGLState(() => {
+          const w = canvas.width,
+            h = canvas.height;
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, videoTex);
+          if (videoTexW !== w || videoTexH !== h) {
+            // texStorage2D textures are immutable, so make a new one at the new size
+            gl.deleteTexture(videoTex);
+            videoTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, videoTex);
+            gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+            videoTexW = w;
+            videoTexH = h;
+          }
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+          gl.bindSampler(0, videoSampler);
+
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, personMask ? personMask.getAsWebGLTexture() : null);
+          gl.bindSampler(1, maskSampler);
+          [hairMask, faceMask].forEach((m, i) => {
+            gl.activeTexture(gl.TEXTURE2 + i);
+            gl.bindTexture(gl.TEXTURE_2D, m ? m.getAsWebGLTexture() : null);
+            gl.bindSampler(2 + i, maskSampler);
+          });
+
+          segData.fill(0);
+          halfW.fill(0);
+          SIDES.forEach((side, si) => {
+            segCount[si] = segs[side].length;
+            segs[side].forEach((s, j) => {
+              const k = si * SEGS_PER_ARM + j;
+              segData.set([s.a.x, s.a.y, s.b.x, s.b.y], k * 4);
+              halfW[k] = s.halfWidth;
+            });
+          });
+
+          // Each level maps its arm's shoulder onto its anchor, rotated and scaled
+          levels.forEach((L, i) => {
+            writeInverse({ ...L, origin: L.shoulder }, invX, invY, i);
+            scaleData[i] = L.scale;
+            sideData[i] = SIDES.indexOf(L.side);
+          });
+
+          dots.forEach((d, i) => dotData.set([d.x, d.y], i * 2));
+
+          gl.useProgram(program);
+          gl.uniform2f(U.uSize, w, h);
+          gl.uniform4fv(U.uSeg, segData);
+          gl.uniform1fv(U.uHalfW, halfW);
+          gl.uniform1iv(U.uSegCount, segCount);
+          gl.uniform1i(U.uLevels, levels.length);
+          gl.uniform1iv(U.uSide, sideData);
+          gl.uniform3fv(U.uInvX, invX);
+          gl.uniform3fv(U.uInvY, invY);
+          gl.uniform1fv(U.uScale, scaleData);
+          gl.uniform2fv(U.uDots, dotData);
+          gl.uniform1i(U.uDotCount, hideJoints.checked ? 0 : Math.min(dots.length, MAX_DOTS));
+          const headCount = heads && hairMask && faceMask ? heads.xfs.length : 0;
+          gl.uniform1i(U.uHeadCount, headCount);
+          const lines = debugLinesToggle.checked && debugLines ? debugLines : [];
+          lines.forEach((g, i) => {
+            dbgData.set([g.a.x, g.a.y, g.b.x, g.b.y], i * 4);
+            dbgClose[i] = g.close ? 1 : 0;
+          });
+          gl.uniform4fv(U.uDbg, dbgData);
+          gl.uniform1fv(U.uDbgClose, dbgClose);
+          gl.uniform1i(U.uDbgCount, lines.length);
+          if (headCount) {
+            const e = heads.ellipse;
+            gl.uniform4f(U.uHead, e.cx, e.cy, e.rx, e.ry);
+            heads.xfs.forEach((xf, i) => writeInverse(xf, headInvX, headInvY, i));
+            gl.uniform1f(U.uHeadScale, heads.xfs[0].scale);
+            gl.uniform3fv(U.uHeadInvX, headInvX);
+            gl.uniform3fv(U.uHeadInvY, headInvY);
+          }
+          gl.bindVertexArray(vao);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        });
+      }
+
+      // ---------- Models: both get the display canvas, so they share its WebGL context ----------
+      const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm");
+      const poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+          delegate: "GPU",
+        },
+        canvas,
+        runningMode: "VIDEO",
+        numPoses: 1,
+        outputSegmentationMasks: true,
+      });
+      // Multiclass selfie segmenter: 0 background, 1 hair, 2 body-skin, 3 face-skin, 4 clothes, 5 others
+      const segmenter = await ImageSegmenter.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+          delegate: "GPU",
+        },
+        canvas,
+        runningMode: "VIDEO",
+        outputCategoryMask: false,
+        outputConfidenceMasks: true,
+      });
+      status.textContent = "models loaded";
+
+      async function startCamera(deviceId) {
+        if (video.srcObject) video.srcObject.getTracks().forEach((t) => t.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        });
+        video.srcObject = stream;
+        return stream;
+      }
+
+      // Last used camera, remembered across reloads. Falls back to the default camera if it is gone.
+      const CAMERA_KEY = "dpp.cameraId";
+      let stream;
+      try {
+        stream = await startCamera(localStorage.getItem(CAMERA_KEY) || undefined);
+      } catch {
+        stream = await startCamera();
+      }
+      // Starting a camera also requests permission, so device labels are available below.
+      const currentId = stream.getVideoTracks()[0].getSettings().deviceId;
+      localStorage.setItem(CAMERA_KEY, currentId);
+      const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "videoinput");
+      for (const d of devices) {
+        const opt = document.createElement("option");
+        opt.value = d.deviceId;
+        opt.textContent = d.label || d.deviceId;
+        opt.selected = d.deviceId === currentId;
+        select.appendChild(opt);
+      }
+      select.onchange = async () => {
+        await startCamera(select.value);
+        localStorage.setItem(CAMERA_KEY, select.value);
+      };
+
+      // Pixel position of a landmark, plus visibility
+      function pt(pose, i) {
+        const p = pose[i];
+        return { x: p.x * canvas.width, y: p.y * canvas.height, v: p.visibility };
+      }
+
+      function handPoint(pose, ids) {
+        const ps = ids.map((i) => pt(pose, i));
+        return {
+          x: ps.reduce((a, p) => a + p.x, 0) / ps.length,
+          y: ps.reduce((a, p) => a + p.y, 0) / ps.length,
+          v: Math.min(...ps.map((p) => p.v)),
+        };
+      }
+
+      // "Where can the arm be" prior: thick round-capped segments, stopping once a joint is unreliable.
+      function armSegments(chain, scale) {
+        const out = [];
+        for (let i = 0; i < chain.length - 1; i++) {
+          const a = chain[i],
+            b = chain[i + 1];
+          if (a.v < MIN_VIS || b.v < MIN_VIS) break;
+          // canvas 2D prunes zero-length segments before stroking, so they draw nothing
+          if (a.x === b.x && a.y === b.y) continue;
+          out.push({ a, b, halfWidth: (ARM_WIDTHS[i] * scale) / 2 });
+        }
+        return out;
+      }
+
+      const midpoint = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+
+      // 2D similarity transforms as z -> a*z + b on complex numbers (a = scale * e^(i*rot), b = translation)
+      const cadd = (p, q) => ({ x: p.x + q.x, y: p.y + q.y });
+      const csub = (p, q) => ({ x: p.x - q.x, y: p.y - q.y });
+      const cmul = (p, q) => ({ x: p.x * q.x - p.y * q.y, y: p.x * q.y + p.y * q.x });
+      const cdiv = (p, q) => {
+        const d = q.x * q.x + q.y * q.y;
+        return { x: (p.x * q.x + p.y * q.y) / d, y: (p.y * q.x - p.x * q.y) / d };
+      };
+      // The similarity that maps segment a1-a2 onto segment b1-b2
+      function segToSeg(a1, a2, b1, b2) {
+        const a = cdiv(csub(b2, b1), csub(a2, a1));
+        return { a, b: csub(b1, cmul(a, a1)) };
+      }
+      const compose = (f, g) => ({ a: cmul(f.a, g.a), b: cadd(cmul(f.a, g.b), f.b) }); // f after g
+      // As the {anchor, origin, rot, scale} form the renderer uses
+      const toXf = (t) => ({ anchor: t.b, origin: { x: 0, y: 0 }, rot: Math.atan2(t.a.y, t.a.x), scale: Math.hypot(t.a.x, t.a.y) });
+
+      const cabs = (p) => Math.hypot(p.x, p.y);
+      const unit = (p) => {
+        const l = cabs(p);
+        return { x: p.x / l, y: p.y / l };
+      };
+
+      // Calibration when the head appears: palms, eyes, and each ear's offset from its palm expressed in the
+      // palm line's frame (so it can rotate with the palms without scaling)
+      function calibrate(palmL, palmR, eyeL, eyeR, earL, earR) {
+        const dir = unit(csub(palmR, palmL));
+        return {
+          eyeL,
+          eyeR,
+          earL,
+          earR,
+          offL: cdiv(csub(earL, palmL), dir),
+          offR: cdiv(csub(earR, palmR), dir),
+        };
+      }
+
+      // Held head transform (source px -> canvas px), exactly the identity at the moment the head appears:
+      //   1. undo the real head's motion since then (current eye line -> eye line at that moment), then
+      //   2. put the copy's ears where they were relative to the palms: ear target = palm + calibrated offset,
+      //      rotated with the palm line but never scaled, so the palm-ear gap stays constant as the head grows.
+      // Scale = (target ear distance / real ear distance) ^ HEAD_GROWTH when growing; rotation follows the palm line.
+      // Returns null when the palms are closer than the ear offsets allow (the ears would cross over).
+      function heldHeadXf(cal, eyeL, eyeR, palmL, palmR) {
+        const palmLine = csub(palmR, palmL);
+        if (cabs(palmLine) < 1e-3) return null;
+        const dir = unit(palmLine);
+        const targetL = cadd(palmL, cmul(cal.offL, dir));
+        const targetR = cadd(palmR, cmul(cal.offR, dir));
+        const earLine = csub(targetR, targetL);
+        if (earLine.x * palmLine.x + earLine.y * palmLine.y <= 0) return null;
+        const placeEars = segToSeg(cal.earL, cal.earR, targetL, targetR);
+        const undoHead = segToSeg(eyeL, eyeR, cal.eyeL, cal.eyeR);
+        const t = compose(placeEars, undoHead);
+        // Fit: raw^HEAD_GROWTH / raw, i.e. 1 at the starting size and shrinking more the larger the head gets
+        const raw = cabs(t.a);
+        const fit = raw > 1 ? Math.pow(raw, HEAD_GROWTH - 1) : 1;
+        const c = { x: (targetL.x + targetR.x) / 2, y: (targetL.y + targetR.y) / 2 };
+        const shrink = { a: { x: fit, y: 0 }, b: { x: c.x * (1 - fit), y: c.y * (1 - fit) } }; // scale about c
+        return toXf(compose(shrink, t));
+      }
+
+      // "Where can the head be" prior: an ellipse around the face landmarks, extended upward for hair.
+      function headEllipse(pose, scale) {
+        const ps = HEAD_LANDMARKS.map((i) => pt(pose, i)).filter((p) => p.v >= MIN_VIS);
+        if (ps.length < 3) return null;
+        const cx = ps.reduce((a, p) => a + p.x, 0) / ps.length;
+        const cy = ps.reduce((a, p) => a + p.y, 0) / ps.length;
+        return { cx, cy: cy - 0.15 * scale, rx: 0.7 * scale, ry: 0.9 * scale };
+      }
+
+      // Recursion: the start arm in place, then each next arm's shoulder sits on the previous arm's hand,
+      // alternating sides and shrinking by SHRINK each level.
+      // Rotation is relative: each arm's shoulder->hand angle (minus REST) is added to the rotation
+      // of every arm after it, like bones in a skeleton.
+      // grow(level) in [0, 1] scales each level's own size for the opening animation; children hang off the
+      // parent's (growing) hand, so the chain unfurls outward. Levels at 0 are not drawn.
+      function recurse(chains, side, levels, dots, grow) {
+        let scale = 1;
+        let rot = 0;
+        let anchor = chains[side][0]; // where this level's shoulder is placed
+        for (let level = 0; level < DEPTH; level++) {
+          const chain = chains[side];
+          const shoulder = chain[0];
+          const cos = Math.cos(rot),
+            sin = Math.sin(rot);
+          const g = level === 0 ? 1 : grow(level);
+          const s = scale * g;
+          // Map a point of this arm into canvas space: around the shoulder, scale + rotate, move to anchor
+          const map = (p) => {
+            const dx = (p.x - shoulder.x) * s,
+              dy = (p.y - shoulder.y) * s;
+            return { x: anchor.x + dx * cos - dy * sin, y: anchor.y + dx * sin + dy * cos };
+          };
+          if (g > 0) {
+            if (level > 0) levels.push({ side, anchor, rot, scale: s, shoulder }); // level 0 is the base video
+            dots.push(...chain.map(map));
+          }
+
+          // Next arm: shoulder at this arm's hand, rotated by this arm's shoulder->hand direction
+          const hand = chain[3];
+          anchor = map(hand);
+          rot += Math.atan2(hand.y - shoulder.y, hand.x - shoulder.x) - REST;
+          side = side === "right" ? "left" : "right";
+          scale *= SHRINK;
+        }
+      }
+
+      // Phase: "closed" | "opening" | "open" | "folding" | "head" | "closing" (see the choreography above)
+      let phase = "closed";
+      let phaseStart = 0;
+      let headCal = null; // palm and eye positions when the head appeared
+
+      // A condition that must hold continuously for some time. Once it fires it stays disarmed until the
+      // condition is released, so holding still doesn't fire again.
+      class Hold {
+        since = null;
+        armed = true;
+        // Returns ms held so far
+        update(on, now) {
+          if (!on) {
+            this.since = null;
+            this.armed = true;
+            return 0;
+          }
+          if (this.since === null) this.since = now;
+          return now - this.since;
+        }
+        fire(held, ms) {
+          if (!this.armed || held < ms) return false;
+          this.armed = false;
+          return true;
+        }
+      }
+      const palmsHold = new Hold();
+      let steadyFrom = null; // palm positions when the current opening hold started
+      const earsHold = new Hold();
+
+      function setPhase(p, now) {
+        phase = p;
+        phaseStart = now;
+      }
+
+      // Animations finish on time, even without a pose
+      function updatePhase(now) {
+        if (now - phaseStart < GROW_TOTAL_MS) return;
+        if (phase === "opening") setPhase("open", now);
+        else if (phase === "closing") setPhase("closed", now);
+        else if (phase === "folding") setPhase("head", now); // the head appears the moment the arms are retracted
+      }
+
+      const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+      // Growth of a recursion level (1..DEPTH-1) at time `now`. Retracting plays the opening backwards.
+      function growAt(level, now) {
+        const opening = (ms) => easeOutCubic(Math.min(Math.max((ms - (level - 1) * GROW_STAGGER_MS) / GROW_LEVEL_MS, 0), 1));
+        switch (phase) {
+          case "opening":
+            return opening(now - phaseStart);
+          case "closing":
+          case "folding":
+            return opening(GROW_TOTAL_MS - (now - phaseStart));
+          case "open":
+            return 1;
+          default:
+            return 0;
+        }
+      }
+
+      let lastTime = -1;
+      // FPS of processed frames and average main-thread ms per frame, recomputed about once per second
+      let fps = 0,
+        frameMs = 0,
+        fpsFrames = 0,
+        msSum = 0,
+        fpsStart = performance.now();
+      function loop() {
+        if (video.readyState >= 2 && video.currentTime !== lastTime) {
+          lastTime = video.currentTime;
+          fpsFrames++;
+          const fpsNow = performance.now();
+          if (fpsNow - fpsStart >= 1000) {
+            fps = (fpsFrames * 1000) / (fpsNow - fpsStart);
+            frameMs = msSum / fpsFrames;
+            fpsFrames = 0;
+            msSum = 0;
+            fpsStart = fpsNow;
+          }
+          const fpsLine = `fps: ${fps.toFixed(1)}  frame: ${frameMs.toFixed(1)} ms\n`;
+          frame = rotatedFrame();
+          if (rotationChanged) {
+            headCal = null; // the held head re-calibrates in the new orientation
+            rotationChanged = false;
+          }
+          const frameW = frame === video ? video.videoWidth : frame.width,
+            frameH = frame === video ? video.videoHeight : frame.height;
+          if (canvas.width !== frameW || canvas.height !== frameH) {
+            canvas.width = frameW;
+            canvas.height = frameH;
+          }
+
+          // The no-callback form copies the mask on the GPU, so it stays valid until result.close().
+          // The landmark readback inside is the one CPU wait per frame; compositing runs on the GPU after it.
+          const now = performance.now();
+          const result = poseLandmarker.detectForVideo(frame, now);
+          const pose = result.landmarks[0];
+          const mask = result.segmentationMasks?.[0];
+          if (pose && mask) {
+            const chains = {};
+            const segs = {};
+            for (const [side, arm] of Object.entries(ARMS)) {
+              const raw = [pt(pose, arm.shoulder), pt(pose, arm.elbow), pt(pose, arm.wrist), handPoint(pose, arm.hand)];
+              chains[side] = raw.map((p, i) => filters[side][i].filter(p, now / 1000));
+            }
+            // From the filtered shoulders, so the arm widths are smoothed too
+            const shoulderW = Math.hypot(chains.left[0].x - chains.right[0].x, chains.left[0].y - chains.right[0].y);
+            for (const side of SIDES) segs[side] = armSegments(chains[side], shoulderW);
+
+            // Two recursion chains, one rooted at each real arm, each alternating sides from there.
+            const levels = [];
+            const dots = [];
+            const eyeDist = Math.hypot(pt(pose, LEFT_EYE).x - pt(pose, RIGHT_EYE).x, pt(pose, LEFT_EYE).y - pt(pose, RIGHT_EYE).y);
+            const pair = (name, a, b, limit) => {
+              const d = Math.hypot(a.x - b.x, a.y - b.y);
+              return { name, a, b, d, rel: d / eyeDist, close: d < limit * eyeDist };
+            };
+            const fmtPair = (g) => `${g.name}: ${g.d.toFixed(0)} px = ${g.rel.toFixed(2)} eyes ${g.close ? "CLOSE" : ""}`;
+
+            let text = fpsLine;
+            const palms = pair("left palm <-> right palm", chains.left[3], chains.right[3], PALMS_CLOSE);
+            const ears = [
+              pair("left palm -> left ear", chains.left[3], pt(pose, LEFT_EAR), EAR_CLOSE),
+              pair("right palm -> right ear", chains.right[3], pt(pose, RIGHT_EAR), EAR_CLOSE),
+            ];
+            const eyeL = filters.eyeL.filter(pt(pose, LEFT_EYE), now / 1000);
+            const eyeR = filters.eyeR.filter(pt(pose, RIGHT_EYE), now / 1000);
+            const earL = filters.earL.filter(pt(pose, LEFT_EAR), now / 1000);
+            const earR = filters.earR.filter(pt(pose, RIGHT_EAR), now / 1000);
+            let palmsHeld = palmsHold.update(palms.close, now);
+            // Steadiness of the opening hold: both palms must stay near where the hold started
+            let drift = 0;
+            if (phase === "closed" && palms.close) {
+              if (!steadyFrom || palmsHeld === 0) steadyFrom = { l: palms.a, r: palms.b };
+              drift = Math.max(
+                Math.hypot(palms.a.x - steadyFrom.l.x, palms.a.y - steadyFrom.l.y),
+                Math.hypot(palms.b.x - steadyFrom.r.x, palms.b.y - steadyFrom.r.y),
+              );
+              if (drift > PALMS_STEADY * eyeDist) {
+                palmsHold.since = now; // restart the timer here (stays armed / disarmed as it was)
+                palmsHeld = 0;
+                steadyFrom = { l: palms.a, r: palms.b };
+              }
+            } else {
+              steadyFrom = null;
+            }
+            const earsHeld = earsHold.update(phase === "open" && ears.every((g) => g.close), now);
+
+            updatePhase(now);
+            if (phase === "closed" && palmsHold.fire(palmsHeld, TOGGLE_HOLD_MS)) setPhase("opening", now);
+            else if (phase === "open" && palmsHold.fire(palmsHeld, TOGGLE_HOLD_MS)) setPhase("closing", now);
+            else if (phase === "open" && earsHold.fire(earsHeld, EAR_HOLD_MS)) setPhase("folding", now);
+            else if (phase === "head" && palms.close) {
+              setPhase("closed", now);
+              palmsHold.armed = false; // reopening needs the palms to separate and come together again
+            }
+            if (phase === "head" && !headCal) headCal = calibrate(palms.a, palms.b, eyeL, eyeR, earL, earR);
+            if (phase !== "head") headCal = null;
+
+            const animating = phase === "opening" || phase === "closing" || phase === "folding";
+            const next =
+              {
+                closed: `hold palms together ${TOGGLE_HOLD_MS} ms to open`,
+                open: `palms together ${TOGGLE_HOLD_MS} ms to close, palms on ears ${EAR_HOLD_MS} ms for the head`,
+                head: "bring palms together to end",
+              }[phase] ?? "";
+            text +=
+              `phase: ${phase}${animating ? ` ${(now - phaseStart).toFixed(0)} / ${GROW_TOTAL_MS} ms` : ""}  ${next}\n` +
+              `${fmtPair(palms)}  threshold: < ${PALMS_CLOSE} eyes = ${(PALMS_CLOSE * eyeDist).toFixed(0)} px` +
+              `  held: ${palmsHeld.toFixed(0)} ms${palmsHold.armed ? "" : " (separate to re-arm)"}` +
+              (phase === "closed" ? `  drift: ${drift.toFixed(0)} / ${(PALMS_STEADY * eyeDist).toFixed(0)} px` : "") +
+              "\n";
+            for (const g of ears) text += `${fmtPair(g)}  (ear vis=${g.b.v.toFixed(2)})\n`;
+            text += `ears threshold: < ${EAR_CLOSE} eyes = ${(EAR_CLOSE * eyeDist).toFixed(0)} px` + `  held: ${earsHeld.toFixed(0)} / ${EAR_HOLD_MS} ms\n`;
+            debugLines = phase === "open" ? [palms, ...ears] : [palms];
+
+            const grow = (level) => growAt(level, now);
+            recurse(chains, "right", levels, dots, grow);
+            recurse(chains, "left", levels, dots, grow);
+
+            // The head mask is only needed while the head is held, so the segmenter runs only then.
+            // Its masks are only valid inside the callback, so composite there.
+            let headXf = null;
+            if (!headCal) render(segs, levels, dots, null, mask, null, null);
+            else
+              segmenter.segmentForVideo(frame, now, (seg) => {
+                const cm = seg.confidenceMasks;
+                const ellipse = cm ? headEllipse(pose, shoulderW) : null;
+                let heads = null;
+                if (ellipse) {
+                  const c = filters.head.filter({ x: ellipse.cx, y: ellipse.cy }, now / 1000);
+                  ellipse.cx = c.x;
+                  ellipse.cy = c.y;
+                  headXf = heldHeadXf(headCal, eyeL, eyeR, palms.a, palms.b);
+                  if (headXf && headXf.scale > 1e-3) heads = { ellipse, xfs: [headXf] };
+                }
+                render(segs, levels, dots, heads, mask, cm?.[HAIR], cm?.[FACE_SKIN]);
+              });
+            if (headCal) {
+              text += headXf
+                ? `head: scale ${headXf.scale.toFixed(3)}  rot ${((headXf.rot * 180) / Math.PI).toFixed(1)}°` +
+                  `  offset ${headXf.anchor.x.toFixed(0)}, ${headXf.anchor.y.toFixed(0)} px\n`
+                : "head: hidden (not found, or palms too close)\n";
+            }
+            text += `eye-to-eye: ${eyeDist.toFixed(0)} px\n\n`;
+            for (const [side, chain] of Object.entries(chains)) {
+              chain.forEach((p, i) => {
+                text += `${side} ${JOINT_NAMES[i]}: x=${p.x.toFixed(0)} y=${p.y.toFixed(0)} vis=${p.v.toFixed(2)}\n`;
+              });
+            }
+            output.textContent = text;
+          } else {
+            palmsHold.update(false, now);
+            earsHold.update(false, now);
+            updatePhase(now); // an animation in flight still finishes
+            debugLines = null;
+            render({ right: [], left: [] }, [], [], null, null, null, null); // just the camera frame
+            output.textContent = fpsLine + `phase: ${phase}\nno pose detected`;
+          }
+          result.close?.();
+          msSum += performance.now() - fpsNow;
+        }
+        requestAnimationFrame(loop);
+      }
+      loop();
+    </script>
+  </body>
+</html>

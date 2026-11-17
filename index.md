@@ -56,6 +56,8 @@
 
 ## Experiments Feed
 
+- [Recursive Self-Improvement (draw)](./recursive-self-improvement/draw.html) #sketch#cv#mediapipe
+- [Recursive Self-Improvement (act)](./recursive-self-improvement/act.html)
 - [Zen Tile](https://chuanqisun.github.io/zen-tile/) tile a surface by sketching #game#art#sketch
 - [MagScript](./magscript/) force grammar with magnets #concept#interaction#simulation
 - [$1 Gesture Recognizer](./1-dollar-gesture/) #explainer
