@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Pucks · v2 steering · interactive</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; user-select: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ------------------------------------------------------------ palette
+const BG = "#000", FG = "#f4f4f4", DIM = "#555", MUTE = "#8c8c8c", ACC = "#ff5a1f";
+const FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+
+// ------------------------------------------------------------ geometry (virtual 1600 × 900)
+const VW = 1600, VH = 900;
+const S = 4;                       // px per mm
+const R = 30 * S;                  // puck radius
+const HOME = R + 18;               // knob home, one click out
+const PITCH = 64;                  // illustrated distance per click
+const KR = 10;                     // knob radius
+const A = { x: 700, y: 400 };      // puck A (moves aside when B arrives)
+const A1 = { x: 700, y: 400 }, A2 = { x: 540, y: 420 }, B_HOME = { x: 1090, y: 430 };
+const BR = R * .62;                // puck B radius
+const MIX_RANGE = 470;             // B closer than this → A turns to mix
+
+// each knob: its concept, and how that concept deepens click by click
+const SEED = [
+  { e: 270, base: "mit junior",              chain: ["junior standing", "junior spring", "spring course load", "final-year plan"] },
+  { e: 342, base: "artificial intelligence", chain: ["machine learning", "deep learning", "llm agents", "agent evaluation"] },
+  { e: 54,  base: "computer science",        chain: ["algorithms", "systems", "distributed systems", "consensus"] },
+  { e: 126, base: "course six four",         chain: ["6-4 requirements", "6-4 electives", "inference electives", "6.7900 ml"] },
+  { e: 198, base: "spare", spare: true,      chain: ["ai research urop", "ai + policy minor", "tech policy lab", "ai governance"] },
+];
+// the checklist: one puck, then two
+const TASKS = [
+  { sec: 1, id: "pull",  label: "go deeper",       how: "drag a knob outward" },
+  { sec: 1, id: "press", label: "keep the deeper", how: "click a knob while it's pulled out" },
+  { sec: 1, id: "push",  label: "drop a concept",  how: "drag a knob into the rim" },
+  { sec: 1, id: "spare", label: "grow a concept",  how: "drag the spare knob out" },
+  { sec: 1, id: "flip",  label: "rule one out",    how: "click a knob sitting at home" },
+  { sec: 2, id: "bring", label: "bring B in",      how: "drag B toward A" },
+  { sec: 2, id: "turn",  label: "mix",             how: "drag A around: thick side toward B" },
+  { sec: 2, id: "lean",  label: "mostly B",        how: "keep turning past 50%" },
+];
+const SECTIONS = { 1: "one puck", 2: "two pucks" };
+
+// ------------------------------------------------------------ helpers
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const out3 = x => 1 - Math.pow(1 - x, 3);
+const rad = d => d * Math.PI / 180;
+const polar = (cx, cy, r, deg) => [cx + r * Math.cos(rad(deg)), cy - r * Math.sin(rad(deg))];
+const wrap180 = d => ((d % 360) + 540) % 360 - 180;
+const approach = (v, to, dt, rate) => v + (to - v) * (1 - Math.exp(-dt * rate));
+function mix(a, b, x) {
+  const p = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
+  const P = p(a), Q = p(b);
+  return "rgb(" + P.map((v, i) => Math.round(v + (Q[i] - v) * clamp(x))).join(",") + ")";
+}
+const MARK = 0x38b2;   // fiducial id 43, as in the storyboard
+const GRID = [...Array(6)].map((_, r) => [...Array(6)].map((_, c) =>
+  (r === 0 || r === 5 || c === 0 || c === 5) ? 1 : 1 - ((MARK >> (15 - ((r - 1) * 4 + (c - 1)))) & 1)));
+
+// ------------------------------------------------------------ state
+let knobs, hdg, hdgV, hdgTarget, B, done, caption, ripples, now = 0;
+let mode = 1, m = 0, autoTwo = null, rows = [];
+function reset() {
+  knobs = SEED.map(s => ({ ...s, chain: [...s.chain], len: 0, v: 0, target: 0, flip: 0, flipT: 0, strike: 0, press: 0, kept: -9, born: now }));
+  hdg = 0; hdgV = 0; hdgTarget = 0;
+  B = { x: B_HOME.x, y: B_HOME.y, mix: 0 };
+  done = new Map(); ripples = []; mode = 1; autoTwo = null;
+  say("drag a knob", "out to go deeper · in to leave it out");
+}
+function say(verb, mean) { caption = { verb, mean, t: now }; }
+function complete(id) {
+  if (done.has(id)) return;
+  done.set(id, now);
+  const sec = TASKS.find(t => t.id === id).sec;
+  if (TASKS.filter(t => t.sec === sec).every(t => done.has(t.id))) {
+    if (sec === 1 && mode === 1) autoTwo = now + 1.6;
+    if (TASKS.every(t => done.has(t.id))) setTimeout(() => say("that's the whole vocabulary", "keep playing, or press R to start over"), 1400);
+  }
+}
+function setMode(n) {
+  if (n === mode) return;
+  mode = n; autoTwo = null;
+  if (n === 2) { B.x = B_HOME.x; B.y = B_HOME.y; say("a second puck", "B joins. Drag it toward A to mix the two"); }
+  else say("one puck", "B steps away. Tune A on its own");
+}
+const ripple = (src, big) => ripples.push({ ...src, t0: now, big });
+
+const dirOf = k => { const e = rad(k.e + hdg); return { rd: [Math.cos(e), -Math.sin(e)], pd: [-Math.sin(e), -Math.cos(e)] }; };
+const radiusOf = len => len < 0 ? HOME + len * (HOME - R + 2) : HOME + len * PITCH;
+function knobXY(k) { const { rd } = dirOf(k), r = radiusOf(k.len); return [A.x + rd[0] * r, A.y + rd[1] * r]; }
+const maxLen = k => Math.min(4, k.chain.length);
+const isDropped = k => k.target < 0;
+const isOut = k => k.target > 0;
+
+// ------------------------------------------------------------ canvas
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+let W, H, sc, ox, oy, dpr;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  sc = Math.min(W / VW, H / VH); ox = (W - VW * sc) / 2; oy = (H - VH * sc) / 2;
+}
+addEventListener("resize", resize); resize();
+const toV = e => [(e.clientX - ox) / sc, (e.clientY - oy) / sc];
+
+function text(str, x, y, { size = 13, col = FG, align = "center", base = "middle", weight = 400, alpha = 1, spacing = 0 } = {}) {
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = base;
+  if (spacing && "letterSpacing" in ctx) ctx.letterSpacing = spacing + "px";
+  ctx.fillText(str, x, y);
+  const w = ctx.measureText(str).width;
+  ctx.restore();
+  return w;
+}
+function label(str, x, y, dx, dy, o = {}) {
+  const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
+  const align = o.align ?? (ux > .35 ? "left" : ux < -.35 ? "right" : "center");
+  const px = x + dx, py = y + dy + (align === "center" ? uy * 4 : 0);
+  const w = text(str, px, py, { ...o, align });
+  if (o.strike > 0) {
+    const x0 = align === "left" ? px : align === "right" ? px - w : px - w / 2;
+    ctx.save(); ctx.strokeStyle = o.strikeCol ?? DIM; ctx.lineWidth = 1.6; ctx.globalAlpha *= o.alpha ?? 1;
+    ctx.beginPath(); ctx.moveTo(x0 - 2, py); ctx.lineTo(x0 - 2 + (w + 4) * o.strike, py); ctx.stroke(); ctx.restore();
+  }
+}
+function annular(cx, cy, r0, r1, a0, a1) {
+  ctx.beginPath(); ctx.arc(cx, cy, r1, -rad(a0), -rad(a1), true); ctx.arc(cx, cy, r0, -rad(a1), -rad(a0), false); ctx.closePath();
+}
+function arrowHead(x, y, ang, s = 9) {
+  ctx.beginPath();
+  ctx.moveTo(x + Math.cos(ang) * s, y + Math.sin(ang) * s);
+  ctx.lineTo(x + Math.cos(ang + 2.5) * s, y + Math.sin(ang + 2.5) * s);
+  ctx.lineTo(x + Math.cos(ang - 2.5) * s, y + Math.sin(ang - 2.5) * s);
+  ctx.closePath(); ctx.fill();
+}
+
+// ------------------------------------------------------------ the mix: which ring mark faces B
+const bearingB = () => Math.atan2(-(B.y - A.y), B.x - A.x) * 180 / Math.PI;
+const mixShare = () => { const j = (((90 + hdg - bearingB()) % 360) + 360) % 360; return j / 360; };
+
+// ------------------------------------------------------------ drawing
+function drawPuck() {
+  const cx = A.x, cy = A.y;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = "#0b0b0b"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = (hover?.type === "rotate" || drag?.type === "rotate") ? ACC : FG; ctx.stroke();
+  const bb = bearingB();
+  for (let j = 0; j < 12; j++) {
+    const c = 90 - 30 * j + hdg, hw = 2 + j;
+    const face = B.mix * clamp(1 - Math.abs(wrap180(c - bb)) / 14);
+    ctx.fillStyle = face > .5 ? ACC : FG;
+    annular(cx, cy, 22 * S, 26.2 * S + face * 6, c - hw, c + hw); ctx.fill();
+  }
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-rad(hdg));
+  const cell = 24.3 * S / 6, x0 = -3 * cell;
+  ctx.fillStyle = FG; ctx.beginPath();
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) if (GRID[r][c]) ctx.rect(x0 + c * cell, x0 + r * cell, cell, cell);
+  ctx.fill();
+  ctx.fillRect(-4, -22.4 * S, 8, 5.2 * S);   // pointer
+  ctx.restore();
+}
+
+function drawKnob(k, focus) {
+  const { rd, pd } = dirOf(k), r = radiusOf(k.len);
+  const kx = A.x + rd[0] * r, ky = A.y + rd[1] * r, hx = A.x + rd[0] * HOME, hy = A.y + rd[1] * HOME;
+  const on = !focus || focus === k, fl = on ? 1 : .45;
+  const align = rd[0] > .35 ? "left" : rd[0] < -.35 ? "right" : "center";
+  const up = pd[1] < 0 ? pd : [-pd[0], -pd[1]];
+  ctx.save();
+
+  // rail
+  if (r > R) { ctx.globalAlpha = .75 * fl; ctx.strokeStyle = FG; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(A.x + rd[0] * R, A.y + rd[1] * R); ctx.lineTo(kx, ky); ctx.stroke(); }
+  // a dot at each concept passed
+  ctx.globalAlpha = fl; ctx.fillStyle = FG;
+  for (let j = 1; j <= Math.floor(k.len + .02) && j <= k.chain.length; j++) {
+    ctx.beginPath(); ctx.arc(A.x + rd[0] * (HOME + j * PITCH), A.y + rd[1] * (HOME + j * PITCH), 3.5, 0, 7); ctx.fill();
+  }
+  // home marker
+  const pull = clamp(k.len);
+  if (k.len > .15) {
+    ctx.globalAlpha = pull * fl; ctx.strokeStyle = k.spare ? MUTE : FG; ctx.lineWidth = 1.5;
+    if (k.spare) ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.arc(hx, hy, 5, 0, 7); ctx.fillStyle = BG; ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+  }
+  // the concept at home
+  const keptGlow = clamp(1 - (now - k.kept) / 1.6);
+  const ruled = k.flip > .5, col = ruled ? mix(FG, ACC, k.strike) : k.spare ? DIM : mix(mix(FG, DIM, k.strike), ACC, keptGlow);
+  ctx.globalAlpha = fl;
+  label(k.base, hx, hy, rd[0] * 24 * (1 - pull) + up[0] * 18 * pull, rd[1] * 24 * (1 - pull) + up[1] * 18 * pull,
+    { align, col, strike: k.strike, strikeCol: ruled ? ACC : DIM, size: k.len > .15 ? 12 : 13, weight: keptGlow > 0 ? 700 : 400 });
+  // the concept reached rides with the knob
+  if (k.len > .05 && k.chain.length) {
+    const n = clamp(Math.round(k.len), 1, k.chain.length), f = k.len - Math.floor(k.len);
+    ctx.globalAlpha = fl * clamp(k.len) * clamp(Math.abs(f - .5) * 2.4);
+    label(k.chain[n - 1], kx, ky, rd[0] * 26, rd[1] * 26, { align, size: 14, weight: 500 });
+  }
+
+  // knob
+  ctx.globalAlpha = on ? 1 : .55;
+  ctx.save(); ctx.translate(kx, ky); ctx.rotate(Math.atan2(rd[1], rd[0]));
+  const squash = Math.abs(Math.cos(Math.PI * k.flip)), sz = 1 - .28 * k.press;
+  ctx.scale(sz, Math.max(.06, squash) * sz);
+  ctx.beginPath(); ctx.arc(0, 0, KR, 0, 7);
+  if (k.flip > .5) { ctx.fillStyle = BG; ctx.fill(); ctx.lineWidth = 3.2; ctx.strokeStyle = FG; ctx.stroke(); }
+  else { ctx.fillStyle = FG; ctx.fill(); }
+  ctx.restore();
+  if (focus === k) {
+    ctx.globalAlpha = 1; ctx.strokeStyle = ACC; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(kx, ky, KR + 6, 0, 7); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawB() {
+  if (m < .01) return;
+  ctx.save(); ctx.globalAlpha = m;
+  const realX = B.x; B.x += (1 - out3(m)) * 520;
+  ctx.fillStyle = FG; ctx.beginPath(); ctx.arc(B.x, B.y, BR, 0, 7); ctx.fill();
+  if (hover?.type === "B" || drag?.type === "B") { ctx.strokeStyle = ACC; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(B.x, B.y, BR + 7, 0, 7); ctx.stroke(); }
+  text("B", B.x, B.y + 1, { size: 26, col: BG, weight: 700 });
+  text("graduate early", B.x, B.y + BR + 26, { size: 13, col: MUTE });
+  if (B.mix > 0) {
+    const bb = bearingB(), [sx, sy] = polar(A.x, A.y, 26.2 * S + 16, bb), d = Math.hypot(B.x - A.x, B.y - A.y);
+    const ex = B.x - (B.x - A.x) / d * (BR + 14), ey = B.y - (B.y - A.y) / d * (BR + 14);
+    ctx.globalAlpha = B.mix * m;
+    ctx.strokeStyle = MUTE; ctx.lineWidth = 1.5; ctx.setLineDash([3, 6]);
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]);
+    const mx = (sx + ex) / 2, my = (sy + ey) / 2, nx = (ey - sy), ny = -(ex - sx), nn = Math.hypot(nx, ny);
+    const s = ny / nn < 0 ? 1 : -1, tx = mx + nx / nn * 50 * s, ty = my + ny / nn * 50 * s;
+    text(Math.round(mixShare() * 100) + "%", tx, ty - 8, { size: 40, col: ACC, weight: 700 });
+    text("of B in the mix", tx, ty + 22, { size: 12, col: MUTE });
+  }
+  B.x = realX;
+  ctx.restore();
+}
+
+function drawReadsAs() {
+  let y = 662;
+  text(B.mix > .5 ? "THE MIX READS A AS" : "A READS AS", 64, y, { size: 11, col: MUTE, align: "left", spacing: 2, weight: 600 });
+  for (const k of knobs) {
+    if (k.spare && !isOut(k)) continue;
+    y += 24;
+    const ruled = k.flipT === 1, dropped = isDropped(k);
+    const mark = ruled ? "×" : dropped ? "○" : "●", col = ruled ? ACC : dropped ? DIM : FG;
+    text(mark, 64, y, { size: 13, col, align: "left" });
+    let w = 0;
+    if (k.spare) w = text("+ " + k.chain[clamp(k.target, 1, 4) - 1], 86, y, { size: 13, col: FG, align: "left" });
+    else w = text(k.base, 86, y, { size: 13, col, align: "left" });
+    if ((ruled || dropped) && !k.spare) { ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(84, y); ctx.lineTo(88 + w, y); ctx.stroke(); ctx.restore(); }
+    const note = ruled ? "ruled out of merges" : dropped ? "left out" : isOut(k) && !k.spare ? `→ ${k.chain[k.target - 1]}  (click to keep)` : "";
+    if (note) text(note, 100 + w, y, { size: 12, col: ruled ? ACC : MUTE, align: "left" });
+  }
+}
+
+function drawChrome() {
+  text("CONTEXT PUCKS", 64, 64, { size: 12, col: MUTE, align: "left", spacing: 3, weight: 600 });
+  text("v2 · steering with knobs", 64, 86, { size: 15, col: FG, align: "left" });
+  // caption
+  const a = clamp((now - caption.t) / .3), y = 160 + 6 * (1 - out3(a));
+  text(caption.verb, 64, y, { size: 30, col: FG, weight: 600, align: "left", alpha: a });
+  text(caption.mean, 64, y + 36, { size: 14, col: MUTE, align: "left", alpha: a });
+  drawChecklist();
+  text("R reset", VW - 64, 64, { size: 12, col: "#6a6a6a", align: "right" });
+  // hover hint
+  const hint = hover && !drag ? hintFor(hover) : null;
+  if (hint) {
+    const [hx, hy] = mouse;
+    text(hint, hx + 18, hy + 44, { size: 12, col: MUTE, align: "left" });
+  }
+}
+function drawChecklist() {
+  const x0 = 1236; let y = 128; rows = [];
+  const next = TASKS.find(t => t.sec === mode && !done.has(t.id));
+  for (const sec of [1, 2]) {
+    const items = TASKS.filter(t => t.sec === sec), n = items.filter(t => done.has(t.id)).length;
+    const active = sec === mode, hot = hover?.type === "sec" && hover.sec === sec && !active;
+    rows.push({ sec, x: x0 - 8, y: y - 16, w: 320, h: 30 });
+    ctx.fillStyle = active ? ACC : hot ? FG : "#333";
+    ctx.beginPath(); ctx.arc(x0 + 7, y, 9, 0, 7); ctx.fill();
+    text(sec, x0 + 7, y + 1, { size: 11, col: active ? BG : hot ? BG : MUTE, weight: 700 });
+    text(SECTIONS[sec].toUpperCase(), x0 + 26, y, { size: 12, col: active || hot ? FG : MUTE, align: "left", spacing: 2, weight: 600 });
+    text(active ? `${n}/${items.length}` : hot ? "switch →" : `${n}/${items.length}`, x0 + 304, y, { size: 12, col: hot ? ACC : MUTE, align: "right" });
+    y += 34;
+    for (const t of items) {
+      const d = done.has(t.id), isNext = t === next, age = d ? now - done.get(t.id) : 9;
+      const a = active ? 1 : .4;
+      ctx.save(); ctx.globalAlpha = a;
+      if (d) {
+        const pop = 1 + .6 * Math.max(0, 1 - age / .35) * Math.sin(Math.min(1, age / .35) * Math.PI);
+        ctx.fillStyle = ACC; ctx.beginPath(); ctx.arc(x0 + 7, y, 6 * pop, 0, 7); ctx.fill();
+        ctx.strokeStyle = BG; ctx.lineWidth = 1.8; ctx.beginPath();
+        ctx.moveTo(x0 + 4, y); ctx.lineTo(x0 + 6.3, y + 2.4); ctx.lineTo(x0 + 10.2, y - 2.6); ctx.stroke();
+        if (age < .6) { ctx.globalAlpha = a * (1 - age / .6); ctx.strokeStyle = ACC; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(x0 + 7, y, 6 + age * 30, 0, 7); ctx.stroke(); ctx.globalAlpha = a; }
+      } else {
+        ctx.strokeStyle = isNext ? ACC : "#3a3a3a"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(x0 + 7, y, 6 + (isNext ? .8 * Math.sin(now * 4) : 0), 0, 7); ctx.stroke();
+      }
+      text(t.label, x0 + 26, y, { size: 14, col: d || isNext ? FG : "#777", align: "left", weight: isNext ? 600 : 400 });
+      ctx.restore();
+      if (isNext) { y += 20; text(t.how, x0 + 26, y, { size: 12, col: MUTE, align: "left" }); }
+      y += 28;
+    }
+    y += 22;
+  }
+  if (autoTwo) {   // the hand-off to two pucks
+    const p = clamp(1 - (autoTwo - now) / 1.6);
+    text("next: a second puck", x0 + 26, y, { size: 12, col: ACC, align: "left", alpha: p });
+  }
+}
+function hintFor(h) {
+  if (h.type === "sec") return null;
+  if (h.type === "knob") {
+    const k = h.k;
+    if (isOut(k)) return "click: keep  ·  drag home: undo";
+    if (isDropped(k)) return "drag out: bring it back";
+    return k.spare ? "drag out: grow a concept" : "drag out / in  ·  click: flip";
+  }
+  if (h.type === "rotate") return B.mix > .5 ? "drag around: turn" : mode === 2 ? "drag around: turn  ·  bring B close to mix" : "drag around: turn  ·  it mixes once B is here";
+  if (h.type === "B") return "drag B toward A";
+}
+
+// ------------------------------------------------------------ input
+let drag = null, hover = null, mouse = [0, 0], down = null;
+function hit([x, y]) {
+  let best = null, bd = 22;
+  for (const k of knobs) { const [kx, ky] = knobXY(k), d = Math.hypot(x - kx, y - ky); if (d < bd) { bd = d; best = { type: "knob", k }; } }
+  if (best) return best;
+  for (const r of rows) if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h && r.sec !== mode) return { type: "sec", sec: r.sec };
+  if (mode === 2 && m > .9 && Math.hypot(x - B.x, y - B.y) < BR + 6) return { type: "B" };
+  if (Math.hypot(x - A.x, y - A.y) < R + 4) return { type: "rotate" };
+  return null;
+}
+function rawLen(k, [x, y]) {
+  const { rd } = dirOf(k), r = (x - A.x) * rd[0] + (y - A.y) * rd[1];
+  return r >= HOME ? (r - HOME) / PITCH : (r - HOME) / (HOME - R + 2);
+}
+const angleAt = ([x, y]) => Math.atan2(-(y - A.y), x - A.x) * 180 / Math.PI;
+// magnetic detents: the knob sticks near each click
+const detent = x => { const n = Math.floor(x), f = x - n; return n + (f < .5 ? 2 * f * f : 1 - 2 * (1 - f) * (1 - f)); };
+
+cv.addEventListener("pointerdown", e => {
+  const p = toV(e); mouse = p;
+  const h = hit(p); if (!h) return;
+  if (h.type === "sec") { setMode(h.sec); hover = null; return; }
+  cv.setPointerCapture(e.pointerId);
+  down = { p, t: now, moved: false };
+  if (h.type === "knob") drag = { ...h, off: h.k.len - rawLen(h.k, p), last: Math.round(h.k.len) };
+  if (h.type === "rotate") drag = { type: "rotate", a: angleAt(p), raw: hdg };
+  if (h.type === "B") drag = { type: "B", dx: B.x - p[0], dy: B.y - p[1] };
+});
+cv.addEventListener("pointermove", e => {
+  const p = toV(e); mouse = p;
+  if (!drag) { hover = hit(p); cv.style.cursor = hover ? (hover.type === "knob" || hover.type === "sec" ? "pointer" : "grab") : "default"; return; }
+  cv.style.cursor = "grabbing";
+  if (Math.hypot(p[0] - down.p[0], p[1] - down.p[1]) > 4) down.moved = true;
+  if (!down.moved) return;
+  if (drag.type === "knob") {
+    const k = drag.k, raw = clamp(rawLen(k, p) + drag.off, -1, maxLen(k));
+    k.len = detent(raw); k.v = 0;
+    const n = Math.round(raw);
+    if (n !== drag.last) { ripple({ k }); drag.last = n; }
+  }
+  if (drag.type === "rotate") {
+    const a = angleAt(p), d = wrap180(a - drag.a); drag.a = a;
+    const before = Math.round(drag.raw / 30); drag.raw += d;
+    hdg = drag.raw;
+    if (Math.round(drag.raw / 30) !== before) { ripple({ ptr: 1 }); if (B.mix > .5) { complete("turn"); if (mixShare() > .5) complete("lean"); say("turn", "thick side toward B = more of B"); } }
+  }
+  if (drag.type === "B") { B.x = clamp(p[0] + drag.dx, BR + 20, 1200 - BR); B.y = clamp(p[1] + drag.dy, BR, VH - BR - 40);
+    const [ax, ay] = [B.x - A.x, B.y - A.y], d = Math.hypot(ax, ay), min = R + BR + 70;
+    if (d < min) { B.x = A.x + ax / d * min; B.y = A.y + ay / d * min; } }
+});
+cv.addEventListener("pointerup", e => {
+  if (!drag) return;
+  const click = !down.moved && now - down.t < .5;
+  if (drag.type === "knob") {
+    const k = drag.k;
+    if (click) clickKnob(k);
+    else settleKnob(k, Math.round(clamp(rawLen(k, toV(e)) + drag.off, -1, maxLen(k))));
+  }
+  if (drag.type === "rotate") hdgTarget = Math.round(hdg / 30) * 30;
+  if (drag.type === "B" && Math.hypot(B.x - A.x, B.y - A.y) < MIX_RANGE && !done.has("bring")) { complete("bring"); say("B is in range", "now drag A around: its thick side toward B = more of B"); }
+  drag = null; cv.style.cursor = "default";
+});
+
+function settleKnob(k, n) {
+  const was = k.target; k.target = n;
+  if (n === was) return;
+  if (n < 0) { complete("push"); say("push in", `${k.base} is left out until you pull it home`); }
+  else if (n > 0 && k.spare) { complete("spare"); say("pull a spare", `a new concept grows: ${k.chain[n - 1]}`); }
+  else if (n > 0) { complete("pull"); say("pull out", `${n} deeper into ${k.base}: ${k.chain[n - 1]}`); }
+  else if (was < 0) say("pull home", `${k.base} is back in play`);
+  else say("push home", `undone: ${k.base} stays as it was`);
+}
+function clickKnob(k) {
+  k.press = 1; ripple({ k }, 1);
+  if (isOut(k)) {   // press the cap: keep the deeper concept
+    const n = k.target, old = k.spare ? "a spare knob" : k.base;
+    k.base = k.chain[n - 1]; k.chain = k.chain.slice(n); k.spare = false; k.target = 0; k.kept = now;
+    complete("press"); say("press the cap", `${k.base} replaces ${old}`);
+    if (!k.chain.length) k.chain = [];
+    return;
+  }
+  if (k.spare) { say("spare knob", "drag it out to grow a new concept"); return; }
+  k.flipT = 1 - k.flipT;
+  if (k.flipT) { complete("flip"); say("flip", `${k.base} is ruled out of merges`); }
+  else say("flip back", `${k.base} can merge again`);
+}
+addEventListener("keydown", e => { if (e.key === "r" || e.key === "R") reset(); });
+
+// ------------------------------------------------------------ frame
+let last = performance.now();
+reset();
+function frame(t) {
+  const dt = Math.min(.05, (t - last) / 1000); last = t; now += dt;
+  // springs
+  for (const k of knobs) {
+    if (!(drag?.type === "knob" && drag.k === k && down?.moved)) {
+      k.v += (k.target - k.len) * 260 * dt; k.v *= Math.exp(-dt * 20); k.len += k.v * dt;
+    }
+    k.press = approach(k.press, 0, dt, 9);
+    k.flip = approach(k.flip, k.flipT, dt, 9);
+    k.strike = approach(k.strike, (k.flipT || k.target < 0) ? 1 : 0, dt, 8);
+  }
+  if (drag?.type !== "rotate") { hdgV += (hdgTarget - hdg) * 260 * dt; hdgV *= Math.exp(-dt * 20); hdg += hdgV * dt; }
+  if (autoTwo && now >= autoTwo) setMode(2);
+  m = approach(m, mode === 2 ? 1 : 0, dt, 5);
+  const e = m * m * (3 - 2 * m);
+  A.x = A1.x + (A2.x - A1.x) * e; A.y = A1.y + (A2.y - A1.y) * e;
+  B.mix = approach(B.mix, mode === 2 && m > .9 && Math.hypot(B.x - A.x, B.y - A.y) < MIX_RANGE ? 1 : 0, dt, 8);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  ctx.setTransform(dpr * sc, 0, 0, dpr * sc, dpr * ox, dpr * oy);
+
+  const focus = drag?.type === "knob" ? drag.k : hover?.type === "knob" ? hover.k : null;
+  drawB();
+  drawPuck();
+  knobs.forEach(k => drawKnob(k, focus));
+  // turn arrow while turning
+  if (drag?.type === "rotate" || hover?.type === "rotate") {
+    ctx.save(); ctx.strokeStyle = ACC; ctx.fillStyle = ACC; ctx.lineWidth = 2; ctx.globalAlpha = drag ? 1 : .5;
+    const rr = R + 40, a0 = 100 + hdg, a1 = 140 + hdg;
+    ctx.beginPath(); ctx.arc(A.x, A.y, rr, -rad(a0), -rad(a1), true); ctx.stroke();
+    const [ex, ey] = polar(A.x, A.y, rr, a1); arrowHead(ex, ey, -rad(a1) - Math.PI / 2, 8);
+    ctx.restore();
+  }
+  // ripples
+  ripples = ripples.filter(r => now - r.t0 < .6);
+  for (const rp of ripples) {
+    const [x, y] = rp.ptr ? polar(A.x, A.y, 26.2 * S + 4, 90 + hdg) : knobXY(rp.k), p = (now - rp.t0) / .6;
+    ctx.save(); ctx.globalAlpha = (1 - p) * .9; ctx.strokeStyle = ACC; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, KR + 4 + p * (rp.big ? 30 : 18), 0, 7); ctx.stroke(); ctx.restore();
+  }
+  drawReadsAs();
+  drawChrome();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

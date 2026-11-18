@@ -57,6 +57,8 @@
 
 ## Experiments Feed
 
+- [Puck Grammar](./tangible-grammar/) [v2 interact](./tangible-grammar/v2-interactive.html) [v2 animate](./tangible-grammar/v2-animation.html) dictionary of metaphor based interaction design #concept#interaction
+- [Spaceship IDE](https://chuanqisun.github.io/spaceship/)
 - [Recursive Self-Improvement (draw)](./recursive-self-improvement/draw.html) #sketch#cv#mediapipe
 - [Recursive Self-Improvement (act)](./recursive-self-improvement/act.html)
 - [Zen Tile](https://chuanqisun.github.io/zen-tile/) tile a surface by sketching #game#art#sketch
@@ -66,7 +68,6 @@
 - [ArUco Cube Builder](./aruco-cube-builder/) make ArUco dice for 3D printing #tool#cad#cv
 - [ArUco Puck Builder](./aruco-puck-builder/) make ArUco puck for 3D printing #tool#cad#cv
 - [Sounds like a broken record](./broken-record/) interactive sketching on a record #audio#sketch
-- [Puck Grammar](./tangible-grammar/) dictionary of metaphor based interaction design #concept#interaction
 - [WT-01](./wt-01/) wavetable synthesizer #audio#music
 - [Laptop Sonar](./laptop-sonar/) detect hand position with laptop speakers and microphone #audio#sensing
 - [Voice keyboard](./voice-keyboard/) simulating human vocal tract

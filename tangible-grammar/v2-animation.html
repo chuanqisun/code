@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Pucks · v2 steering · grid</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// ------------------------------------------------------------ palette
+const BG = "#000", FG = "#f4f4f4", DIM = "#5a5a5a", MUTE = "#8c8c8c", ACC = "#ff5a1f";
+const FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+
+// ------------------------------------------------------------ geometry (virtual 1600 × 900)
+const VW = 1600, VH = 900;
+const S = 4;                       // px per mm
+const R = 30 * S;                  // puck radius
+const HOME = R + 18;               // knob home, one click out
+const PITCH = 72;                  // illustrated distance per click
+const KR = 10;                     // knob radius
+const LOOP = 30;
+
+const KNOBS = [
+  { e: 270, name: "mit junior" },
+  { e: 342, name: "artificial intelligence" },
+  { e: 54,  name: "computer science" },
+  { e: 126, name: "course six four" },
+  { e: 198, name: "spare", spare: true },
+];
+
+const PHASES = [
+  { t0: 0,    t1: 2.6,  verb: "five knobs",    mean: "one per concept on the idea's ring" },
+  { t0: 2.6,  t1: 7.0,  verb: "pull out",      mean: "go deeper into that concept" },
+  { t0: 7.0,  t1: 10.0, verb: "press the cap", mean: "keep the deeper concept" },
+  { t0: 10.0, t1: 13.0, verb: "push in",       mean: "leave the concept out" },
+  { t0: 13.0, t1: 16.6, verb: "pull a spare",  mean: "grow a new concept" },
+  { t0: 16.6, t1: 20.4, verb: "flip",          mean: "rule the concept out of merges" },
+  { t0: 20.4, t1: 28.8, verb: "turn",          mean: "thick side toward B = more of B" },
+];
+
+// ------------------------------------------------------------ easing / time helpers
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lin = (t, a, b) => clamp((t - a) / (b - a));
+const io = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const out3 = x => 1 - Math.pow(1 - x, 3);
+const snap = x => { const c = 2.2; return x <= 0 ? 0 : x >= 1 ? 1 : 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const ramp = (t, a, b) => io(lin(t, a, b));
+const clicks = (t, times, d = .3) => times.reduce((s, ti) => s + snap(lin(t, ti, ti + d)), 0);
+const pulse = (t, a, d) => { const x = lin(t, a, a + d); return Math.sin(Math.PI * x); };
+const rad = d => d * Math.PI / 180;
+const polar = (cx, cy, r, deg) => [cx + r * Math.cos(rad(deg)), cy - r * Math.sin(rad(deg))];
+
+// fiducial (id 43), as in the storyboard
+const MARK = 0x38b2;
+const GRID = [...Array(6)].map((_, r) => [...Array(6)].map((_, c) =>
+  (r === 0 || r === 5 || c === 0 || c === 5) ? 1 : 1 - ((MARK >> (15 - ((r - 1) * 4 + (c - 1)))) & 1)));
+
+// ------------------------------------------------------------ the scene as a pure function of time
+const T_DEEP = [3.3, 4.2, 5.1], T_GROW = [13.7, 14.6], T_TURN = [22.6, 23.4, 24.2, 25.0, 25.8, 26.6];
+
+function scene(t) {
+  const st = {
+    fade: 1 - ramp(t, 28.9, 29.8),
+    puck: ramp(t, 0, .9),
+    mix: ramp(t, 20.6, 21.8),
+    labels: 1 - ramp(t, 20.4, 21.0),
+    hdg: 30 * clicks(t, T_TURN),
+    turnArrow: lin(t, 22.0, 22.4) * (1 - lin(t, 27.0, 27.6)),
+    ripples: [],
+    knobs: [],
+  };
+  KNOBS.forEach((k, i) => {
+    const s0 = 0.6 + i * .15;
+    st.knobs.push({
+      ...k, len: -1 + snap(lin(t, s0, s0 + .35)), hi: 0, flip: 0, press: 0,
+      labA: ramp(t, 1.0 + i * .15, 1.5 + i * .15), dim: k.spare ? 1 : 0, strike: 0, strikeCol: DIM,
+      base: k.name, head: null, chain: [],
+    });
+  });
+  const [k0, k1, k2, , k4] = st.knobs;
+
+  // 1 · pull out: artificial intelligence, three clicks deeper
+  k1.hi = ramp(t, 2.6, 3.0) * (1 - ramp(t, 9.6, 10.0));
+  const keepFold = ramp(t, 7.9, 8.45);
+  k1.len += clicks(t, T_DEEP) - 3 * out3(lin(t, 7.9, 8.45));
+  const deep = ["machine learning", "deep learning", "llm agents"];
+  const gone = 1 - ramp(t, 7.7, 8.2);
+  k1.chain = deep.map((text, j) => ({ text, j: j + 1, a: ramp(t, T_DEEP[j] + .12, T_DEEP[j] + .45) * gone }));
+  // 2 · press: the deeper concept rides home and takes the slot
+  k1.press = pulse(t, 7.35, .45);
+  if (t >= 7.7) { k1.head = { text: "llm agents", keep: ramp(t, 8.3, 8.8) }; k1.labA *= 1 - ramp(t, 7.7, 8.1); }
+  T_DEEP.forEach(ti => st.ripples.push({ k: 1, t0: ti + .22 }));
+  st.ripples.push({ k: 1, t0: 7.5, big: 1 });
+
+  // 3 · push in: mit junior is left out
+  k0.hi = ramp(t, 10.0, 10.4) * (1 - ramp(t, 12.7, 13.1));
+  k0.len -= snap(lin(t, 10.6, 10.95));
+  k0.dim = ramp(t, 10.8, 11.3);
+  k0.strike = ramp(t, 10.95, 11.5);
+  st.ripples.push({ k: 0, t0: 10.85 });
+
+  // 4 · pull a spare: a new branch grows in the gap
+  k4.hi = ramp(t, 13.0, 13.4) * (1 - ramp(t, 16.3, 16.7));
+  k4.len += clicks(t, T_GROW) - 2 * ramp(t, 20.6, 21.2);
+  k4.chain = ["ai research urop", "ai + policy minor"].map((text, j) => ({ text, j: j + 1, a: ramp(t, T_GROW[j] + .12, T_GROW[j] + .45), fresh: 1 }));
+  T_GROW.forEach(ti => st.ripples.push({ k: 4, t0: ti + .22 }));
+
+  // 5 · flip: computer science is ruled out of merges
+  k2.hi = ramp(t, 16.6, 17.0) * (1 - ramp(t, 20.0, 20.4));
+  k2.flip = ramp(t, 17.3, 18.0);
+  k2.strike = ramp(t, 17.9, 18.4);
+  k2.strikeCol = ACC;
+  st.ripples.push({ k: 2, t0: 18.0 });
+
+  // 6 · turn toward B
+  T_TURN.forEach(ti => st.ripples.push({ ptr: 1, t0: ti + .18 }));
+  return st;
+}
+
+// ------------------------------------------------------------ drawing
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+let W, H, dpr;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+}
+addEventListener("resize", resize); resize();
+
+function text(str, x, y, { size = 13, col = FG, align = "center", base = "middle", weight = 400, alpha = 1, spacing = 0 } = {}) {
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.font = `${weight} ${size * TS}px ${FONT}`;
+  ctx.fillStyle = col; ctx.textAlign = align; ctx.textBaseline = base;
+  if (spacing && "letterSpacing" in ctx) ctx.letterSpacing = spacing + "px";
+  ctx.fillText(str, x, y);
+  ctx.restore();
+}
+
+/** a label offset from (x, y) by (dx, dy), anchored on the side it points to */
+function label(str, x, y, dx, dy, o = {}) {
+  const n = Math.hypot(dx, dy) || 1, ux = dx / n, uy = dy / n;
+  const align = o.align ?? (ux > .35 ? "left" : ux < -.35 ? "right" : "center");
+  const px = x + dx, py = y + dy + (align === "center" ? uy * 4 : 0);
+  text(str, px, py, { ...o, align });
+  if (o.strike > 0) {
+    ctx.save();
+    ctx.font = `${o.weight ?? 400} ${(o.size ?? 13) * TS}px ${FONT}`;
+    const w = ctx.measureText(str).width, x0 = align === "left" ? px : align === "right" ? px - w : px - w / 2;
+    ctx.strokeStyle = o.strikeCol ?? DIM; ctx.lineWidth = 1.6; ctx.globalAlpha *= o.alpha ?? 1;
+    ctx.beginPath(); ctx.moveTo(x0 - 2, py); ctx.lineTo(x0 - 2 + (w + 4) * o.strike, py); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function annular(cx, cy, r0, r1, a0, a1) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r1, -rad(a0), -rad(a1), true);
+  ctx.arc(cx, cy, r0, -rad(a1), -rad(a0), false);
+  ctx.closePath();
+}
+
+function drawPuck(cx, cy, st) {
+  const h = st.hdg, a = st.puck;
+  ctx.save(); ctx.globalAlpha *= a;
+  // body
+  ctx.beginPath(); ctx.arc(cx, cy, R * (0.92 + 0.08 * out3(a)), 0, Math.PI * 2);
+  ctx.fillStyle = "#0b0b0b"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = FG; ctx.stroke();
+  // graded heading ring: marks thicken clockwise from the pointer
+  const bDir = 0;   // B sits to the right
+  for (let j = 0; j < 12; j++) {
+    const c = 90 - 30 * j + h, hw = 2 + j;
+    let d = ((c - bDir) % 360 + 540) % 360 - 180;
+    const face = st.mix * clamp(1 - Math.abs(d) / 14);
+    ctx.fillStyle = face > .5 ? ACC : FG;
+    ctx.globalAlpha = a * st.fade * (0.95);
+    annular(cx, cy, 22 * S, 26.2 * S + face * 6, c - hw, c + hw);
+    ctx.fill();
+  }
+  ctx.globalAlpha = a * st.fade;
+  // fiducial marker
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-rad(h));
+  const cell = 24.3 * S / 6, x0 = -3 * cell;
+  ctx.fillStyle = FG; ctx.beginPath();
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) if (GRID[r][c]) ctx.rect(x0 + c * cell, x0 + r * cell, cell, cell);
+  ctx.fill("nonzero");
+  // pointer
+  ctx.fillRect(-4, -22.4 * S, 8, 5.2 * S);
+  ctx.restore();
+  ctx.restore();
+}
+
+function drawKnob(cx, cy, k, st, focus) {
+  const e = k.e + st.hdg, rd = [Math.cos(rad(e)), -Math.sin(rad(e))], pd = [-Math.sin(rad(e)), -Math.cos(rad(e))];
+  const r = k.len < 0 ? HOME + k.len * (HOME - R + 2) : HOME + k.len * PITCH;
+  const [kx, ky] = [cx + rd[0] * r, cy + rd[1] * r];
+  const [hx, hy] = [cx + rd[0] * HOME, cy + rd[1] * HOME];
+  const fa = focus < 0 || focus === k ? 1 : 0.4;   // dim the knobs not in play
+  ctx.save(); ctx.globalAlpha *= st.puck;
+
+  // rail
+  if (r > R) {
+    ctx.strokeStyle = FG; ctx.lineWidth = 2; ctx.globalAlpha = st.fade * st.puck * fa * .75;
+    ctx.beginPath(); ctx.moveTo(cx + rd[0] * R, cy + rd[1] * R); ctx.lineTo(kx, ky); ctx.stroke();
+  }
+  ctx.globalAlpha = st.fade * st.puck;
+
+  // chain: a dot left at each concept the knob passes on its way out
+  const pull = clamp(k.len), align = rd[0] > .35 ? "left" : rd[0] < -.35 ? "right" : "center";
+  const up = pd[1] < 0 ? pd : [-pd[0], -pd[1]];
+  const lab = (o = {}) => ({ size: 13, col: FG, align, ...o });
+  for (const c of k.chain) {
+    if (c.a <= 0) continue;
+    const [x, y] = [cx + rd[0] * (HOME + c.j * PITCH), cy + rd[1] * (HOME + c.j * PITCH)];
+    ctx.globalAlpha = st.fade * c.a * st.labels;
+    ctx.fillStyle = FG; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 7); ctx.fill();
+  }
+  // home marker when the knob is away
+  if (k.len > .15) {
+    ctx.globalAlpha = st.fade * clamp(k.len) * st.labels;
+    ctx.strokeStyle = k.spare ? MUTE : FG; ctx.lineWidth = 1.5;
+    if (k.spare) ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.arc(hx, hy, 5, 0, 7); ctx.fillStyle = BG; ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+  }
+  const fl = focus < 0 || focus === k ? 1 : .45;
+  // the concept at home: sits outside the knob, steps aside when the knob leaves
+  if (k.labA > 0) {
+    const lx = rd[0] * 24 * (1 - pull) + up[0] * 18 * pull, ly = rd[1] * 24 * (1 - pull) + up[1] * 18 * pull;
+    const col = k.strikeCol === ACC ? mix(FG, ACC, k.strike) : mix(FG, DIM, k.dim);
+    ctx.globalAlpha = st.fade * st.labels * fl;
+    label(k.base, hx, hy, lx, ly, lab({ alpha: k.labA, col, strike: k.strike, strikeCol: k.strikeCol, size: k.len > .15 ? 12 : 13 }));
+  }
+  // the concept the knob has reached rides with it, changing at each click
+  let head = null;
+  if (k.head) head = { text: k.head.text, a: 1, bold: k.head.keep > .5 };
+  else if (k.chain.length && k.len > .05) {
+    const n = clamp(Math.round(k.len), 1, k.chain.length), f = k.len - Math.floor(k.len);
+    head = { text: k.chain[n - 1].text, a: clamp(k.len) * clamp(Math.abs(f - .5) * 2.4) };
+  }
+  if (head && head.a > 0) {
+    ctx.globalAlpha = st.fade * st.labels * fl;
+    label(head.text, kx, ky, rd[0] * 26, rd[1] * 26, lab({ alpha: head.a, weight: head.bold ? 700 : 500, size: 14 }));
+  }
+
+  // the knob itself
+  ctx.globalAlpha = st.fade * st.puck * (fa < 1 ? .55 : 1);
+  ctx.save(); ctx.translate(kx, ky); ctx.rotate(Math.atan2(rd[1], rd[0]));
+  const squash = Math.abs(Math.cos(Math.PI * k.flip)), sz = 1 - .28 * k.press;
+  ctx.scale(sz, Math.max(.06, squash) * sz);
+  ctx.beginPath(); ctx.arc(0, 0, KR, 0, 7);
+  if (k.flip > .5) { ctx.fillStyle = BG; ctx.fill(); ctx.lineWidth = 3.2; ctx.strokeStyle = FG; ctx.stroke(); }
+  else { ctx.fillStyle = FG; ctx.fill(); }
+  ctx.restore();
+  // focus ring
+  if (k.hi > 0) {
+    ctx.globalAlpha = st.fade * k.hi;
+    ctx.strokeStyle = ACC; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(kx, ky, KR + 6 + 2 * (1 - k.hi), 0, 7); ctx.stroke();
+  }
+  ctx.restore();
+  return [kx, ky];
+}
+
+function mix(a, b, x) {
+  const p = s => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
+  const A = p(a), B = p(b);
+  return "rgb(" + A.map((v, i) => Math.round(v + (B[i] - v) * x)).join(",") + ")";
+}
+
+function ripple(x, y, age, big) {
+  if (age < 0 || age > .6) return;
+  const p = age / .6;
+  ctx.save();
+  ctx.globalAlpha = (1 - p) * .9;
+  ctx.strokeStyle = ACC; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x, y, KR + 4 + p * (big ? 30 : 18), 0, 7); ctx.stroke();
+  ctx.restore();
+}
+
+function arrowHead(x, y, ang, s = 9) {
+  ctx.beginPath();
+  ctx.moveTo(x + Math.cos(ang) * s, y + Math.sin(ang) * s);
+  ctx.lineTo(x + Math.cos(ang + 2.5) * s, y + Math.sin(ang + 2.5) * s);
+  ctx.lineTo(x + Math.cos(ang - 2.5) * s, y + Math.sin(ang - 2.5) * s);
+  ctx.closePath(); ctx.fill();
+}
+
+function draw(t) {
+  const st = scene(t);
+  ctx.globalAlpha = st.fade;
+
+  const cx = 800 - 210 * st.mix, cy = 410;
+  const focus = st.knobs.find(k => k.hi > .5) ?? -1;
+
+  // B, for the turn
+  if (st.mix > 0) {
+    const bx = 1090 + 40 * (1 - st.mix), br = R * .62;
+    ctx.save(); ctx.globalAlpha = st.fade * st.mix;
+    ctx.fillStyle = FG; ctx.beginPath(); ctx.arc(bx, cy, br, 0, 7); ctx.fill();
+    text("B", bx, cy + 1, { size: 26, col: BG, weight: 700 });
+    text("graduate early", bx, cy + br + 30, { size: 13, col: MUTE });
+    // bearing A → B
+    ctx.strokeStyle = MUTE; ctx.lineWidth = 1.5; ctx.setLineDash([3, 6]);
+    ctx.beginPath(); ctx.moveTo(cx + 26.2 * S + 16, cy); ctx.lineTo(bx - br - 14, cy); ctx.stroke(); ctx.setLineDash([]);
+    // readout
+    const pct = Math.round((90 + st.hdg) / 360 * 100);
+    const mx = (cx + R + bx - br) / 2;
+    text(pct + "%", mx, cy - 28 - 36 * TS, { size: 44, col: ACC, weight: 700 });
+    text("of B in the mix", mx, cy - 28, { size: 13, col: MUTE });
+    text("mit ai student", cx, cy + R + 70, { size: 13, col: MUTE });
+    ctx.restore();
+  }
+
+  drawPuck(cx, cy, st);
+  const kpos = st.knobs.map(k => drawKnob(cx, cy, k, st, focus));
+
+  // turn arrow (counter-clockwise brings thicker marks round to face B)
+  if (st.turnArrow > 0) {
+    ctx.save(); ctx.globalAlpha = st.fade * st.turnArrow;
+    ctx.strokeStyle = ACC; ctx.fillStyle = ACC; ctx.lineWidth = 2.5;
+    const rr = R + 52, a0 = 100, a1 = 150;
+    ctx.beginPath(); ctx.arc(cx, cy, rr, -rad(a0), -rad(a1), true); ctx.stroke();
+    const [ex, ey] = polar(cx, cy, rr, a1);
+    arrowHead(ex, ey, -rad(a1) - Math.PI / 2);
+    ctx.restore();
+  }
+
+  // ripples on each detent / press
+  for (const rp of st.ripples) {
+    if (rp.ptr) { const [px, py] = polar(cx, cy, 26.2 * S + 4, 90 + st.hdg); ripple(px, py, t - rp.t0); }
+    else ripple(...kpos[rp.k], t - rp.t0, rp.big);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// ------------------------------------------------------------ grid: one cell per phase + the full loop
+const CROP = { x: 235, y: 215, w: 1120, h: 410 };   // region of the virtual stage each cell shows
+const HOLD = .8;                                    // pause on each phase's end state before it loops
+const CELLS = [
+  ...PHASES.map((p, i) => ({ ...p, n: i + 1, time: c => p.t0 + Math.min(c % (p.t1 - p.t0 + HOLD), p.t1 - p.t0 - .001) })),
+  { n: 0, verb: "full loop", mean: "", time: c => c % LOOP, full: true },
+];
+const PAD = 24, GAP = 14, TOP = 70, TITLE = 52;
+
+function layout() {
+  let best = null;
+  for (let cols = 1; cols <= CELLS.length; cols++) {
+    const rows = Math.ceil(CELLS.length / cols);
+    const cw = (W - 2 * PAD - (cols - 1) * GAP) / cols;
+    const ch = (H - TOP - PAD - (rows - 1) * GAP) / rows;
+    const s = Math.min(cw / CROP.w, (ch - TITLE) / CROP.h);
+    if (!best || s > best.s) best = { cols, rows, cw, ch, s };
+  }
+  return best;
+}
+
+function render(clock) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  TS = 1; ctx.globalAlpha = 1;
+  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+  text("CONTEXT PUCKS", PAD, 28, { size: 12, col: MUTE, align: "left", spacing: 3, weight: 600 });
+  text("v2 · steering with knobs — every step at once", PAD, 48, { size: 15, col: FG, align: "left" });
+  text(paused ? "paused · click / space to play" : "click / space to pause · ← → to scrub", W - PAD, 28, { size: 12, col: MUTE, align: "right" });
+
+  const L = layout();
+  CELLS.forEach((cell, i) => {
+    const col = i % L.cols, row = Math.floor(i / L.cols);
+    const x = PAD + col * (L.cw + GAP), y = TOP + row * (L.ch + GAP);
+    const t = cell.time(clock);
+
+    // frame
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); TS = 1; ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#1c1c1c"; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, L.cw - 1, L.ch - 1);
+
+    // title
+    let verb = cell.verb, mean = cell.mean, num = cell.n ? String(cell.n) : "∞";
+    if (cell.full) { const p = PHASES.find(p => t >= p.t0 && t < p.t1); if (p) mean = p.verb + " · " + p.mean; }
+    text(num, x + 14, y + 20, { size: 12, col: ACC, align: "left", weight: 700 });
+    text(verb, x + 34, y + 20, { size: 16, col: FG, align: "left", weight: 600 });
+    text(mean, x + 34, y + 38, { size: 12, col: MUTE, align: "left" });
+
+    // progress within the cell's loop
+    const [a, b] = cell.full ? [0, LOOP] : [cell.t0, cell.t1];
+    ctx.fillStyle = "#2a2a2a"; ctx.fillRect(x, y + L.ch - 2, L.cw, 2);
+    ctx.fillStyle = ACC; ctx.fillRect(x, y + L.ch - 2, L.cw * clamp((t - a) / (b - a)), 2);
+
+    // scene, cropped and centred in the cell
+    const s = L.s, sw = CROP.w * s, sh = CROP.h * s;
+    const sx = x + (L.cw - sw) / 2, sy = y + TITLE + (L.ch - TITLE - sh) / 2;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x + 1, y + TITLE, L.cw - 2, L.ch - TITLE - 2); ctx.clip();
+    ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (sx - CROP.x * s), dpr * (sy - CROP.y * s));
+    TS = clamp(10 / (13 * s), 1, 1.8);   // keep labels legible in small cells
+    draw(t);
+    ctx.restore();
+  });
+  TS = 1;
+}
+
+// ------------------------------------------------------------ loop · click / space to pause, ← → to scrub
+let clock = 0, last = performance.now(), paused = false;
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  if (!paused) clock += dt * (reduce ? .5 : 1);
+  render(clock);
+  requestAnimationFrame(frame);
+}
+cv.addEventListener("click", () => paused = !paused);
+addEventListener("keydown", e => {
+  if (e.code === "Space") { paused = !paused; e.preventDefault(); }
+  if (e.code === "ArrowRight") clock += .5;
+  if (e.code === "ArrowLeft") clock = Math.max(0, clock - .5);
+});
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
