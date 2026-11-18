@@ -289,6 +289,7 @@
           <button id="clear-outputs" type="button">Clear all</button>
         </div>
         <p id="empty-state" class="muted">Generated videos will appear here. Select any output to continue or branch its thread.</p>
+        <div id="job-list"></div>
         <div id="output-list"></div>
       </section>
     </main>
@@ -319,6 +320,7 @@
         task: $("task"),
         prompt: $("prompt"),
         mediaList: $("media-list"),
+        jobList: $("job-list"),
         outputList: $("output-list"),
         emptyState: $("empty-state"),
         filePicker: $("file-picker"),
@@ -333,7 +335,8 @@
         requestStatus: $("request-status"),
       };
 
-      const state = { media: [], outputs: [], selectedOutputId: null, abortController: null };
+      const state = { media: [], outputs: [], selectedOutputId: null, jobs: [] };
+      let jobTimer = null;
 
       const init = async () => {
         bindEvents();
@@ -358,7 +361,7 @@
         dom.addVideo.onclick = () => openFilePicker("video/*", false);
         dom.clearMedia.onclick = clearMedia;
         dom.newThread.onclick = () => selectOutput(null);
-        dom.generate.onclick = () => (state.abortController ? state.abortController.abort() : generate());
+        dom.generate.onclick = generate;
         dom.clearOutputs.onclick = clearOutputs;
 
         dom.filePicker.onchange = async ({ target }) => {
@@ -466,15 +469,25 @@
                 : null;
         if (problem) return setStatus(problem, true);
 
-        state.abortController = new AbortController();
-        const { signal } = state.abortController;
-        const startedAt = Date.now();
-        const timer = setInterval(() => setStatus(`Generating... ${Math.floor((Date.now() - startedAt) / 1000)}s`), STATUS_TICK_MS);
-        setGenerating(true);
+        // Snapshot every input so the composer can be reused while this request runs.
+        const job = {
+          id: crypto.randomUUID(),
+          prompt,
+          parent,
+          media: [...state.media],
+          config: getConfig(),
+          controller: new AbortController(),
+          startedAt: Date.now(),
+          error: null,
+        };
+        state.jobs.push(job);
+        renderJobs();
+        setStatus("");
 
+        const { signal } = job.controller;
         try {
           const ai = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
-          const result = await ai.interactions.create(buildRequest(prompt, parent, state.media, getConfig()), { signal });
+          const result = await ai.interactions.create(buildRequest(prompt, parent, job.media, job.config), { signal });
 
           const video = findVideo(result);
           if (!video) throw new Error("The interaction completed without a video output.");
@@ -482,30 +495,72 @@
           const output = {
             id: crypto.randomUUID(),
             interactionId: result.id,
-            parentId: parent?.id || null,
+            parentId: parent && state.outputs.some(({ id }) => id === parent.id) ? parent.id : null,
             prompt,
             createdAt: Date.now(),
-            aspectRatio: dom.aspectRatio.value,
-            duration: dom.duration.value,
-            resolution: dom.resolution.value,
+            aspectRatio: job.config.aspectRatio,
+            duration: job.config.duration,
+            resolution: job.config.resolution,
             videoDataUrl: video.data ? `data:${video.mimeType};base64,${video.data}` : await downloadVideo(video.uri, apiKey, signal),
           };
           state.outputs.push(output);
           await save("outputs", state.outputs);
-
-          dom.prompt.value = "";
-          await save("draft", "");
-          clearMedia();
-          selectOutput(output.id);
-          setStatus("Video ready.");
+          renderOutputs();
+          removeJob(job.id);
         } catch (error) {
-          const cancelled = error.name === "AbortError";
-          setStatus(cancelled ? "Generation cancelled." : error.message, !cancelled);
-        } finally {
-          clearInterval(timer);
-          state.abortController = null;
-          setGenerating(false);
+          if (signal.aborted) return removeJob(job.id);
+          job.error = error.message;
+          renderJobs();
         }
+      };
+
+      const removeJob = (id) => {
+        state.jobs = state.jobs.filter((job) => job.id !== id);
+        renderJobs();
+      };
+
+      const renderJobs = () => {
+        dom.jobList.replaceChildren(
+          ...state.jobs.toReversed().map((job) =>
+            el(
+              "article",
+              { className: "output" },
+              el(
+                "div",
+                { className: "output-heading" },
+                el("h3", { textContent: job.error ? "Failed" : "Generating..." }),
+                el(
+                  "div",
+                  { className: "output-actions" },
+                  job.error
+                    ? el("button", { type: "button", textContent: "Dismiss", onclick: () => removeJob(job.id) })
+                    : el("button", { type: "button", textContent: "Cancel", onclick: () => job.controller.abort() }),
+                ),
+              ),
+              job.error
+                ? el("div", { className: "meta error", textContent: job.error })
+                : el(
+                    "div",
+                    { className: "meta" },
+                    (job.timeEl = el("span", { textContent: elapsed(job) })),
+                    job.parent ? ` · editing: ${shortPrompt(job.parent.prompt)}` : "",
+                  ),
+              el("div", { className: "prompt", textContent: job.prompt || "Media input only" }),
+            ),
+          ),
+        );
+        dom.emptyState.hidden = state.outputs.length > 0 || state.jobs.length > 0;
+
+        const running = state.jobs.some((job) => !job.error);
+        if (running && !jobTimer) jobTimer = setInterval(tickJobTimers, STATUS_TICK_MS);
+        if (!running && jobTimer) jobTimer = clearInterval(jobTimer);
+      };
+
+      const elapsed = (job) => `${Math.floor((Date.now() - job.startedAt) / 1000)}s`;
+
+      // Only rewrite each running job's elapsed-time text; leave the rest of the DOM untouched.
+      const tickJobTimers = () => {
+        for (const job of state.jobs) if (!job.error && job.timeEl) job.timeEl.textContent = elapsed(job);
       };
 
       const downloadVideo = async (uri, apiKey, signal) => {
@@ -532,11 +587,6 @@
         }
       };
 
-      const setGenerating = (active) => {
-        dom.generate.textContent = active ? "Cancel" : "Generate video";
-        for (const field of [dom.apiKey, dom.prompt, dom.aspectRatio, dom.duration, dom.resolution, dom.task]) field.disabled = active;
-      };
-
       const setStatus = (message, isError = false) => {
         dom.requestStatus.textContent = message;
         dom.requestStatus.classList.toggle("error", isError);
@@ -544,7 +594,7 @@
 
       const renderOutputs = () => {
         const depths = depthsById(state.outputs);
-        dom.emptyState.hidden = state.outputs.length > 0;
+        dom.emptyState.hidden = state.outputs.length > 0 || state.jobs.length > 0;
         dom.outputList.replaceChildren(
           ...state.outputs.toReversed().map((output) => {
             const depth = depths.get(output.id) || 0;
