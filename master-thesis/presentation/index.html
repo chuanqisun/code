@@ -631,13 +631,13 @@
         background: var(--paper-bg);
         color: #000;
       }
-      /* four states of one illustration, stacked: whole, body, handle, network */
+      /* four states of one illustration, stacked: whole, body, network (click 2), handle (click 3) */
       #handles .art {
         position: absolute;
         left: 4vw;
         top: 50%;
         transform: translateY(-50%);
-        height: 84%;
+        height: 66%;
         aspect-ratio: 768 / 864;
         display: grid;
       }
@@ -676,13 +676,22 @@
       }
       /* one concept at a time: its keywords light up and its definition shows */
       #handles .hl {
-        transition: color 0.6s ease;
+        /* padding is cancelled by negative margin so the black block doesn't shift the line */
+        padding: 0 0.12em;
+        margin: 0 -0.12em;
+        background: transparent;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
+        transition:
+          color 0.6s ease,
+          background-color 0.6s ease;
       }
       #handles[data-at="1"] .hl[data-k="1"],
       #handles[data-at="2"] .hl[data-k="2"],
       #handles[data-at="3"] .hl[data-k="3"],
       #handles[data-at="4"] .hl[data-k="4"] {
         color: var(--accent);
+        background: #000;
       }
       #handles .defs {
         display: flex;
@@ -713,6 +722,10 @@
         font-weight: 400;
         font-style: italic;
         color: var(--accent);
+        background: #000;
+        padding: 0 0.12em;
+        -webkit-box-decoration-break: clone;
+        box-decoration-break: clone;
       }
 
       /* ---------- diagrams (architecture, third interface), drawn in a 1600×900 viewBox ----------
@@ -1093,7 +1106,14 @@
         color: #fff;
         color-scheme: dark;
         border-top: 3px solid var(--accent);
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
         font-size: clamp(16px, 1.5vw, 26px);
         line-height: 1.5;
         letter-spacing: 0.005em;
@@ -1214,7 +1234,10 @@
       </div>
       <aside class="notes">
         <p>Sketchpad, the mouse, inTouch (and Tangible Bits). Each one made something live.</p>
-        <p>Authors: Sketchpad, Ivan Sutherland (1963). The mouse, Douglas Engelbart and Bill English (1968). inTouch, Scott Brave and Andrew Dahley at the Media Lab (1998).</p>
+        <p>
+          Authors: Sketchpad, Ivan Sutherland (1963). The mouse, Douglas Engelbart and Bill English (1968). inTouch, Scott Brave and Andrew Dahley at the Media
+          Lab (1998).
+        </p>
         <p>Name Shneiderman’s “direct manipulation” here in one breath.</p>
       </aside>
     </section>
@@ -1248,7 +1271,10 @@
         </div>
       </div>
       <aside class="notes">
-        <p>The other track: conversation. The Lisp REPL, ELIZA, Claude Code: sixty-plus years of talking to machines, and every one of them is turn-based. You type, you wait, you read.</p>
+        <p>
+          The other track: conversation. The Lisp REPL, ELIZA, Claude Code: sixty-plus years of talking to machines, and every one of them is turn-based. You
+          type, you wait, you read.
+        </p>
         <p>Authors: Lisp, John McCarthy (1958). ELIZA, Joseph Weizenbaum (1966). Claude Code, Anthropic (2025).</p>
       </aside>
     </section>
@@ -1270,7 +1296,10 @@
       <div class="msg step" data-step="2"><em>Real time</em> AI is here<br />It’s just trapped in <em>chat</em></div>
       <aside class="notes">
         <p>Two tracks, about to collide. Spatial and real time on one side; semantic and turn-based on the other.</p>
-        <p>The collision: Jev (decision models in 70–500 ms), Cerebras and ChatJimmy (inference in silicon, thousands of tokens a second), Krea (real-time image generation). AI is becoming real time.</p>
+        <p>
+          The collision: Jev (decision models in 70–500 ms), Cerebras and ChatJimmy (inference in silicon, thousands of tokens a second), Krea (real-time image
+          generation). AI is becoming real time.
+        </p>
         <p>Land it: direct manipulation will soon touch generative media.</p>
       </aside>
     </section>
@@ -1337,7 +1366,10 @@
         <p>Click 2: chat example, the prompt “a cat in a hat”.</p>
         <p>Click 3: three different cats in hats from one prompt. Semantic input cannot pin down spatial output.</p>
         <p>Click 4: the empty quadrant, Hold That Thought, is where a hand can steer meaning. This is the thesis.</p>
-        <p>George Lakoff: we already think about ideas through natural metaphors of lived experience (grasping an idea, a high-level view, holding a thought). The body gives meaning its spatial handles.</p>
+        <p>
+          George Lakoff: we already think about ideas through natural metaphors of lived experience (grasping an idea, a high-level view, holding a thought).
+          The body gives meaning its spatial handles.
+        </p>
       </aside>
     </section>
     <!-- maeda: symbolic computing is ending -->
@@ -1351,7 +1383,10 @@
       <aside class="notes">
         <p>My mentor John Maeda likes to say this. Read the first line, pause.</p>
         <p>Click 1: “We have entered the age of semantic computing.” Meaning is now something we can compute with.</p>
-        <p>Click 2: “I agree, with one reservation.” To work with meaning, we need handles to hold onto. That is the gap the quadrant just showed, and the next slide names the idea.</p>
+        <p>
+          Click 2: “I agree, with one reservation.” To work with meaning, we need handles to hold onto. That is the gap the quadrant just showed, and the next
+          slide names the idea.
+        </p>
       </aside>
     </section>
 
@@ -1360,13 +1395,15 @@
       <div class="art">
         <img data-k="0" src="assets/hold-that-thought-0.webp" alt="A person pulling handles on a network of ideas" />
         <img data-k="1" src="assets/hold-that-thought-1.webp" alt="" />
-        <img data-k="2" src="assets/hold-that-thought-2.webp" alt="" />
-        <img data-k="3" src="assets/hold-that-thought-3.webp" alt="" />
+        <img data-k="3" src="assets/hold-that-thought-2.webp" alt="" />
+        <img data-k="2" src="assets/hold-that-thought-3.webp" alt="" />
       </div>
       <div class="right">
         <div class="heading">
           <h2 class="display">
-            <b>Hold That Thought:</b>A <span class="hl" data-k="1">Somatic</span>-<span class="hl" data-k="2">Symbolic</span>-<span class="hl" data-k="3">Semantic</span>
+            <b>Hold That Thought:</b>A <span class="hl" data-k="1">Somatic</span>-<span class="hl" data-k="3">Symbolic</span>-<span class="hl" data-k="2"
+              >Semantic</span
+            >
             Architecture for <span class="hl" data-k="4">Shaping Ideas</span> in <span class="hl" data-k="4">Real&nbsp;Time</span>
           </h2>
         </div>
@@ -1374,8 +1411,8 @@
           <div class="rule step" data-step="1"></div>
           <div class="stack display">
             <div data-k="1"><b>Somatic:</b> The body: hands, voice, and gesture</div>
-            <div data-k="2"><b>Symbolic:</b> Handles that code understands</div>
-            <div data-k="3"><b>Semantic:</b> Meaning that models understand</div>
+            <div data-k="3"><b>Symbolic:</b> Handles that code understands</div>
+            <div data-k="2"><b>Semantic:</b> Meaning that models understand</div>
             <div data-k="4"><b>Shaping Ideas in Real Time:</b> A closed loop with more agency, creativity, and joy</div>
           </div>
         </div>
@@ -1383,8 +1420,15 @@
       <aside class="notes">
         <p>“Get a handle on it” is an idiom for a reason. A handle is the oldest interface for gripping something slippery.</p>
         <p>The model supplies meaning, a symbolic layer supplies the handle, and the speed keeps it a conversation with material.</p>
-        <p>Click 1: Somatic, the body (the person lights up). Click 2: Symbolic, handles that code understands (the handles light up). Click 3: Semantic, meaning that models understand (the network lights up). Click 4: Shaping ideas in real time, a closed loop with more agency, creativity, and joy (the whole picture).</p>
-        <p>State the hypothesis in one sentence: route the body through symbols to meaning, close every loop in real time, and people keep more agency, create more, and feel more joy than in turn-based chat.</p>
+        <p>
+          Click 1: Somatic, the body (the person lights up). Click 2: Semantic, meaning that models understand (the network lights up). Click 3: Symbolic,
+          handles that code understands (the handles light up). Click 4: Shaping ideas in real time, a closed loop with more agency, creativity, and joy (the
+          whole picture).
+        </p>
+        <p>
+          State the hypothesis in one sentence: route the body through symbols to meaning, close every loop in real time, and people keep more agency, create
+          more, and feel more joy than in turn-based chat.
+        </p>
       </aside>
     </section>
     <!-- architecture: the S3 diagram -->
@@ -1487,11 +1531,26 @@
       <div class="done cap label">The S3 Architecture</div>
       <aside class="notes">
         <p>Three nodes. Somatic: the body. Symbolic: what code interprets. Semantic: what a model interprets.</p>
-        <p>Click 1: Direct Manipulation connects body and symbol. Sketchpad, the mouse, Tangible Bits. Reliable, but only for things that already have a symbolic form.</p>
-        <p>Click 2: Interface Agents connect body and meaning directly: vision, speech, chat. They jump over the symbolic node. That is the 1997 Shneiderman–Maes debate in one picture: expressive, but nothing to hold and hard to predict.</p>
-        <p>Click 3: Live Interpretation, symbolic ↔ semantic: “structured reasons, reasoned structures.” Parametric prompts carry symbols into a model; detection, decisions, and code carry meaning back out as structure. The loop on the right is the model computing on its own.</p>
-        <p>Click 4: two recent papers, one per edge. Declarative Dragging (Horowitz, Blinn, Heer, UIST ’26) makes drag-and-drop model-driven. DirectGPT (Masson et al., CHI ’24) brings direct manipulation to LLM output, but still turn by turn.</p>
-        <p>Click 5: Hold That Thought routes the body through the symbol to meaning and back, and closes the loop in real time. The agents fade; the loop runs through the middle.</p>
+        <p>
+          Click 1: Direct Manipulation connects body and symbol. Sketchpad, the mouse, Tangible Bits. Reliable, but only for things that already have a symbolic
+          form.
+        </p>
+        <p>
+          Click 2: Interface Agents connect body and meaning directly: vision, speech, chat. They jump over the symbolic node. That is the 1997 Shneiderman–Maes
+          debate in one picture: expressive, but nothing to hold and hard to predict.
+        </p>
+        <p>
+          Click 3: Live Interpretation, symbolic ↔ semantic: “structured reasons, reasoned structures.” Parametric prompts carry symbols into a model;
+          detection, decisions, and code carry meaning back out as structure. The loop on the right is the model computing on its own.
+        </p>
+        <p>
+          Click 4: two recent papers, one per edge. Declarative Dragging (Horowitz, Blinn, Heer, UIST ’26) makes drag-and-drop model-driven. DirectGPT (Masson
+          et al., CHI ’24) brings direct manipulation to LLM output, but still turn by turn.
+        </p>
+        <p>
+          Click 5: Hold That Thought routes the body through the symbol to meaning and back, and closes the loop in real time. The agents fade; the loop runs
+          through the middle.
+        </p>
       </aside>
     </section>
     <!-- third interface: human, machine, AI -->
@@ -1530,7 +1589,9 @@
           <g class="icon" transform="translate(0 6)">
             <rect x="-24" y="-50" width="48" height="48" rx="6" />
             <rect x="-11" y="-37" width="22" height="22" rx="2" />
-            <path d="M -12 -50 v -10 M 0 -50 v -10 M 12 -50 v -10 M -12 -2 v 10 M 0 -2 v 10 M 12 -2 v 10 M -24 -38 h -10 M -24 -26 h -10 M -24 -14 h -10 M 24 -38 h 10 M 24 -26 h 10 M 24 -14 h 10" />
+            <path
+              d="M -12 -50 v -10 M 0 -50 v -10 M 12 -50 v -10 M -12 -2 v 10 M 0 -2 v 10 M 12 -2 v 10 M -24 -38 h -10 M -24 -26 h -10 M -24 -14 h -10 M 24 -38 h 10 M 24 -26 h 10 M 24 -14 h 10"
+            />
           </g>
           <text class="eg" y="55" text-anchor="middle">MACHINE</text>
         </g>
@@ -1555,7 +1616,10 @@
         <p>Step back from S3 to the three parties: human, machine, AI.</p>
         <p>Click 1: human ↔ machine. HCI, the first interface. Sixty years of it, from Sketchpad to the touchscreen.</p>
         <p>Click 2: human ↔ AI. HAI, the second interface. Chat, voice, agents, the one everyone is building now.</p>
-        <p>Click 3: AI ↔ machine. The third interface has no name yet. In S3 terms it is interpretation: where meaning meets code. That is the interface this thesis designs, because it decides whether the human can still hold on.</p>
+        <p>
+          Click 3: AI ↔ machine. The third interface has no name yet. In S3 terms it is interpretation: where meaning meets code. That is the interface this
+          thesis designs, because it decides whether the human can still hold on.
+        </p>
       </aside>
     </section>
 
@@ -1604,10 +1668,16 @@
         <blockquote class="display step critique" data-step="3">“I want this for coding, learning and research”</blockquote>
       </div>
       <aside class="notes">
-        <p>Spaceship IDE: steer an LLM’s text generation in real time with spatial metaphors (locks, slingshot, force field, signal scanner, vector steering). I call it an IDE because steering meaning through handles is programming: semantic programming.</p>
+        <p>
+          Spaceship IDE: steer an LLM’s text generation in real time with spatial metaphors (locks, slingshot, force field, signal scanner, vector steering). I
+          call it an IDE because steering meaning through handles is programming: semantic programming.
+        </p>
         <p>Posted with Tangible Media Group: about a million views. Commenters didn’t use it, so this is a probe, not proof.</p>
         <p>Click 1–2: people read it as control. “ntp” is next-token prediction.</p>
-        <p>Click 3: the critique. Not fiction: coding, learning, research. That moved the thesis toward ideas and programming, which is where the proposed work goes. Spaceship’s metaphors seed Puck Grammar.</p>
+        <p>
+          Click 3: the critique. Not fiction: coding, learning, research. That moved the thesis toward ideas and programming, which is where the proposed work
+          goes. Spaceship’s metaphors seed Puck Grammar.
+        </p>
       </aside>
     </section>
 
@@ -1653,7 +1723,10 @@
         <figcaption><span class="cap">Puck Grammar by</span><b class="display">Avril Cui</b></figcaption>
       </figure>
       <aside class="notes">
-        <p>Puck Grammar is a tangible neuro-symbolic language. A camera tracks the pucks, and the arrangement is the program: position, proximity, and rotation map to verbs such as steer, blend, bind, and lock.</p>
+        <p>
+          Puck Grammar is a tangible neuro-symbolic language. A camera tracks the pucks, and the arrangement is the program: position, proximity, and rotation
+          map to verbs such as steer, blend, bind, and lock.
+        </p>
         <p>This is the computer-vision grammar running live. Open questions: do the verbs compose and abstract, and can people learn the notation?</p>
         <p>Click: credit. This is Avril Cui’s work.</p>
       </aside>
@@ -1691,7 +1764,10 @@
         <p>Click 1: credit. This is Shuji Hosokawa’s work.</p>
         <p>The runtime: a PCB coil array moves passive magnetic pucks. Scalable, modular, silent, 2.5D. Any object with a magnet becomes a handle.</p>
         <p>This closes the third loop of S3: the AI proposes by moving a handle, or resists by holding it, and you feel it.</p>
-        <p>Click 2: the lineage. Bricks (Fitzmaurice, Ishii, Buxton, 1995): graspable handles. Sensetable (Patten and Ishii, 2001): wireless pucks on a table. Actuated Workbench (Pangaro, Maynes-Aminzade, Ishii, 2002): the computer moves the puck.</p>
+        <p>
+          Click 2: the lineage. Bricks (Fitzmaurice, Ishii, Buxton, 1995): graspable handles. Sensetable (Patten and Ishii, 2001): wireless pucks on a table.
+          Actuated Workbench (Pangaro, Maynes-Aminzade, Ishii, 2002): the computer moves the puck.
+        </p>
         <p>Later, the table could also move the persona figurines of Tangible Co-ideation, the TMG project I contribute to.</p>
       </aside>
     </section>
@@ -1722,9 +1798,15 @@
       </figure>
       <div class="line fade-up" style="animation-delay: 1.6s">Why?</div>
       <aside class="notes">
-        <p>I could have used an AI avatar to give this presentation, and yet I chose to be present. You could have delegated your AI note-taker to join crit day, and yet you chose to be here.</p>
+        <p>
+          I could have used an AI avatar to give this presentation, and yet I chose to be present. You could have delegated your AI note-taker to join crit day,
+          and yet you chose to be here.
+        </p>
         <p>Why? Because we all enjoy the making of ideas. Not specifying goals. Not delegating to agents.</p>
-        <p>Tim Ingold says making is not imposing a form on matter. The maker follows the material and responds to it as the work unfolds. A prompt is the stamp. Making needs a medium that answers back, continuously, and real time is the precondition.</p>
+        <p>
+          Tim Ingold says making is not imposing a form on matter. The maker follows the material and responds to it as the work unfolds. A prompt is the stamp.
+          Making needs a medium that answers back, continuously, and real time is the precondition.
+        </p>
         <p>Delivery: pause a full beat after “chose to be here.” The questions are rhetorical. Land “making of ideas” slowly, then bring in Ingold.</p>
       </aside>
     </section>
@@ -1748,12 +1830,18 @@
       <div class="line step" data-step="2">Interaction Design is <em>Humanism</em>.</div>
       <div class="keys cap step" data-step="3"><span>Sense-making</span><span>Thinking</span><span>Creating</span></div>
       <aside class="notes">
-        <p>Key point: interaction design investigates the human condition and expands the life we experience by giving us new senses: for the body, for knowledge, and for connection.</p>
+        <p>
+          Key point: interaction design investigates the human condition and expands the life we experience by giving us new senses: for the body, for
+          knowledge, and for connection.
+        </p>
         <p>Norbert Wiener (body): cybernetics. Machines and organisms share feedback loops, so tools extend the body.</p>
         <p>J.C.R. Licklider (knowledge): man-computer symbiosis. Humans and computers thinking together, in real time.</p>
         <p>Hiroshi Ishii (connection): tangible bits and radical atoms. Give digital information a physical form you can hold and share.</p>
         <p>Can technology put humans in front of the decision, in the real world, and not behind a phone screen?</p>
-        <p>Click 1: the names become body, knowledge, connection. Click 2: Interaction Design is Humanism. Click 3: the keywords sense-making, thinking, creating.</p>
+        <p>
+          Click 1: the names become body, knowledge, connection. Click 2: Interaction Design is Humanism. Click 3: the keywords sense-making, thinking,
+          creating.
+        </p>
         <p>Land it: this thesis extends our senses toward thinking, sense making, and creating. I think that is worth pursuing.</p>
       </aside>
     </section>
