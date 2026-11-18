@@ -473,7 +473,7 @@
         setGenerating(true);
 
         try {
-          const ai = new GoogleGenAI({ apiKey });
+          const ai = new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
           const result = await ai.interactions.create(buildRequest(prompt, parent, state.media, getConfig()), { signal });
 
           const video = findVideo(result);
