@@ -28,11 +28,11 @@ Ground your overview in the core problem: today, people use AI by taking turns. 
 
 Explicitly state that you are conducting research within the Tangible Media Group at the MIT Media Lab, working under the guidance of Professor Hiroshi Ishii and direct supervisor Chuanqi Sun alongside a peer cohort, and that your work feeds into Chuanqi's master's thesis.
 
-Watch the thesis proposal presentation to catch up on context and challenges: https://youtu.be/letrre__TD4?t=151
+Watch the [thesis proposal presentation](https://youtu.be/letrre__TD4?t=151) to catch up on context and challenges.
 
 ### Choose your project
 
-Use these example projects for inspiration.
+Use these example projects _only for inspiration_.
 
 1. **Verb Palette:** a text editor where semantic verbs (steer, blend, scale, bind) are tools, distilled from about 30 meaning-editing systems.
 2. **Semantic Dial:** LLM-suggested axes (cautious to bold, concrete to abstract) as sliders that rewrite text instantly as you drag.
