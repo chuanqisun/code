@@ -44,9 +44,9 @@ Propose your own idea that contributes to the core vision of the "Hold That Thou
 
 ### Anchor it in one concrete scenario
 
-Abstract visions are hard to believe. Before you describe the system, describe one person using it: what they want, what they physically do, what the AI does in response, and what they walk away with. Walk through the full loop, from a real need to a meaningful outcome. A complete, specific scenario is more convincing than a broad list of possible applications.
+Describe one person using it: what they want, what they physically do, what the AI does in response, and what they walk away with. Walk through the full loop, from a real need to a meaningful outcome. A complete, specific scenario is more convincing than a broad list of possible applications.
 
-**Questions to guide your draft:**
+**Questions to help you brainstorm:**
 
 - What is the handle in your project, and what meaning is it bound to?
 - Can you explain the core interaction loop to an engineer or designer in two clear sentences?
