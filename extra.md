@@ -10,5 +10,6 @@
 - [Thank You](./thank-you/)
 - [TMG 30](./tmg-30/)
 - [TMG UROP posting](./tmg-urop/)
+- [TMG UROP Proposal Writeup Guide](./tmg-urop/official-proposal-writeup-guide-IAP.md)
 - [Trip Reports: 2026 CVPR](./trip-reports/2026-cvpr/)
 - [WebGL2 Shaders](./webgl2-shaders/monochromatic)
