@@ -57,6 +57,7 @@
 
 ## Experiments Feed
 
+- [Napkin](https://chuanqisun.github.io/napkin/) back of napkin sketch simulator #sketch#game#simulation
 - [Puck Grammar](./tangible-grammar/) [v2 interact](./tangible-grammar/v2-interactive.html) [v2 animate](./tangible-grammar/v2-animation.html) dictionary of metaphor based interaction design #concept#interaction
 - [Spaceship IDE](https://chuanqisun.github.io/spaceship/)
 - [Recursive Self-Improvement (draw)](./recursive-self-improvement/draw.html) #sketch#cv#mediapipe
